@@ -1,0 +1,10 @@
+prefix=@prefix@
+exec_prefix=@exec_prefix@
+libdir=@libdir@
+includedir=@includedir@
+
+Name: ies-api
+Description: Intel Ethernet Switch API
+Version: @IES_VERSION@
+Libs: -L${libdir} -lFocalpointSDK -lLTStdPlatform -ldl
+Cflags: -I${includedir} -I${includedir}/alos -I${includedir}/alos/linux -I${includedir}/std/intel -I${includedir}/common -I${includedir}/platforms -I${includedir}/platforms/libertyTrail

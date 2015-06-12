@@ -1,0 +1,67 @@
+Summary:  Intel Ethernet Switch API
+Name:     ies-api
+Release:  1%{?dist}
+License:  BSD
+URL:      http://www.intel.com
+Group:    Development/Libraries
+Vendor:   Intel Corporation
+Packager: Jef Oliver <jef.oliver@intel.com>
+
+Version: @IES_VERSION@
+Source0: ies-api-%{version}.tar.gz
+
+BuildRequires: libnl3-devel, bash, sh-utils, tar, bzip2, xz, gzip
+BuildRequires: m4, perl, make, gawk, gcc >= 4.4.0, binutils >= 2.12
+BuildRequires: redhat-rpm-config, bc, bison, swig, perl-devel
+BuildRequires: perl(XML::Twig), systemd-devel, autoconf, automake
+BuildRequires: libtool, pciutils-devel, pkgconfig
+Requires:      ldconfig
+Provides:      ies-api = %{version}-%{release}
+Provides:      %{name} = %{version}-%{release}
+Autoreq:       0
+
+%description
+The ies-api package contains the libraries necessary to configure
+Intel Ethernet Switch Platform.
+
+%package    devel
+Summary:    Development files for %{name}
+Group:      Development/Libraries
+Requires:   %{name} = %{version}-%{release}
+
+%description devel
+The ies-api-devel package contains the files necessary to develop software
+that uses the ies-api package.
+
+%prep
+%setup -q
+
+%build
+./autogen.sh
+%configure
+%{__make} %{?_smp_mflags}
+
+%install
+%make_install
+
+%post -p /sbin/ldconfig
+
+%postun -p /sbin/ldconfig
+
+%files
+%{_sysconfdir}/ies/*
+%{_sysconfdir}/profile.d/*
+%{_libdir}/libFocalpointSDK-*.so
+%{_libdir}/libLTStdPlatform-*.so
+%{_libdir}/libLTStdPlatform.so
+
+%files devel
+%{_includedir}/*
+%{_libdir}/*.a
+%{_libdir}/libFocalpointSDK.so
+%{_libdir}/pkgconfig/*.pc
+%exclude %{_libdir}/*.la
+
+%changelog
+* Tue Dec 16 2014 Jef Oliver <jef.oliver@intel.com>
+- Initial rpm build

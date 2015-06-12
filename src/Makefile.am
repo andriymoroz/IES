@@ -1,0 +1,235 @@
+AM_CFLAGS = -std=c99                                                                              \
+            -g                                                                                    \
+            -fPIC                                                                                 \
+            -Wno-long-long                                                                        \
+            -Wextra                                                                               \
+            -Wno-missing-field-initializers                                                       \
+            -Wno-unused                                                                           \
+            -Wno-unused-parameter                                                                 \
+            -Wstrict-prototypes                                                                   \
+            -Wno-variadic-macros                                                                  \
+            -D_FM_ARCH_x86_64                                                                     \
+            -O1                                                                                   \
+            -Wno-override-init                                                                    \
+            -DFM_SUPPORT_FM10000                                                                  \
+            -DINSTRUMENT_LOG_LEVEL=0                                                              \
+            -D_GNU_SOURCE                                                                         \
+            -I$(top_srcdir)/include                                                               \
+            -I$(top_srcdir)/include/alos                                                          \
+            -I$(top_srcdir)/include/alos/linux                                                    \
+            -I$(top_srcdir)/include/std/intel                                                     \
+            -I$(top_srcdir)/include/common                                                        \
+            -I$(top_srcdir)/include/platforms                                                     \
+            -I$(top_srcdir)/include/platforms/libertyTrail
+
+lib_LTLIBRARIES = libFocalpointSDK.la
+
+libFocalpointSDK_la_LDFLAGS = -release `cd $(top_srcdir) ; ./version.sh`
+
+libFocalpointSDK_la_SOURCES =                                                                     \
+alos/linux/fm_alos_alloc.c                                                                        \
+alos/linux/fm_alos_dynamic_load.c                                                                 \
+alos/linux/fm_alos_event_queue.c                                                                  \
+alos/linux/fm_alos_init.c                                                                         \
+alos/linux/fm_alos_lock.c                                                                         \
+alos/linux/fm_alos_logging.c                                                                      \
+alos/linux/fm_alos_rand.c                                                                         \
+alos/linux/fm_alos_rwlock.c                                                                       \
+alos/linux/fm_alos_sem.c                                                                          \
+alos/linux/fm_alos_threads.c                                                                      \
+alos/linux/fm_alos_time.c                                                                         \
+api/fm10000/fm10000_api_acl.c                                                                     \
+api/fm10000/fm10000_api_acl_mapper.c                                                              \
+api/fm10000/fm10000_api_acl_non_disrupt.c                                                         \
+api/fm10000/fm10000_api_acl_policer.c                                                             \
+api/fm10000/fm10000_api_addr.c                                                                    \
+api/fm10000/fm10000_api_an.c                                                                      \
+api/fm10000/fm10000_api_an_actions.c                                                              \
+api/fm10000/fm10000_api_an_state_machines.c                                                       \
+api/fm10000/fm10000_api_attr.c                                                                    \
+api/fm10000/fm10000_api_crm.c                                                                     \
+api/fm10000/fm10000_api_event_fast_maint.c                                                        \
+api/fm10000/fm10000_api_event_intr.c                                                              \
+api/fm10000/fm10000_api_event_mac_maint.c                                                         \
+api/fm10000/fm10000_api_event_mgmt.c                                                              \
+api/fm10000/fm10000_api_event_port.c                                                              \
+api/fm10000/fm10000_api_ffu.c                                                                     \
+api/fm10000/fm10000_api_flooding.c                                                                \
+api/fm10000/fm10000_api_flow.c                                                                    \
+api/fm10000/fm10000_api_i2c.c                                                                     \
+api/fm10000/fm10000_api_init.c                                                                    \
+api/fm10000/fm10000_api_lag.c                                                                     \
+api/fm10000/fm10000_api_lbg.c                                                                     \
+api/fm10000/fm10000_api_lport.c                                                                   \
+api/fm10000/fm10000_api_mac_purge_table.c                                                         \
+api/fm10000/fm10000_api_mac_security.c                                                            \
+api/fm10000/fm10000_api_mailbox.c                                                                 \
+api/fm10000/fm10000_api_map.c                                                                     \
+api/fm10000/fm10000_api_mirror.c                                                                  \
+api/fm10000/fm10000_api_mprofile.c                                                                \
+api/fm10000/fm10000_api_mtable.c                                                                  \
+api/fm10000/fm10000_api_multicast.c                                                               \
+api/fm10000/fm10000_api_nat.c                                                                     \
+api/fm10000/fm10000_api_nexthop.c                                                                 \
+api/fm10000/fm10000_api_parity.c                                                                  \
+api/fm10000/fm10000_api_parity_decode.c                                                           \
+api/fm10000/fm10000_api_parity_intr.c                                                             \
+api/fm10000/fm10000_api_parity_repair.c                                                           \
+api/fm10000/fm10000_api_pep.c                                                                     \
+api/fm10000/fm10000_api_pkt_tx.c                                                                  \
+api/fm10000/fm10000_api_policer.c                                                                 \
+api/fm10000/fm10000_api_port.c                                                                    \
+api/fm10000/fm10000_api_port_actions.c                                                            \
+api/fm10000/fm10000_api_port_state_machines.c                                                     \
+api/fm10000/fm10000_api_qos.c                                                                     \
+api/fm10000/fm10000_api_register_cache.c                                                          \
+api/fm10000/fm10000_api_replication.c                                                             \
+api/fm10000/fm10000_api_routing.c                                                                 \
+api/fm10000/fm10000_api_sbus.c                                                                    \
+api/fm10000/fm10000_api_sched.c                                                                   \
+api/fm10000/fm10000_api_serdes.c                                                                  \
+api/fm10000/fm10000_api_serdes_actions.c                                                          \
+api/fm10000/fm10000_api_serdes_core.c                                                             \
+api/fm10000/fm10000_api_serdes_debug.c                                                            \
+api/fm10000/fm10000_api_serdes_dfe_actions.c                                                      \
+api/fm10000/fm10000_api_serdes_dfe_state_machines.c                                               \
+api/fm10000/fm10000_api_serdes_state_machines.c                                                   \
+api/fm10000/fm10000_api_sflow.c                                                                   \
+api/fm10000/fm10000_api_spico_code.c                                                              \
+api/fm10000/fm10000_api_stacking.c                                                                \
+api/fm10000/fm10000_api_stats.c                                                                   \
+api/fm10000/fm10000_api_storm.c                                                                   \
+api/fm10000/fm10000_api_stp.c                                                                     \
+api/fm10000/fm10000_api_te.c                                                                      \
+api/fm10000/fm10000_api_trigger.c                                                                 \
+api/fm10000/fm10000_api_tunnel.c                                                                  \
+api/fm10000/fm10000_api_vlan.c                                                                    \
+api/fm10000/fm10000_api_vn.c                                                                      \
+api/fm_api_acl.c                                                                                  \
+api/fm_api_addr.c                                                                                 \
+api/fm_api_attr.c                                                                                 \
+api/fm_api_buffer.c                                                                               \
+api/fm_api_cardinal.c                                                                             \
+api/fm_api_event_fast_maint.c                                                                     \
+api/fm_api_event_handler.c                                                                        \
+api/fm_api_event_intr.c                                                                           \
+api/fm_api_event_mac_maint.c                                                                      \
+api/fm_api_event_mac_purge_table.c                                                                \
+api/fm_api_event_mgmt.c                                                                           \
+api/fm_api_event_port.c                                                                           \
+api/fm_api_fibm.c                                                                                 \
+api/fm_api_flow.c                                                                                 \
+api/fm_api_glob.c                                                                                 \
+api/fm_api_init.c                                                                                 \
+api/fm_api_lag.c                                                                                  \
+api/fm_api_lag_int.c                                                                              \
+api/fm_api_lbg.c                                                                                  \
+api/fm_api_lbg_int.c                                                                              \
+api/fm_api_legacy_int.c                                                                           \
+api/fm_api_lport.c                                                                                \
+api/fm_api_mailbox.c                                                                              \
+api/fm_api_mapper.c                                                                               \
+api/fm_api_mirror.c                                                                               \
+api/fm_api_multicast.c                                                                            \
+api/fm_api_nat.c                                                                                  \
+api/fm_api_nexthop.c                                                                              \
+api/fm_api_parity.c                                                                               \
+api/fm_api_pkt_rx.c                                                                               \
+api/fm_api_pkt_tx.c                                                                               \
+api/fm_api_policer.c                                                                              \
+api/fm_api_port.c                                                                                 \
+api/fm_api_portmask.c                                                                             \
+api/fm_api_portset.c                                                                              \
+api/fm_api_qos.c                                                                                  \
+api/fm_api_rbridge.c                                                                              \
+api/fm_api_regs.c                                                                                 \
+api/fm_api_regs_cache.c                                                                           \
+api/fm_api_replication.c                                                                          \
+api/fm_api_routing.c                                                                              \
+api/fm_api_sflow.c                                                                                \
+api/fm_api_stacking.c                                                                             \
+api/fm_api_stats.c                                                                                \
+api/fm_api_storm.c                                                                                \
+api/fm_api_stp.c                                                                                  \
+api/fm_api_trigger.c                                                                              \
+api/fm_api_tunnel.c                                                                               \
+api/fm_api_vlan.c                                                                                 \
+api/fm_api_vn.c                                                                                   \
+common/fm_bitarray.c                                                                              \
+common/fm_bitfield.c                                                                              \
+common/fm_c11_annex_k.c                                                                           \
+common/fm_crc32.c                                                                                 \
+common/fm_dlist.c                                                                                 \
+common/fm_errno.c                                                                                 \
+common/fm_graycode.c                                                                              \
+common/fm_md5.c                                                                                   \
+common/fm_property.c                                                                              \
+common/fm_state_machine.c                                                                         \
+common/fm_string.c                                                                                \
+common/fm_tree.c                                                                                  \
+debug/fm10000/fm10000_debug.c                                                                     \
+debug/fm10000/fm10000_debug_eye_diagram.c                                                         \
+debug/fm10000/fm10000_debug_ffu.c                                                                 \
+debug/fm10000/fm10000_debug_mac_table.c                                                           \
+debug/fm10000/fm10000_debug_misc.c                                                                \
+debug/fm10000/fm10000_debug_reg_fields.c                                                          \
+debug/fm10000/fm10000_debug_reg_table.c                                                           \
+debug/fm10000/fm10000_debug_regs.c                                                                \
+debug/fm10000/fm10000_debug_serdes_reg.c                                                          \
+debug/fm_debug.c                                                                                  \
+debug/fm_debug_acl.c                                                                              \
+debug/fm_debug_eye_diagram.c                                                                      \
+debug/fm_debug_mac_table.c                                                                        \
+debug/fm_debug_regs.c                                                                             \
+debug/fm_debug_selftest.c                                                                         \
+debug/fm_debug_serdes.c                                                                           \
+debug/fm_debug_snapshots.c                                                                        \
+debug/fm_debug_trace.c
+
+lib_LTLIBRARIES += libLTStdPlatform.la
+
+libLTStdPlatform_la_LDFLAGS = -release `cd $(top_srcdir) ; ./version.sh`
+
+libLTStdPlatform_la_SOURCES =                                                                     \
+platforms/common/buffers/std-alloc/fm_buffer_std_alloc.c                                          \
+platforms/common/event/fm_platform_event.c                                                        \
+platforms/common/fm_file_attr_loader.c                                                            \
+platforms/common/instrument/platform_instrument.c                                                 \
+platforms/common/lib/dll/fm_dynamicLib.c                                                          \
+platforms/common/lib/i2c/ipmi/fm_platform_ipmi.c                                                  \
+platforms/common/lib/i2c/smbus/fm_platform_smbus.c                                                \
+platforms/common/lib/i2c/switch/fm_platform_fm10000_i2c.c                                         \
+platforms/common/lib/net/fm_netsock.c                                                             \
+platforms/common/packet/generic-packet/fm10000/fm10000_generic_rx.c                               \
+platforms/common/packet/generic-packet/fm10000/fm10000_generic_tx.c                               \
+platforms/common/packet/generic-packet/fm_generic_packet.c                                        \
+platforms/common/packet/generic-pti/fm10000/fm10000_generic_pti.c                                 \
+platforms/common/packet/generic-rawsocket/fm_generic_rawsocket.c                                  \
+platforms/common/phy/fm_platform_xcvr.c                                                           \
+platforms/common/stubs/platform_api_stubs.c                                                       \
+platforms/common/stubs/platform_app_stubs.c                                                       \
+platforms/common/switch/fm10000/fm10000_sbus_server.c                                             \
+platforms/common/switch/fm10000/fm10000_utils.c                                                   \
+platforms/common/switch/fm10000/fm10000_utils_bsm.c                                               \
+platforms/common/switch/fm_regs_access_ebi.c                                                      \
+platforms/common/switch/fm_regs_access_i2c.c                                                      \
+platforms/common/switch/fm_regs_access_memmap.c                                                   \
+platforms/libertyTrail/fm_host_drv.c                                                              \
+platforms/libertyTrail/platform.c                                                                 \
+platforms/libertyTrail/platform_app_api.c                                                         \
+platforms/libertyTrail/platform_config.c                                                          \
+platforms/libertyTrail/platform_config_nvm.c                                                      \
+platforms/libertyTrail/platform_debug.c                                                           \
+platforms/libertyTrail/platform_gpio.c                                                            \
+platforms/libertyTrail/platform_led.c                                                             \
+platforms/libertyTrail/platform_lib.c                                                             \
+platforms/libertyTrail/platform_mgmt.c                                                            \
+platforms/libertyTrail/platform_phy.c                                                             \
+platforms/libertyTrail/platform_port.c                                                            \
+platforms/libertyTrail/platform_sched.c                                                           \
+platforms/libertyTrail/platform_timestamp.c                                                       \
+platforms/libertyTrail/shared-libs/standard/fm_platform_standard_lib.c                            \
+platforms/util/fm10000/fm10000_util_spi.c                                                         \
+platforms/util/fm_util_device_lock.c                                                              \
+platforms/util/fm_util_pca.c                                                                      \
+platforms/util/retimer/fm_util_gn2412.c
