@@ -1,5 +1,5 @@
-Intel Ethernet Switch (IES)
-============================
+Intel(R) Ethernet Switch (IES) Software API
+===========================================
 
 This software is a developer release and intended to be used with other software
 on the match-interface github site. At this time the team is currently not
