@@ -3335,7 +3335,7 @@ fm_status fmPlatformCfgReloadSpeed(fm_int sw)
                 defVal = 50000;
                 break;
             case FM_PLAT_PORT_TYPE_TUNNEL:
-                defVal = 100000;
+                defVal = 60000;
                 break;
             case FM_PLAT_PORT_TYPE_LOOPBACK:
                 defVal = 25000;

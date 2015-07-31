@@ -374,7 +374,7 @@
  * default port ethernet mode (portIndex.%%d.ethernetMode 
  * property) 
  *  
- * Supported speeds are: 2500, 10000, 25000, 40000 and 
+ * Supported speeds are: 2500, 10000, 25000, 40000, 60000 and 
  * 100000. Note that 50000 is rounded down to 40000. Any other 
  * value will be rounded up to the nearest supported speed. 
  *                                                                      \lb\lb
@@ -384,7 +384,7 @@
  * PCIE_X1  -> 10000
  * PCIE_X4  -> 50000
  * PCIE_X8  -> 50000
- * TE       -> 100000
+ * TE       -> 60000
  * LOOPBACK -> 25000 
  * FIBM     -> 2500 
  */ 

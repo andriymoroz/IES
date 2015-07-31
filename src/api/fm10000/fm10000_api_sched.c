@@ -57,6 +57,7 @@
 #define SLOT_SPEED                       (2.5)
 #define SLOT_SPEED_MBPS                  (SLOT_SPEED * 1000)
 #define SLOTS_PER_100G                   (100 / SLOT_SPEED)
+#define SLOTS_PER_60G                    (60  / SLOT_SPEED)
 #define SLOTS_PER_40G                    (40  / SLOT_SPEED)
 #define SLOTS_PER_25G                    (25  / SLOT_SPEED)
 #define SLOTS_PER_10G                    (10  / SLOT_SPEED)
@@ -362,7 +363,7 @@ static fm_status FilterBwDuplicates(fm_int sw)
      *   2500    -> 0
      *
      * if chan[0,1,2,3] == 25000
-     *   25000   -> 1000000
+     *   25000   -> 100000
      *   25000   -> 0
      *   25000   -> 0
      *   25000   -> 0
@@ -1047,7 +1048,7 @@ static fm_status SplitBandwidth(fm_int             sw,
     sInfo     = &switchExt->schedInfo;
 
     maxCredit = bwA + bwB;
-    creditB    = 0;
+    creditB   = 0;
     
     for (i = 0; i < sInfo->tmp.schedLen; i++)
     {
@@ -1727,6 +1728,10 @@ static fm_status AssignPortsByDifficulty(fm_int sw)
                 ba          = &sInfo->tmp.p40G;
                 break;
 
+            case FM10000_SCHED_SPEED_60G:
+                ba          = &sInfo->tmp.p60G;
+                break;
+
             case FM10000_SCHED_SPEED_100G:
                 ba          = &sInfo->tmp.p100G;
                 break;
@@ -1972,6 +1977,7 @@ ABORT:
  *****************************************************************************/
 static fm_status PopulateSpeedList(fm_int sw, 
                                    fm_int slots100G,
+                                   fm_int slots60G,
                                    fm_int slots40G,
                                    fm_int slots25G,
                                    fm_int slots10G,
@@ -1990,7 +1996,8 @@ static fm_status PopulateSpeedList(fm_int sw,
 
     switchExt = GET_SWITCH_EXT(sw);
     sInfo     = &switchExt->schedInfo;
-
+    slotsHS   = 0;
+    speedHS   = FM10000_SCHED_SPEED_40G;
     /* Initialize all slots as unused */
     for (i = 0; i < sInfo->tmp.schedLen; i++)
     {
@@ -1998,11 +2005,26 @@ static fm_status PopulateSpeedList(fm_int sw,
     }
 
     /* Determine the number of High Speed (HS) slots
-     * 100G, or 40G if 100G is unused  */
-    slotsHS      = slots100G ? slots100G : slots40G;
-    speedHS      = slots100G ? FM10000_SCHED_SPEED_100G : FM10000_SCHED_SPEED_40G;
+     * 100G  or 60G or 40G. */
+
+    if (slots100G)
+    {
+        slotsHS = slots100G;
+        speedHS = FM10000_SCHED_SPEED_100G;
+    }
+    else if (slots60G)
+    {
+        slotsHS = slots60G;
+        speedHS = FM10000_SCHED_SPEED_60G;
+    }
+    else if (slots40G)
+    {
+        slotsHS = slots40G;
+        speedHS = FM10000_SCHED_SPEED_40G;
+    }
+
     slots10GRsvd = sInfo->tmp.schedLen - slotsHS;
-    
+
     /* Split one speed bin into two. Jitter increases as 
      * the starting category gets sparser */
     err = SplitBandwidth(sw, FM10000_SCHED_SPEED_ANY,
@@ -2023,12 +2045,33 @@ static fm_status PopulateSpeedList(fm_int sw,
                                  slots10GRsvd - slots10G, FM10000_SCHED_SPEED_NOT_10G_NOT_100G);
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
 
-        /* 40G and 25G can have higher jitter */
+        /* 40G and 25G can have higher jitter. */
         err = SplitBandwidth(sw, FM10000_SCHED_SPEED_NOT_10G_NOT_100G,
+                                 slots60G,  FM10000_SCHED_SPEED_60G,
+                                 slotsIdle + slots40G + slots25G + slots2500M, 
+                                 FM10000_SCHED_SPEED_NOT_10G_NOT_60G_NOT_100G);
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
+
+        err = SplitBandwidth(sw, FM10000_SCHED_SPEED_NOT_10G_NOT_60G_NOT_100G,
                                  slots40G,  FM10000_SCHED_SPEED_40G,
                                  slotsIdle + slots25G + slots2500M, 
                                  FM10000_SCHED_SPEED_IDLE_25G_2500M);
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
+
+    }
+    else if (slots60G > 0)
+    {
+        err = SplitBandwidth(sw, FM10000_SCHED_SPEED_10G_RSVD,
+                                 slots10G,                FM10000_SCHED_SPEED_10G,
+                                 slots10GRsvd - slots10G, FM10000_SCHED_SPEED_NOT_10G_NOT_60G_NOT_100G);
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
+
+        err = SplitBandwidth(sw, FM10000_SCHED_SPEED_NOT_10G_NOT_60G_NOT_100G,
+                                 slots40G,  FM10000_SCHED_SPEED_40G,
+                                 slotsIdle + slots25G + slots2500M,
+                                 FM10000_SCHED_SPEED_IDLE_25G_2500M);
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
+
     }
     else
     {
@@ -2743,6 +2786,7 @@ static fm_status GenerateSchedule(fm_int sw)
     fm_int              i;
     fm_int              j;
     fm_int              slots100G;
+    fm_int              slots60G;
     fm_int              slots40G;
     fm_int              slots25G;
     fm_int              slots10G;
@@ -2774,6 +2818,8 @@ static fm_status GenerateSchedule(fm_int sw)
     err = fmCreateBitArray(&sInfo->tmp.p25G, FM10000_NUM_PORTS);
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
     err = fmCreateBitArray(&sInfo->tmp.p40G, FM10000_NUM_PORTS);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
+    err = fmCreateBitArray(&sInfo->tmp.p60G, FM10000_NUM_PORTS);
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
     err = fmCreateBitArray(&sInfo->tmp.p100G, FM10000_NUM_PORTS);
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
@@ -2840,6 +2886,14 @@ static fm_status GenerateSchedule(fm_int sw)
                 FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
                 break;
 
+            case 60000:
+                sInfo->tmp.physPortSpeed[spPtr->physPort] = FM10000_SCHED_SPEED_60G;
+                sInfo->tmp.fabricPortSpeed[spPtr->fabricPort] = FM10000_SCHED_SPEED_60G;
+
+                err = fmSetBitArrayBit(&sInfo->tmp.p60G, spPtr->physPort, 1);
+                FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
+                break;
+
             case 100000:
                 sInfo->tmp.physPortSpeed[spPtr->physPort] = FM10000_SCHED_SPEED_100G;
                 sInfo->tmp.fabricPortSpeed[spPtr->fabricPort] = FM10000_SCHED_SPEED_100G;
@@ -2862,6 +2916,7 @@ static fm_status GenerateSchedule(fm_int sw)
     }
 
     FM_LOG_DEBUG(FM_LOG_CAT_SWITCH, "%-20s = %d\n", "Number 100G Ports", GetNbPorts(&sInfo->tmp.p100G) );
+    FM_LOG_DEBUG(FM_LOG_CAT_SWITCH, "%-20s = %d\n", "Number 60G Ports", GetNbPorts(&sInfo->tmp.p60G) );
     FM_LOG_DEBUG(FM_LOG_CAT_SWITCH, "%-20s = %d\n", "Number 40G Ports", GetNbPorts(&sInfo->tmp.p40G) );
     FM_LOG_DEBUG(FM_LOG_CAT_SWITCH, "%-20s = %d\n", "Number 25G Ports", GetNbPorts(&sInfo->tmp.p25G) );
     FM_LOG_DEBUG(FM_LOG_CAT_SWITCH, "%-20s = %d\n", "Number 10G Ports", GetNbPorts(&sInfo->tmp.p10G) );
@@ -2869,7 +2924,7 @@ static fm_status GenerateSchedule(fm_int sw)
 
     /*********************************************
      * Validate that the frequency is sufficiently
-     * high to support 100G and 40G ports
+     * high to support 100G, 60G and 40G ports
      *********************************************/
     if ( GetNbPorts(&sInfo->tmp.p100G) &&
          (sInfo->tmp.schedLen < (MIN_PORT_SPACING * SLOTS_PER_100G) ) )
@@ -2880,12 +2935,21 @@ static fm_status GenerateSchedule(fm_int sw)
         goto ABORT;
     }
 
+    if ( GetNbPorts(&sInfo->tmp.p60G) &&
+         (sInfo->tmp.schedLen < (MIN_PORT_SPACING * SLOTS_PER_60G) ) )
+    {
+        err = FM_ERR_SCHED_OVERSUBSCRIBED;
+        FM_LOG_FATAL(FM_LOG_CAT_SWITCH,
+                     "freq not high enough to support 60G w/4-cycle spacing\n");
+        goto ABORT;
+    }
+
     if ( GetNbPorts(&sInfo->tmp.p40G) &&
          (sInfo->tmp.schedLen < (MIN_PORT_SPACING * SLOTS_PER_40G) ) )
     {
         err = FM_ERR_SCHED_OVERSUBSCRIBED;
         FM_LOG_FATAL(FM_LOG_CAT_SWITCH,
-                     "freq not high enough to support 100G w/4-cycle spacing\n");
+                     "freq not high enough to support 40G w/4-cycle spacing\n");
         goto ABORT;
     }
 
@@ -2894,13 +2958,15 @@ static fm_status GenerateSchedule(fm_int sw)
      * speed bin. 
      ********************************************/
     slots100G   = GetNbPorts(&sInfo->tmp.p100G)  * SLOTS_PER_100G;
+    slots60G    = GetNbPorts(&sInfo->tmp.p60G)   * SLOTS_PER_60G;
     slots40G    = GetNbPorts(&sInfo->tmp.p40G)   * SLOTS_PER_40G;
     slots25G    = GetNbPorts(&sInfo->tmp.p25G)   * SLOTS_PER_25G;
     slots10G    = GetNbPorts(&sInfo->tmp.p10G)   * SLOTS_PER_10G;
     slots2500M  = GetNbPorts(&sInfo->tmp.p2500M) * SLOTS_PER_2500M;
-    slotsIdle   = sInfo->tmp.schedLen - slots100G - slots40G - slots25G - slots10G - slots2500M;
+    slotsIdle   = sInfo->tmp.schedLen - slots100G - slots60G - slots40G - slots25G - slots10G - slots2500M;
     
     FM_LOG_DEBUG(FM_LOG_CAT_SWITCH, "%-20s = %d\n", "Number 100G Slots", slots100G);
+    FM_LOG_DEBUG(FM_LOG_CAT_SWITCH, "%-20s = %d\n", "Number 60G Slots", slots60G);
     FM_LOG_DEBUG(FM_LOG_CAT_SWITCH, "%-20s = %d\n", "Number 40G Slots", slots40G);
     FM_LOG_DEBUG(FM_LOG_CAT_SWITCH, "%-20s = %d\n", "Number 25G Slots", slots25G);
     FM_LOG_DEBUG(FM_LOG_CAT_SWITCH, "%-20s = %d\n", "Number 10G Slots", slots10G);
@@ -2914,8 +2980,8 @@ static fm_status GenerateSchedule(fm_int sw)
                      "Oversubscribed schedule, minimum of 1 idle slot needed\n");
         FM_LOG_FATAL(FM_LOG_CAT_SWITCH,
                      "Requested %d slots (%.1fG), but only %d are available (%.1fG)\n",
-                     slots100G + slots40G + slots25G + slots10G + slots2500M + 1,
-                     ((slots100G + slots40G + slots25G + slots10G + slots2500M + 1) * (fm_float)(SLOT_SPEED)),
+                     slots100G + slots60G + slots40G + slots25G + slots10G + slots2500M + 1,
+                     ((slots100G + slots60G + slots40G + slots25G + slots10G + slots2500M + 1) * (fm_float)(SLOT_SPEED)),
                      sInfo->tmp.schedLen,
                      (sInfo->tmp.schedLen * (fm_float)(SLOT_SPEED)));
         goto ABORT;
@@ -2925,7 +2991,7 @@ static fm_status GenerateSchedule(fm_int sw)
      * Split the bandwidth by populating the slots 
      * with port speeds
      *********************************************/
-    err = PopulateSpeedList(sw, slots100G, slots40G, slots25G, slots10G, slots2500M, slotsIdle );
+    err = PopulateSpeedList(sw, slots100G, slots60G, slots40G, slots25G, slots10G, slots2500M, slotsIdle );
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
 
 
@@ -2937,7 +3003,6 @@ static fm_status GenerateSchedule(fm_int sw)
     err = RotateSchedule(sw);
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
 
-
     /*********************************************
      * Sort the ports by the difficulty level 
      * of placing them in the schedule.
@@ -2945,7 +3010,6 @@ static fm_status GenerateSchedule(fm_int sw)
     err = SortPortsByDifficulty(sw);
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
 
-    
     /*********************************************
      * We have the speed bins, fill them with 
      * ports
@@ -3051,6 +3115,7 @@ ABORT:
     fmDeleteBitArray(&sInfo->tmp.p10G);
     fmDeleteBitArray(&sInfo->tmp.p25G);
     fmDeleteBitArray(&sInfo->tmp.p40G);
+    fmDeleteBitArray(&sInfo->tmp.p60G);
     fmDeleteBitArray(&sInfo->tmp.p100G);
 
     fmGetTime(&tGen);
@@ -3993,6 +4058,11 @@ fm_status fm10000UpdateSchedPort(fm_int               sw,
         /* Special case for PCIE, See bugzilla #25673 comment #12 */
         speed = 40000;
         nbRequiredSlots = SLOTS_PER_40G;
+    }
+    else if (speed <= 60000)
+    {
+        speed = 60000;
+        nbRequiredSlots = SLOTS_PER_60G;
     }
     else if (speed <= 100000)
     {
@@ -5198,6 +5268,10 @@ fm_status fm10000ReserveSchedBw(fm_int               sw,
         /* Special case for PCIE, round down to 40G */
         speed = 40000;
     }
+    else if (speed == 60000)
+    {
+        speed = 60000;
+    }
     else if (speed <= 100000)
     {
         speed = 100000;
@@ -5317,6 +5391,10 @@ fm_status fm10000ReserveSchedBw(fm_int               sw,
                 slots += SLOTS_PER_40G;
                 break;
 
+            case FM10000_SCHED_SPEED_60G:
+                slots += SLOTS_PER_60G;
+                break;
+
             case FM10000_SCHED_SPEED_100G:
                 slots += SLOTS_PER_100G;
                 break;
@@ -5380,6 +5458,7 @@ fm_status fm10000RegenerateSchedule(fm_int sw)
     fm_int              i;
     fm_int              j;
     fm_int              slots100G;
+    fm_int              slots60G;
     fm_int              slots40G;
     fm_int              slots25G;
     fm_int              slots10G;
@@ -5418,6 +5497,8 @@ fm_status fm10000RegenerateSchedule(fm_int sw)
     err = fmCreateBitArray(&sInfo->tmp.p25G, FM10000_NUM_PORTS);
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
     err = fmCreateBitArray(&sInfo->tmp.p40G, FM10000_NUM_PORTS);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
+    err = fmCreateBitArray(&sInfo->tmp.p60G, FM10000_NUM_PORTS);
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
     err = fmCreateBitArray(&sInfo->tmp.p100G, FM10000_NUM_PORTS);
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
@@ -5463,6 +5544,11 @@ fm_status fm10000RegenerateSchedule(fm_int sw)
                 FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
                 break;
 
+            case FM10000_SCHED_SPEED_60G:
+                err = fmSetBitArrayBit(&sInfo->tmp.p60G, i, 1);
+                FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
+                break;
+
             case FM10000_SCHED_SPEED_100G:
                 err = fmSetBitArrayBit(&sInfo->tmp.p100G, i, 1);
                 FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
@@ -5480,6 +5566,7 @@ fm_status fm10000RegenerateSchedule(fm_int sw)
     }
         
     FM_LOG_DEBUG(FM_LOG_CAT_SWITCH, "%-20s = %d\n", "Number 100G Ports", GetNbPorts(&sInfo->tmp.p100G) );
+    FM_LOG_DEBUG(FM_LOG_CAT_SWITCH, "%-20s = %d\n", "Number 60G Ports", GetNbPorts(&sInfo->tmp.p60G) );
     FM_LOG_DEBUG(FM_LOG_CAT_SWITCH, "%-20s = %d\n", "Number 40G Ports", GetNbPorts(&sInfo->tmp.p40G) );
     FM_LOG_DEBUG(FM_LOG_CAT_SWITCH, "%-20s = %d\n", "Number 25G Ports", GetNbPorts(&sInfo->tmp.p25G) );
     FM_LOG_DEBUG(FM_LOG_CAT_SWITCH, "%-20s = %d\n", "Number 10G Ports", GetNbPorts(&sInfo->tmp.p10G) );
@@ -5498,12 +5585,21 @@ fm_status fm10000RegenerateSchedule(fm_int sw)
         goto ABORT;
     }
 
+    if ( GetNbPorts(&sInfo->tmp.p60G) &&
+         (sInfo->tmp.schedLen < (MIN_PORT_SPACING * SLOTS_PER_60G) ) )
+    {
+        err = FM_ERR_SCHED_OVERSUBSCRIBED;
+        FM_LOG_FATAL(FM_LOG_CAT_SWITCH,
+                     "freq not high enough to support 60G w/4-cycle spacing\n");
+        goto ABORT;
+    }
+
     if ( GetNbPorts(&sInfo->tmp.p40G) &&
          (sInfo->tmp.schedLen < (MIN_PORT_SPACING * SLOTS_PER_40G) ) )
     {
         err = FM_ERR_SCHED_OVERSUBSCRIBED;
         FM_LOG_FATAL(FM_LOG_CAT_SWITCH,
-                     "freq not high enough to support 100G w/4-cycle spacing\n");
+                     "freq not high enough to support 40G w/4-cycle spacing\n");
         goto ABORT;
     }
 
@@ -5512,13 +5608,15 @@ fm_status fm10000RegenerateSchedule(fm_int sw)
      * speed bin. 
      ********************************************/
     slots100G   = GetNbPorts(&sInfo->tmp.p100G)  * SLOTS_PER_100G;
+    slots60G    = GetNbPorts(&sInfo->tmp.p60G)   * SLOTS_PER_60G;
     slots40G    = GetNbPorts(&sInfo->tmp.p40G)   * SLOTS_PER_40G;
     slots25G    = GetNbPorts(&sInfo->tmp.p25G)   * SLOTS_PER_25G;
     slots10G    = GetNbPorts(&sInfo->tmp.p10G)   * SLOTS_PER_10G;
     slots2500M  = GetNbPorts(&sInfo->tmp.p2500M) * SLOTS_PER_2500M;
-    slotsIdle   = sInfo->tmp.schedLen - slots100G - slots40G - slots25G - slots10G - slots2500M;
+    slotsIdle   = sInfo->tmp.schedLen - slots100G - slots60G - slots40G - slots25G - slots10G - slots2500M;
     
     FM_LOG_DEBUG(FM_LOG_CAT_SWITCH, "%-20s = %d\n", "Number 100G Slots", slots100G);
+    FM_LOG_DEBUG(FM_LOG_CAT_SWITCH, "%-20s = %d\n", "Number 60G Slots", slots60G);
     FM_LOG_DEBUG(FM_LOG_CAT_SWITCH, "%-20s = %d\n", "Number 40G Slots", slots40G);
     FM_LOG_DEBUG(FM_LOG_CAT_SWITCH, "%-20s = %d\n", "Number 25G Slots", slots25G);
     FM_LOG_DEBUG(FM_LOG_CAT_SWITCH, "%-20s = %d\n", "Number 10G Slots", slots10G);
@@ -5532,8 +5630,8 @@ fm_status fm10000RegenerateSchedule(fm_int sw)
                      "Oversubscribed schedule, minimum of 1 idle slot needed\n");
         FM_LOG_FATAL(FM_LOG_CAT_SWITCH,
                      "Requested %d slots (%.1fG), but only %d are available (%.1fG)\n",
-                     slots100G + slots40G + slots25G + slots10G + slots2500M + 1,
-                     ((slots100G + slots40G + slots25G + slots10G + slots2500M + 1) * (fm_float)(SLOT_SPEED)),
+                     slots100G + slots60G + slots40G + slots25G + slots10G + slots2500M + 1,
+                     ((slots100G + slots60G + slots40G + slots25G + slots10G + slots2500M + 1) * (fm_float)(SLOT_SPEED)),
                      sInfo->tmp.schedLen,
                      (sInfo->tmp.schedLen * (fm_float)(SLOT_SPEED)));
         goto ABORT;
@@ -5543,7 +5641,7 @@ fm_status fm10000RegenerateSchedule(fm_int sw)
      * Split the bandwidth by populating the slots 
      * with port speeds
      *********************************************/
-    err = PopulateSpeedList(sw, slots100G, slots40G, slots25G, slots10G, slots2500M, slotsIdle );
+    err = PopulateSpeedList(sw, slots100G, slots60G, slots40G, slots25G, slots10G, slots2500M, slotsIdle );
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
 
 
@@ -5643,6 +5741,7 @@ ABORT:
     fmDeleteBitArray(&sInfo->tmp.p10G);
     fmDeleteBitArray(&sInfo->tmp.p25G);
     fmDeleteBitArray(&sInfo->tmp.p40G);
+    fmDeleteBitArray(&sInfo->tmp.p60G);
     fmDeleteBitArray(&sInfo->tmp.p100G);
 
     if (err == FM_OK)

@@ -73,11 +73,12 @@
 typedef enum 
 {
     /* Speeds below used during the bin distribution */
-    FM10000_SCHED_SPEED_ANY                 = -1,
-    FM10000_SCHED_SPEED_10G_RSVD            = -2,
-    FM10000_SCHED_SPEED_NOT_10G_NOT_100G    = -3,
-    FM10000_SCHED_SPEED_IDLE_25G_2500M      = -4,
-    FM10000_SCHED_SPEED_IDLE_2500M          = -5,
+    FM10000_SCHED_SPEED_ANY                         = -1,
+    FM10000_SCHED_SPEED_10G_RSVD                    = -2,
+    FM10000_SCHED_SPEED_NOT_10G_NOT_60G_NOT_100G    = -3,
+    FM10000_SCHED_SPEED_NOT_10G_NOT_100G            = -4,
+    FM10000_SCHED_SPEED_IDLE_25G_2500M              = -5,
+    FM10000_SCHED_SPEED_IDLE_2500M                  = -6,
 
     /* Special speed used for using default per port */
     FM10000_SCHED_SPEED_DEFAULT             = -10,
@@ -89,6 +90,7 @@ typedef enum
     FM10000_SCHED_SPEED_10G                 = 10000,
     FM10000_SCHED_SPEED_25G                 = 25000,
     FM10000_SCHED_SPEED_40G                 = 40000,
+    FM10000_SCHED_SPEED_60G                 = 60000,
     FM10000_SCHED_SPEED_100G                = 100000,
 
 } fm10000_schedSpeed;
@@ -220,6 +222,7 @@ typedef struct _fm10000_schedInfoInt
     fm_bitArray           p10G;
     fm_bitArray           p25G;
     fm_bitArray           p40G;
+    fm_bitArray           p60G;
     fm_bitArray           p100G;
 
     /* Table that holds the speed per physical port */
