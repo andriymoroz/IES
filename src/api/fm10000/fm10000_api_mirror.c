@@ -902,7 +902,7 @@ fm_status fm10000WritePortMirrorGroup(fm_int              sw,
                 break;
             }
 
-            err = fmAddPortSetPortInt(sw, grpExt->rxPortSet, cpi);
+            err = fmAddPortSetPortInt(sw, grpExt->rxPortSet, GET_LOGICAL_PORT(sw, cpi));
             FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MIRROR, err);
         }
     }
@@ -923,7 +923,7 @@ fm_status fm10000WritePortMirrorGroup(fm_int              sw,
                 break;
             }
 
-            err = fmAddPortSetPortInt(sw, grpExt->txPortSet, cpi);
+            err = fmAddPortSetPortInt(sw, grpExt->txPortSet, GET_LOGICAL_PORT(sw, cpi));
             FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MIRROR, err);
         }
     }

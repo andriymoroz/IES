@@ -5,7 +5,7 @@
  * Creation Date:   June 18th, 2013
  * Description:     Functions for manipulating the triggers of a switch
  *
- * Copyright (c) 2005 - 2014, Intel Corporation
+ * Copyright (c) 2005 - 2015, Intel Corporation
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -29,7 +29,7 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
+ *****************************************************************************/
 
 #include <fm_sdk_fm10000_int.h>
 
@@ -51,7 +51,7 @@
 
 #define BITS_PER_BYTE                         8
 
-#define FM10000_FRAME_HANDLER_FREQ            375000000 /* What is RRC's value for this ?*/
+#define FM10000_FRAME_HANDLER_FREQ            375000000 /* Actual value? */
 
 #define RATE_LIM_USAGE_TO_BYTES               16
 

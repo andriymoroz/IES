@@ -1,9 +1,9 @@
 /* vim:ts=4:sw=4:expandtab
  * (No tabs, indent level is 4 spaces)  */
 /*****************************************************************************
- * File:            fm10000_utils_bsm.c
+ * File:            fm10000_util_bsm.c
  * Creation Date:   April 2015
- * Description:     BSM utility functions.
+ * Description:     BSM utility shared functions.
  *
  * Copyright (c) 2015, Intel Corporation
  *
@@ -36,7 +36,7 @@
 #include <string.h>
 
 #include <fm_sdk_fm10000_int.h>
-#include <platforms/common/switch/fm10000/fm10000_utils_bsm.h>
+#include <platforms/util/fm10000/fm10000_util_bsm.h>
 
 /*****************************************************************************
  * Macros, Constants & Types
@@ -84,6 +84,9 @@
 #define FM10000_BSM_STATUS_l_Step   0
 #define FM10000_BSM_STATUS_h_Step   7
 
+#define TIME_PASSED(a, b)            \
+    (((a.sec < b.sec) || ((a.sec == b.sec) && (a.usec < b.usec))) ? 0 : 1)
+
 #define LtssmToStr(value, regData) \
     RegValueToStr(value, ltssmRegMap, FM_NENTRIES(ltssmRegMap), regData)
 #define BsmStatusToStr(value, regData) \
@@ -108,6 +111,7 @@ typedef struct _nvmVersionRegAccess
                                    fm_uint32                 miliSec);
     fm_status (*funcLtssmPoll)(fm_int                    sw,
                                fm_registerReadUINT32Func readFunc,
+                               fm_int                    pep, 
                                fm_uint32                 miliSec);
 } nvmVersionRegAccess;
 
@@ -230,6 +234,7 @@ static fm_status DbgBsmStatusRegPollDefault(fm_int                    sw,
                                             fm_uint32                 miliSec);
 static fm_status DbgLtssmRegPollDefault(fm_int                    sw,
                                         fm_registerReadUINT32Func readFunc,
+                                        fm_int                    pep,
                                         fm_uint32                 miliSec);
 
 /* nvm image dbg functions entries array*/
@@ -465,6 +470,8 @@ static void DumpBsmStatusRegister(fm_text   msg,
  * 
  * \param[in]       readFunc is the function pointer to read 32-bit registers.
  * 
+ * \param[in]       pep is the PEP to poll LTSSM for, use -1 to poll all PEPs.
+ * 
  * \param[in]       miliSec polling time in milliseconds.
  *
  * \return          FM_OK if successful.
@@ -474,6 +481,7 @@ static void DumpBsmStatusRegister(fm_text   msg,
  *****************************************************************************/
 static fm_status DbgLtssmRegPollDefault(fm_int                    sw,
                                         fm_registerReadUINT32Func readFunc,
+                                        fm_int                    pep, 
                                         fm_uint32                 miliSec)
 {
     fm_status    err;
@@ -492,6 +500,9 @@ static fm_status DbgLtssmRegPollDefault(fm_int                    sw,
     fm_uint32    genWidthValues[10];
     regStrMap    ltssmRegDataNew;
     regStrMap    ltssmRegDataOld;
+    fm_uint32    devCfg;
+    fm_int       start;
+    fm_int       end;
 
     FM_LOG_ENTRY(FM_LOG_CAT_PLATFORM, "sw=%d\n", sw);
 
@@ -511,11 +522,12 @@ static fm_status DbgLtssmRegPollDefault(fm_int                    sw,
     err = readFunc(sw, FM10000_BSM_SCRATCH(EEPROM_IMAGE_VERSION), &nvmVer);
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PLATFORM, err);
 
-    FM_LOG_PRINT("\n%-25s[%d]      : %d.%d ",
+    FM_LOG_PRINT("\n%-25s[%d]      : %02x.%02x (0x%08x)",
                  "EEPROM VERSION",
                  EEPROM_IMAGE_VERSION,
                  (nvmVer & 0xFF00) >> 8,
-                 (nvmVer & 0x00FF));
+                 (nvmVer & 0x00FF),
+                 nvmVer);
 
     FM_LOG_PRINT("\n");
 
@@ -536,14 +548,35 @@ static fm_status DbgLtssmRegPollDefault(fm_int                    sw,
                   "---",
                   "----------------------",
                   "----------------------");
+
+    err = readFunc(sw, FM10000_DEVICE_CFG(), &devCfg);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PLATFORM, err);
+
+    /* Determine the if all PEPs need to be scanned or just one */
+    if (pep < 0 || pep > 8)
+    {
+        start = 1;
+        end = 9;
+    }
+    else
+    {
+        start = pep+1;
+        end = start;
+    }
+
     do
     {
-
         err = fmGetTime(&tNow);
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PLATFORM, err);
 
-        for ( i = 1 ; i < 10 ; i++ )
+        for ( i = start ; i <= end ; i++ )
         {
+            /* Execute on enabled PEPs only */
+            if ( (devCfg & (1 << (i-1 + FM10000_DEVICE_CFG_b_PCIeEnable_0))) == 0)
+            {
+                continue;
+            }
+
             ltssmReg    = 0x00201CA | (i << 20);
             linkCtrlReg = 0x0020020 | (i << 20);
             
@@ -588,7 +621,7 @@ static fm_status DbgLtssmRegPollDefault(fm_int                    sw,
         
         iter++;
 
-    } while (fmCompareTimestamps(&tDiff, &tTresh) < 1);
+    } while (TIME_PASSED(tDiff, tTresh) == 0);
 
     FM_LOG_PRINT("\n");
     FM_LOG_PRINT("Report completed iterations %d in %lld.%06lld, seconds",
@@ -662,11 +695,12 @@ static fm_status DbgBsmStatusRegPollDefault(fm_int                    sw,
                    tTresh.sec,
                    tTresh.usec);
     
-    FM_LOG_PRINT("\n%-25s[%d]      : %d.%d ",
+    FM_LOG_PRINT("\n%-25s[%d]      : %02x.%02x (0x%08x)",
                  "EEPROM VERSION",
                  EEPROM_IMAGE_VERSION,
                  (nvmVer & 0xFF00) >> 8,
-                 (nvmVer & 0x00FF));
+                 (nvmVer & 0x00FF),
+                 nvmVer);
 
     FM_LOG_PRINT("\n");
     
@@ -694,7 +728,7 @@ static fm_status DbgBsmStatusRegPollDefault(fm_int                    sw,
         
         bsmStatusOld = bsmStatus;
         iter++;
-    } while (fmCompareTimestamps(&tDiff, &tTresh) < 1);
+    } while (TIME_PASSED(tDiff, tTresh) == 0);
 
     FM_LOG_PRINT("\n");
     FM_LOG_PRINT("Report completed iterations %d in %lld.%06lld, seconds",
@@ -754,11 +788,12 @@ static fm_status DbgDumpBsmScratchDefault(fm_int                    sw,
     
     FM_LOG_PRINT("\n");
     FM_LOG_PRINT("\nBSM_SCRATCH registers dump\n");
-    FM_LOG_PRINT("\n%-25s[%d]      : %d.%d ",
+    FM_LOG_PRINT("\n%-25s[%d]      : %02x.%02x (0x%08x)",
                  "EEPROM VERSION",
                  EEPROM_IMAGE_VERSION,
                  (nvmVer & 0xFF00) >> 8,
-                 (nvmVer & 0x00FF));
+                 (nvmVer & 0x00FF),
+                 nvmVer);
 
     /* dump BSM_STATUS registers */
     if (regMask & REG_MASK_BSM_INIT_STATUS)
@@ -1079,53 +1114,7 @@ ABORT:
 
 
 /*****************************************************************************/
-/** fm10000SwitchDbgLtssmPoll
- *
- * \desc            Switch LTSSM polling function. 
- *                  Examines the switch LTSSM and LinkCtrl registers.
- *                  Registers value change detection dumps the corresponding
- *                  dbg message. 
- *
- * \param[in]       sw switch the LTSSM will be examined.
- * 
- * \param[in]       miliSec polling time in milliseconds.
- *
- * \return          FM_OK if successful.
- * \return          Other ''Status Codes'' as appropriate in case of
- *                  failure.
- *
- *****************************************************************************/
-fm_status fm10000SwitchDbgLtssmPoll(fm_int    sw,
-                                    fm_uint32 miliSec)
-{
-    fm_status  err;
-    fm_switch *switchPtr;
-
-    FM_LOG_ENTRY(FM_LOG_CAT_PLATFORM, "sw=%d\n", sw);
-    
-    PROTECT_SWITCH( sw );
-    
-    switchPtr = GET_SWITCH_PTR(sw);
-    if (switchPtr == NULL)
-    {
-        err = FM_ERR_INVALID_ARGUMENT;
-        FM_LOG_ABORT(FM_LOG_CAT_PLATFORM, err);
-    }
-    
-    err = fm10000DbgLtssmStatusPoll(sw, switchPtr->ReadUINT32, miliSec);
-    
-ABORT:
-    UNPROTECT_SWITCH( sw );
-    
-    FM_LOG_EXIT(FM_LOG_CAT_PLATFORM, err);
-    
-}   /* end fm10000SwitchDbgLtssmPoll */
-
-
-
-
-/*****************************************************************************/
-/** fm10000DbgLtssmStatusPoll
+/** fm10000DbgPollLtssm
  *
  * \desc            LTSSM polling function.
  *                  Examines the LTSSM and LinkCtrl registers.
@@ -1136,6 +1125,8 @@ ABORT:
  *
  * \param[in]       readFunc is the function pointer to read 32-bit registers.
  * 
+ * \param[in]       pep is the PEP to poll LTSSM for, use -1 to poll all PEPs.
+ * 
  * \param[in]       miliSec polling time in milliseconds.
  *
  * \return          FM_OK if successful.
@@ -1143,9 +1134,10 @@ ABORT:
  *                  failure.
  *
  *****************************************************************************/
-fm_status fm10000DbgLtssmStatusPoll(fm_int                    sw,
-                                    fm_registerReadUINT32Func readFunc,
-                                    fm_uint32                 miliSec)
+fm_status fm10000DbgPollLtssm(fm_int                    sw,
+                              fm_registerReadUINT32Func readFunc,
+                              fm_int                    pep,
+                              fm_uint32                 miliSec)
 {
     fm_status err;
     fm_uint   nvmVer;
@@ -1177,6 +1169,7 @@ fm_status fm10000DbgLtssmStatusPoll(fm_int                    sw,
             /* got valid function version */
             err = fm10000NvmAccess[i].funcLtssmPoll(sw,
                                                     readFunc,
+                                                    pep,
                                                     miliSec);
             FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PLATFORM, err);
             
@@ -1187,13 +1180,13 @@ fm_status fm10000DbgLtssmStatusPoll(fm_int                    sw,
 ABORT:
     FM_LOG_EXIT(FM_LOG_CAT_PLATFORM, err);
     
-}   /* end fm10000DbgLtssmStatusPoll */
+}   /* end fm10000DbgPollLtssm */
 
 
 
 
 /*****************************************************************************/
-/** fm10000DbgBsmStatusPoll
+/** fm10000DbgPollBsmStatus
  *
  * \desc            BSM_STATUS register polling function.
  *                  Examines the BSM_STATUS register, value change detection
@@ -1210,7 +1203,7 @@ ABORT:
  *                  failure.
  *
  *****************************************************************************/
-fm_status fm10000DbgBsmStatusPoll(fm_int                    sw,
+fm_status fm10000DbgPollBsmStatus(fm_int                    sw,
                                   fm_registerReadUINT32Func readFunc,
                                   fm_uint32                 miliSec)
 {
@@ -1254,58 +1247,13 @@ fm_status fm10000DbgBsmStatusPoll(fm_int                    sw,
 ABORT:
     FM_LOG_EXIT(FM_LOG_CAT_PLATFORM, err);
     
-}   /* end fm10000DbgBsmStatusPoll */
+}   /* end fm10000DbgPollBsmStatus */
 
 
 
 
 /*****************************************************************************/
-/** fm10000SwitchDbgBsmStatusPoll
- *
- * \desc            Switch BSM_STATUS register polling function.
- *                  Examines the BSM_STATUS register, value change detection
- *                  dumps the corresponding dbg message.
- *
- * \param[in]       sw is the switch BSM_STATUS will be examined.
- *
- * \param[in]       miliSec polling time in milliseconds.
- * 
- * \return          FM_OK if successful.
- * \return          Other ''Status Codes'' as appropriate in case of
- *                  failure.
- *
- *****************************************************************************/
-fm_status fm10000SwitchDbgBsmStatusPoll(fm_int    sw,
-                                        fm_uint32 miliSec)
-{
-    fm_status  err;
-    fm_switch *switchPtr;
-
-    FM_LOG_ENTRY(FM_LOG_CAT_PLATFORM, "sw=%d\n", sw);
-
-    PROTECT_SWITCH( sw );
-    
-    switchPtr = GET_SWITCH_PTR(sw);
-    if (switchPtr == NULL)
-    {
-        err = FM_ERR_INVALID_ARGUMENT;
-        FM_LOG_ABORT(FM_LOG_CAT_PLATFORM, err);
-    }
-    
-    err = fm10000DbgBsmStatusPoll(sw, switchPtr->ReadUINT32, miliSec);
-    
-ABORT:
-    UNPROTECT_SWITCH( sw );
-    
-    FM_LOG_EXIT(FM_LOG_CAT_PLATFORM, err);
-
-}   /* end fm10000SwitchDbgBsmStatusPoll */
-
-
-
-
-/*****************************************************************************/
-/** fm10000DbgDumpSwitchBsmScratch
+/** fm10000DbgDumpBsmScratch
  *
  * \desc            Dbg dump detailed info for BSM_SCRATCH registers.
  *
@@ -1365,65 +1313,3 @@ ABORT:
 
 }   /* end fm10000DbgDumpBsmScratch */
 
-
-
-
-/*****************************************************************************/
-/** fm10000SwitchDbgDumpBsmScratch
- *
- * \desc            Dbg dump detailed BSM_SCRATCH registers for the switch.
- *
- * \param[in]       sw is the switch BSM_SCRATCH will be dumped.
- *
- * \param[in]       regMask used to filter out the registers dumps used as
- *                  a bitmap combination out of the following values. 
- *                  
- *                  REG_MASK_BSM_LOCKS                  registers 0..1
- *                  REG_MASK_BSM_CONFIG                 registers 10..199
- *                  REG_MASK_BSM_INIT_STATUS            registers 400..409
- *                  REG_MASK_BSM_INIT_STATUS_ARCHIVE    registers 430..440
- *                  REG_MASK_BSM_INIT_OOR               registers 450..451
- *                  REG_MASK_BSM_ISR_STATUS_PCIE0       register 441
- *                  REG_MASK_BSM_ISR_STATUS_PCIE1       register 442
- *                  REG_MASK_BSM_ISR_STATUS_PCIE2       register 443
- *                  REG_MASK_BSM_ISR_STATUS_PCIE3       register 444
- *                  REG_MASK_BSM_ISR_STATUS_PCIE4       register 445
- *                  REG_MASK_BSM_ISR_STATUS_PCIE5       register 446
- *                  REG_MASK_BSM_ISR_STATUS_PCIE6       register 447
- *                  REG_MASK_BSM_ISR_STATUS_PCIE7       register 448
- *                  REG_MASK_BSM_ISR_STATUS_PCIE8       register 449
- *                  REG_MASK_BSM_ISR_PCIE_ENABLED       all enabled PCIEs
- *                  REG_MASK_BSM_PCIE_ISR_STATUS        all PCIEs, 441..449
- *                  REG_MASK_BSM_INIT_ALL               all BSM_SCRATCH init 
- *
- * \return          FM_OK if successful.
- * \return          Other ''Status Codes'' as appropriate in case of
- *                  failure.
- *
- *****************************************************************************/
-fm_status fm10000SwitchDbgDumpBsmScratch(fm_int    sw,
-                                         fm_uint32 regMask)
-{
-    fm_status  err;
-    fm_switch *switchPtr;
-
-    FM_LOG_ENTRY(FM_LOG_CAT_PLATFORM, "sw=%d\n", sw);
-
-    PROTECT_SWITCH( sw );
-    
-    switchPtr = GET_SWITCH_PTR(sw);
-
-    if (switchPtr == NULL)
-    {
-        err = FM_ERR_INVALID_ARGUMENT;
-        FM_LOG_ABORT(FM_LOG_CAT_PLATFORM, err);
-    }
-
-    err = fm10000DbgDumpBsmScratch(sw, switchPtr->ReadUINT32, regMask);
-    
-ABORT:
-    UNPROTECT_SWITCH( sw );
-    
-    FM_LOG_EXIT(FM_LOG_CAT_PLATFORM, err);
-    
-}   /* end fm10000SwitchDbgDumpBsmScratch */

@@ -29,7 +29,7 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
+ *****************************************************************************/
 
 #ifndef __FM_FM_PROPERTY_H
 #define __FM_FM_PROPERTY_H
@@ -405,7 +405,7 @@ typedef enum
 #define FM_AAT_API_1_ADDR_PER_MCAST_GROUP           FM_API_ATTR_BOOL
 #define FM_AAD_API_1_ADDR_PER_MCAST_GROUP           FALSE
 
-/** Multiple instances of the Alta White Model may be logically connected
+/** Multiple instances of the White Model may be logically connected
  *  to simulate multiple-switch environments. Such an environment can utilize
  *  the API's stacking or SWAG support. Multiple switches may be managed by
  *  a single instance of the API (a single "unit") or each switch may be
@@ -717,7 +717,7 @@ typedef enum
 #define FM_AAT_API_PLATFORM_SBUS_SERVER_PORT       FM_API_ATTR_INT
 #define FM_AAD_API_PLATFORM_SBUS_SERVER_PORT       0
 
-/* Indicates wheter the API is running on top of the White Model or not */
+/* Indicates whether the API is running on top of the White Model. */
 #define FM_AAK_API_PLATFORM_IS_WHITE_MODEL          "api.platform.isWhiteModel"
 #define FM_AAT_API_PLATFORM_IS_WHITE_MODEL          FM_API_ATTR_BOOL
 #define FM_AAD_API_PLATFORM_IS_WHITE_MODEL          FALSE
@@ -763,6 +763,11 @@ typedef enum
 #define FM_AAT_API_PORT_ADD_PEPS_TO_FLOODING            FM_API_ATTR_BOOL
 #define FM_AAD_API_PORT_ADD_PEPS_TO_FLOODING            FALSE
 
+/* Indicates if VLAN tagging is allowed for FTAG enabled ports. */
+#define FM_AAK_API_PORT_ALLOW_FTAG_VLAN_TAGGING         "api.port.allowFtagVlanTagging"
+#define FM_AAT_API_PORT_ALLOW_FTAG_VLAN_TAGGING         FM_API_ATTR_BOOL
+#define FM_AAD_API_PORT_ALLOW_FTAG_VLAN_TAGGING         FALSE
+
 /* Indicates whether to ignore scheduler bandwidth violation */
 #define FM_AAK_API_SCH_IGNORE_BW_VIOLATION              "api.scheduler.ignoreBwViolation"
 #define FM_AAT_API_SCH_IGNORE_BW_VIOLATION              FM_API_ATTR_BOOL
@@ -785,6 +790,16 @@ typedef enum
 #define FM_AAT_API_DFE_ALLOW_KR_PCAL_MODE               FM_API_ATTR_BOOL
 #define FM_AAD_API_DFE_ALLOW_KR_PCAL_MODE               FALSE
 
+/* Indicates whether signalOk debouncing is enabled or not */
+#define FM_AAK_API_DFE_ENABLE_SIGNALOK_DEBOUNCING       "api.dfe.enableSigOkDebounce"
+#define FM_AAT_API_DFE_ENABLE_SIGNALOK_DEBOUNCING       FM_API_ATTR_BOOL
+#define FM_AAD_API_DFE_ENABLE_SIGNALOK_DEBOUNCING       TRUE
+
+/* Indicates whether port status polling is enabled or not */
+#define FM_AAK_API_PORT_ENABLE_STATUS_POLLING           "api.port.enableStatusPolling"
+#define FM_AAT_API_PORT_ENABLE_STATUS_POLLING           FM_API_ATTR_BOOL
+#define FM_AAD_API_PORT_ENABLE_STATUS_POLLING           FALSE
+
 /* Indicates GSME timestamping mode. Valid values are: */
 /* 0: system up time                                   */
 /* 1: absolute time                                    */
@@ -800,6 +815,35 @@ typedef enum
 #define FM_AAT_API_MULTICAST_HNI_FLOODING              FM_API_ATTR_BOOL
 #define FM_AAD_API_MULTICAST_HNI_FLOODING              TRUE
 
+/* Specifies maximum number of MAC table entries per PEP port added 
+ * on driver demand. */
+#define FM_AAK_API_HNI_MAC_ENTRIES_PER_PEP       "api.hni.macEntriesPerPep"
+#define FM_AAT_API_HNI_MAC_ENTRIES_PER_PEP       FM_API_ATTR_INT
+#define FM_AAD_API_HNI_MAC_ENTRIES_PER_PEP       1024
+
+/* Specifies maximum number of MAC table entries per virtual port added 
+ * on driver demand. */
+#define FM_AAK_API_HNI_MAC_ENTRIES_PER_PORT      "api.hni.macEntriesPerPort"
+#define FM_AAT_API_HNI_MAC_ENTRIES_PER_PORT      FM_API_ATTR_INT
+#define FM_AAD_API_HNI_MAC_ENTRIES_PER_PORT      64
+
+/* Specifies maximum number of inner/outer MAC filtering entries 
+ * per PEP port added on driver demand. */
+#define FM_AAK_API_HNI_INN_OUT_ENTRIES_PER_PEP   "api.hni.innOutEntriesPerPep"
+#define FM_AAT_API_HNI_INN_OUT_ENTRIES_PER_PEP   FM_API_ATTR_INT
+#define FM_AAD_API_HNI_INN_OUT_ENTRIES_PER_PEP   1024
+
+/* Specifies maximum number of inner/outer MAC filtering entries 
+ * per virtual port added on driver demand. */
+#define FM_AAK_API_HNI_INN_OUT_ENTRIES_PER_PORT  "api.hni.innOutEntriesPerPort"
+#define FM_AAT_API_HNI_INN_OUT_ENTRIES_PER_PORT  FM_API_ATTR_INT
+#define FM_AAD_API_HNI_INN_OUT_ENTRIES_PER_PORT  64
+
+/* Indicates whether it is possible to use values out of the valid range
+ * for FM_PORT_AUTONEG_LINK_INHB_TIMER and FM_PORT_AUTONEG_LINK_INHB_TIMER_KX*/
+#define FM_AAK_API_AN_INHBT_TIMER_ALLOW_OUT_OF_SPEC     "api.an.timerAllowOutSpec"
+#define FM_AAT_API_AN_INHBT_TIMER_ALLOW_OUT_OF_SPEC     FM_API_ATTR_BOOL
+#define FM_AAD_API_AN_INHBT_TIMER_ALLOW_OUT_OF_SPEC     FALSE
 
 /************************************************************************
  ****                                                                ****

@@ -29,7 +29,7 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
+ ****************************************************************************/
 
 #include <fm_sdk_int.h>
 
@@ -38,7 +38,7 @@
  *****************************************************************************/
 
 /* Helper structure to sort ports by glort */
-typedef struct 
+typedef struct
 {
     fm_int    logicalPort;
     fm_uint32 glort;
@@ -173,7 +173,7 @@ static fm_status SelectLogicalPorts(fm_switch *   switchPtr,
     if (parmPtr->basePort != FM_LOGICAL_PORT_ANY)
     {
         /***************************************************
-         * The caller specified the range of logical ports. 
+         * The caller specified the range of logical ports.
          * Make sure they're available.
          **************************************************/
 
@@ -295,7 +295,7 @@ static fm_status AssignHardwarePortResources(fm_switch *   switchPtr,
                  "Assigned hardware port resources: "
                  "portType %s baseGlort=0x%x baseDest=0x%x cam=0x%x\n",
                  fmPortTypeToText(parmPtr->portType),
-                 parmPtr->baseGlort, 
+                 parmPtr->baseGlort,
                  parmPtr->baseDestIndex,
                  parmPtr->camIndex);
 
@@ -333,7 +333,7 @@ static fm_status AssignSpecialPortResources(fm_switch *   switchPtr,
     camEntry                = &lportInfo->camEntries[parmPtr->camIndex];
     parmPtr->baseDestIndex  = camEntry->destIndex;
 
-    FM_API_CALL_FAMILY(err, 
+    FM_API_CALL_FAMILY(err,
                        switchPtr->GetGlortForSpecialPort,
                        switchPtr->switchNumber,
                        parmPtr->basePort,
@@ -372,9 +372,9 @@ static fm_status AssignSpecialPortResources(fm_switch *   switchPtr,
     FM_LOG_DEBUG(FM_LOG_CAT_PORT,
                  "Assigned special port resources: "
                  "baseGlort=0x%x baseDest=0x%x basePort=%d cam=0x%x\n",
-                 parmPtr->baseGlort, 
+                 parmPtr->baseGlort,
                  parmPtr->baseDestIndex,
-                 parmPtr->basePort, 
+                 parmPtr->basePort,
                  parmPtr->camIndex);
 
 ABORT:
@@ -410,7 +410,7 @@ static fm_status AssignLagPortResources(fm_switch *   switchPtr,
     fm_int              sw = switchPtr->switchNumber;
     fm_int              maxGlortsPerLag;
 
-    FM_API_CALL_FAMILY(err, 
+    FM_API_CALL_FAMILY(err,
                        switchPtr->GetMaxGlortsPerLag,
                        switchPtr->switchNumber,
                        &maxGlortsPerLag);
@@ -430,7 +430,7 @@ static fm_status AssignLagPortResources(fm_switch *   switchPtr,
                                         switchPtr->glortRange.lagBaseGlort,
                                         NULL);
         if ( (firstGlort == -1) ||
-             ((fm_uint32)firstGlort >= (switchPtr->glortRange.lagBaseGlort + 
+             ((fm_uint32)firstGlort >= (switchPtr->glortRange.lagBaseGlort +
                                         switchPtr->glortRange.lagCount)) )
         {
             err = FM_ERR_LOG_PORT_UNAVAILABLE;
@@ -493,9 +493,9 @@ static fm_status AssignLagPortResources(fm_switch *   switchPtr,
     FM_LOG_DEBUG(FM_LOG_CAT_PORT | FM_LOG_CAT_LAG,
                  "Assigned LAG port resources: "
                  "baseGlort=0x%x baseDest=0x%x basePort=%d cam=0x%x\n",
-                 parmPtr->baseGlort, 
+                 parmPtr->baseGlort,
                  parmPtr->baseDestIndex,
-                 parmPtr->basePort, 
+                 parmPtr->basePort,
                  parmPtr->camIndex);
 
 ABORT:
@@ -545,7 +545,7 @@ static fm_status AssignMcgPortResources(fm_switch *   switchPtr,
                                 &allocEntry,
                                 &offsetBase);
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
-    
+
     /* Save the logical port in the port parameter structure */
     parmPtr->baseGlort = allocEntry->baseGlort + offsetBase;
     parmPtr->basePort  = allocEntry->baseHandle + offsetBase;
@@ -557,7 +557,7 @@ static fm_status AssignMcgPortResources(fm_switch *   switchPtr,
 
     if (!allocEntry->mcgDestIndex[index])
     {
-        /* Dest block is not allocated. Find unused dest block 
+        /* Dest block is not allocated. Find unused dest block
          * and update the corresponding cam entry accordingly
          */
         numDestEntries = allocEntry->glortSize;
@@ -608,8 +608,8 @@ static fm_status AssignMcgPortResources(fm_switch *   switchPtr,
         }
 
         allocEntry->mcgDestIndex[index] = firstDestIndex;
-   
-        FM_LOG_DEBUG( 
+
+        FM_LOG_DEBUG(
             FM_LOG_CAT_PORT | FM_LOG_CAT_MULTICAST,
             "Update camIndex %d with destIndex 0x%x numDestEntries %u "
             "index %d offsetEntry %d\n",
@@ -627,7 +627,7 @@ static fm_status AssignMcgPortResources(fm_switch *   switchPtr,
     FM_LOG_DEBUG(FM_LOG_CAT_PORT | FM_LOG_CAT_MULTICAST,
                  "Assigned multicast port resources: "
                  "baseGlort=0x%x baseDest=0x%x cam=0x%x\n",
-                 parmPtr->baseGlort, 
+                 parmPtr->baseGlort,
                  parmPtr->baseDestIndex,
                  parmPtr->camIndex);
 
@@ -686,9 +686,9 @@ static fm_status AssignPortResources(fm_switch *   switchPtr,
             break;
 
         case FM_PORT_TYPE_LBG:
-            FM_API_CALL_FAMILY(err, 
-                               switchPtr->AssignLBGPortResources, 
-                               switchPtr->switchNumber, 
+            FM_API_CALL_FAMILY(err,
+                               switchPtr->AssignLBGPortResources,
+                               switchPtr->switchNumber,
                                parmPtr);
             FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
             break;
@@ -809,11 +809,7 @@ static fm_status CreateLogicalPort(fm_switch *   switchPtr,
 
     /* Get the global resource tag (glort). */
     /* If CPU port isn't 0 port we need to change glorts of 0 port and CPU port */
-    if ( ( switchPtr->cpuPort != 0 ) && ( port == switchPtr->cpuPort ) )
-    {
-        glort = parmPtr->baseGlort;
-    }
-    else if ( ( switchPtr->cpuPort != 0 ) && ( port == 0 ) )
+    if ( ( switchPtr->cpuPort != 0 ) && ( port == 0 ) )
     {
         glort = parmPtr->baseGlort + switchPtr->cpuPort;
     }
@@ -838,6 +834,10 @@ static fm_status CreateLogicalPort(fm_switch *   switchPtr,
     {
         destIndex = parmPtr->baseDestIndex + (subIndex * parmPtr->numDestEntries);
     }
+    else if ( ( switchPtr->cpuPort != 0 ) && ( port == 0 ) )
+    {
+        destIndex = parmPtr->baseDestIndex + subIndex + switchPtr->cpuPort;
+    }
     else
     {
         destIndex = parmPtr->baseDestIndex + subIndex;
@@ -849,11 +849,11 @@ static fm_status CreateLogicalPort(fm_switch *   switchPtr,
 
 
     /***************************************************
-     * Allocate and initialize the fm_port structure. 
-     *  
-     * We must initialize the fm_port structure and save 
-     * its pointer in the portTable[] before calling 
-     * switchPtr->CreateLogicalPort, since the latter 
+     * Allocate and initialize the fm_port structure.
+     *
+     * We must initialize the fm_port structure and save
+     * its pointer in the portTable[] before calling
+     * switchPtr->CreateLogicalPort, since the latter
      * uses the fm_port structure.
      **************************************************/
 
@@ -881,9 +881,9 @@ static fm_status CreateLogicalPort(fm_switch *   switchPtr,
     switchPtr->portTable[port] = portPtr;
 
     /* Allocate and initialize the port extension structure. */
-    FM_API_CALL_FAMILY(err, 
-                       switchPtr->CreateLogicalPort, 
-                       switchPtr->switchNumber, 
+    FM_API_CALL_FAMILY(err,
+                       switchPtr->CreateLogicalPort,
+                       switchPtr->switchNumber,
                        port);
 
     if (err != FM_OK)
@@ -917,13 +917,13 @@ static fm_status CreateLogicalPort(fm_switch *   switchPtr,
                  glort);
 
     /***************************************************
-     * Initialize destination entry. 
+     * Initialize destination entry.
      **************************************************/
 
     if (parmPtr->portType != FM_PORT_TYPE_LBG)
     {
         memset(destEntry, 0, sizeof(*destEntry));
-    
+
         destEntry->destIndex = destIndex;
         destEntry->owner     = camEntry;
         destEntry->usedBy    = FM_USED_BY_TYPE(parmPtr->portType);
@@ -941,7 +941,7 @@ static fm_status CreateLogicalPort(fm_switch *   switchPtr,
                                       &portPtr->capabilities);
 
         /* Notify the platform code that we are changing state. */
-        fmPlatformAddGlortToPortMapping(switchPtr->switchNumber, 
+        fmPlatformAddGlortToPortMapping(switchPtr->switchNumber,
                                         glort,
                                         physPort);
     }
@@ -1008,12 +1008,13 @@ static fm_status CreateVirtualLogicalPort(fm_switch *   switchPtr,
     glort = parmPtr->baseGlort + subIndex;
 
 
+
     /***************************************************
-     * Allocate and initialize the fm_port structure. 
-     *  
-     * We must initialize the fm_port structure and save 
-     * its pointer in the portTable[] before calling 
-     * switchPtr->CreateLogicalPort, since the latter 
+     * Allocate and initialize the fm_port structure.
+     *
+     * We must initialize the fm_port structure and save
+     * its pointer in the portTable[] before calling
+     * switchPtr->CreateLogicalPort, since the latter
      * uses the fm_port structure.
      **************************************************/
 
@@ -1035,9 +1036,9 @@ static fm_status CreateVirtualLogicalPort(fm_switch *   switchPtr,
     switchPtr->portTable[port] = portPtr;
 
     /* Allocate and initialize the port extension structure. */
-    FM_API_CALL_FAMILY(err, 
-                       switchPtr->CreateLogicalPort, 
-                       switchPtr->switchNumber, 
+    FM_API_CALL_FAMILY(err,
+                       switchPtr->CreateLogicalPort,
+                       switchPtr->switchNumber,
                        port);
 
     if (err != FM_OK)
@@ -1049,8 +1050,6 @@ static fm_status CreateVirtualLogicalPort(fm_switch *   switchPtr,
         fmFree(portPtr);
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
     }
-
-
 
     FM_LOG_DEBUG(FM_LOG_CAT_PORT,
                  "Allocated logical port %d mapping to glort %d\n",
@@ -1138,11 +1137,11 @@ fm_status fmInitializeLogicalPorts(fm_int sw)
     fmResetLogicalPortInfo(lportInfo);
 
     /***************************************************
-     * We burn the first CAM entry (index 0) in Alta to 
-     * make sure that this entry is kept empty. If no 
-     * entry hits in the CAM, the index is set to zero. 
-     * The first destination entry is also burned for 
-     * the same reason. 
+     * We burn the first CAM entry (index 0) on FM6000 
+     * to make sure that this entry is kept empty. If no
+     * entry hits in the CAM, the index is set to zero.
+     * The first destination entry is also burned for
+     * the same reason.
      **************************************************/
     if ( switchPtr->switchFamily == FM_SWITCH_FAMILY_FM6000 ||
          switchPtr->switchFamily == FM_SWITCH_FAMILY_REMOTE_FM6000 )
@@ -1154,11 +1153,11 @@ fm_status fmInitializeLogicalPorts(fm_int sw)
 
     /***************************************************
      * Allocate dest entries for physical ports based
-     * on the size.  
+     * on the size.
      **************************************************/
 
-    destBase = fmFindUnusedDestEntries(sw, 
-                                       switchPtr->glortRange.portCount, 
+    destBase = fmFindUnusedDestEntries(sw,
+                                       switchPtr->glortRange.portCount,
                                        destBase);
     if (destBase < 0)
     {
@@ -1167,24 +1166,24 @@ fm_status fmInitializeLogicalPorts(fm_int sw)
     }
 
     /***************************************************
-     * Mark those entries as used to reserve them for 
-     * physical ports. This way these entries will not 
-     * be available in subsequent call to function 
-     * fmFindUnusedDestEntries. 
+     * Mark those entries as used to reserve them for
+     * physical ports. This way these entries will not
+     * be available in subsequent call to function
+     * fmFindUnusedDestEntries.
      **************************************************/
 
     destLimit = destBase + switchPtr->glortRange.portCount;
 
-    for ( index = destBase; index < destLimit; ++index )
+    for ( index = destBase ; index < destLimit ; ++index )
     {
-        lportInfo->destEntries[index].usedBy = 
+        lportInfo->destEntries[index].usedBy =
             FM_USED_BY_TYPE(FM_PORT_TYPE_PHYSICAL);
     }
 
     /***************************************************
      * Physical ports get one cam entry for their block.
      **************************************************/
-    if ( fmGetBoolApiProperty(FM_AAK_API_STRICT_GLORT_PHYSICAL, 
+    if ( fmGetBoolApiProperty(FM_AAK_API_STRICT_GLORT_PHYSICAL,
                               FM_AAD_API_STRICT_GLORT_PHYSICAL) )
     {
         entryType = FM_GLORT_ENTRY_TYPE_STRICT;
@@ -1198,7 +1197,7 @@ fm_status fmInitializeLogicalPorts(fm_int sw)
                                 (rangeMask > 0xFF) ? 0xFF00 : ~rangeMask,
                                 switchPtr->glortRange.portBaseGlort,
                                 entryType,
-                                destBase,              
+                                destBase,
                                 1,                      /* hash count */
                                 switchPtr->glortRange.portALength,
                                 0,                      /* A offset */
@@ -1213,11 +1212,11 @@ fm_status fmInitializeLogicalPorts(fm_int sw)
     destBase += switchPtr->glortRange.portCount;
 
     /***************************************************
-     * Allocate dest entries for CPU port.  
+     * Allocate dest entries for CPU port.
      **************************************************/
 
-    destBase = fmFindUnusedDestEntries(sw, 
-                                       switchPtr->glortRange.cpuPortCount, 
+    destBase = fmFindUnusedDestEntries(sw,
+                                       switchPtr->glortRange.cpuPortCount,
                                        destBase);
     if (destBase < 0)
     {
@@ -1278,7 +1277,7 @@ fm_status fmInitializeLogicalPorts(fm_int sw)
                                 FM_GLORT_ENTRY_TYPE_ISL,
                                 destBase,
                                 1,                         /* hash count */
-                                switchPtr->glortInfo.specialALength, 
+                                switchPtr->glortInfo.specialALength,
                                 0,                         /* A offset */
                                 0,                         /* B length */
                                 0,                         /* B offset */
@@ -1304,7 +1303,7 @@ fm_status fmInitializeLogicalPorts(fm_int sw)
     /***************************************************
      * Now add the CAM entry for the CPU Mgmt port.
      * This entry will always point to CPU port 0,
-     * whereas the CPU port might be redirected to 
+     * whereas the CPU port might be redirected to
      * another physical or LAG port
      **************************************************/
 
@@ -1325,7 +1324,7 @@ fm_status fmInitializeLogicalPorts(fm_int sw)
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
 
     /***************************************************
-     * Create bit arrays that will be used to manage 
+     * Create bit arrays that will be used to manage
      * the multicast glort dest table entry usage.
      **************************************************/
 
@@ -1385,7 +1384,7 @@ ABORT:
  *
  * \param[in]       useHandle specifies a previously allocated block of
  *                  resources, or zero if no resources have been allocated.
- *                  Used mainly in stacking configurations. 
+ *                  Used mainly in stacking configurations.
  *
  * \return          FM_OK if successful.
  * \return          FM_ERR_INVALID_SWITCH if sw is invalid.
@@ -1415,7 +1414,7 @@ fm_status fmCommonAllocLogicalPort(fm_int      sw,
     switchPtr = GET_SWITCH_PTR(sw);
 
     /* Initialize the port parameter structure used to keep track of the
-     * resources that have been or that will be assigned to the port. 
+     * resources that have been or that will be assigned to the port.
      */
     memset(&parms, 0, sizeof(parms));
 
@@ -1499,7 +1498,7 @@ ABORT:
  *
  * \param[in]       useHandle specifies a previously allocated block of
  *                  resources, or zero if no resources have been allocated.
- *                  Used mainly in stacking configurations. 
+ *                  Used mainly in stacking configurations.
  *
  * \param[in]       firstGlort is the number of first glort to use.
  *
@@ -1545,7 +1544,7 @@ fm_status fmCommonAllocVirtualLogicalPort(fm_int  sw,
     start       = -1;
 
     /* Initialize the port parameter structure used to keep track of the
-     * resources that have been or that will be assigned to the port. 
+     * resources that have been or that will be assigned to the port.
      */
     memset(&parms, 0, sizeof(parms));
 
@@ -1596,7 +1595,7 @@ fm_status fmCommonAllocVirtualLogicalPort(fm_int  sw,
         }
     }
 
-    if ( (freeCount < numPorts) 
+    if ( (freeCount < numPorts)
         || (start != firstGlort) )
     {
         status = FM_ERR_GLORT_IN_USE;
@@ -1616,7 +1615,7 @@ fm_status fmCommonAllocVirtualLogicalPort(fm_int  sw,
     for (subIndex = 0 ; subIndex < parms.numPorts ; subIndex++)
     {
         parms.baseGlort = firstGlort + subIndex;
-        parms.basePort = basePort + subIndex; 
+        parms.basePort = basePort + subIndex;
 
         status = CreateVirtualLogicalPort(switchPtr, &parms, 0);
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, status);
@@ -1652,7 +1651,7 @@ ABORT:
  * \return          FM_ERR_INVALID_SWITCH if sw is invalid.
  * \return          FM_ERR_INVALID_ARGUMENT if the logical port is invalid.
  *                  value.
- * \return          FM_ERR_PORT_IS_IN_LAG if the logical port is currently 
+ * \return          FM_ERR_PORT_IS_IN_LAG if the logical port is currently
  *                  a LAG member.
  *
  *****************************************************************************/
@@ -1680,12 +1679,12 @@ fm_status fmCommonFreeLogicalPort(fm_int sw, fm_int logicalPort)
     err       = FM_OK;
     rc        = FM_OK;
 
-    if (switchPtr == NULL) 
+    if (switchPtr == NULL)
     {
         FM_LOG_EXIT(FM_LOG_CAT_SWITCH, FM_ERR_INVALID_SWITCH);
     }
 
-    lportInfo = &switchPtr->logicalPortInfo; 
+    lportInfo = &switchPtr->logicalPortInfo;
 
     portPtr = GET_SWITCH_PORT_PTR(switchPtr, logicalPort);
     if (portPtr == NULL)
@@ -1724,7 +1723,7 @@ fm_status fmCommonFreeLogicalPort(fm_int sw, fm_int logicalPort)
             continue;
         }
 
-        /* Remote port structures created for mailbox purpose does not have 
+        /* Remote port structures created for mailbox purpose does not have
            CAM entries assigned, as these entries are not created dynamically.
            Mailbox CAM entries are created at the mailbox init stage to optimise
            GLORT_CAM/GLORT_RAM entries usage. */
@@ -1756,7 +1755,7 @@ fm_status fmCommonFreeLogicalPort(fm_int sw, fm_int logicalPort)
            This only applies to FM4000 switches.*/
         if (portPtr->portType == FM_PORT_TYPE_LBG &&
             portPtr->camEntry != NULL &&
-            switchPtr->lbgInfo.mode == FM_LBG_MODE_MAPPED && 
+            switchPtr->lbgInfo.mode == FM_LBG_MODE_MAPPED &&
             (switchPtr->switchFamily == FM_SWITCH_FAMILY_FM4000 ||
              switchPtr->switchFamily == FM_SWITCH_FAMILY_REMOTE_FM4000))
         {
@@ -1771,13 +1770,13 @@ fm_status fmCommonFreeLogicalPort(fm_int sw, fm_int logicalPort)
         /* Do not remove glort cam entry for VIRTUAL logical ports */
         else if (portPtr->portType != FM_PORT_TYPE_VIRTUAL)
         {
-            /* Remote port structures created for mailbox purpose does not have 
+            /* Remote port structures created for mailbox purpose does not have
                CAM entries assigned, as these entries are not created dynamically.
                Mailbox CAM entries are created at the mailbox init stage to optimise
                GLORT_CAM/GLORT_RAM entries usage. */
             if (portPtr->camEntry)
             {
-                err = fmRemoveGlortCamEntry(sw, portPtr->camEntry->camIndex); 
+                err = fmRemoveGlortCamEntry(sw, portPtr->camEntry->camIndex);
             }
         }
 
@@ -1800,8 +1799,8 @@ fm_status fmCommonFreeLogicalPort(fm_int sw, fm_int logicalPort)
                 err = fmFreeMcastLogicalPort(sw, port);
                 if (err != FM_OK)
                 {
-                    FM_LOG_ERROR(FM_LOG_CAT_PORT, 
-                                 "Unable to free mcast logical port: %s\n", 
+                    FM_LOG_ERROR(FM_LOG_CAT_PORT,
+                                 "Unable to free mcast logical port: %s\n",
                                  fmErrorMsg(err));
                     rc = err;
                 }
@@ -1818,10 +1817,10 @@ fm_status fmCommonFreeLogicalPort(fm_int sw, fm_int logicalPort)
                                        switchPtr->FreeDestEntry,
                                        sw,
                                        &portPtr->destEntry[j]);
-            
+
                     if (err != FM_OK)
                     {
-                        FM_LOG_ERROR(FM_LOG_CAT_PORT, 
+                        FM_LOG_ERROR(FM_LOG_CAT_PORT,
                                      "Unable to free dest entry for port %d: %s\n",
                                      port,
                                      fmErrorMsg(err));
@@ -1829,15 +1828,15 @@ fm_status fmCommonFreeLogicalPort(fm_int sw, fm_int logicalPort)
                     }
                 }
                 break;
-                
+
         }   /* end switch (portPtr->portType) */
-        
+
         /**************************************************
          * If port has a purge list entry allocated and
          * there are no purges pending for this port,
          * then free the purge list entry.
          **************************************************/
-        
+
         FM_TAKE_MA_PURGE_LOCK(sw);
         purgePtr = &switchPtr->maPurge;
 
@@ -1845,7 +1844,7 @@ fm_status fmCommonFreeLogicalPort(fm_int sw, fm_int logicalPort)
         {
             purgeEntry = portPtr->maPurgeListEntry;
             purgeEntry->portExists = FALSE;
-            
+
             if ( fmMaybeDestroyMAPurgeListEntry(sw, purgeEntry) )
             {
                 /* Entry was destroyed. */
@@ -1858,9 +1857,9 @@ fm_status fmCommonFreeLogicalPort(fm_int sw, fm_int logicalPort)
                  * can't delete it now. It will be deleted when
                  * the pending purges are completed.
                  **************************************************/
-                
+
             }   /* end if (fmMaybeDestroyMAPurgeListEntry(sw, purgeEntry)) */
-            
+
         }   /* end if (portPtr->maPurgeListEntry) */
 
         FM_DROP_MA_PURGE_LOCK(sw);
@@ -1882,7 +1881,7 @@ fm_status fmCommonFreeLogicalPort(fm_int sw, fm_int logicalPort)
 
         switchPtr->portTable[port] = NULL;
 
-    }   /* end for (i = port ; i < endPort ; ++i) */
+    }   /* end for (port = logicalPort ; port < endPort ; ++port) */
 
     FM_LOG_EXIT(FM_LOG_CAT_PORT, rc);
 
@@ -1917,7 +1916,7 @@ fm_status fmAllocateLogicalPortDataStructures(fm_int sw,
     fm_switch *         switchPtr;
     fm_uint             nbytes;
 
-    FM_LOG_ENTRY(FM_LOG_CAT_PORT, 
+    FM_LOG_ENTRY(FM_LOG_CAT_PORT,
                  "sw = %d numCamEntries = %d numDestEntries %d\n",
                  sw,
                  numCamEntries,
@@ -1983,8 +1982,8 @@ fm_status fmAllocateLogicalPortDataStructures(fm_int sw,
  * \param[in]       type is the allocation type (see ''fm_portType'').
  *
  * \param[in]       numPorts indicates the number of ports to allocate.  For
- *                  LAG type allocations, this argument is not used, and 
- *                  internally the value FM_MAX_PORTS_PER_LAG_PER_SWITCH is 
+ *                  LAG type allocations, this argument is not used, and
+ *                  internally the value FM_MAX_PORTS_PER_LAG_PER_SWITCH is
  *                  used.
  *
  * \param[in,out]   firstPortNumber is the allocated logical port number for
@@ -2119,8 +2118,8 @@ fm_status fmFreeLogicalPortDataStructures(fm_switch *switchPtr)
 /** fmFreeLogicalPortResources
  * \ingroup intPort
  *
- * \desc            This is called when the switch goes down, to free the 
- *                  currently allocated logical ports. 
+ * \desc            This is called when the switch goes down, to free the
+ *                  currently allocated logical ports.
  *
  * \param[in]       sw is the switch number.
  *
@@ -2235,7 +2234,7 @@ fm_status fmFreeLogicalPort(fm_int sw, fm_int port)
  * \desc            Function to free lane-level resources
  *
  * \param[in]       sw is the ID of the switch
- * 
+ *
  * \return          FM_OK if successful
  *                  (If returns void, then just say None.)
  * \return          Description of another possible return value.
@@ -2353,10 +2352,10 @@ fm_status fmGetLogicalPortAttribute(fm_int sw,
  *
  * \desc            Creates a logical port for the given glort.  This function
  *                  is used when the switch must be able to address a glort
- *                  that exists on a remote switch. 
+ *                  that exists on a remote switch.
  *                                                                      \lb\lb
- *                  If a logical port has already been assigned to this glort, 
- *                  then this function will return the existing logical port 
+ *                  If a logical port has already been assigned to this glort,
+ *                  then this function will return the existing logical port
  *                  instead of allocating a new one.
  *
  * \param[in]       sw is the switch on which to operate.
@@ -2373,9 +2372,9 @@ fm_status fmGetLogicalPortAttribute(fm_int sw,
  * \return          FM_ERR_INVALID_ARGUMENT if logicalPort is NULL.
  * \return          FM_ERR_GLORT_IN_USE if the specified is already being used
  *                  by others.
- * \return          FM_ERR_NO_FORWARDING_RULES if there is no forwarding rule 
+ * \return          FM_ERR_NO_FORWARDING_RULES if there is no forwarding rule
  *                  associated with glort.
- * \return          FM_ERR_NO_FREE_RESOURCES if no logical port numbers 
+ * \return          FM_ERR_NO_FREE_RESOURCES if no logical port numbers
  *                  available for allocation.
  * \return          FM_ERR_NO_MEM if no memory available to store logical
  *                  port data structure.
@@ -2413,7 +2412,7 @@ fm_status fmCreateLogicalPortForGlort(fm_int    sw,
     }
 
     /* The logical port doesn't exist, so create a new one */
-    FM_API_CALL_FAMILY(err, 
+    FM_API_CALL_FAMILY(err,
                        switchPtr->CreateLogicalPortForGlort,
                        sw,
                        glort,
@@ -2430,12 +2429,12 @@ fm_status fmCreateLogicalPortForGlort(fm_int    sw,
 /** fmCreateLogicalPortForMailboxGlort
  * \ingroup intlport
  *
- * \desc            Creates a logical port for the given mailbox glort.  
- *                  This function is used when the switch must be able 
- *                  to address a glort that exists on a remote switch. 
+ * \desc            Creates a logical port for the given mailbox glort.
+ *                  This function is used when the switch must be able
+ *                  to address a glort that exists on a remote switch.
  *                                                                      \lb\lb
- *                  If a logical port has already been assigned to this glort, 
- *                  then this function will return the existing logical port 
+ *                  If a logical port has already been assigned to this glort,
+ *                  then this function will return the existing logical port
  *                  instead of allocating a new one.
  *
  * \param[in]       sw is the switch on which to operate.
@@ -2452,7 +2451,7 @@ fm_status fmCreateLogicalPortForGlort(fm_int    sw,
  * \return          FM_ERR_INVALID_ARGUMENT if logicalPort is NULL.
  * \return          FM_ERR_GLORT_IN_USE if the specified is already being used
  *                  by others.
- * \return          FM_ERR_NO_FREE_RESOURCES if no logical port numbers 
+ * \return          FM_ERR_NO_FREE_RESOURCES if no logical port numbers
  *                  available for allocation.
  * \return          FM_ERR_NO_MEM if no memory available to store logical
  *                  port data structure.
@@ -2490,7 +2489,7 @@ fm_status fmCreateLogicalPortForMailboxGlort(fm_int    sw,
     }
 
     /* The logical port doesn't exist, so create a new one */
-    FM_API_CALL_FAMILY(err, 
+    FM_API_CALL_FAMILY(err,
                        switchPtr->CreateLogicalPortForMailboxGlort,
                        sw,
                        glort,
@@ -2539,12 +2538,12 @@ fm_status fmFreeLogicalPortForMailboxGlort(fm_int sw,
     err       = FM_OK;
     rc        = FM_OK;
 
-    if (switchPtr == NULL) 
+    if (switchPtr == NULL)
     {
         FM_LOG_EXIT(FM_LOG_CAT_SWITCH, FM_ERR_INVALID_SWITCH);
     }
 
-    lportInfo = &switchPtr->logicalPortInfo; 
+    lportInfo = &switchPtr->logicalPortInfo;
 
     portPtr = GET_SWITCH_PORT_PTR(switchPtr, logicalPort);
 
@@ -2608,10 +2607,10 @@ fm_status fmFreeLogicalPortForMailboxGlort(fm_int sw,
  *
  * \param[in]       sw is the switch on which to operate.
  *
- * \param[in]       logicalPort is the port number. 
+ * \param[in]       logicalPort is the port number.
  *
  * \param[out]      glort points to caller-allocated storage where this
- *                  function should write the glort associated with 
+ *                  function should write the glort associated with
  *                  logicalPort.
  *
  * \return          FM_OK if successful.
@@ -2654,12 +2653,12 @@ ABORT:
  * \ingroup intSwitch
  *
  * \desc            Determines whether a logical port is a LAG port.
- * 
+ *
  * \note            Assumes that the switch number is valid and the
  *                  appropriate lock has been taken.
  *
  * \param[in]       sw is the switch on which to operate.
- * 
+ *
  * \param[in]       port is the logical port number.
  *
  * \return          TRUE if the port is a LAG port, FALSE otherwise.
@@ -2682,7 +2681,7 @@ fm_bool fmIsLagPort(fm_int sw, fm_int port)
 /** fmIsRemotePort
  * \ingroup intlport
  *
- * \desc            Helper function to check where a logical port is a 
+ * \desc            Helper function to check where a logical port is a
  *                  remote port on the switch.
  *
  * \note            This function assumes that the caller has taken the
@@ -2736,12 +2735,12 @@ fm_bool fmIsMgmtPort(fm_int sw, fm_int logicalPort)
 
     switchPtr = GET_SWITCH_PTR(sw);
 
-    err = fmPlatformMapLogicalPortToPhysical(sw, 
-                                             logicalPort, 
-                                             &physSwitch, 
+    err = fmPlatformMapLogicalPortToPhysical(sw,
+                                             logicalPort,
+                                             &physSwitch,
                                              &physPort);
-    FM_LOG_ASSERT(FM_LOG_CAT_PORT, 
-                  err == FM_OK, 
+    FM_LOG_ASSERT(FM_LOG_CAT_PORT,
+                  err == FM_OK,
                   "Could not convert the port %d (logical port) to "
                    "the corresponding physical port\n",
                   logicalPort);
@@ -2754,7 +2753,7 @@ fm_bool fmIsMgmtPort(fm_int sw, fm_int logicalPort)
     {
         return FALSE;
     }
-    
+
 }   /* end fmIsMgmtPort */
 
 
@@ -2864,7 +2863,7 @@ fm_bool fmIsPortLinkUp(fm_int sw, fm_int logicalPort)
  *                  appropriate lock and made sure the switch state is valid.
  *
  * \param[in]       sw is the switch to operate on.
- * 
+ *
  * \param[in]       port is the logical port number to be validated.
  *
  * \param[out]      mode is a bit mask indicating which logical port
@@ -2883,7 +2882,7 @@ fm_bool fmIsValidPort(fm_int sw, fm_int port, fm_int mode)
     switchPtr = GET_SWITCH_PTR(sw);
 
     maxPort =
-        (mode & (ALLOW_LAG | ALLOW_REMOTE)) ?
+        (mode & (ALLOW_LAG | ALLOW_REMOTE | ALLOW_VIRTUAL)) ?
         switchPtr->maxPort - 1 :
         switchPtr->cardinalPortInfo.maxLogicalPort;
 
@@ -2999,7 +2998,7 @@ fm_bool fmIsValidPort(fm_int sw, fm_int port, fm_int mode)
  * \param[in]       sw is the switch on which to operate.
  *
  * \param[in]       port is the logical port on which to operate.
- * 
+ *
  * \param[out]      isPciePort points to a caller-provided Boolean
  *                  variable where this function will return TRUE if the
  *                  logical port belongs to a PCIE endpoint.
@@ -3009,7 +3008,7 @@ fm_bool fmIsValidPort(fm_int sw, fm_int port, fm_int mode)
  * \return          FM_ERR_SWITCH_NOT_UP if the switch in not up
  * \return          FM_ERR_INVALID_PORT if the port ID is invalid
  * \return          FM_ERR_INVALID_ARGUMENT if the pointer argument is invalid
- * 
+ *
  *****************************************************************************/
 fm_status fmIsPciePort( fm_int sw, fm_int port, fm_bool *isPciePort )
 {
@@ -3051,7 +3050,7 @@ fm_status fmIsPciePort( fm_int sw, fm_int port, fm_bool *isPciePort )
  * \param[in]       sw is the switch on which to operate.
  *
  * \param[in]       port is the logical port on which to operate.
- * 
+ *
  * \param[out]      isSpecialPort points to a caller-provided Boolean
  *                  variable where this function will return TRUE if the
  *                  logical port belongs to the special port group.
@@ -3061,7 +3060,7 @@ fm_status fmIsPciePort( fm_int sw, fm_int port, fm_bool *isPciePort )
  * \return          FM_ERR_SWITCH_NOT_UP if the switch in not up
  * \return          FM_ERR_INVALID_PORT if the port ID is invalid
  * \return          FM_ERR_INVALID_ARGUMENT if the pointer argument is invalid
- * 
+ *
  *****************************************************************************/
 fm_status fmIsSpecialPort( fm_int sw, fm_int port, fm_bool *isSpecialPort )
 {
@@ -3103,11 +3102,11 @@ fm_status fmIsSpecialPort( fm_int sw, fm_int port, fm_bool *isSpecialPort )
  * \param[in]       sw is the switch on which to operate.
  *
  * \param[in]       pep is the PEP Id.
- * 
+ *
  * \param[in]       type is the type of pcie port to retrieve.
- * 
+ *
  * \param[in]       index is the queue offset to retrieve.
- * 
+ *
  * \param[out]      logicalPort points to a caller-provided integer
  *                  variable where this function will return the virtual
  *                  logical port assigned for this specific entry.
@@ -3121,7 +3120,7 @@ fm_status fmIsSpecialPort( fm_int sw, fm_int port, fm_bool *isSpecialPort )
  *                  or if the index is out of range.
  * \return          FM_ERR_INVALID_PORT if the pep is out of range or if the
  *                  PEP/VF/PF/VMDq does not map to a logical port.
- * 
+ *
  *****************************************************************************/
 fm_status fmGetPcieLogicalPort(fm_int sw,
                                fm_int pep,
@@ -3161,17 +3160,17 @@ fm_status fmGetPcieLogicalPort(fm_int sw,
  *                  entry.
  *
  * \param[in]       sw is the switch on which to operate.
- * 
+ *
  * \param[in]       logicalPort is the virtual port to map
  *
  * \param[out]      pep points to a caller-provided integer
  *                  variable where this function will return the PEP id
  *                  assigned for this specific entry.
- * 
+ *
  * \param[out]      type points to a caller-provided fm_pciePortType
  *                  variable where this function will return the pcie port
  *                  type for this specific entry.
- * 
+ *
  * \param[out]      index points to a caller-provided integer
  *                  variable where this function will return the index for
  *                  this specific entry.
@@ -3185,7 +3184,7 @@ fm_status fmGetPcieLogicalPort(fm_int sw,
  * \return          FM_ERR_INVALID_PORT if the logical port is out of range or
  *                  if the logical port does not map into a PEP/VF/PF/VMDq
  *                  entry.
- * 
+ *
  *****************************************************************************/
 fm_status fmGetLogicalPortPcie(fm_int sw,
                                fm_int logicalPort,
@@ -3242,7 +3241,7 @@ fm_status fmSortPortByGlort(fm_int sw,
                             fm_int nPorts,
                             fm_int *sortedPorts)
 {
-    fmPortToGlort portToGlort[nPorts]; 
+    fmPortToGlort portToGlort[nPorts];
     fm_status     err;
     fm_int        i;
 
@@ -3335,7 +3334,7 @@ fm_status fmGetGlortLogicalPort(fm_int sw, fm_uint32 glort, fm_int *logicalPort)
  * \desc            Find the range for logical ports.
  *
  * \param[in]       sw is the switch on which to operate.
- * 
+ *
  * \param[out]      portRange points to caller-allocated storage where this
  *                  function should store the logical port range.
  *
@@ -3352,9 +3351,9 @@ fm_status fmGetLogicalPortRange(fm_int sw, fm_int *portRange)
 
     FM_LOG_ENTRY(FM_LOG_CAT_PORT, "sw=%d portRange=%p\n", sw, (void*)portRange);
 
-    if (portRange) 
+    if (portRange)
     {
-        *portRange = switchPtr->maxPort; 
+        *portRange = switchPtr->maxPort;
     }
     else
     {
@@ -3402,8 +3401,8 @@ fm_status fmAllocDestEntries(fm_int              sw,
 
     FM_LOG_ENTRY(FM_LOG_CAT_PORT,
                  "sw=%d numDestEntries=%d destEntry=%p\n",
-                 sw, 
-                 numDestEntries, 
+                 sw,
+                 numDestEntries,
                  (void *) destEntry);
 
     switchPtr = GET_SWITCH_PTR(sw);
@@ -3441,7 +3440,7 @@ fm_status fmAllocDestEntries(fm_int              sw,
  * \ingroup intPort
  *
  * \desc            Writes an entry to the glort CAM/RAM.
- * 
+ *
  * \note            Assumes switch protection lock has already been acquired
  *                  and that the switch pointer is valid.
  *
@@ -3634,9 +3633,9 @@ fm_status fmAllocateMcastHandles(fm_int  sw,
     FM_LOG_ENTRY(FM_LOG_CAT_PORT,
                  "sw=%d startGlort=0x%x glortSize=0x%x "
                  "baseMcastGroupHandle=%p numMcastGroups=%p\n",
-                 sw, 
-                 startGlort, 
-                 glortSize, 
+                 sw,
+                 startGlort,
+                 glortSize,
                  (void *) baseMcastGroupHandle,
                  (void *) numMcastGroups);
 
@@ -3646,7 +3645,7 @@ fm_status fmAllocateMcastHandles(fm_int  sw,
     if ( fmVerifyGlortRange(startGlort, glortSize) != FM_OK )
     {
         FM_LOG_EXIT(FM_LOG_CAT_PORT, FM_ERR_INVALID_ARGUMENT);
-    } 
+    }
 
     camLen = 0;
     for (i = 0 ; i < 32 ; i++)
@@ -3894,14 +3893,14 @@ fm_status fmFreeMcastHandles(fm_int sw, fm_int handle)
     for (i = 0 ; i < cnt ; i++ )
     {
         /* Free the cam entries */
-        err = fmRemoveGlortCamEntry(sw, allocEntry->mcgCamIndex[i]); 
+        err = fmRemoveGlortCamEntry(sw, allocEntry->mcgCamIndex[i]);
         if (err != FM_OK)
         {
             FM_LOG_ERROR(FM_LOG_CAT_PORT,
                          "Unable to free cam entry %d\n",
                          allocEntry->mcgCamIndex[i]);
         }
-        
+
         /* Free dest entries if reserved */
         if (allocEntry->mcgDestIndex[i])
         {
@@ -3917,7 +3916,7 @@ fm_status fmFreeMcastHandles(fm_int sw, fm_int handle)
             else
             {
                 /* Get the remaining */
-                numDestEntries = 
+                numDestEntries =
                     allocEntry->glortSize % switchPtr->mcastMaxEntryPerGlort;
             }
 
@@ -3979,13 +3978,13 @@ fm_status fmFreeMcastHandles(fm_int sw, fm_int handle)
         }
         FM_RELEASE_GLORT(lportInfo, glort);
     }
-    
+
     /* Set this entry to not-used */
     allocEntry->glortSize = 0;
 
     FM_LOG_EXIT(FM_LOG_CAT_PORT, retErr);
 
-}   /* end fmFreeMcastHandles */ 
+}   /* end fmFreeMcastHandles */
 
 
 
@@ -4054,9 +4053,9 @@ fm_status fmAllocateLagHandles(fm_int  sw,
     FM_LOG_ENTRY(FM_LOG_CAT_PORT,
                  "sw=%d startGlort=0x%x glortSize=0x%x "
                  "baseLagHandle=%p numHandles=%p\n",
-                 sw, 
-                 startGlort, 
-                 glortSize, 
+                 sw,
+                 startGlort,
+                 glortSize,
                  (void *) baseLagHandle,
                  (void *) numHandles);
 
@@ -4100,8 +4099,8 @@ fm_status fmAllocateLagHandles(fm_int  sw,
 
     /* Check that the requested glort range does not overlap with the
      * local (non-stacking) LAG glorts */
-    if ( (startGlort >= switchPtr->glortRange.lagBaseGlort) && 
-         (startGlort < (switchPtr->glortRange.lagBaseGlort + 
+    if ( (startGlort >= switchPtr->glortRange.lagBaseGlort) &&
+         (startGlort < (switchPtr->glortRange.lagBaseGlort +
                         switchPtr->glortRange.lagCount) ) )
     {
         FM_LOG_DEBUG(
@@ -4110,15 +4109,15 @@ fm_status fmAllocateLagHandles(fm_int  sw,
             "local use (0x%04x-0x%04x)\n",
             startGlort,
             switchPtr->glortRange.lagBaseGlort,
-            (switchPtr->glortRange.lagBaseGlort + 
+            (switchPtr->glortRange.lagBaseGlort +
                         switchPtr->glortRange.lagCount) - 1);
         FM_LOG_EXIT(FM_LOG_CAT_PORT, FM_ERR_LOG_PORT_UNAVAILABLE);
     }
 
     /* Check that the requested glort range does not overlap with the
      * local (non-stacking) LAG glorts */
-    if ( ( endGlort >= switchPtr->glortRange.lagBaseGlort) && 
-         ( endGlort < (switchPtr->glortRange.lagBaseGlort + 
+    if ( ( endGlort >= switchPtr->glortRange.lagBaseGlort) &&
+         ( endGlort < (switchPtr->glortRange.lagBaseGlort +
                        switchPtr->glortRange.lagCount) ) )
     {
         FM_LOG_DEBUG(
@@ -4158,7 +4157,7 @@ fm_status fmAllocateLagHandles(fm_int  sw,
     }
 
     /* Create the LAG canonical CAM entries */
-    FM_API_CALL_FAMILY(err, 
+    FM_API_CALL_FAMILY(err,
                        switchPtr->CreateCanonicalCamEntries,
                        sw,
                        startGlort,
@@ -4281,7 +4280,7 @@ fm_status fmFreeLagHandles(fm_int sw, fm_int handle)
     }
 
     /* Delete the LAG canonical CAM entries */
-    FM_API_CALL_FAMILY(err, 
+    FM_API_CALL_FAMILY(err,
                        switchPtr->DeleteCanonicalCamEntries,
                        sw,
                        allocEntry->baseGlort,
@@ -4319,7 +4318,7 @@ fm_status fmFreeLagHandles(fm_int sw, fm_int handle)
         }
         FM_RELEASE_GLORT(lportInfo, glort);
     }
-    
+
     /* Set this entry to not-used */
     allocEntry->glortSize = 0;
 
@@ -4361,7 +4360,7 @@ fm_status fmFreeLagHandles(fm_int sw, fm_int handle)
  *                  should store the value by which baseMcastGroupHandle
  *                  should be incremented in order to get the next resource
  *                  handle.
- * 
+ *
  * \return          FM_OK if successful.
  * \return          FM_ERR_INVALID_ARGUMENT if input parameters fail checking.
  * \return          FM_ERR_LOG_PORT_UNAVAILABLE if any glort in the given
@@ -4389,7 +4388,9 @@ fm_status fmAllocateLbgHandles(fm_int  sw,
     FM_LOG_ENTRY(FM_LOG_CAT_PORT,
                  "sw=%d startGlort=0x%x glortSize=0x%x "
                  "baseLbgHandle=%p numHandles=%p step=%p\n",
-                 sw, startGlort, glortSize, 
+                 sw,
+                 startGlort,
+                 glortSize,
                  (void *) baseLbgHandle,
                  (void *) numHandles,
                  (void *) step);
@@ -4402,10 +4403,10 @@ fm_status fmAllocateLbgHandles(fm_int  sw,
         FM_LOG_EXIT(FM_LOG_CAT_PORT, FM_ERR_INVALID_ARGUMENT);
     }
 
-    FM_API_CALL_FAMILY(err, 
-                       switchPtr->GetPortParametersForLBG, 
+    FM_API_CALL_FAMILY(err,
+                       switchPtr->GetPortParametersForLBG,
                        sw,
-                       &glortsPerLbg, 
+                       &glortsPerLbg,
                        &unused);
     FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_PORT, err);
 
@@ -4606,13 +4607,13 @@ fm_status fmFreeLbgHandles(fm_int sw, fm_int handle)
         }
         FM_RELEASE_GLORT(lportInfo, glort);
     }
-    
+
     /* Set this entry to not-used */
     allocEntry->glortSize = 0;
 
     FM_LOG_EXIT(FM_LOG_CAT_PORT, err);
 
-}   /* end fmFreeLbgHandles */ 
+}   /* end fmFreeLbgHandles */
 
 
 
@@ -4960,10 +4961,10 @@ fm_int fmFindUnusedDestEntries(fm_int sw, fm_int numEntries, fm_int first)
         end  = lportInfo->numDestEntries;
         incr = 1;
     }
-    
+
     /***************************************************
      * Find an unused dest table entry.
-     * Use (entry != end) for the loop to go both 
+     * Use (entry != end) for the loop to go both
      * directions
      **************************************************/
 
@@ -5055,10 +5056,10 @@ fm_int fmFindUnusedGlorts(fm_int            sw,
 
         if ( (first != -1) && ( (first < firstEntry) || (first > lastEntry) ) )
         {
-            FM_LOG_FATAL(FM_LOG_CAT_PORT, 
+            FM_LOG_FATAL(FM_LOG_CAT_PORT,
                          "first glort %d out of range [%d, %d]\n",
-                         first, 
-                         firstEntry, 
+                         first,
+                         firstEntry,
                          lastEntry);
 
             return -1;
@@ -5066,9 +5067,9 @@ fm_int fmFindUnusedGlorts(fm_int            sw,
 
         if (lastEntry > FM_MAX_GLORT)
         {
-            FM_LOG_FATAL(FM_LOG_CAT_PORT, 
+            FM_LOG_FATAL(FM_LOG_CAT_PORT,
                          "Bad cam entry: range [%d, %d]\n",
-                         firstEntry, 
+                         firstEntry,
                          lastEntry);
 
             return -1;
@@ -5229,7 +5230,9 @@ fm_status fmFindUnusedLagGlorts(fm_int  sw,
 
     FM_LOG_ENTRY(FM_LOG_CAT_PORT,
                  "sw=%d numPorts=%d useHandle=%d\n",
-                 sw, numPorts, useHandle);
+                 sw,
+                 numPorts,
+                 useHandle);
 
     switchPtr = GET_SWITCH_PTR(sw);
     lportInfo = &switchPtr->logicalPortInfo;
@@ -5274,19 +5277,19 @@ fm_status fmFindUnusedLagGlorts(fm_int  sw,
         for ( i = 0 ; i < FM_LAG_ALLOC_TABLE_SIZE ; ++i )
         {
             fm_int freeCount = 0;
-    
+
             allocEntry = &lportInfo->lagAllocTable[i];
             if (!allocEntry->glortSize)
             {
                 continue;
             }
-    
+
             for (offBase =  0 ;
-                 offBase < allocEntry->glortSize ; 
+                 offBase < allocEntry->glortSize ;
                  offBase++)
             {
                 glort = allocEntry->baseGlort + offBase;
-    
+
                 /* Find free glort range reserved for LAG */
                 if (FM_IS_GLORT_LAG_FREE(lportInfo, glort))
                 {
@@ -5295,10 +5298,10 @@ fm_status fmFindUnusedLagGlorts(fm_int  sw,
                         *firstGlort = glort;
                         *logicalPort = allocEntry->baseHandle + offBase;
                     }
-                    
+
                     ++freeCount;
-                    
-                    if (freeCount >= numPorts) 
+
+                    if (freeCount >= numPorts)
                     {
                         /* Done */
                         goto ABORT;
@@ -5368,8 +5371,8 @@ fm_status fmFindUnusedLbgGlorts(fm_int  sw,
 
     FM_LOG_ENTRY(FM_LOG_CAT_PORT,
                  "sw=%d numPorts=%d useHandle=%d\n",
-                 sw, 
-                 numPorts, 
+                 sw,
+                 numPorts,
                  useHandle);
 
     switchPtr = GET_SWITCH_PTR(sw);
@@ -5415,19 +5418,19 @@ fm_status fmFindUnusedLbgGlorts(fm_int  sw,
         for ( i = 0 ; i < FM_LBG_ALLOC_TABLE_SIZE ; ++i )
         {
             fm_int freeCount = 0;
-    
+
             allocEntry = &lportInfo->lbgAllocTable[i];
             if (!allocEntry->glortSize)
             {
                 continue;
             }
-    
+
             for (offBase =  0 ;
-                 offBase < allocEntry->glortSize ; 
+                 offBase < allocEntry->glortSize ;
                  offBase++)
             {
                 glort = allocEntry->baseGlort + offBase;
-    
+
                 /* Find free glort range reserved for LBG */
                 if (FM_IS_GLORT_LBG_FREE(lportInfo, glort))
                 {
@@ -5436,10 +5439,10 @@ fm_status fmFindUnusedLbgGlorts(fm_int  sw,
                         *firstGlort = glort;
                         *logicalPort = allocEntry->baseHandle + offBase;
                     }
-                    
+
                     ++freeCount;
-                    
-                    if (freeCount >= numPorts) 
+
+                    if (freeCount >= numPorts)
                     {
                         /* Done */
                         goto ABORT;
@@ -5513,14 +5516,14 @@ fm_status fmFindUnusedMcgGlorts(fm_int             sw,
 
     FM_LOG_ENTRY(FM_LOG_CAT_PORT,
                  "sw=%d numPorts=%d useHandle=%d\n",
-                 sw, 
-                 numPorts, 
+                 sw,
+                 numPorts,
                  useHandle);
 
     switchPtr = GET_SWITCH_PTR(sw);
     lportInfo = &switchPtr->logicalPortInfo;
 
-    if (useHandle) 
+    if (useHandle)
     {
         /* Find an entry based on a specified handle */
         allocEntry = fmFindMcgEntryByHandle(sw, useHandle);
@@ -5552,20 +5555,20 @@ fm_status fmFindUnusedMcgGlorts(fm_int             sw,
         for ( i = 0 ; i < FM_MCG_ALLOC_TABLE_SIZE ; ++i )
         {
             fm_int freeCount = 0;
-    
+
             allocEntry = &lportInfo->mcgAllocTable[i];
             if (!allocEntry->glortSize)
             {
                 continue;
             }
-    
+
             for (offBase =  0 ;
-                 offBase < allocEntry->glortSize ; 
+                 offBase < allocEntry->glortSize ;
                  offBase++)
             {
                 glort = allocEntry->baseGlort + offBase;
-    
-                /* Find a free glort reserved for mcast 
+
+                /* Find a free glort reserved for mcast
                  * Any glort used for mcast must be reserved
                  */
                 if (FM_IS_GLORT_MCG_FREE(lportInfo, glort))
@@ -5574,10 +5577,10 @@ fm_status fmFindUnusedMcgGlorts(fm_int             sw,
                     {
                         *offBasePtr = offBase;
                     }
-                    
+
                     ++freeCount;
-                    
-                    if (freeCount >= numPorts) 
+
+                    if (freeCount >= numPorts)
                     {
                         *allocEntryPtr = allocEntry;
                         /* Done */
@@ -5929,13 +5932,13 @@ fm_status fmFreeMcastLogicalPort(fm_int sw, fm_int port)
     for (block = 0 ; block < FM_MCG_ALLOC_TABLE_SIZE ; block++ )
     {
         mcgEntry = &lportInfo->mcgAllocTable[block];
-    
+
         if (!mcgEntry->glortSize)
         {
             continue;
         }
 
-        if ( (portPtr->glort >= mcgEntry->baseGlort) && 
+        if ( (portPtr->glort >= mcgEntry->baseGlort) &&
              (portPtr->glort < (mcgEntry->baseGlort + mcgEntry->glortSize) ) )
         {
             break;
@@ -6002,9 +6005,9 @@ fm_status fmFreeMcastLogicalPort(fm_int sw, fm_int port)
  *
  * \desc            Check if the given glort is within LAG glort range.
  *
- * \note            This function assumes switch protection lock has already 
+ * \note            This function assumes switch protection lock has already
  *                  been acquired and that the switch pointer is valid.
- * 
+ *
  * \param[in]       sw is the switch on which to operate.
  *
  * \param[in]       glort is the glort which should be checked.

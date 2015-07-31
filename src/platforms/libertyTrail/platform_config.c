@@ -5,7 +5,7 @@
  * Creation Date:   June 2, 2014
  * Description:     Functions to handle configuration for platform.
  *
- * Copyright (c) 2014, Intel Corporation
+ * Copyright (c) 2014 - 2015, Intel Corporation
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -29,7 +29,7 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
+ *****************************************************************************/
 
 #include <fm_sdk_fm10000_int.h>
 
@@ -151,6 +151,7 @@ static fm_platformStrMap ethModeMap[] =
     { "XAUI",         FM_ETH_MODE_XAUI         },
     { "XLAUI",        FM_ETH_MODE_XLAUI        },
     { "disabled",     FM_ETH_MODE_DISABLED     },
+    { "AUTODETECT",   FM_ETHMODE_AUTODETECT     },
 
 };
 
@@ -173,6 +174,7 @@ static fm_platformStrMap intfTypeMap[] =
     { "QSFP_LANE1", FM_PLAT_INTF_TYPE_QSFP_LANE1 },
     { "QSFP_LANE2", FM_PLAT_INTF_TYPE_QSFP_LANE2 },
     { "QSFP_LANE3", FM_PLAT_INTF_TYPE_QSFP_LANE3 },
+    { "PCIE",       FM_PLAT_INTF_TYPE_PCIE       },
 
 };
 
@@ -182,6 +184,15 @@ static fm_platformStrMap lanePolarityMap[] =
     { "INVERT_RX",    FM_POLARITY_INVERT_RX    },
     { "INVERT_TX",    FM_POLARITY_INVERT_TX    },
     { "INVERT_RX_TX", FM_POLARITY_INVERT_RX_TX },
+
+};
+
+static fm_platformStrMap rxTerminationMap[] =
+{
+    { "TERM_HIGH",    FM_PORT_TERMINATION_HIGH  },
+    { "TERM_LOW",     FM_PORT_TERMINATION_LOW   },
+    { "TERM_FLOAT",   FM_PORT_TERMINATION_FLOAT },
+    { "NOT_SET",      UNDEF_VAL},
 
 };
 
@@ -801,8 +812,7 @@ static fm_status GetAndValidateObjectValue(fm_text buf,
     if ( (pStr = strstr(buf, objStr)) == NULL)
     {
         FM_LOG_FATAL(FM_LOG_CAT_PLATFORM,
-                     "String '%s' not found in the "
-                     "portMapping attribute %s\n",
+                     "String '%s' not found in property %s\n",
                      objStr,
                      buf);
         FM_LOG_EXIT(FM_LOG_CAT_PLATFORM, FM_ERR_NOT_FOUND);
@@ -815,8 +825,7 @@ static fm_status GetAndValidateObjectValue(fm_text buf,
     if (endStr == pStr)
     {
         FM_LOG_FATAL(FM_LOG_CAT_PLATFORM,
-                     "Unrecognized %s number from the "
-                     "portMapping attribute %s\n",
+                     "Unrecognized %s number from property %s\n",
                      errStr,
                      buf);
         FM_LOG_EXIT(FM_LOG_CAT_PLATFORM, FM_ERR_INVALID_ARGUMENT);
@@ -825,8 +834,7 @@ static fm_status GetAndValidateObjectValue(fm_text buf,
     if (valInt < min || valInt > max)
     {
         FM_LOG_FATAL(FM_LOG_CAT_PLATFORM,
-                     "%s%d is out of range (%d,%d) "
-                     "from the portMapping attribute %s\n",
+                     "%s%d is out of range (%d,%d) from property %s\n",
                      objStr,
                      valInt,
                      min,
@@ -870,6 +878,7 @@ static fm_status GetPortMapping(fm_int sw, fm_int port)
     fm_int              status;
     fm_int              lane;
     fm_int              value;
+    fm_int              maxPhy;
     fm_bool             isLaneUsed[FM_PLAT_LANES_PER_EPL];
 
     portCfg = FM_PLAT_GET_PORT_CFG(sw, port);
@@ -1080,6 +1089,35 @@ static fm_status GetPortMapping(fm_int sw, fm_int port)
                                                0,
                                                FM_PLAT_LANES_PER_EPL-1);
             FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
+
+            /**************************************************
+             * Get PHY/Retimer number and PHY port number 
+             * associated to this port if any.
+             **************************************************/
+
+            /* Look for 'PHY=' string */
+            if ( strstr(valText, "PHY=") != NULL )
+            {
+                maxPhy = FM_PLAT_GET_SWITCH_CFG(sw)->numPhys;
+
+                /* Get PHY number */
+                status = GetAndValidateObjectValue(valText,
+                                                   "PHY=",
+                                                   "phy",
+                                                   &portCfg->phyNum,
+                                                   0,
+                                                   maxPhy-1);
+                FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
+
+                /* Get PHY number if present */
+                status = GetAndValidateObjectValue(valText,
+                                                   "PORT=",
+                                                   "phy port",
+                                                   &portCfg->phyPort,
+                                                   0,
+                                                   FM_PLAT_PORT_PER_PHY-1);
+                FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
+            }
         }
         /* Look for 'PCIE=' string */
         else if ( strstr(valText, "PCIE=") != NULL )
@@ -1147,6 +1185,115 @@ static fm_status GetPortMapping(fm_int sw, fm_int port)
     FM_LOG_EXIT(FM_LOG_CAT_PLATFORM, FM_OK);
 
 }   /*  end GetPortMapping */
+
+
+/*****************************************************************************/
+/* GetPortLaneTerminationCfg
+ * \ingroup intPlatform
+ *
+ * \desc            Get the lane termination of the given port on the given
+ *                  switch. For QSFP ports all the lanes are read.
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \param[in]       port is the port index on which to operate.
+ *
+ * \return          NONE
+ *
+ *****************************************************************************/
+static void GetPortLaneTerminationCfg(fm_int sw, fm_int port)
+{
+    fm_platformCfgPort *portCfg;
+    fm_char             buf[MAX_BUF_SIZE+1];
+    fm_int              valInt;
+    fm_int              lane;
+    fm_int              status;
+
+    portCfg = FM_PLAT_GET_PORT_CFG(sw, port);
+
+    /**************************************************
+     * Default value is not set
+     ***************************************************/
+
+
+    if (portCfg->intfType == FM_PLAT_INTF_TYPE_QSFP_LANE0)
+    {
+        /* For QSFP ports, the polarity is set using the port and lane
+         * indexes. So get the polarity of all lanes. */
+
+        for (lane = 0 ; lane < FM_PLAT_LANES_PER_EPL ; lane++)
+        {
+            FM_SNPRINTF_S(buf,
+                          MAX_BUF_SIZE,
+                          FM_AAK_API_PLATFORM_PORT_PER_LANE_TERMINATION,
+                          sw,
+                          port,
+                          lane);
+
+            status = GetConfigStrMap(buf,
+                                     &valInt,
+                                     UNDEF_VAL,
+                                     rxTerminationMap,
+                                     FM_NENTRIES(rxTerminationMap));
+
+            /* Save the termination in the proper lane cfg structure. */
+            if (status == FM_OK)
+            {
+                FM_PLAT_GET_LANE_CFG(sw, portCfg, lane)->rxTermination = valInt;
+            }
+            else
+            {
+                FM_PLAT_GET_LANE_CFG(sw, portCfg, lane)->rxTermination = UNDEF_VAL;
+            }
+        }
+    }
+    else if (portCfg->intfType != FM_PLAT_INTF_TYPE_QSFP_LANE1 &&
+             portCfg->intfType != FM_PLAT_INTF_TYPE_QSFP_LANE2 &&
+             portCfg->intfType != FM_PLAT_INTF_TYPE_QSFP_LANE3)
+    {
+        /* For single lane port get the polatity using the port index only. */
+        FM_SNPRINTF_S(buf,
+                      MAX_BUF_SIZE,
+                      FM_AAK_API_PLATFORM_PORT_TERMINATION,
+                      sw,
+                      port);
+
+        status = GetConfigStrMap(buf,
+                                 &valInt,
+                                 UNDEF_VAL,
+                                 rxTerminationMap,
+                                 FM_NENTRIES(rxTerminationMap));
+
+        if (status == FM_ERR_NOT_FOUND)
+        {
+            /* The polarity could be set using the port and lane 0 indexes.*/
+            FM_SNPRINTF_S(buf,
+                          MAX_BUF_SIZE,
+                          FM_AAK_API_PLATFORM_PORT_PER_LANE_TERMINATION,
+                          sw,
+                          port,
+                          0);
+
+            GetConfigStrMap(buf,
+                            &valInt,
+                            UNDEF_VAL,
+                            rxTerminationMap,
+                            FM_NENTRIES(rxTerminationMap));
+        }
+
+        /* Save the polarity in the proper lane cfg structure. */
+        lane = 0;
+        if (status == FM_OK)
+        {
+            FM_PLAT_GET_LANE_CFG(sw, portCfg, lane)->rxTermination = valInt;
+        }
+        else
+        {
+            FM_PLAT_GET_LANE_CFG(sw, portCfg, lane)->rxTermination = UNDEF_VAL;
+        }
+    }
+
+}   /*  end GetPortLaneTerminationCfg */
 
 
 
@@ -1782,6 +1929,12 @@ static fm_status LoadEplProperties(fm_int sw, fm_int port)
     }
 
     /**************************************************
+     * Get lane termination
+     **************************************************/
+
+    GetPortLaneTerminationCfg(sw, port);
+
+    /**************************************************
      * Get lane polarity
      **************************************************/
 
@@ -1810,6 +1963,115 @@ static fm_status LoadEplProperties(fm_int sw, fm_int port)
 
 
 /*****************************************************************************/
+/* LoadGN2412Config
+ * \ingroup intPlatform
+ *
+ * \desc            Load GN2412 retimer specific configuration.
+ *
+ * \param[in]       sw is the switch index on which to operate.
+ * 
+ * \param[in]       phyIdx is the retimer index on which to operate.
+ *
+ * \return          FM_OK if successful.
+ * \return          Other ''Status Codes'' as appropriate in case of
+ *                  failure.
+ *
+ *****************************************************************************/
+static fm_status LoadGN2412Config(fm_int sw, fm_int phyIdx)
+{
+    fm_gn2412LaneCfg *laneCfg;
+    fm_status         status;
+    fm_int            lane;
+    fm_char           buf[MAX_BUF_SIZE+1];
+    fm_text           valText;
+    fm_int            crossConnect[FM_GN2412_NUM_LANES] = { 6,7,8,9,10,11,
+                                                            0,1,2,3,4,5 };
+
+    for ( lane = 0 ; lane < FM_GN2412_NUM_LANES ; lane++ )
+    {
+        laneCfg = &FM_PLAT_GET_PHY_CFG(sw, phyIdx)->gn2412Lane[lane];
+
+        /* Get the TX equalization config for the given lane */
+        FM_SNPRINTF_S(buf,
+                      MAX_BUF_SIZE,
+                      FM_AAK_API_PLATFORM_PHY_TX_EQUALIZER,
+                      sw,
+                      phyIdx,
+                      lane);
+
+        valText = fmGetTextApiProperty(buf, NULL);
+
+        if (valText == NULL)
+        {
+            /* Not defined, then used default values */
+            laneCfg->polarity    = FM_GN2412_DEF_LANE_POLARITY;
+            laneCfg->preTap      = FM_GN2412_DEF_LANE_PRE_TAP;
+            laneCfg->attenuation = FM_GN2412_DEF_LANE_ATT;
+            laneCfg->postTap     = FM_GN2412_DEF_LANE_POST_TAP;
+            continue;
+        }
+
+        /* Get tap polarity value */
+        status = GetAndValidateObjectValue(valText,
+                                           "POL=",
+                                           "polarity",
+                                           &laneCfg->polarity,
+                                           0,
+                                           31);
+        laneCfg->polarity = (status == FM_OK) ? laneCfg->polarity :
+                                                FM_GN2412_DEF_LANE_POLARITY;
+
+        /* Get pre-tap value */
+        status = GetAndValidateObjectValue(valText,
+                                           "PRE=",
+                                           "pre-tap",
+                                           &laneCfg->preTap,
+                                           0,
+                                           15);
+        laneCfg->preTap = (status == FM_OK) ? laneCfg->preTap :
+                                              FM_GN2412_DEF_LANE_PRE_TAP;
+
+        /* Get attenuation value */
+        status = GetAndValidateObjectValue(valText,
+                                           "ATT=",
+                                           "attenuation",
+                                           &laneCfg->attenuation,
+                                           0,
+                                           15);
+        laneCfg->attenuation = (status == FM_OK) ? laneCfg->attenuation :
+                                                   FM_GN2412_DEF_LANE_ATT;
+
+        /* Get post-tap value */
+        status = GetAndValidateObjectValue(valText,
+                                           "POST=",
+                                           "post-tap",
+                                           &laneCfg->postTap,
+                                           0,
+                                           31);
+        laneCfg->postTap = (status == FM_OK) ? laneCfg->postTap :
+                                               FM_GN2412_DEF_LANE_POST_TAP;
+
+        /* Hard code the cross-connection. Will eventually be configurable. */
+        laneCfg->rxPort = crossConnect[lane];
+
+        /* Get the application mode for the given lane */
+        FM_SNPRINTF_S(buf,
+                      MAX_BUF_SIZE,
+                      FM_AAK_API_PLATFORM_PHY_APP_MODE,
+                      sw,
+                      phyIdx,
+                      lane);
+        GetOptionalConfigInt(buf, &laneCfg->appMode, 0x74);
+    }
+
+    return FM_OK;
+
+}   /* end LoadGN2412Config */
+
+
+
+
+/*****************************************************************************/
 /* LoadPhyConfiguration
  * \ingroup intPlatform
  *
@@ -1826,6 +2088,7 @@ static fm_status LoadPhyConfiguration(fm_int sw)
 {
     fm_platformCfgSwitch *swCfg;
     fm_platformCfgPhy *   phyCfg;
+    fm_status             status;
     fm_int                phyIdx;
     fm_int                valInt;
     fm_char               buf[MAX_BUF_SIZE+1];
@@ -1895,6 +2158,12 @@ static fm_status LoadPhyConfiguration(fm_int sw)
                          "Missing valid value for '%s'\n", 
                          buf);
             return FM_ERR_INVALID_ARGUMENT;
+        }
+        else if ( phyCfg->model == FM_PLAT_PHY_GN2412 )
+        {
+            /* Get GN2412 specific properties */
+            status = LoadGN2412Config(sw, phyIdx);
+            FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
         }
 
         /* Get PHY I2C address */
@@ -1978,10 +2247,13 @@ void fmPlatformCfgDump(void)
     fm_platformCfgPort *  portCfg;
     fm_platformCfgLane *  laneCfg;
     fm_platformCfgSwitch *swCfg;
+    fm_platformCfgPhy *   phyCfg;
+    fm_gn2412LaneCfg *    phyLaneCfg;
     fm_int                swIdx;
     fm_int                portIdx;
     fm_int                epl;
     fm_int                lane;
+    fm_int                phyIdx;
 
     platCfg = FM_PLAT_GET_CFG;
     PRINT_VALUE("debug", platCfg->debug);
@@ -2016,6 +2288,7 @@ void fmPlatformCfgDump(void)
         PRINT_VALUE(" intrPollPeriodMsec", swCfg->intrPollPeriodMsec);
         PRINT_STRING(" uioDevName", swCfg->uioDevName);
         PRINT_STRING(" netDevName", swCfg->netDevName);
+        PRINT_STRING(" devMemOffset", swCfg->devMemOffset);
         PRINT_VALUE(" gpioPortIntr", swCfg->gpioPortIntr);
         PRINT_VALUE(" gpioI2cReset", swCfg->gpioI2cReset);
         PRINT_VALUE(" gpioFlashWP", swCfg->gpioFlashWP);
@@ -2042,6 +2315,7 @@ void fmPlatformCfgDump(void)
             PRINT_VALUE("  pep", portCfg->pep);
             PRINT_VALUE("  tunnel", portCfg->tunnel);
             PRINT_VALUE("  loopback", portCfg->loopback);
+            PRINT_VALUE("  autodetect", portCfg->autodetect);
             PRINT_STRING( "  ethMode", fmPlatformGetEthModeStr(portCfg->ethMode) );
             PRINT_STRING( "  portType",
                          GetStrMap( portCfg->portType,
@@ -2067,7 +2341,7 @@ void fmPlatformCfgDump(void)
                                        an73AbilityMap,
                                        FM_NENTRIES(an73AbilityMap) ) );
             PRINT_VALUE("  phyNum", portCfg->phyNum);
-            PRINT_VALUE("  phyLane", portCfg->phyLane);
+            PRINT_VALUE("  phyPort", portCfg->phyPort);
 
 #ifdef FM_SUPPORT_SWAG
             PRINT_STRING("   swagLinkType",
@@ -2113,6 +2387,11 @@ void fmPlatformCfgDump(void)
                                        lanePolarityMap, 
                                        FM_NENTRIES(lanePolarityMap), 
                                        FALSE));
+                PRINT_STRING("  rxTermination",
+                             GetStrMap(laneCfg->rxTermination, 
+                                       rxTerminationMap, 
+                                       FM_NENTRIES(rxTerminationMap), 
+                                       FALSE));
                 PRINT_VALUE("  preCursor1GCopper", 
                             laneCfg->copper[BPS_1G].preCursor);
                 PRINT_VALUE("  preCursor10GCopper", 
@@ -2154,6 +2433,39 @@ void fmPlatformCfgDump(void)
 
                 FM_LOG_PRINT("\n");
             }
+            FM_LOG_PRINT("\n");
+        }
+
+        for ( phyIdx = 0 ; phyIdx < FM_PLAT_NUM_PHY(swIdx) ; phyIdx++ )
+        {
+            phyCfg = FM_PLAT_GET_PHY_CFG(swIdx, phyIdx);
+            FM_LOG_PRINT("==============PHY Index %d============\n", phyIdx);
+
+            PRINT_STRING("  model",
+                         GetStrMap( phyCfg->model,
+                                    phyModelMap,
+                                    FM_NENTRIES(phyModelMap),
+                                    FALSE ) );
+            PRINT_VALUE("  addr", phyCfg->addr);
+            PRINT_VALUE("  hwResourceId", phyCfg->hwResourceId);
+
+            if ( phyCfg->model == FM_PLAT_PHY_GN2412 )
+            {
+                for ( lane = 0 ; lane < FM_GN2412_NUM_LANES ; lane++ )
+                {
+                    phyLaneCfg = &phyCfg->gn2412Lane[lane];
+                    FM_LOG_PRINT("    ======== GN2412 %d, lane %d ========\n", 
+                                 phyIdx, 
+                                 lane);
+
+                    PRINT_VALUE("  appMode", phyLaneCfg->appMode);
+                    PRINT_VALUE("  polarity", phyLaneCfg->polarity);
+                    PRINT_VALUE("  preTap", phyLaneCfg->preTap);
+                    PRINT_VALUE("  attenuation", phyLaneCfg->attenuation);
+                    PRINT_VALUE("  postTap", phyLaneCfg->postTap);
+                }
+            }
+
             FM_LOG_PRINT("\n");
         }
 
@@ -2432,7 +2744,7 @@ fm_status fmPlatformCfgLoad(void)
         GetOptionalConfigInt(buf, &valInt, FM_AAD_API_PLATFORM_CPU_PORT);
         swCfg->cpuPort = valInt;
 
-        /* Get the RRC GPIO number for SFP/QSFP module interrupt */
+        /* Get the FM10000 GPIO number for SFP/QSFP module interrupt */
         FM_SNPRINTF_S(buf,
                       MAX_BUF_SIZE,
                       FM_AAK_API_PLATFORM_PORT_INTERRUPT_GPIO,
@@ -2440,7 +2752,7 @@ fm_status fmPlatformCfgLoad(void)
         GetOptionalConfigInt(buf, &valInt, FM_PLAT_UNDEFINED);
         swCfg->gpioPortIntr = valInt;
 
-        /* Get the RRC GPIO number used for the I2C reset Control */
+        /* Get the FM10000 GPIO number used for the I2C reset Control */
         FM_SNPRINTF_S(buf,
                       MAX_BUF_SIZE,
                       FM_AAK_API_PLATFORM_I2C_RESET_GPIO,
@@ -2448,7 +2760,7 @@ fm_status fmPlatformCfgLoad(void)
         GetOptionalConfigInt(buf, &valInt, FM_PLAT_UNDEFINED);
         swCfg->gpioI2cReset = valInt;
 
-        /* Get the RRC GPIO number used to control the write protect pin on
+        /* Get the FM10000 GPIO number used to control the write protect pin on
            the SPI flash (switch's NVM). */
         FM_SNPRINTF_S(buf,
                       MAX_BUF_SIZE,
@@ -2482,6 +2794,16 @@ fm_status fmPlatformCfgLoad(void)
                         FM_NENTRIES(swagRole));
         swCfg->switchRole = valInt;
 #endif
+
+        /* Get the configure de-emphasis enable/disable flag */
+        FM_SNPRINTF_S(buf,
+                      MAX_BUF_SIZE,
+                      FM_AAK_API_PLATFORM_PHY_ENABLE_DEEMPHASIS,
+                      swIdx);
+        GetOptionalConfigInt(buf, 
+                             &valInt,
+                             FM_AAD_API_PLATFORM_PHY_ENABLE_DEEMPHASIS);
+        swCfg->enablePhyDeEmphasis = valInt;
 
         /* PHY configuration must be loaded before port configuration as the
            number of PHYs (numPhys) is used below */
@@ -2522,6 +2844,8 @@ fm_status fmPlatformCfgLoad(void)
             portCfg->pep = FM_PLAT_UNDEFINED;
             portCfg->tunnel = FM_PLAT_UNDEFINED;
             portCfg->loopback = FM_PLAT_UNDEFINED;
+            portCfg->phyNum = FM_PLAT_UNDEFINED;
+            portCfg->phyPort = FM_PLAT_UNDEFINED;
 
             /* The physical port is the same as portIndex */
             portCfg->physPort = portIdx;
@@ -2648,7 +2972,17 @@ fm_status fmPlatformCfgLoad(void)
                             defVal,
                             ethModeMap,
                             FM_NENTRIES(ethModeMap) );
-            portCfg->ethMode = valInt;
+
+            if (valInt == FM_ETHMODE_AUTODETECT)
+            {
+                portCfg->autodetect = TRUE;
+                portCfg->ethMode = FM_ETH_MODE_DISABLED;
+            }
+            else
+            {
+                portCfg->autodetect = FALSE;
+                portCfg->ethMode = valInt;
+            }
 
             /**************************************************
              * Get port speed for scheduler BW allocation
@@ -2769,27 +3103,7 @@ fm_status fmPlatformCfgLoad(void)
                                an73AbilityMap,
                                FM_NENTRIES(an73AbilityMap));
             portCfg->an73Ability = valInt;
-
-            /**************************************************
-             * Get PHY/Retimer number and lane number
-             **************************************************/
-
-            FM_SNPRINTF_S(buf,
-                          MAX_BUF_SIZE,
-                          FM_AAK_API_PLATFORM_PORT_PHY_NUM,
-                          swIdx,
-                          portIdx);
-            GetOptionalConfigInt(buf, &valInt, -1);
-            portCfg->phyNum = valInt;
-
-            /* Get PHY lane number */
-            FM_SNPRINTF_S(buf,
-                          MAX_BUF_SIZE,
-                          FM_AAK_API_PLATFORM_PORT_PHY_LANE,
-                          swIdx,
-                          portIdx);
-            GetOptionalConfigInt(buf, &valInt, -1);
-            portCfg->phyLane = valInt;
+            portCfg->an73AbilityCfg = valInt;
 
             /**************************************************
              * Read the configuration related to EPL/lanes. 
@@ -2885,6 +3199,20 @@ fm_status fmPlatformCfgLoad(void)
         status = fm10000LoadBootCfg(swIdx, &swCfg->bootCfg);
         FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
 
+
+        /* Get the /dev/mem offset */
+        FM_SNPRINTF_S(buf,
+                      MAX_BUF_SIZE,
+                      FM_AAK_API_PLATFORM_DEVMEM_OFFSET,
+                      swIdx);
+
+        valText = fmGetTextApiProperty(buf, 
+                                       FM_AAD_API_PLATFORM_DEVMEM_OFFSET);
+
+        FM_STRNCPY_S(swCfg->devMemOffset,
+                     FM_PLAT_MAX_CFG_STR_LEN,
+                     valText,
+                     FM_PLAT_MAX_CFG_STR_LEN);
 
         /* Get the raw socket netDev name */
         FM_SNPRINTF_S(buf,

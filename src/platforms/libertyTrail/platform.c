@@ -32,6 +32,7 @@
  *****************************************************************************/
 
 #include <fm_sdk_fm10000_int.h>
+#include <sys/io.h>
 #include <platforms/util/fm_util_device_lock.h>
 
 #include <platforms/util/fm_util.h>
@@ -55,6 +56,9 @@
 
 
 #define NVM_NAME                              "NVM"
+
+
+#define SW_MEM_SIZE         0x04000000
 
 
 /*****************************************************************************
@@ -160,6 +164,164 @@ static fm_status ChooseMappedMemoryAddresses(void)
 
 
 /*****************************************************************************/
+/** ConnectToDevMem
+ *
+ * \desc            Open and memory map to /dev/mem.
+ *
+ * \param[in]       sw is the switch number
+ *
+ * \return          FM_OK if successful.
+ * \return          Other ''Status Codes'' as appropriate in case of
+ *                  failure.
+ *
+ *****************************************************************************/
+static fm_status ConnectToDevMem(fm_int sw)
+{
+    fm_platformProcessState *pp;
+    fm_platformCfgSwitch    *swCfg;
+    fm_uint64                memOffset;
+    fm_char                  strErrBuf[FM_STRERROR_BUF_SIZE];
+    errno_t                  strErrNum;
+    void *                   addr;
+
+    FM_LOG_ENTRY(FM_LOG_CAT_PLATFORM, "sw = %d\n", sw);
+
+    pp = GET_PLAT_PROC_STATE(sw);
+
+    if (pp->fd >= 0)
+    {
+        /* Already connected to dev/mem */
+        FM_LOG_EXIT(FM_LOG_CAT_PLATFORM, FM_OK);
+    }
+
+    swCfg = FM_PLAT_GET_SWITCH_CFG(sw);
+
+    /* The address offset is after the name delimeted by : */
+    memOffset = strtoull(swCfg->devMemOffset, NULL, 16);
+
+    if (memOffset == ULLONG_MAX)
+    {
+        strErrNum = FM_STRERROR_S(strErrBuf, FM_STRERROR_BUF_SIZE, errno);
+
+        if (strErrNum)
+        {
+            FM_SNPRINTF_S(strErrBuf, FM_STRERROR_BUF_SIZE, "%d", errno);
+        }
+
+        FM_LOG_FATAL(FM_LOG_CAT_PLATFORM,
+                     "FAIL: Can't decode switch#%d memory offset '%s' - %s\n",
+                     sw,
+                     swCfg->devMemOffset,
+                     strErrBuf);
+        FM_LOG_EXIT(FM_LOG_CAT_PLATFORM, FM_FAIL);        
+    }
+
+    if (memOffset == 0)
+    {
+        FM_LOG_FATAL(FM_LOG_CAT_PLATFORM,
+                     "FAIL: Invalid switch#%d memory offset '%s'\n",
+                     sw,
+                     swCfg->devMemOffset);
+        FM_LOG_EXIT(FM_LOG_CAT_PLATFORM, FM_FAIL); 
+    }
+
+    FM_LOG_PRINT("Switch#%d memory is located at 0x%llx\n", sw, memOffset);
+
+    /* Check IO permissions to be able to open /dev/mem */
+    if(iopl(3))
+    {
+        FM_LOG_FATAL(FM_LOG_CAT_PLATFORM,
+                     "FAIL: Cannot get I/O permissions.\n");
+        FM_LOG_EXIT(FM_LOG_CAT_PLATFORM, FM_FAIL);
+    }
+
+    pp->fd = open ("/dev/mem", O_RDWR);
+    if (pp->fd < 0)
+    {
+        FM_LOG_FATAL(FM_LOG_CAT_PLATFORM,
+                     "FAIL: Unable to open /dev/mem\n");
+        FM_LOG_EXIT(FM_LOG_CAT_PLATFORM, FM_FAIL);
+    }
+
+    /* Memory map the switch memory */
+    addr = mmap(desiredMemmapAddr[sw],
+                SW_MEM_SIZE,
+                PROT_READ | PROT_WRITE,
+                MAP_SHARED,
+                pp->fd,
+                memOffset);
+
+    if (addr == MAP_FAILED)
+    {
+        strErrNum = FM_STRERROR_S(strErrBuf, FM_STRERROR_BUF_SIZE, errno);
+
+        if (strErrNum)
+        {
+            FM_SNPRINTF_S(strErrBuf, FM_STRERROR_BUF_SIZE, "%d", errno);
+        }
+
+        FM_LOG_FATAL(FM_LOG_CAT_PLATFORM,
+                     "FAIL: Can't map switch#%d memory - %s\n",
+                     sw,
+                     strErrBuf);
+        FM_LOG_EXIT(FM_LOG_CAT_PLATFORM, FM_FAIL);
+    }
+    else if (addr != desiredMemmapAddr[sw])
+    {
+        FM_LOG_FATAL(FM_LOG_CAT_PLATFORM,
+                     "FAIL: Can't map switch#%d memory - "
+                     "desired address was %p but got %p\n",
+                     sw,
+                     desiredMemmapAddr[sw],
+                     addr);
+        FM_LOG_EXIT(FM_LOG_CAT_PLATFORM, FM_FAIL);
+    }
+
+    GET_PLAT_STATE(sw)->switchMem = addr;
+
+    FM_LOG_EXIT(FM_LOG_CAT_PLATFORM, FM_OK);
+
+}   /* end ConnectToDevMem */
+
+
+
+/*****************************************************************************/
+/** DisconnectFromDevMem
+ *
+ * \desc            Memory unmap and close connection to /dev/mem.
+ *
+ * \param[in]       sw is the switch number
+ *
+ * \return          FM_OK if successful.
+ * \return          Other ''Status Codes'' as appropriate in case of
+ *                  failure.
+ *
+ *****************************************************************************/
+static fm_status DisconnectFromDevMem(fm_int sw)
+{
+    fm_platformProcessState *pp;
+
+    FM_LOG_ENTRY(FM_LOG_CAT_PLATFORM, "sw = %d\n", sw);
+
+    pp = GET_PLAT_PROC_STATE(sw);
+
+    if (pp->fd >= 0)
+    {
+        /* Memory unmap for the switch memory */
+        munmap((void *)GET_PLAT_STATE(sw)->switchMem, SW_MEM_SIZE);
+
+        /* Close connection */
+        close(pp->fd);
+        pp->fd = -1;
+    }
+
+    FM_LOG_EXIT(FM_LOG_CAT_PLATFORM, FM_OK);
+
+}   /* end DisconnectFromDevMem */
+
+
+
+/*****************************************************************************/
 /** ConnectToHostDriver
  *
  * \desc            Open and memory map to the host driver.
@@ -237,6 +399,78 @@ static fm_status DisconnectFromHostDriver(fm_int sw)
 
 }   /* end DisconnectFromHostDriver */
 
+
+
+/*****************************************************************************/
+/** ConnectToPCIE
+ *
+ * \desc            Open and memory map to the host driver or /dev/mem.
+ *
+ * \param[in]       sw is the switch number
+ *
+ * \return          FM_OK if successful.
+ * \return          Other ''Status Codes'' as appropriate in case of
+ *                  failure.
+ *
+ *****************************************************************************/
+static fm_status ConnectToPCIE(fm_int sw)
+{
+    fm_platformCfgSwitch *swCfg;
+    fm_status             status;
+
+    FM_LOG_ENTRY(FM_LOG_CAT_PLATFORM, "sw = %d\n", sw);
+
+    swCfg = FM_PLAT_GET_SWITCH_CFG(sw);
+
+    if (strcmp(swCfg->devMemOffset, FM_AAD_API_PLATFORM_DEVMEM_OFFSET) != 0)
+    {
+        status = ConnectToDevMem(sw);
+    }
+    else
+    {
+        status = ConnectToHostDriver(sw);
+    }
+
+    FM_LOG_EXIT(FM_LOG_CAT_PLATFORM, status);
+
+}   /* end ConnectToPCIE */
+
+
+
+
+/*****************************************************************************/
+/** DisconnectFromPCIE
+ *
+ * \desc            Memory unmap and close connection to host driver or /dev/mem.
+ *
+ * \param[in]       sw is the switch number
+ *
+ * \return          FM_OK if successful.
+ * \return          Other ''Status Codes'' as appropriate in case of
+ *                  failure.
+ *
+ *****************************************************************************/
+static fm_status DisconnectFromPCIE(fm_int sw)
+{
+    fm_platformCfgSwitch *swCfg;
+    fm_status             status;
+
+    FM_LOG_ENTRY(FM_LOG_CAT_PLATFORM, "sw = %d\n", sw);
+
+    swCfg = FM_PLAT_GET_SWITCH_CFG(sw);
+
+    if (strcmp(swCfg->devMemOffset, FM_AAD_API_PLATFORM_DEVMEM_OFFSET) != 0)
+    {
+        status = DisconnectFromDevMem(sw);
+    }
+    else
+    {
+        status = DisconnectFromHostDriver(sw);
+    }
+
+    FM_LOG_EXIT(FM_LOG_CAT_PLATFORM, status);
+
+}   /* end DisconnectFromPCIE */
 
 
 
@@ -412,7 +646,7 @@ static fm_status ResetI2cDevices(fm_int sw)
         /* De-assert (1) the reset signal */
         status = fmPlatformGpioSetValue(sw, swCfg->gpioI2cReset, 1);
 
-        FM_LOG_PRINT("\nPerform I2C reset through RRC GPIO %d\n", 
+        FM_LOG_PRINT("\nPerform I2C reset through FM10000 GPIO %d\n", 
                      swCfg->gpioI2cReset);
     }
     else
@@ -1314,8 +1548,8 @@ fm_status fmPlatformInitialize(fm_int *nSwitches)
                 /* That switch is already inserted */
                 if (swCfg->regAccess == FM_PLAT_REG_ACCESS_PCIE)
                 {
-                    /* Hook up to the host kernel driver */
-                    status = ConnectToHostDriver(sw);
+                    /* Hook up to the host kernel driver or /dev/mem */
+                    status = ConnectToPCIE(sw);
                     FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
                 }
             }
@@ -1426,8 +1660,8 @@ fm_status fmPlatformSwitchPreInsert(fm_int sw)
             FM_LOG_DEBUG(FM_LOG_CAT_PLATFORM, 
                          "Register access mode set to PCIE\n");
 
-            /* Hook up to the host kernel driver */
-            status = ConnectToHostDriver(sw);
+            /* Hook up to the host kernel driver or /dev/mem */
+            status = ConnectToPCIE(sw);
             FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
 
             readFunc  = fmPlatformReadRawCSR;
@@ -1478,9 +1712,14 @@ fm_status fmPlatformSwitchPreInsert(fm_int sw)
         }
     }
 
-    status = fmRawPacketSocketHandlingInitialize(sw,
-                                                 FALSE,
-                                                 swCfg->netDevName);
+    /* Default net dev is not set */
+    if (strcmp(swCfg->netDevName, FM_AAD_API_PLATFORM_NETDEV_NAME) != 0)
+    {
+        status = fmRawPacketSocketHandlingInitialize(sw,
+                                                     FALSE,
+                                                     swCfg->netDevName);
+    }
+
     if (status != FM_OK)
     {
         FM_LOG_ERROR(FM_LOG_CAT_PLATFORM, 
@@ -1693,6 +1932,7 @@ fm_status fmPlatformSwitchInitialize(fm_int sw)
             switchPtr->ReadIngressFid          = NULL;
             switchPtr->switchModel             = FM_SWITCH_MODEL_SWAG_C;
             switchPtr->switchVersion           = FM_SWITCH_VERSION_SWAG_1;
+            switchPtr->switchFamily            = FM_SWITCH_FAMILY_SWAG;
             /* Remove the first CPU port from the compute since this one uses
              * the slot 0 */
             switchPtr->maxPhysicalPort         = swCfg->numPorts - 1;
@@ -2899,8 +3139,8 @@ fm_status fmPlatformSwitchTerminate(fm_int sw)
 
     if (swCfg->regAccess == FM_PLAT_REG_ACCESS_PCIE)
     {
-        /* Disconnect from the host kernel driver */
-        status = DisconnectFromHostDriver(sw);
+        /* Disconnect from the host kernel driver or /dev/mem */
+        status = DisconnectFromPCIE(sw);
         FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
     }
 #endif
@@ -3209,8 +3449,8 @@ fm_status fmPlatformSetRegAccessMode(fm_int sw, fm_int mode)
                has been identified and thus it exists. */
             if (GET_PLAT_STATE(sw)->family != FM_SWITCH_FAMILY_UNKNOWN)
             {
-                /* Hook up to the host kernel driver */
-                status = ConnectToHostDriver(sw);
+                /* Hook up to the host kernel driver or /dev/mem */
+                status = ConnectToPCIE(sw);
                 FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
             }
             /* break; let's go through */
@@ -3294,7 +3534,14 @@ fm_status fmPlatformReadUnlockCSR(fm_int sw, fm_uint32 addr, fm_uint32 *value)
         FM_LOG_EXIT(FM_LOG_CAT_PLATFORM, FM_ERR_INVALID_ARGUMENT);
     }
 
-    return switchPtr->ReadRawUINT32(sw,addr,value);
+    if (switchPtr->ReadRawUINT32 != NULL)
+    {
+        return switchPtr->ReadRawUINT32(sw,addr,value);
+    }
+    else
+    {
+        return FM_ERR_UNSUPPORTED;
+    }
 
 }   /* end fmPlatformReadUnlockCSR */
 

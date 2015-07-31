@@ -29,7 +29,7 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
+ *****************************************************************************/
 
 #ifndef __FM_FM_API_FLOW_H
 #define __FM_FM_API_FLOW_H
@@ -306,6 +306,18 @@
  *
  *  \chips  FM10000 */
 #define FM_FLOW_MATCH_VSI_TEP            (FM_LITERAL_U64(1) << 25)
+
+/** Match on the ingress logical port. The logical port can be a physical
+ *  port, a LAG, or a virtual port. This condition is similar to the
+ *  ''FM_FLOW_MATCH_SRC_PORT'' condition except that in this case it
+ *  matches on the GLORT that belongs to this logical port instead of
+ *  the underlying physical port. Specify logicalPort in
+ *  ''fm_flowValue''.
+ *                                                                      \lb\lb
+ *  For FM10000 devices, this condition is available for TCAM tables.
+ *
+ *  \chips  FM10000 */
+#define FM_FLOW_MATCH_LOGICAL_PORT       (FM_LITERAL_U64(1) << 26)
 
 /** @} (end of Doxygen group) */
 
@@ -1045,7 +1057,8 @@ typedef struct _fm_flowValue
     fm_int32        portSet;
 
     /** The logical port number to which a flow should apply for the
-     *  ''FM_FLOW_MATCH_SRC_PORT'' condition. */
+     *  ''FM_FLOW_MATCH_SRC_PORT'' or ''FM_FLOW_MATCH_LOGICAL_PORT''
+     *  condition. */
     fm_int          logicalPort;
 
     /** Type of Service octet (IPv4) or Traffic Class octet (IPv6) for the 
@@ -1340,8 +1353,7 @@ fm_status fmGetFlow(fm_int             sw,
                     fm_flowAction *    flowAction,
                     fm_flowParam *     flowParam,
                     fm_int *           priority,
-                    fm_int *           precedence,
-                    fm_int *           tunnelGrp);
+                    fm_int *           precedence);
 
 fm_status fmGetFlowTableType(fm_int             sw,
                              fm_int             tableIndex,

@@ -30,7 +30,7 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
+ ****************************************************************************/
 
 #include <fm_sdk_int.h>
 
@@ -188,7 +188,7 @@ static fm_status MapVirtualPortToPepPort(fm_int  sw,
     if (err == FM_OK)
     {
         FM_API_CALL_FAMILY(err,
-                           switchPtr->MapVsiGlortToPepLogicalPort,
+                           switchPtr->MapVirtualGlortToPepLogicalPort,
                            sw,
                            glort,
                            logPort);
@@ -505,7 +505,7 @@ fm_status fmMapBitMaskLogicalToLinkUpMask(fm_switch * switchPtr,
         /* CPU port is always available to send to */
         if ( switchPtr->portTable[port]->linkUp ||
              switchPtr->portTable[port]->isPortForceUp ||
-             port == 0)
+             port == switchPtr->cpuPort)
         {
             um |= (1 << cpi);
         }
@@ -653,7 +653,7 @@ fm_status fmLoadPortRemapTable(fm_char *filename,
     lineLeft -= i;
     pch = &line[i];
 
-    for (i=1; i<maxport; i++)
+    for (i = 1 ; i < maxport ; i++)
     {
         FM_SPRINTF_S(pch, lineLeft, "%d,",origTable[i]);
         j = strlen(pch);
@@ -849,7 +849,7 @@ fm_status fmBitArrayToBitMask(fm_bitArray * bitArray,
     *bitMask = 0;
     bitNo = 0;
 
-    for (;;)
+    for ( ; ; )
     {
         err = fmFindBitInBitArray(bitArray, bitNo, TRUE, &bitNo);
         if (err != FM_OK || bitNo < 0 || bitNo >= numBits)

@@ -287,6 +287,7 @@ static fm_status InitFlowApi(fm_int sw)
         err = fmActivateMcastGroup(sw, mcastGroupId);
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_FLOW, err);
 
+        FM_CLEAR(listener);
         listener.vlan = 1;
         listener.port = switchPtr->cpuPort; /* CPU port */
         err = fmAddMcastGroupListener(sw, mcastGroupId, &listener);
@@ -860,6 +861,11 @@ static fm_status TranslateFlowToACLCondition(fm_int            sw,
         *aclCondition |= FM_ACL_MATCH_FRAG;
     }
 
+    if ( *condition & FM_FLOW_MATCH_LOGICAL_PORT )
+    {
+        *aclCondition |= FM_ACL_MATCH_SRC_GLORT;
+    }
+
     return err;
 
 } /* end TranslateFlowToACLCondition */
@@ -1003,6 +1009,11 @@ static fm_status TranslateACLToFlowCondition(fm_int            sw,
     if ( *aclCondition & FM_ACL_MATCH_FRAG )
     {
         *condition |= FM_FLOW_MATCH_FRAG;
+    }
+
+    if ( *aclCondition & FM_ACL_MATCH_SRC_GLORT )
+    {
+        *condition |= FM_FLOW_MATCH_LOGICAL_PORT;
     }
 
     return err;
@@ -2241,6 +2252,14 @@ fm_status fm10000CreateFlowTCAMTable(fm_int           sw,
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_FLOW, err);
     }
 
+    if ( ( condition & (FM_FLOW_MATCH_VNI |
+                        FM_FLOW_MATCH_VSI_TEP) ) != 0 )
+    {
+        /* Above listed conditions are TE table specific */
+        err = FM_ERR_UNSUPPORTED;
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_FLOW, err);
+    }
+
     switchExt->flowInfo.table[tableIndex].condition = condition;
 
     err = TranslateFlowToACLCondition(sw, &condition, &aclCondition);
@@ -2283,6 +2302,7 @@ fm_status fm10000CreateFlowTCAMTable(fm_int           sw,
 
     aclConditionMask.dstIpMask.isIPv6 = FALSE;
     aclConditionMask.frameType = FM_ACL_FRAME_TYPE_IPV4;
+    aclConditionMask.srcGlortMask = 0xffff;
 
     aclParam.logicalPort = switchPtr->cpuPort;
 
@@ -2382,6 +2402,18 @@ fm_status fm10000CreateFlowTCAMTable(fm_int           sw,
                 -1,
                 maxEntries * sizeof(fm_int));
 
+    switchExt->flowInfo.table[tableIndex].useCnt = 
+        fmAlloc(maxEntries * sizeof(fm_int));
+    if (switchExt->flowInfo.table[tableIndex].useCnt == NULL)
+    {
+        err = FM_ERR_NO_MEM;
+        goto ABORT;
+    }
+    FM_MEMSET_S(switchExt->flowInfo.table[tableIndex].useCnt,
+                maxEntries * sizeof(fm_int),
+                0,
+                maxEntries * sizeof(fm_int));
+
     if ( switchExt->flowInfo.table[tableIndex].withDefault &&
             switchExt->flowInfo.table[tableIndex].withPriority == FALSE )
     {
@@ -2423,6 +2455,8 @@ ABORT:
  * \return          FM_ERR_INVALID_ARGUMENT if an argument is invalid.
  * \return          FM_ERR_INVALID_SWITCH if sw is invalid.
  * \return          FM_ERR_INVALID_ACL if tableIndex already used.
+ * \return          FM_ERR_FFU_RESOURCE_IN_USE if at least a flow is currently
+ *                  referenced by another module.
  *
  *****************************************************************************/
 fm_status fm10000DeleteFlowTCAMTable(fm_int sw, 
@@ -2457,6 +2491,18 @@ fm_status fm10000DeleteFlowTCAMTable(fm_int sw,
     {
         err = FM_ERR_INVALID_ARGUMENT;
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_FLOW, err);
+    }
+
+    /* Validate that every flow are unused first */
+    for (flowIndex = 0 ;
+         flowIndex < switchExt->flowInfo.table[tableIndex].idInUse.bitCount ;
+         flowIndex++)
+    {
+        if (switchExt->flowInfo.table[tableIndex].useCnt[flowIndex])
+        {
+            err = FM_ERR_FFU_RESOURCE_IN_USE;
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_FLOW, err);
+        }
     }
 
     err = fmFindBitInBitArray(&switchExt->flowInfo.table[tableIndex].idInUse,
@@ -2516,6 +2562,7 @@ fm_status fm10000DeleteFlowTCAMTable(fm_int sw,
     fmFree(switchExt->flowInfo.table[tableIndex].lastCnt);
     fmFree(switchExt->flowInfo.table[tableIndex].useBit);
     fmFree(switchExt->flowInfo.table[tableIndex].mapping);
+    fmFree(switchExt->flowInfo.table[tableIndex].useCnt);
     fmDeleteBitArray(&switchExt->flowInfo.table[tableIndex].idInUse);
 
     switchExt->flowInfo.table[tableIndex].lastCnt = NULL;
@@ -2623,6 +2670,27 @@ fm_status fm10000CreateFlowTETable(fm_int           sw,
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_FLOW, err);
     }
 
+    if ( ( condition & (FM_FLOW_MATCH_ETHERTYPE |
+                        FM_FLOW_MATCH_VLAN_PRIORITY |
+                        FM_FLOW_MATCH_INGRESS_PORT_SET |
+                        FM_FLOW_MATCH_TOS |
+                        FM_FLOW_MATCH_FRAME_TYPE |
+                        FM_FLOW_MATCH_SRC_PORT |
+                        FM_FLOW_MATCH_TCP_FLAGS |
+                        FM_FLOW_MATCH_L4_DEEP_INSPECTION |
+                        FM_FLOW_MATCH_L2_DEEP_INSPECTION |
+                        FM_FLOW_MATCH_SWITCH_PRIORITY |
+                        FM_FLOW_MATCH_VLAN_TAG_TYPE |
+                        FM_FLOW_MATCH_VLAN2 |
+                        FM_FLOW_MATCH_PRIORITY2 |
+                        FM_FLOW_MATCH_FRAG |
+                        FM_FLOW_MATCH_LOGICAL_PORT) ) != 0 )
+    {
+        /* Above listed conditions are TCAM table specific */
+        err = FM_ERR_UNSUPPORTED;
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_FLOW, err);
+    }
+
     switchExt->flowInfo.table[tableIndex].condition = condition;
     err = TranslateFlowToTECondition(&condition, &tunnelCondition);
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_FLOW, err);
@@ -2696,6 +2764,18 @@ fm_status fm10000CreateFlowTETable(fm_int           sw,
                 -1,
                 maxEntries * sizeof(fm_int));
 
+    switchExt->flowInfo.table[tableIndex].useCnt = 
+        fmAlloc(maxEntries * sizeof(fm_int));
+    if (switchExt->flowInfo.table[tableIndex].useCnt == NULL)
+    {
+        err = FM_ERR_NO_MEM;
+        goto ABORT;
+    }
+    FM_MEMSET_S(switchExt->flowInfo.table[tableIndex].useCnt,
+                maxEntries * sizeof(fm_int),
+                0,
+                maxEntries * sizeof(fm_int));
+
     switchExt->flowInfo.table[tableIndex].type = FM_FLOW_TE_TABLE;
     switchExt->flowInfo.table[tableIndex].created = TRUE;
 
@@ -2721,6 +2801,8 @@ ABORT:
  * \return          FM_OK if successful.
  * \return          FM_ERR_INVALID_ARGUMENT if an argument is invalid.
  * \return          FM_ERR_INVALID_SWITCH if sw is invalid.
+ * \return          FM_ERR_FFU_RESOURCE_IN_USE if at least a flow is currently
+ *                  referenced by another module.
  *
  *****************************************************************************/
 fm_status fm10000DeleteFlowTETable(fm_int sw, 
@@ -2748,6 +2830,18 @@ fm_status fm10000DeleteFlowTETable(fm_int sw,
     {
         err = FM_ERR_INVALID_ARGUMENT;
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_FLOW, err);
+    }
+
+    /* Validate that every flow are unused first */
+    for (flowIndex = 0 ;
+         flowIndex < switchExt->flowInfo.table[tableIndex].idInUse.bitCount ;
+         flowIndex++)
+    {
+        if (switchExt->flowInfo.table[tableIndex].useCnt[flowIndex])
+        {
+            err = FM_ERR_FFU_RESOURCE_IN_USE;
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_FLOW, err);
+        }
     }
 
     err = fmFindBitInBitArray(&switchExt->flowInfo.table[tableIndex].idInUse,
@@ -2782,6 +2876,7 @@ fm_status fm10000DeleteFlowTETable(fm_int sw,
     fmFree(switchExt->flowInfo.table[tableIndex].lastCnt);
     fmFree(switchExt->flowInfo.table[tableIndex].useBit);
     fmFree(switchExt->flowInfo.table[tableIndex].mapping);
+    fmFree(switchExt->flowInfo.table[tableIndex].useCnt);
     fmDeleteBitArray(&switchExt->flowInfo.table[tableIndex].idInUse);
 
     switchExt->flowInfo.table[tableIndex].lastCnt = NULL;
@@ -3076,6 +3171,19 @@ fm_status fm10000AddFlow(fm_int           sw,
             FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_FLOW, err);
         }
 
+        if (aclCondition & FM_ACL_MATCH_SRC_GLORT)
+        {
+            err = fmGetLogicalPortGlort(sw, condVal->logicalPort, &glort);
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_FLOW, err);
+            aclValue.srcGlort = glort;
+            aclValue.srcGlortMask = 0xffff;
+
+            if (fmIsLagPort(sw, condVal->logicalPort) && ((glort & 0x1f) == 0))
+            {
+                aclValue.srcGlortMask &= ~0x1f;
+            }
+        }
+
         /* Translate actions. */
         err = TranslateFlowToACLAction(sw, &action, &aclAction, &aclParam);
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_FLOW, err);
@@ -3356,10 +3464,6 @@ ABORT:
  * \param[out]      precedence points to user-allocated storage where this flow
  *                  precedence should be stored.
  * 
- * \param[out]      tunnelGrp points to user-allocated storage where this associated
- *                  flow tunnel group should be stored.
- *                  
- * 
  * \return          FM_OK if successful.
  * \return          FM_ERR_INVALID_ARGUMENT if an argument is invalid.
  * \return          FM_ERR_INVALID_ACL if tableIndex is not valid.
@@ -3376,8 +3480,7 @@ fm_status fm10000GetFlow(fm_int             sw,
                          fm_flowAction *    action,
                          fm_flowParam *     param,
                          fm_int *           priority,
-                         fm_int *           precedence,
-                         fm_int *           tunnelGrp)
+                         fm_int *           precedence)
 {
     fm_status                err = FM_OK;
     fm10000_switch *         switchExt;
@@ -3397,6 +3500,7 @@ fm_status fm10000GetFlow(fm_int             sw,
     fm_tunnelEncapFlow       tunnelEncapFlow = 0;
     fm_tunnelEncapFlowParam  tunnelEncapFlowParam;
     fm_int                   logicalPort;
+    fm_int                   TEIndex;
 
     FM_NOT_USED(priority);
     FM_NOT_USED(precedence);
@@ -3421,11 +3525,25 @@ fm_status fm10000GetFlow(fm_int             sw,
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_FLOW, err);
     }
 
+    if ( (flowId > switchExt->flowInfo.table[tableIndex].idInUse.bitCount - 1) ||
+         (flowId < 0) )
+    {
+        err = FM_ERR_INVALID_ARGUMENT;
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_FLOW, err);
+    }
+
     flowTableInfo = &( switchExt->flowInfo.table[tableIndex] );
     tableType     = switchExt->flowInfo.table[tableIndex].type;
 
     if ( tableType == FM_FLOW_TCAM_TABLE )
     {
+        if (switchExt->flowInfo.table[tableIndex].mapping == NULL)
+        {
+            /* This table is not intialized. */
+            err = FM_ERR_INVALID_ACL;
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_FLOW, err);
+        }
+
         FM_CLEAR(aclValue);
         FM_CLEAR(aclParam);
 
@@ -3475,19 +3593,26 @@ fm_status fm10000GetFlow(fm_int             sw,
         err = fmConvertACLToFlowValue(&aclValue, condVal);
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_FLOW, err);
 
+        if (*condition & FM_FLOW_MATCH_LOGICAL_PORT)
+        {
+            err = fmGetGlortLogicalPort(sw, aclValue.srcGlort, &logicalPort);
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_FLOW, err);
+        }
+
         /* Translate actions */
         err = TranslateACLToFlowAction(sw, &aclAction, &aclParam, action);
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_FLOW, err);
 
-        /* Translate tableIndex. */
         if (*action & FM_FLOW_ACTION_REDIRECT_TUNNEL)
         {
-            if ( (param->tableIndex >= FM_FLOW_MAX_TABLE_TYPE) || (param->tableIndex < 0) )
+            for (TEIndex = 0 ; TEIndex < FM_FLOW_MAX_TABLE_TYPE ; TEIndex++)
             {
-                err = FM_ERR_INVALID_ARGUMENT;
-                FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_FLOW, err);
+                if (switchExt->flowInfo.table[TEIndex].group == aclParam.tunnelGroup)
+                {
+                    break;
+                }
             }
-            *tunnelGrp = aclParam.tunnelGroup;
+            param->tableIndex = TEIndex;
         }
 
         /* Translate groupId to balanceGroup or ecmpGroup. */
@@ -3737,7 +3862,7 @@ fm_status fm10000GetFlowNext(fm_int   sw,
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_FLOW, err);
     }
 
-    if ( currentTable < 0 || currentTable > FM_FLOW_MAX_TABLE_TYPE )
+    if ( currentTable < 0 || currentTable >= FM_FLOW_MAX_TABLE_TYPE )
     {
         err = FM_ERR_INVALID_ARGUMENT;
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_FLOW, err);
@@ -3815,7 +3940,7 @@ fm_status fm10000GetFlowRuleFirst(fm_int   sw,
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_FLOW, err);
     }
 
-    if ( tableIndex < 0 || tableIndex > FM_FLOW_MAX_TABLE_TYPE )
+    if ( tableIndex < 0 || tableIndex >= FM_FLOW_MAX_TABLE_TYPE )
     {
         err = FM_ERR_INVALID_ARGUMENT;
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_FLOW, err);
@@ -3903,7 +4028,7 @@ fm_status fm10000GetFlowRuleNext(fm_int   sw,
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_FLOW, err);
     }
 
-    if ( tableIndex < 0 || tableIndex > FM_FLOW_MAX_TABLE_TYPE )
+    if ( tableIndex < 0 || tableIndex >= FM_FLOW_MAX_TABLE_TYPE )
     {
         err = FM_ERR_INVALID_ARGUMENT;
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_FLOW, err);
@@ -3912,7 +4037,7 @@ fm_status fm10000GetFlowRuleNext(fm_int   sw,
     flowInfoTable = &switchExt->flowInfo.table[tableIndex];
     bitArraySize  = flowInfoTable->idInUse.bitCount;
 
-    if ( currentRule < 0 || currentRule > bitArraySize )
+    if ( currentRule < 0 || currentRule >= bitArraySize )
     {
         err = FM_ERR_INVALID_ARGUMENT;
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_FLOW, err);
@@ -4222,6 +4347,19 @@ fm_status fm10000ModifyFlow(fm_int           sw,
             FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_FLOW, err);
         }
 
+        if (aclCondition & FM_ACL_MATCH_SRC_GLORT)
+        {
+            err = fmGetLogicalPortGlort(sw, condVal->logicalPort, &glort);
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_FLOW, err);
+            aclValue.srcGlort = glort;
+            aclValue.srcGlortMask = 0xffff;
+
+            if (fmIsLagPort(sw, condVal->logicalPort) && ((glort & 0x1f) == 0))
+            {
+                aclValue.srcGlortMask &= ~0x1f;
+            }
+        }
+
         /* Translate actions. */
         err = TranslateFlowToACLAction(sw, &action, &aclAction, &aclParam);
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_FLOW, err);
@@ -4403,6 +4541,8 @@ ABORT:
  * \return          FM_ERR_ACL_COMPILE if the ACL compiler was unable to
  *                  produce a valid ACL "binary image" from the current ACL
  *                  configuration.
+ * \return          FM_ERR_FFU_RESOURCE_IN_USE if this flowId is currently
+ *                  referenced by another module.
  *
  *****************************************************************************/
 fm_status fm10000DeleteFlow(fm_int sw, fm_int tableIndex, fm_int flowId)
@@ -4449,6 +4589,12 @@ fm_status fm10000DeleteFlow(fm_int sw, fm_int tableIndex, fm_int flowId)
     {
         /* Invalid flow ID */
         err = FM_ERR_INVALID_ARGUMENT;
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_FLOW, err);
+    }
+
+    if (switchExt->flowInfo.table[tableIndex].useCnt[flowId])
+    {
+        err = FM_ERR_FFU_RESOURCE_IN_USE;
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_FLOW, err);
     }
 
@@ -5025,16 +5171,26 @@ fm_status fm10000SetFlowAttribute(fm_int sw,
              * creation. */
             if (switchExt->flowInfo.table[tableIndex].created == FALSE)
             {
-                if ( (( (fm_flowValue *) value)->srcMask |
+                if ( ( ( (fm_flowValue *) value )->srcMask |
                             FM_LITERAL_U64(0xffffffffffff) ) !=
                         FM_LITERAL_U64(0xffffffffffff) )
                 {
                     err = FM_ERR_INVALID_ARGUMENT;
                     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_FLOW, err);
                 }
-                if ( (( (fm_flowValue *) value)->dstMask |
+                if ( ( ( (fm_flowValue *) value )->dstMask |
                             FM_LITERAL_U64(0xffffffffffff) ) !=
                         FM_LITERAL_U64(0xffffffffffff) )
+                {
+                    err = FM_ERR_INVALID_ARGUMENT;
+                    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_FLOW, err);
+                }
+                if ( ( (fm_flowValue *) value )->vlanPriMask > 0xf)
+                {
+                    err = FM_ERR_INVALID_ARGUMENT;
+                    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_FLOW, err);
+                }
+                if ( ( (fm_flowValue *) value )->vlanPri2Mask > 0xf)
                 {
                     err = FM_ERR_INVALID_ARGUMENT;
                     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_FLOW, err);
@@ -5623,6 +5779,8 @@ fm_status fm10000FreeFlowResource(fm_int sw)
             }
         }
         fmDeleteBitArray(&switchExt->flowInfo.balanceGrpInUse);
+
+        switchExt->flowInfo.initialized = FALSE;
     }
 
     FM_LOG_EXIT(FM_LOG_CAT_FLOW, err);
@@ -5682,3 +5840,115 @@ fm_status fm10000InitFlowApiForSWAG(fm_int sw,
     FM_LOG_EXIT(FM_LOG_CAT_FLOW, err);
 
 } /* end fm10000InitFlowApiForSWAG */
+
+
+
+
+/*****************************************************************************/
+/** fm10000AddFlowUser
+ * \ingroup intFlow
+ *
+ * \desc            Add a user for this particular flow. This is used to track
+ *                  the usage of a particular flow and prevent the deletion
+ *                  of this latter if currently used.
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \param[in]       tableIndex is flow table index part of the entry.
+ *
+ * \param[in]       flowId is flow id part of the entry.
+ *
+ * \return          FM_OK if successful.
+ * \return          FM_ERR_INVALID_SWITCH if sw is invalid.
+ * \return          FM_ERR_INVALID_ARGUMENT if tableIndex or flowId are invalid.
+ *
+ *****************************************************************************/
+fm_status fm10000AddFlowUser(fm_int sw,
+                             fm_int tableIndex,
+                             fm_int flowId)
+{
+    fm_status       err = FM_OK;
+    fm10000_switch *switchExt;
+
+    FM_LOG_ENTRY(FM_LOG_CAT_FLOW,
+                 "sw = %d, tableIndex = %d, flowId = %d\n",
+                 sw,
+                 tableIndex,
+                 flowId);
+
+    switchExt = GET_SWITCH_EXT(sw);
+
+    if ( (tableIndex >= FM_FLOW_MAX_TABLE_TYPE) || (tableIndex < 0) )
+    {
+        err = FM_ERR_INVALID_ARGUMENT;
+        FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_FLOW, err);
+    }
+
+    if ( (flowId > switchExt->flowInfo.table[tableIndex].idInUse.bitCount - 1) ||
+         (flowId < 0) )
+    {
+        err = FM_ERR_INVALID_ARGUMENT;
+        FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_FLOW, err);
+    }
+
+    switchExt->flowInfo.table[tableIndex].useCnt[flowId]++;
+
+    FM_LOG_EXIT(FM_LOG_CAT_FLOW, err);
+
+} /* end fm10000AddFlowUser */
+
+
+
+
+/*****************************************************************************/
+/** fm10000DelFlowUser
+ * \ingroup intFlow
+ *
+ * \desc            Delete a user for this particular flow. This is used to
+ *                  track the usage of a particular flow and prevent the
+ *                  deletion of this latter if currently used.
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \param[in]       tableIndex is flow table index part of the entry.
+ *
+ * \param[in]       flowId is flow id part of the entry.
+ *
+ * \return          FM_OK if successful.
+ * \return          FM_ERR_INVALID_SWITCH if sw is invalid.
+ * \return          FM_ERR_INVALID_ARGUMENT if tableIndex or flowId are invalid.
+ *
+ *****************************************************************************/
+fm_status fm10000DelFlowUser(fm_int sw,
+                             fm_int tableIndex,
+                             fm_int flowId)
+{
+    fm_status       err = FM_OK;
+    fm10000_switch *switchExt;
+
+    FM_LOG_ENTRY(FM_LOG_CAT_FLOW,
+                 "sw = %d, tableIndex = %d, flowId = %d\n",
+                 sw,
+                 tableIndex,
+                 flowId);
+
+    switchExt = GET_SWITCH_EXT(sw);
+
+    if ( (tableIndex >= FM_FLOW_MAX_TABLE_TYPE) || (tableIndex < 0) )
+    {
+        err = FM_ERR_INVALID_ARGUMENT;
+        FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_FLOW, err);
+    }
+
+    if ( (flowId > switchExt->flowInfo.table[tableIndex].idInUse.bitCount - 1) ||
+         (flowId < 0) )
+    {
+        err = FM_ERR_INVALID_ARGUMENT;
+        FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_FLOW, err);
+    }
+
+    switchExt->flowInfo.table[tableIndex].useCnt[flowId]--;
+
+    FM_LOG_EXIT(FM_LOG_CAT_FLOW, err);
+
+} /* end fm10000DelFlowUser */

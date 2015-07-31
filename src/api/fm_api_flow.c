@@ -157,6 +157,8 @@ fm_status fmCreateFlowTCAMTable(fm_int           sw,
  * \return          FM_OK if successful.
  * \return          FM_ERR_INVALID_SWITCH if sw is invalid.
  * \return          FM_ERR_INVALID_ACL if tableIndex already used.
+ * \return          FM_ERR_FFU_RESOURCE_IN_USE if at least a flow is currently
+ *                  referenced by another module.
  *
  *****************************************************************************/
 fm_status fmDeleteFlowTCAMTable(fm_int sw, 
@@ -412,6 +414,8 @@ fm_status fmCreateFlowTETable(fm_int           sw,
  * \return          FM_OK if successful.
  * \return          FM_ERR_INVALID_ARGUMENT if an argument is invalid.
  * \return          FM_ERR_INVALID_SWITCH if sw is invalid.
+ * \return          FM_ERR_FFU_RESOURCE_IN_USE if at least a flow is currently
+ *                  referenced by another module.
  *
  *****************************************************************************/
 fm_status fmDeleteFlowTETable(fm_int sw, 
@@ -602,9 +606,6 @@ fm_status fmAddFlow(fm_int           sw,
  * \param[out]      precedence points to caller-supplied storage where the flow
  *                  precedence should be stored.
  * 
- * \param[out]      tunnelGrp points to caller-supplied storage where the flow
- *                  associated tunnelGrp should be stored.
- * 
  * \return          FM_OK if successful.
  * \return          FM_ERR_INVALID_SWITCH if sw is invalid.
  * \return          FM_ERR_UNSUPPORTED if tableIndex or action is not
@@ -623,8 +624,7 @@ fm_status fmGetFlow(fm_int             sw,
                     fm_flowAction *    flowAction,
                     fm_flowParam *     flowParam,
                     fm_int *           priority,
-                    fm_int *           precedence,
-                    fm_int *           tunnelGrp)
+                    fm_int *           precedence)
 {
     fm_status  err;
     fm_switch *switchPtr;
@@ -650,8 +650,7 @@ fm_status fmGetFlow(fm_int             sw,
                        flowAction,
                        flowParam,
                        priority,
-                       precedence,
-                       tunnelGrp);
+                       precedence);
 
     DROP_FLOW_LOCK(sw);
     UNPROTECT_SWITCH(sw);
@@ -1065,6 +1064,8 @@ fm_status fmGetFlowRuleNext(fm_int   sw,
  * \return          FM_ERR_INVALID_ACL if tableIndex is not valid.
  * \return          FM_ERR_ACL_COMPILE if the ACL compiler was unable to
  *                  produce a valid image from the current ACL configuration.
+ * \return          FM_ERR_FFU_RESOURCE_IN_USE if this flowId is currently
+ *                  referenced by another module.
  *
  *****************************************************************************/
 fm_status fmDeleteFlow(fm_int sw, fm_int tableIndex, fm_int flowId)

@@ -430,6 +430,8 @@ fm_status fmAddVNVsi(fm_int sw, fm_uint32 vni, fm_int vsi);
 
 fm_status fmDeleteVNVsi(fm_int sw, fm_uint32 vni, fm_int vsi);
 
+fm_status fmDbgDumpVN(fm_int sw);
+
 
 #endif
 

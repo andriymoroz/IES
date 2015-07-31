@@ -29,7 +29,7 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
+ ****************************************************************************/
 
 
 #include <fm_sdk_fm10000_int.h>
@@ -110,9 +110,9 @@ static fm_status fm10000GetTrapGlort(fm_int     sw,
  * \desc            Return the stag type
  *
  * \param[in]       sw is the switch number.
- * 
+ *
  * \param[in]       port is the physical port to operate on.
- * 
+ *
  * \param[in]       vlanType should be set to VLAN1_TAG to get the VLAN1 types
  *                  or to VLAN2_TAG to get the VLAN2 types.
  *
@@ -144,8 +144,8 @@ static fm_status fm10000GetVlanTypes(fm_int     sw,
 
     switchPtr = GET_SWITCH_PTR(sw);
 
-    err = switchPtr->ReadUINT64(sw, 
-                                FM10000_PARSER_PORT_CFG_1(port, 0), 
+    err = switchPtr->ReadUINT64(sw,
+                                FM10000_PARSER_PORT_CFG_1(port, 0),
                                 &rv64);
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_EVENT_PKT_TX, err);
 
@@ -217,21 +217,21 @@ ABORT:
  *
  * \desc            Parse the frame's vlan tags (if any) and return their
  *                  contents.
- * 
+ *
  * \note            This function only parses VLAN1 at the outer vlan tag
- *                  position. See bugzilla #21942 for details. 
+ *                  position. See bugzilla #21942 for details.
  *
  * \param[in]       sw is the switch number.
  *
  * \param[in]       port is the logical port used for parsing the vlan
- *                  ethertypes. 
+ *                  ethertypes.
  *
  * \param[in]       packet is the packet buffer.
  *
  * \param[in]       vlanTag1 is the caller allocated storage where the vlanTag1
  *                  should be stored (will be -1 if not vlan1 tagged). Includes
  *                  the vlan priority.
- *                   
+ *
  * \param[out]      vlanTag2 is the caller allocated storage where the vlanTag2
  *                  should be stored (will be -1 if not vlan2 tagged). Includes
  *                  the vlan priority.
@@ -245,7 +245,7 @@ ABORT:
  *
  *****************************************************************************/
 static fm_status fm10000ParseVlanTags(fm_int     sw,
-                                      fm_int     port, 
+                                      fm_int     port,
                                       fm_buffer *packet,
                                       fm_int *   vlanTag1,
                                       fm_int *   vlanTag2)
@@ -267,7 +267,7 @@ static fm_status fm10000ParseVlanTags(fm_int     sw,
 
     outerMatchVlan1    = FALSE;
     numVlan1EtherTypes = 0;
-    
+
     err = fmPlatformMapLogicalPortToPhysical(sw,
                                              port,
                                              &switchNum,
@@ -277,10 +277,10 @@ static fm_status fm10000ParseVlanTags(fm_int     sw,
     FM_FLAG_TAKE_REG_LOCK(sw);
 
     /* Get Vlan1 EtherTypes */
-    err = fm10000GetVlanTypes(sw, 
-                              physPort, 
-                              VLAN1_TAG, 
-                              vlan1EtherTypes, 
+    err = fm10000GetVlanTypes(sw,
+                              physPort,
+                              VLAN1_TAG,
+                              vlan1EtherTypes,
                               &numVlan1EtherTypes);
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_EVENT_PKT_TX, err);
 
@@ -290,7 +290,7 @@ static fm_status fm10000ParseVlanTags(fm_int     sw,
     outerHeader     = ntohl(packet->data[FM_PACKET_OFFSET_ETHERTYPE]);
     outerEtherType  = (outerHeader >> 16) & 0xffff;
 
-    for (i = 0; i < numVlan1EtherTypes; i++)
+    for (i = 0 ; i < numVlan1EtherTypes ; i++)
     {
         if (outerEtherType == vlan1EtherTypes[i])
         {
@@ -305,7 +305,7 @@ static fm_status fm10000ParseVlanTags(fm_int     sw,
         *vlanTag1 = outerHeader & 0xFFFF;
         *vlanTag2 = -1;
     }
-    else 
+    else
     {
         *vlanTag1 = -1;
         *vlanTag2 = -1;
@@ -319,7 +319,7 @@ ABORT:
 
     return err;
 
-} /* fm10000ParseVlanTags */
+} /* end fm10000ParseVlanTags */
 
 
 
@@ -344,7 +344,7 @@ ABORT:
  *
  * \param[in]       packet points to the packet buffer's first ''fm_buffer''
  *                  structure in a chain of one or more buffers.
- * 
+ *
  * \param[in]       info is a pointer to the packet information structure which
  *                  contains some relevant information describing the packet.
  *                  See 'fm_packetInfoV2' for more information.
@@ -401,9 +401,13 @@ fm_status fm10000GenericSendPacketDirected(fm_int           sw,
     FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_EVENT_PKT_TX, err);
 
     /* Call the shared code */
-    err = fmGenericSendPacketDirected(sw, portList, numPorts,
-                                      packet, fcsValue,
-                                      cpuPort, info->switchPriority);
+    err = fmGenericSendPacketDirected(sw,
+                                      portList,
+                                      numPorts,
+                                      packet,
+                                      fcsValue,
+                                      cpuPort,
+                                      info->switchPriority);
 
     FM_LOG_EXIT(FM_LOG_CAT_EVENT_PKT_TX, err);
 
@@ -438,7 +442,7 @@ fm_status fm10000GenericSendPacketSwitched(fm_int sw, fm_buffer *packet)
 {
     fm_status               err = FM_OK;
     fm_int                  cpuPort;
-    
+
     FM_LOG_ENTRY(FM_LOG_CAT_EVENT_PKT_TX,
                  "sw = %d, "
                  "packet->index = 0x%x\n",
@@ -449,9 +453,9 @@ fm_status fm10000GenericSendPacketSwitched(fm_int sw, fm_buffer *packet)
     FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_EVENT_PKT_TX, err);
 
     /* Call the shared code */
-    err = fmGenericSendPacketSwitched(sw, 
-                                      packet, 
-                                      cpuPort, 
+    err = fmGenericSendPacketSwitched(sw,
+                                      packet,
+                                      cpuPort,
                                       FM_USE_VLAN_PRIORITY);
 
     FM_LOG_EXIT(FM_LOG_CAT_EVENT_PKT_TX, err);
@@ -489,7 +493,7 @@ fm_status fm10000GenericSendPacketISL(fm_int          sw,
 {
     fm_status       err;
     fm_islTag       tag;
-    
+
     FM_LOG_ENTRY( FM_LOG_CAT_EVENT_PKT_TX,
                   "sw=%d islTag = %p islTagFormat = %d buffer=%p\n",
                   sw,
@@ -508,7 +512,7 @@ fm_status fm10000GenericSendPacketISL(fm_int          sw,
 
     tag.f56.tag[0] = islTag[0];
     tag.f56.tag[1] = islTag[1];
-        
+
     err = fmGenericSendPacketISL(sw, &tag, islTagFormat, 1, buffer);
 
 ABORT:
@@ -531,16 +535,16 @@ ABORT:
  *
  * \param[in]       info is the packet info data.
  *
- * \param[in]       cpuPort contains the logical port number for the CPU port. 
+ * \param[in]       cpuPort contains the logical port number for the CPU port.
  *
  * \param[in]       switchPriority is the switch priority.
- * 
+ *
  * \param[out]      islTagFormat is a pointer to the caller allocated storage
  *                  where the ISL tag type should be stored
- * 
+ *
  * \param[out]      islTag is a pointer to the caller allocated storage
  *                  where the ISL tag data should be stored.
- * 
+ *
  * \param[out]      suppressVlanTag is a pointer to the caller allocated
  *                  storage the suppressVlanTag flag should be stored.
  *
@@ -564,7 +568,7 @@ fm_status fm10000GeneratePacketISL(fm_int           sw,
     fm_status     err;
     fm_int        vlanTag1;
     fm_int        vlanTag2;
-    
+
     /* ISL Tag fields */
     fm_byte       ftype;
     fm_byte       vtype;
@@ -612,7 +616,7 @@ fm_status fm10000GeneratePacketISL(fm_int           sw,
 
         err = fmGetLogicalPortGlort(sw,
                                     info->logicalPort,
-                                    &dglort);            
+                                    &dglort);
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_EVENT_PKT_TX, err);
     }
 
@@ -625,10 +629,10 @@ fm_status fm10000GeneratePacketISL(fm_int           sw,
     err = fm10000ParseVlanTags(sw, cpuPort, buffer, &vlanTag1, &vlanTag2);
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_EVENT_PKT_TX, err);
 
-    
+
     /*****************************************
-     * 3. Keep this comment to have the same 
-     *    sequence as other families 
+     * 3. Keep this comment to have the same
+     *    sequence as other families
      *****************************************/
 
 
@@ -703,7 +707,7 @@ fm_status fm10000GeneratePacketISL(fm_int           sw,
      * 7. Set the vtype for FM10000
      *****************************************/
     vtype = 0;
-    
+
     /*****************************************
      * 8. Force user field to 0
      *****************************************/
@@ -720,7 +724,7 @@ fm_status fm10000GeneratePacketISL(fm_int           sw,
     }
     /* else use the trap glort (cpu glort) as the source glort
      *  for send? */
-    else if (info->sourcePort == 0)
+    else if (info->sourcePort == cpuPort)
     {
         /* User does not provide the source glort. Use default.*/
         err = fm10000GetTrapGlort(sw, &sglort);
@@ -762,6 +766,6 @@ fm_status fm10000GeneratePacketISL(fm_int           sw,
 
 ABORT:
     FM_LOG_EXIT(FM_LOG_CAT_EVENT_PKT_TX, err);
-    
+
 }   /* end fm10000GeneratePacketISL */
 

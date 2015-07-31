@@ -79,6 +79,10 @@ typedef enum
     FM10000_SCHED_SPEED_IDLE_25G_2500M      = -4,
     FM10000_SCHED_SPEED_IDLE_2500M          = -5,
 
+    /* Special speed used for using default per port */
+    FM10000_SCHED_SPEED_DEFAULT             = -10,
+
+
     /* Speeds below are actual speeds */
     FM10000_SCHED_SPEED_IDLE                = 0,
     FM10000_SCHED_SPEED_2500M               = 2500,
@@ -110,7 +114,26 @@ typedef struct fm10000_schedSpeedInfo
     /* The speed currently requested/reserved for this port */
     fm_int reservedSpeed;
 
+    /* Will be set to true if the port is currently configured / reserved as
+     * a quad port */
+    fm_bool isQuad;
+
 } fm10000_schedSpeedInfo;
+
+
+
+
+/* Scheduler Attributes */
+typedef struct fm10000_schedAttr
+{
+    /* The scheduler's operation mode */
+    fm_int                mode;
+
+    /* Keep track of wheter the scheduler should be updated (or not) on link
+     * change (up/down) */
+    fm_bool               updateLnkChange;
+
+} fm10000_schedAttr;
 
 
 
@@ -230,8 +253,7 @@ typedef struct _fm10000_schedInfoInt
 /* Structure that tracks the scheduler software/HW state */
 typedef struct _fm10000_schedInfo
 {
-    /* The scheduler's operation mode */
-    fm_int                mode;
+    fm10000_schedAttr     attr;
 
     /* Temporary Scheduler Internal Information, used during generation */
     fm10000_schedInfoInt  tmp;
@@ -372,7 +394,7 @@ fm_status fm10000ReserveSchedBw(fm_int               sw,
 
 fm_status fm10000RegenerateSchedule(fm_int sw);
 
-fm_status fm10000GetSchedMode(fm_int sw, fm_int *mode);
+fm_status fm10000GetSchedAttributes(fm_int sw, fm10000_schedAttr *attr);
 
 #endif /* __FM_FM10000_API_SCHED_INT_H */
 

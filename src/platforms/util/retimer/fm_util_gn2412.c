@@ -45,7 +45,7 @@
  * Macros, Constants & Types
  *****************************************************************************/
 
-#define CMD_COMPLETION_TIMEOUT      500000 /* usec -> 500 msec */
+#define CMD_COMPLETION_TIMEOUT      500 /* 500 msec */
 
 /* uController TOP CSR */
 
@@ -65,6 +65,8 @@
 
 #define CMD_REG                     0x140
 #define DATA_REG                    0x141
+
+#define NUM_DIAG_COUNTERS           13
 
 /* GN2412 CSR */
 
@@ -192,7 +194,7 @@ static fm_gn2412TimebaseCfg timebaseTable1 =
  *
  * \param[in]       reg is the register address.
  *
- * \param[in,out]   val is a pointer to caller-allocated storage where this
+ * \param[out]      val is a pointer to caller-allocated storage where this
  *                  function should place the read byte.
  *
  * \return          FM_OK if successful.
@@ -287,16 +289,23 @@ static fm_status IssueCommandCode(fm_uintptr                  handle,
                                   fm_uint                     dev,
                                   fm_byte                     cmd)
 {
-    fm_status status;
-    fm_int    delay;
+    fm_status    status;
+    fm_int       loop;
+    fm_timestamp start;
+    fm_timestamp end;
+    fm_timestamp diff;
+    fm_uint      delTime;
 
     /* Issue the command code */
     status = RegisterWrite(handle, func, dev, CMD_REG, cmd);
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PHY,status);
 
-    /* Wait for command to complete */
-    delay = 0;
-    while ( delay < CMD_COMPLETION_TIMEOUT )
+    /* Wait a maximum of 500 msec for command to complete */
+    fmGetTime(&start);
+
+    loop = 0;
+    delTime = 0;
+    while ( delTime < CMD_COMPLETION_TIMEOUT )
     {
         status = RegisterRead(handle, func, dev, CMD_REG, &cmd);
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PHY,status);
@@ -309,11 +318,20 @@ static fm_status IssueCommandCode(fm_uintptr                  handle,
 
         /* wait 1 usec */
         fmDelayBy(0,1000);
-        delay++;
+        loop++;
+
+        fmGetTime(&end);
+        fmSubTimestamps(&end, &start, &diff);
+
+        /* Convert in msec */
+        delTime = diff.sec*1000 + diff.usec/1000;
     }
 
-    if (delay >= CMD_COMPLETION_TIMEOUT)
+    if ( delTime >= CMD_COMPLETION_TIMEOUT )
     {
+        FM_LOG_PRINT("Command code timeout: delTime=%d msec (loop %d)\n",
+                     delTime,
+                     loop);
         status = FM_FAIL;
     }
 
@@ -348,13 +366,20 @@ static fm_status WaitForCalibration(fm_uintptr                  handle,
                                     fm_uint                     dev,
                                     fm_uint                     reg)
 {
-    fm_status status;
-    fm_byte   state;
-    fm_int    delay;
+    fm_status    status;
+    fm_byte      state;
+    fm_int       loop;
+    fm_timestamp start;
+    fm_timestamp end;
+    fm_timestamp diff;
+    fm_uint      delTime;
 
-    /* Wait for calibration completion */
-    delay = 0;
-    while ( delay < CMD_COMPLETION_TIMEOUT )
+    /* Wait a maximum of 500 msec for calibration completion */
+    fmGetTime(&start);
+
+    loop = 0;
+    delTime = 0;
+    while ( delTime < CMD_COMPLETION_TIMEOUT )
     {
         status = RegisterRead(handle, func, dev, reg, &state);
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PHY,status);
@@ -367,11 +392,20 @@ static fm_status WaitForCalibration(fm_uintptr                  handle,
 
         /* wait 1 usec */
         fmDelayBy(0,1000);
-        delay++;
+        loop++;
+
+        fmGetTime(&end);
+        fmSubTimestamps(&end, &start, &diff);
+
+        /* Convert in msec */
+        delTime = diff.sec*1000 + diff.usec/1000;
     }
 
-    if (delay >= CMD_COMPLETION_TIMEOUT)
+    if ( delTime >= CMD_COMPLETION_TIMEOUT )
     {
+        FM_LOG_PRINT("Command code timeout: delTime=%d msec (loop %d)\n",
+                     delTime,
+                     loop);
         status = FM_FAIL;
     }
 
@@ -605,10 +639,122 @@ ABORT:
 
 
 /*****************************************************************************/
-/* ConfigureCrosspoint
+/* ConfigureAllCrosspoint
  * \ingroup platformUtils
  *
  * \desc            Configure crosspoint connections.
+ *
+ * \param[in]       handle is the handle to the I2C device.
+ *
+ * \param[in]       func is the I2C write read function to call.
+ *
+ * \param[in]       dev is the device I2C address.
+ *
+ * \param[in]       cfg pointer to GN2412 configuration.
+ * 
+ * \return          FM_OK if successful.
+ * \return          FM_FAIL if not successful.
+ *
+ *****************************************************************************/
+static fm_status ConfigureAllCrosspoint(fm_uintptr                  handle,
+                                        fm_utilI2cWriteReadHdnlFunc func,
+                                        fm_uint                     dev,
+                                        fm_gn2412Cfg *              cfg)
+{
+    fm_status status;
+    fm_uint16 reg;
+    fm_byte   data;
+    fm_int    i;
+
+    reg = DATA_REG;
+
+    /* Configure Cross-Connections per values provided in config file */
+    for ( i = 0 ; i < FM_GN2412_NUM_LANES ; i+=2 )
+    {
+        data = (cfg->lane[i+1].rxPort << 4) | cfg->lane[i].rxPort;
+
+        status = RegisterWrite(handle, func, dev, reg++, data);
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PHY,status);
+    }
+
+    /* Issue the "Configure all cross-connection" command code: 0x11 */
+    status = IssueCommandCode(handle, func, dev, 0x11);
+
+ABORT:
+    return status;
+
+}   /* end ConfigureAllCrosspoint */
+
+
+
+/*****************************************************************************/
+/* QueryAllCrosspoint
+ * \ingroup platformUtils
+ *
+ * \desc            Returns the Rx port assigned as source to each Tx ports.
+ *
+ * \param[in]       handle is the handle to the I2C device.
+ *
+ * \param[in]       func is the I2C write read function to call.
+ *
+ * \param[in]       dev is the device I2C address.
+ *
+ * \param[in]       lane is the data lane to configure.
+ * 
+ * \param[out]      rxPortTbl points to caller-allocated storage where this
+ *                  function should place the Rx ports.
+ * 
+ * \return          FM_OK if successful.
+ * \return          FM_FAIL if not successful.
+ *
+ *****************************************************************************/
+static fm_status QueryAllCrosspoint(fm_uintptr                  handle,
+                                    fm_utilI2cWriteReadHdnlFunc func,
+                                    fm_uint                     dev,
+                                    fm_int                      rxPortTbl[])
+{
+    fm_status status;
+    fm_uint16 reg;
+    fm_int    i;
+    fm_int    txPort;
+    fm_byte   rxPort;
+
+    /* Issue the "Query All Cross-Connections" command code: 0x10 */
+    status = IssueCommandCode(handle, func, dev, 0x10);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PHY,status);
+
+    /* Now read back the values from the data buffer registers DATA_REG[n]
+       DATA_0_REG[3:0] => Tx Port 0 source
+       DATA_0_REG[7:4] => Tx Port 1 source
+       ...
+       ...
+       DATA_5_REG[3:0] => Tx Port 10 source
+       DATA_5_REG[7:4] => Tx Port 11 source
+    */
+    reg = DATA_REG;
+    txPort = 0;
+    for ( i = 0; i < FM_GN2412_NUM_LANES/2 ; i++ )
+    {
+        status = RegisterRead(handle, func, dev, reg++, &rxPort);
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PHY,status);
+
+        rxPortTbl[txPort++] = rxPort & 0xF;
+        rxPortTbl[txPort++] = (rxPort >> 4) & 0xF;
+    }
+
+ABORT:
+    return status;
+
+}   /* end QueryAllCrosspoint */
+
+
+
+
+/*****************************************************************************/
+/* DumpAllCrosspoint
+ * \ingroup platformUtils
+ *
+ * \desc            Dump all corss-connections.
  *
  * \param[in]       handle is the handle to the I2C device.
  *
@@ -620,43 +766,36 @@ ABORT:
  * \return          FM_FAIL if not successful.
  *
  *****************************************************************************/
-static fm_status ConfigureCrosspoint(fm_uintptr                  handle,
-                                     fm_utilI2cWriteReadHdnlFunc func,
-                                     fm_uint                     dev)
+static fm_status DumpAllCrosspoint(fm_uintptr                  handle,
+                                   fm_utilI2cWriteReadHdnlFunc func,
+                                   fm_uint                     dev)
 {
     fm_status status;
-    fm_int    i;
+    fm_int    rxPort[FM_GN2412_NUM_LANES];
+    fm_int    txPort;
 
-    /* IMPORTANT: This mapping is Cathedral Glen specific.
-                  It should eventually be configurable
-     */
+    status = QueryAllCrosspoint(handle, func, dev, rxPort);
 
-    i = 0;
-    status = RegisterWrite(handle, func, dev, (DATA_REG + i++), 0x76);
-    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PHY,status);
+    if ( status == FM_OK )
+    {
+        FM_LOG_PRINT("Cross-connections (dev 0x%2x)\n"
+                     "============================\n"
+                     " TxPort     RxPort \n",
+                     dev);
 
-    status = RegisterWrite(handle, func, dev, (DATA_REG + i++), 0x98);
-    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PHY,status);
+        for ( txPort = 0 ; txPort < FM_GN2412_NUM_LANES ; txPort++ )
+        {
+            FM_LOG_PRINT("   %2d  <---  %2d\n", txPort, rxPort[txPort]);
+        }
+    }
+    else
+    {
+        FM_LOG_PRINT("Error reading the cross-connections for dev 0x%x\n", dev);
+    }
 
-    status = RegisterWrite(handle, func, dev, (DATA_REG + i++), 0xBA);
-    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PHY,status);
-
-    status = RegisterWrite(handle, func, dev, (DATA_REG + i++), 0x10);
-    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PHY,status);
-
-    status = RegisterWrite(handle, func, dev, (DATA_REG + i++), 0x32);
-    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PHY,status);
-
-    status = RegisterWrite(handle, func, dev, (DATA_REG + i++), 0x54);
-    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PHY,status);
-
-    /* Issue the "Configure all cross-connection" command code: 0x11 */
-    status = IssueCommandCode(handle, func, dev, 0x11);
-
-ABORT:
     return status;
 
-}   /* end ConfigureCrosspoint */
+}   /* end DumpAllCrosspoint */
 
 
 
@@ -665,7 +804,7 @@ ABORT:
 /* ConfigurePortPairs
  * \ingroup platformUtils
  *
- * \desc            Configure crosspoint connections.
+ * \desc            Configure all interface port pairings.
  *
  * \param[in]       handle is the handle to the I2C device.
  *
@@ -682,29 +821,26 @@ static fm_status ConfigurePortPairs(fm_uintptr                  handle,
                                     fm_uint                     dev)
 {
     fm_status status;
-    fm_int    i;
+    fm_uint16 reg;
 
-    /* IMPORTANT: This mapping is Cathedral Glen specific.
-                  It should eventually be configurable
-     */
+    reg = DATA_REG;
 
-    i = 0;
-    status = RegisterWrite(handle, func, dev, (DATA_REG + i++), 0x10);
+    status = RegisterWrite(handle, func, dev, reg++, 0x10);
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PHY,status);
 
-    status = RegisterWrite(handle, func, dev, (DATA_REG + i++), 0x32);
+    status = RegisterWrite(handle, func, dev, reg++, 0x32);
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PHY,status);
 
-    status = RegisterWrite(handle, func, dev, (DATA_REG + i++), 0x54);
+    status = RegisterWrite(handle, func, dev, reg++, 0x54);
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PHY,status);
 
-    status = RegisterWrite(handle, func, dev, (DATA_REG + i++), 0x76);
+    status = RegisterWrite(handle, func, dev, reg++, 0x76);
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PHY,status);
 
-    status = RegisterWrite(handle, func, dev, (DATA_REG + i++), 0x98);
+    status = RegisterWrite(handle, func, dev, reg++, 0x98);
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PHY,status);
 
-    status = RegisterWrite(handle, func, dev, (DATA_REG + i++), 0xBA);
+    status = RegisterWrite(handle, func, dev, reg++, 0xBA);
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PHY,status);
 
     /* Issue the command code: 0x15 */
@@ -714,6 +850,338 @@ ABORT:
     return status;
 
 }   /* end ConfigurePortPairs */
+
+
+/*****************************************************************************/
+/* QueryAllPortPairings
+ * \ingroup platformUtils
+ *
+ * \desc            Returns the Tx port paired to each Rx port.
+ *
+ * \param[in]       handle is the handle to the I2C device.
+ *
+ * \param[in]       func is the I2C write read function to call.
+ *
+ * \param[in]       dev is the device I2C address.
+ *
+ * \param[in]       lane is the data lane to configure.
+ * 
+ * \param[out]      txPortTbl points to caller-allocated storage where this
+ *                  function should place the Tx ports.
+ * 
+ * \return          FM_OK if successful.
+ * \return          FM_FAIL if not successful.
+ *
+ *****************************************************************************/
+static fm_status QueryAllPortPairings(fm_uintptr                  handle,
+                                      fm_utilI2cWriteReadHdnlFunc func,
+                                      fm_uint                     dev,
+                                      fm_int                      txPortTbl[])
+{
+    fm_status status;
+    fm_uint16 reg;
+    fm_int    i;
+    fm_int    rxPort;
+    fm_byte   txPort;
+
+    /* Issue the "Query All Cross-Connections" command code: 0x14 */
+    status = IssueCommandCode(handle, func, dev, 0x14);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PHY,status);
+
+    /* Now read back the values from the data buffer registers DATA_REG[n]
+       DATA_0_REG[3:0] => Rx Port 0 Tx pair
+       DATA_0_REG[7:4] => Rx Port 1 Tx pair
+       ...
+       ...
+       DATA_5_REG[3:0] => Rx Port 10 Tx pair
+       DATA_5_REG[7:4] => Rx Port 11 Tx pair
+    */
+    reg = DATA_REG;
+    rxPort = 0;
+    for ( i = 0; i < FM_GN2412_NUM_LANES/2 ; i++ )
+    {
+        status = RegisterRead(handle, func, dev, reg++, &txPort);
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PHY,status);
+
+        txPortTbl[rxPort++] = txPort & 0xF;
+        txPortTbl[rxPort++] = (txPort >> 4) & 0xF;
+    }
+
+ABORT:
+    return status;
+
+}   /* end QueryAllPortPairings */
+
+
+
+
+/*****************************************************************************/
+/* DumpAllPortPairings
+ * \ingroup platformUtils
+ *
+ * \desc            Dump all port pairings.
+ *
+ * \param[in]       handle is the handle to the I2C device.
+ *
+ * \param[in]       func is the I2C write read function to call.
+ *
+ * \param[in]       dev is the device I2C address.
+ *
+ * \return          FM_OK if successful.
+ * \return          FM_FAIL if not successful.
+ *
+ *****************************************************************************/
+static fm_status DumpAllPortPairings(fm_uintptr                  handle,
+                                     fm_utilI2cWriteReadHdnlFunc func,
+                                     fm_uint                     dev)
+{
+    fm_status status;
+    fm_int    txPort[FM_GN2412_NUM_LANES];
+    fm_int    rxPort;
+
+    status = QueryAllPortPairings(handle, func, dev, txPort);
+
+    if ( status == FM_OK )
+    {
+        FM_LOG_PRINT("Port Pairings (dev 0x%2x)\n"
+                     "=========================\n"
+                     " RxPort     TxPort \n",
+                     dev);
+
+        for ( rxPort = 0 ; rxPort < FM_GN2412_NUM_LANES ; rxPort++ )
+        {
+            FM_LOG_PRINT("   %2d  <---  %2d\n", rxPort, txPort[rxPort]);
+        }
+    }
+    else
+    {
+        FM_LOG_PRINT("Error reading the cross-connections for dev 0x%x\n", dev);
+    }
+
+    return status;
+
+}   /* end DumpAllPortPairings */
+
+
+
+/*****************************************************************************/
+/* ConfigureLaneDeEmphasis
+ * \ingroup platformUtils
+ *
+ * \desc            Set the transmitter equalization (de-emphasis) for the
+ *                  specified lane.
+ *
+ * \param[in]       handle is the handle to the I2C device.
+ *
+ * \param[in]       func is the I2C write read function to call.
+ *
+ * \param[in]       dev is the device I2C address.
+ *
+ * \param[in]       lane is the data lane to configure.
+ * 
+ * \param[in]       polarity is TX polarity.
+ * 
+ * \param[in]       preTap is the Transmitter Cm coefficient (pre-tap). 
+ * 
+ * \param[in]       att is the attenuation setting for transmitter 
+ *                  (output swing). 
+ * 
+ * \param[in]       postTap is the Transmitter C1 coefficient (post-tap). 
+ * 
+ * \return          FM_OK if successful.
+ * \return          FM_FAIL if not successful.
+ *
+ *****************************************************************************/
+static fm_status ConfigureLaneDeEmphasis(fm_uintptr                  handle,
+                                         fm_utilI2cWriteReadHdnlFunc func,
+                                         fm_uint                     dev,
+                                         fm_int                      lane,
+                                         fm_int                      polarity,
+                                         fm_int                      preTap,
+                                         fm_int                      att,
+                                         fm_int                      postTap)
+{
+    fm_status status;
+    fm_uint16 reg;
+
+    reg = DATA_REG;
+
+    status = RegisterWrite(handle, func, dev, reg++, lane);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PHY,status);
+#if 1
+    status = RegisterWrite(handle, func, dev, reg++, polarity);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PHY,status);
+#else
+    i++;
+#endif
+    status = RegisterWrite(handle, func, dev, reg++, preTap);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PHY,status);
+
+    status = RegisterWrite(handle, func, dev, reg++, att);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PHY,status);
+
+    status = RegisterWrite(handle, func, dev, reg++, postTap);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PHY,status);
+
+    /* Issue the "Control Non-KR Transmit Equalization" command code: 0x17 */
+    status = IssueCommandCode(handle, func, dev, 0x17);
+
+ABORT:
+    return status;
+
+}   /* end ConfigureLaneDeEmphasis */
+
+
+
+
+/*****************************************************************************/
+/* QueryLaneDeEmphasis
+ * \ingroup platformUtils
+ *
+ * \desc            Query the transmitter equalization (de-emphasis)
+ *
+ * \param[in]       handle is the handle to the I2C device.
+ *
+ * \param[in]       func is the I2C write read function to call.
+ *
+ * \param[in]       dev is the device I2C address.
+ *
+ * \param[in]       lane is the data lane to configure.
+ * 
+ * \param[out]      polarity points to caller-allocated storage where this
+ *                  function should place the Tx polarity value.
+ * 
+ * \param[out]      preTap points to caller-allocated storage where this
+ *                  function should place the Transmitter Cm coefficient
+ *                  (pre-tap). 
+ * 
+ * \param[out]      attenuation points to caller-allocated storage where this
+ *                  function should place the attenuation setting for
+ *                  transmitter (output swing). 
+ * 
+ * \param[out]      postTap points to caller-allocated storage where this
+ *                  function should place the Transmitter C1 coefficient
+ *                  (post-tap). 
+ * 
+ * \return          FM_OK if successful.
+ * \return          FM_FAIL if not successful.
+ *
+ *****************************************************************************/
+static fm_status QueryLaneDeEmphasis(fm_uintptr                  handle,
+                                     fm_utilI2cWriteReadHdnlFunc func,
+                                     fm_uint                     dev,
+                                     fm_int                      lane,
+                                     fm_byte                    *polarity,
+                                     fm_byte                    *preTap,
+                                     fm_byte                    *attenuation,
+                                     fm_byte                    *postTap)
+{
+    fm_status status;
+    fm_uint16 reg;
+    fm_byte   txPort;
+
+    /* Write the lane number (Tx port index 0-11) */
+    status = RegisterWrite(handle, func, dev, DATA_REG, lane);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PHY,status);
+
+    /* Issue the "Query Non-KR Transmit Equalization" command code: 0x16 */
+    status = IssueCommandCode(handle, func, dev, 0x16);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PHY,status);
+
+    /* Now read back the values from the data buffer registers DATA_REG[n]
+       DATA_0_REG => TxPort index
+       DATA_1_REG => Tx Polarity
+       DATA_2_REG => Tx Pre-tap coefficient
+       DATA_3_REG => Tx attenuation
+       DATA_4_REG => Tx Post-tap coefficient
+    */
+    reg = DATA_REG;
+    status = RegisterRead(handle, func, dev, reg++, &txPort);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PHY,status);
+
+    if ( txPort != lane )
+    {
+        FM_LOG_PRINT("!!! Wrong txPort 0x%x (expecting 0x%x)\n", txPort, lane);
+    }
+
+    status = RegisterRead(handle, func, dev, reg++, polarity);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PHY,status);
+
+    status = RegisterRead(handle, func, dev, reg++, preTap);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PHY,status);
+
+    status = RegisterRead(handle, func, dev, reg++, attenuation);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PHY,status);
+
+    status = RegisterRead(handle, func, dev, reg++, postTap);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PHY,status);
+
+ABORT:
+    return status;
+
+}   /* end QueryLaneDeEmphasis */
+
+
+
+
+/*****************************************************************************/
+/* DumpLaneDeEmphasis
+ * \ingroup platformUtils
+ *
+ * \desc            Print the De-Emphasis values for the specified lane.
+ *
+ * \param[in]       handle is the handle to the I2C device.
+ *
+ * \param[in]       func is the I2C write read function to call.
+ *
+ * \param[in]       dev is the device I2C address.
+ *
+ * \param[in]       lane is the data lane to configure.
+ *
+ * \return          FM_OK if successful.
+ * \return          FM_FAIL if not successful.
+ *
+ *****************************************************************************/
+static fm_status DumpLaneDeEmphasis(fm_uintptr                  handle,
+                                    fm_utilI2cWriteReadHdnlFunc func,
+                                    fm_uint                     dev,
+                                    fm_int                      lane)
+{
+    fm_status status;
+    fm_byte   polarity;
+    fm_byte   preTap;
+    fm_byte   attenuation;
+    fm_byte   postTap;
+
+    status = QueryLaneDeEmphasis(handle,
+                                 func,
+                                 dev,
+                                 lane,
+                                 &polarity,
+                                 &preTap,
+                                 &attenuation,
+                                 &postTap);
+
+    if ( status == FM_OK )
+    {
+        FM_LOG_PRINT("  %2d   %02Xh    %2d     %2d    %2d\n",
+                     lane,
+                     polarity,
+                     preTap,
+                     attenuation,
+                     postTap);
+    }
+    else
+    {
+        FM_LOG_PRINT("Error reading De-Emphasis for dev 0x%x lane %d\n",
+                     dev,
+                     lane);
+    }
+
+    return status;
+
+}   /* end DumpLaneDeEmphasis */
+
 
 
 
@@ -763,6 +1231,68 @@ ABORT:
 
 
 
+/*****************************************************************************/
+/* QueryAppMode
+ * \ingroup platformUtils
+ *
+ * \desc            Query the application mode for the given lane
+ *
+ * \param[in]       handle is the handle to the I2C device.
+ *
+ * \param[in]       func is the I2C write read function to call.
+ *
+ * \param[in]       dev is the device I2C address.
+ *
+ * \param[in]       lane is the data lane to read.
+ * 
+ * \param[out]      mode points to caller-allocated storage where this
+ *                  function should place the application mode value.
+ * 
+ * \return          FM_OK if successful.
+ * \return          FM_FAIL if not successful.
+ *
+ *****************************************************************************/
+static fm_status QueryAppMode(fm_uintptr                  handle,
+                              fm_utilI2cWriteReadHdnlFunc func,
+                              fm_uint                     dev,
+                              fm_int                      lane,
+                              fm_byte                    *mode)
+{
+    fm_status status;
+    fm_uint16 reg;
+    fm_byte   rxPort;
+
+    /* Write the lane number (Rx port index 0-11) */
+    status = RegisterWrite(handle, func, dev, DATA_REG, lane);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PHY,status);
+
+    /* Issue the "Query Application Modes" command code: 0x18 */
+    status = IssueCommandCode(handle, func, dev, 0x18);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PHY,status);
+
+    /* Now read back the values from the data buffer registers DATA_REG[n]
+       DATA_0_REG => RxPort index
+       DATA_1_REG => Mode
+    */
+    reg = DATA_REG;
+    status = RegisterRead(handle, func, dev, reg++, &rxPort);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PHY,status);
+
+    if ( rxPort != lane )
+    {
+        FM_LOG_PRINT("!!! Wrong rxPort 0x%x (expecting 0x%x)\n", rxPort, lane);
+    }
+
+    status = RegisterRead(handle, func, dev, reg++, mode);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PHY,status);
+
+ABORT:
+    return status;
+
+}   /* end QueryAppMode */
+
+
+
 
 /*****************************************************************************/
 /* EnableLane
@@ -800,10 +1330,10 @@ static fm_status EnableLane(fm_uintptr                  handle,
 
 
 /*****************************************************************************/
-/* QueryAppStatus
+/* DisableLane
  * \ingroup platformUtils
  *
- * \desc            Query the application status.
+ * \desc            Disable a data lane.
  *
  * \param[in]       handle is the handle to the I2C device.
  *
@@ -817,10 +1347,46 @@ static fm_status EnableLane(fm_uintptr                  handle,
  * \return          FM_FAIL if not successful.
  *
  *****************************************************************************/
+static fm_status DisableLane(fm_uintptr                  handle,
+                             fm_utilI2cWriteReadHdnlFunc func,
+                             fm_uint                     dev,
+                             fm_int                      lane)
+{
+    fm_status status;
+
+    /* Enable lane with continuous DFE mode */
+    status = RegisterWrite(handle, func, dev, DATALANE_CTRL_0(lane), 0x0);
+
+    return status;
+
+}   /* end DisableLane */
+
+
+
+
+/*****************************************************************************/
+/* QueryAppStatus
+ * \ingroup platformUtils
+ *
+ * \desc            Query the application status.
+ *
+ * \param[in]       handle is the handle to the I2C device.
+ *
+ * \param[in]       func is the I2C write read function to call.
+ *
+ * \param[in]       dev is the device I2C address.
+ * 
+ * \param[out]      appStatus points to caller-allocated storage where this
+ *                  function should place the status for all lanes.
+ *
+ * \return          FM_OK if successful.
+ * \return          FM_FAIL if not successful.
+ *
+ *****************************************************************************/
 static fm_status QueryAppStatus(fm_uintptr                  handle,
                                 fm_utilI2cWriteReadHdnlFunc func,
                                 fm_uint                     dev,
-                                fm_int                      numLane)
+                                fm_byte *                   appStatus)
 {
     fm_status status;
     fm_int    i;
@@ -831,12 +1397,17 @@ static fm_status QueryAppStatus(fm_uintptr                  handle,
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PHY,status);
 
     /* Read back each lane status */
-    for ( i = 0 ; i < numLane ; i++ )
+    for ( i = 0 ; i < FM_GN2412_NUM_LANES ; i++ )
     {
         status = RegisterRead(handle, func, dev, DATA_REG + i, &state);
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PHY,status);
 
-        if (state != 0)
+        if (appStatus)
+        {
+            appStatus[i] = state;
+
+        }
+        else if (state != 0)
         {
             FM_LOG_PRINT("Retimer 0x%x Lane %d status 0x%x\n", dev, i, state);
         }
@@ -846,6 +1417,63 @@ ABORT:
     return status;
 
 }   /* end QueryAppStatus */
+
+
+
+
+/*****************************************************************************/
+/* QueryAppRestartDiagCounts
+ * \ingroup platformUtils
+ *
+ * \desc            Query the application restart diagnostic counts for the
+ *                  specified lane on the specified retimer.
+ *
+ * \param[in]       handle is the handle to the I2C device.
+ *
+ * \param[in]       func is the I2C write read function to call.
+ *
+ * \param[in]       dev is the device I2C address.
+ * 
+ * \param[in]       lane is the data lane to query.
+ * 
+ * \param[out]      reg points to caller-allocated storage where this
+ *                  function should place the status for all lanes.
+ *
+ * \return          FM_OK if successful.
+ * \return          FM_FAIL if not successful.
+ *
+ *****************************************************************************/
+static fm_status QueryAppRestartDiagCounts(fm_uintptr                  handle,
+                                           fm_utilI2cWriteReadHdnlFunc func,
+                                           fm_uint                     dev,
+                                           fm_int                      lane,
+                                           fm_byte *                   reg)
+{
+    fm_status status;
+    fm_int    i;
+    fm_byte   cnt;
+
+    /* Write the lane number (Rx port index 0-11) */
+    status = RegisterWrite(handle, func, dev, DATA_REG, lane);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PHY,status);
+
+    /* Issue the command code: 0x1C */
+    status = IssueCommandCode(handle, func, dev, 0x1C);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PHY,status);
+
+    /* Read back the counters */
+    for ( i = 0 ; i < NUM_DIAG_COUNTERS ; i++ )
+    {
+        status = RegisterRead(handle, func, dev, DATA_REG + i, &cnt);
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PHY,status);
+
+        reg[i] = cnt;
+    }
+
+ABORT:
+    return status;
+
+}   /* end QueryAppRestartDiagCounts */
 
 
 /*****************************************************************************
@@ -865,11 +1493,11 @@ ABORT:
  *
  * \param[in]       outFreq is the output frequency.
  *
- * \param[in,out]   tbCfg points to caller-allocated storage where this
+ * \param[out]      tbCfg points to caller-allocated storage where this
  *                  function should place the timebase configuration.
  *
  * \return          FM_OK if successful.
- * \return          FM_FAIL if not successful.
+ * \return          Other ''Status Codes'' as appropriate in case of failure.
  *
  *****************************************************************************/
 fm_status fmUtilGN2412GetTimebaseCfg(fm_int                timebase,
@@ -878,6 +1506,12 @@ fm_status fmUtilGN2412GetTimebaseCfg(fm_int                timebase,
                                      fm_gn2412TimebaseCfg *tbCfg)
 {
     fm_status status;
+
+    FM_LOG_ENTRY(FM_LOG_CAT_PHY, 
+                 "timebase=%d, refClk=%d, outFreq=%d\n", 
+                 timebase, 
+                 refClk,
+                 outFreq);
 
     /* Currently the only supported combination is
        RefClk = 156.25 MHz and Output Freq = 5156.25 MHz */
@@ -897,7 +1531,7 @@ fm_status fmUtilGN2412GetTimebaseCfg(fm_int                timebase,
         status = FM_ERR_UNSUPPORTED;
     }
 
-    return status;
+    FM_LOG_EXIT(FM_LOG_CAT_PHY, status);
 
 }   /* end fmUtilGN2412GetTimebaseCfg */
 
@@ -916,11 +1550,11 @@ fm_status fmUtilGN2412GetTimebaseCfg(fm_int                timebase,
  *
  * \param[in]       dev is the device I2C address.
  *
- * \param[in,out]   version points to caller-allocated storage where this
+ * \param[out]      version points to caller-allocated storage where this
  *                  function should place the FW version number.
  *
  * \return          FM_OK if successful.
- * \return          FM_FAIL if not successful.
+ * \return          Other ''Status Codes'' as appropriate in case of failure.
  *
  *****************************************************************************/
 fm_status fmUtilGN2412GetFirmwareVersion(fm_uintptr                  handle,
@@ -932,6 +1566,8 @@ fm_status fmUtilGN2412GetFirmwareVersion(fm_uintptr                  handle,
     fm_uint16 reg;
     fm_uint   i;
 
+    FM_LOG_ENTRY(FM_LOG_CAT_PHY, "dev=0x%x\n", dev);
+
     /* Read Version registers */
     for ( i = 0 ; i < FM_GN2412_VERSION_NUM_LEN ; i++ )
     {
@@ -941,7 +1577,7 @@ fm_status fmUtilGN2412GetFirmwareVersion(fm_uintptr                  handle,
     }
 
 ABORT:
-    return status;
+    FM_LOG_EXIT(FM_LOG_CAT_PHY, status);
 
 }   /* end fmUtilGN2412GetFirmwareVersion */
 
@@ -959,14 +1595,14 @@ ABORT:
  *
  * \param[in]       dev is the device I2C address.
  *
- * \param[in,out]   errCode0 points to caller-allocated storage where this
+ * \param[out]      errCode0 points to caller-allocated storage where this
  *                  function should place the BOOT_ERROR_CODE_0_REG value.
  *
- * \param[in,out]   errCode1 points to caller-allocated storage where this
+ * \param[out]      errCode1 points to caller-allocated storage where this
  *                  function should place the BOOT_ERROR_CODE_1_REG value.
  *
  * \return          FM_OK if successful.
- * \return          FM_FAIL if not successful.
+ * \return          Other ''Status Codes'' as appropriate in case of failure.
  *
  *****************************************************************************/
 fm_status fmUtilGN2412GetBootErrorCode(fm_uintptr                  handle,
@@ -977,6 +1613,8 @@ fm_status fmUtilGN2412GetBootErrorCode(fm_uintptr                  handle,
 {
     fm_status status;
 
+    FM_LOG_ENTRY(FM_LOG_CAT_PHY, "dev=0x%x\n", dev);
+
     status = RegisterRead(handle, func, dev, BOOT_ERROR_CODE_0, errCode0);
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PHY,status);
 
@@ -984,9 +1622,524 @@ fm_status fmUtilGN2412GetBootErrorCode(fm_uintptr                  handle,
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PHY,status);
 
 ABORT:
-    return status;
+    FM_LOG_EXIT(FM_LOG_CAT_PHY, status);
 
 }   /* end fmUtilGN2412GetBootErrorCode */
+
+
+
+
+/*****************************************************************************/
+/* fmUtilGN2412DumpConnections
+ * \ingroup platformUtils
+ *
+ * \desc            Dump the RxPort to TxPort connections and port pairings.
+ *
+ * \param[in]       handle is the handle to the I2C device.
+ *
+ * \param[in]       func is the I2C write read function to call.
+ *
+ * \param[in]       dev is the device I2C address.
+ *
+ * \return          NONE
+ *
+ *****************************************************************************/
+void fmUtilGN2412DumpConnections(fm_uintptr                  handle,
+                                 fm_utilI2cWriteReadHdnlFunc func,
+                                 fm_uint                     dev)
+{
+    DumpAllCrosspoint(handle, func, dev);
+    DumpAllPortPairings(handle, func, dev);
+
+}   /* end fmUtilGN2412DumpConnections */
+
+
+
+
+/*****************************************************************************/
+/* fmUtilGN2412DumpTxEqualization
+ * \ingroup platformUtils
+ *
+ * \desc            Dump the Tx equalization coefficients for all lanes
+ *                  on the specified device.
+ *
+ * \param[in]       handle is the handle to the I2C device.
+ *
+ * \param[in]       func is the I2C write read function to call.
+ *
+ * \param[in]       dev is the device I2C address.
+ *
+ * \return          NONE
+ *
+ *****************************************************************************/
+void fmUtilGN2412DumpTxEqualization(fm_uintptr                  handle,
+                                    fm_utilI2cWriteReadHdnlFunc func,
+                                    fm_uint                     dev)
+{
+    fm_int lane;
+
+    FM_LOG_PRINT("Tx Equalizer coefficients (dev 0x%2x)\n"
+                 "====================================\n"
+                 " Lane  Pol  PreTap  Att  PostTap \n",
+                 dev);
+
+    for ( lane = 0 ; lane < FM_GN2412_NUM_LANES ; lane++ )
+    {
+        DumpLaneDeEmphasis(handle, func, dev, lane);
+    }
+
+
+}   /* end fmUtilGN2412DumpTxEqualization */
+
+
+
+
+/*****************************************************************************/
+/* fmUtilGN2412DumpAppMode
+ * \ingroup platformUtils
+ *
+ * \desc            Dump the application mode for all lanes on the specified
+ *                  device.
+ *
+ * \param[in]       handle is the handle to the I2C device.
+ *
+ * \param[in]       func is the I2C write read function to call.
+ *
+ * \param[in]       dev is the device I2C address.
+ *
+ * \return          NONE
+ *
+ *****************************************************************************/
+void fmUtilGN2412DumpAppMode(fm_uintptr                  handle,
+                             fm_utilI2cWriteReadHdnlFunc func,
+                             fm_uint                     dev)
+{
+    fm_status status;
+    fm_byte   mode;
+    fm_int    lane;
+
+    FM_LOG_PRINT("Application Mode (dev 0x%2x)\n"
+                 "============================================\n"
+                 "Lane:   0  1  2  3  4  5  6  7  8  9 10 11\n"
+                 "(hex)  ",
+                 dev);
+
+    for ( lane = 0 ; lane < FM_GN2412_NUM_LANES ; lane++ )
+    {
+        status = QueryAppMode(handle, func, dev, lane, &mode);
+        if (status == FM_OK)
+        {
+            FM_LOG_PRINT("%02X ", mode);
+        }
+        else
+        {
+            FM_LOG_PRINT("Err");
+        }
+    }
+    FM_LOG_PRINT("\n");
+    FM_LOG_PRINT("\n");
+
+
+}   /* end fmUtilGN2412DumpAppMode */
+
+
+
+
+/*****************************************************************************/
+/* fmUtilGN2412DumpAppStatus
+ * \ingroup platformUtils
+ *
+ * \desc            Dump the application status for all lanes on the specified
+ *                  retimer.
+ *
+ * \param[in]       handle is the handle to the I2C device.
+ *
+ * \param[in]       func is the I2C write read function to call.
+ *
+ * \param[in]       dev is the device I2C address.
+ *
+ * \return          NONE
+ *
+ *****************************************************************************/
+void fmUtilGN2412DumpAppStatus(fm_uintptr                  handle,
+                               fm_utilI2cWriteReadHdnlFunc func,
+                               fm_uint                     dev)
+{
+    fm_status status;
+    fm_byte   appStatus[FM_GN2412_NUM_LANES];
+    fm_int    lane;
+
+
+    FM_LOG_PRINT("All Application Status (dev 0x%2x)\n"
+                 "============================================\n"
+                 "Lane:   0  1  2  3  4  5  6  7  8  9 10 11\n"
+                 "(hex)  ",
+                 dev);
+
+    status = QueryAppStatus(handle, func, dev, appStatus);
+
+    if (status == FM_OK)
+    {
+        for ( lane = 0 ; lane < FM_GN2412_NUM_LANES ; lane++ )
+        {
+            FM_LOG_PRINT("%02X ",appStatus[lane]);
+        }
+        FM_LOG_PRINT("\n");
+        FM_LOG_PRINT("\n");
+    }
+    else
+    {
+        FM_LOG_PRINT("Error reading the application status\n");
+    }
+
+
+}   /* end fmUtilGN2412DumpAppStatus */
+
+
+
+
+/*****************************************************************************/
+/* fmUtilGN2412DumpAppRestartDiagCnt
+ * \ingroup platformUtils
+ *
+ * \desc            Dump the application restart diagnostic counts for the
+ *                  specified retimer.
+ *
+ * \param[in]       handle is the handle to the I2C device.
+ *
+ * \param[in]       func is the I2C write read function to call.
+ *
+ * \param[in]       dev is the device I2C address.
+ *
+ * \return          NONE
+ *
+ *****************************************************************************/
+void fmUtilGN2412DumpAppRestartDiagCnt(fm_uintptr                  handle,
+                                       fm_utilI2cWriteReadHdnlFunc func,
+                                       fm_uint                     dev)
+{
+    fm_status status;
+    fm_byte   counters[FM_GN2412_NUM_LANES][NUM_DIAG_COUNTERS];
+    fm_int    lane;
+    fm_int    i;
+
+
+    FM_LOG_PRINT("Application Restart Diagnostic Counts(dev 0x%2x)\n"
+                 "===============================================\n",
+                 dev);
+
+    for ( lane = 0 ; lane < FM_GN2412_NUM_LANES ; lane++ )
+    {
+        status = QueryAppRestartDiagCounts(handle,
+                                           func, 
+                                           dev, 
+                                           lane, 
+                                           &counters[lane][0]);
+        if ( status != FM_OK )
+        {
+            FM_LOG_PRINT("Error reading the restart diagnostic counters\n");
+            return;
+        }
+    }
+
+    for ( i = 0 ; i < NUM_DIAG_COUNTERS ; i++ )
+    {
+        FM_LOG_PRINT("DATA_%02d ", i);
+        for ( lane = 0 ; lane < FM_GN2412_NUM_LANES ; lane++ )
+        {
+            FM_LOG_PRINT("%3d ",counters[lane][i]);
+        }
+        FM_LOG_PRINT("\n");
+    }
+    FM_LOG_PRINT("\n");
+    FM_LOG_PRINT("\n");
+
+
+}   /* end fmUtilGN2412DumpAppRestartDiagCnt */
+
+
+
+
+/*****************************************************************************/
+/* fmUtilGN2412RegisterRead
+ * \ingroup platformUtils
+ *
+ * \desc            Read a GN2412 register.
+ *
+ * \param[in]       handle is the handle to the I2C device.
+ *
+ * \param[in]       func is the I2C write read function to call.
+ *
+ * \param[in]       dev is the device address.
+ *
+ * \param[in]       reg is the register address.
+ *
+ * \param[out]      val is a pointer to caller-allocated storage where this
+ *                  function should place the read byte.
+ *
+ * \return          FM_OK if successful.
+ * \return          Other ''Status Codes'' as appropriate in case of failure.
+ *
+ *****************************************************************************/
+fm_status fmUtilGN2412RegisterRead(fm_uintptr                  handle,
+                                   fm_utilI2cWriteReadHdnlFunc func,
+                                   fm_uint                     dev,
+                                   fm_uint16                   reg,
+                                   fm_byte *                   val)
+{
+    fm_status status;
+
+    status = RegisterRead(handle, func, dev, reg, val);
+
+    return status;
+
+}   /* end fmUtilGN2412RegisterRead */
+
+
+
+
+/*****************************************************************************/
+/* fmUtilGN2412RegisterWrite
+ * \ingroup platformUtils
+ *
+ * \desc            Write to a GN2412 register.
+ *
+ * \param[in]       handle is the handle to the I2C device.
+ *
+ * \param[in]       dev is the device address.
+ *
+ * \param[in]       func is the I2C write read function to call.
+ *
+ * \param[in]       reg is the register address.
+ *
+ * \param[in]       val is the value to write.
+ *
+ * \return          FM_OK if successful.
+ * \return          Other ''Status Codes'' as appropriate in case of failure.
+ *
+ *****************************************************************************/
+fm_status fmUtilGN2412RegisterWrite(fm_uintptr                  handle,
+                                    fm_utilI2cWriteReadHdnlFunc func,
+                                    fm_uint                     dev,
+                                    fm_uint16                   reg,
+                                    fm_byte                     val)
+{
+    fm_status status;
+
+    status = RegisterWrite(handle, func, dev, reg, val);
+
+    return status;
+
+}   /* end fmUtilGN2412RegisterWrite */
+
+
+
+
+/*****************************************************************************/
+/* fmUtilGN2412SetAppMode
+ * \ingroup platformUtils
+ *
+ * \desc            Set the data lane application mode for the specified
+ *                  device and lane.
+ *
+ * \param[in]       handle is the handle to the I2C device.
+ *
+ * \param[in]       func is the I2C write read function to call.
+ *
+ * \param[in]       dev is the device I2C address.
+ *
+ * \param[in]       lane is the data lane to configure.
+ *
+ * \param[in]       mode is the application mode to set.
+ *
+ * \return          FM_OK if successful.
+ * \return          Other ''Status Codes'' as appropriate in case of failure.
+ *
+ *****************************************************************************/
+fm_status fmUtilGN2412SetAppMode(fm_uintptr                  handle,
+                                 fm_utilI2cWriteReadHdnlFunc func,
+                                 fm_uint                     dev,
+                                 fm_int                      lane,
+                                 fm_int                      mode)
+{
+    fm_status status;
+
+    FM_LOG_ENTRY(FM_LOG_CAT_PHY, 
+                 "dev=0x%x, lane=%d, mode=0x%x\n", 
+                 dev, 
+                 lane,
+                 mode);
+
+    if ( lane >= 0 && lane < FM_GN2412_NUM_LANES )
+    {
+        /* Disable the data lane first */
+        status = DisableLane(handle, func, dev, lane);
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PHY,status);
+
+        /* Set the application mode */
+        status = SetAppMode(handle, func, dev, lane, mode);
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PHY,status);
+
+        /* Re-enable the lane */
+        status = EnableLane(handle, func, dev, lane);
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PHY,status);
+
+    }
+    else
+    {
+        status = FM_ERR_INVALID_ARGUMENT;
+    }
+
+ABORT:
+    FM_LOG_EXIT(FM_LOG_CAT_PHY, status);
+
+}   /* end fmUtilGN2412SetAppMode */
+
+
+
+
+/*****************************************************************************/
+/* fmUtilGN2412GetLaneTxEq
+ * \ingroup platformUtils
+ *
+ * \desc            Get the transmitter equalization coefficients for the
+ *                  specified device and lane
+ *
+ * \param[in]       handle is the handle to the I2C device.
+ *
+ * \param[in]       func is the I2C write read function to call.
+ *
+ * \param[in]       dev is the device I2C address.
+ *
+ * \param[in]       lane is the data lane to configure.
+ * 
+ * \param[out]      polarity points to caller-allocated storage where this
+ *                  function should place the Tx polarity value.
+ * 
+ * \param[out]      preTap points to caller-allocated storage where this
+ *                  function should place the Transmitter Cm coefficient
+ *                  (pre-tap). 
+ * 
+ * \param[out]      attenuation points to caller-allocated storage where this
+ *                  function should place the attenuation setting for
+ *                  transmitter (output swing). 
+ * 
+ * \param[out]      postTap points to caller-allocated storage where this
+ *                  function should place the Transmitter C1 coefficient
+ *                  (post-tap). 
+ * 
+ * \return          FM_OK if successful.
+ * \return          FM_FAIL if not successful.
+ *
+ *****************************************************************************/
+fm_status fmUtilGN2412GetLaneTxEq(fm_uintptr                  handle,
+                                  fm_utilI2cWriteReadHdnlFunc func,
+                                  fm_uint                     dev,
+                                  fm_int                      lane,
+                                  fm_int *                    polarity,
+                                  fm_int *                    preTap,
+                                  fm_int *                    attenuation,
+                                  fm_int *                    postTap)
+{
+    fm_status status;
+    fm_byte   pol;
+    fm_byte   pre;
+    fm_byte   att;
+    fm_byte   post;
+
+    FM_LOG_ENTRY(FM_LOG_CAT_PHY, "dev=0x%x lane=%d\n", dev, lane);
+
+    status = QueryLaneDeEmphasis(handle,
+                                 func,
+                                 dev,
+                                 lane,
+                                 &pol,
+                                 &pre,
+                                 &att,
+                                 &post);
+
+    if ( status == FM_OK )
+    {
+        *polarity = pol;
+        *preTap = pre;
+        *attenuation = att;
+        *postTap = post;
+    }
+
+    FM_LOG_EXIT(FM_LOG_CAT_PHY, status);
+
+}   /* end fmUtilGN2412GetLaneTxEq */
+
+
+
+
+/*****************************************************************************/
+/* fmUtilGN2412SetLaneTxEq
+ * \ingroup platformUtils
+ *
+ * \desc            Set the transmitter equalization (de-emphasis) for the
+ *                  specified lane.
+ *
+ * \param[in]       handle is the handle to the I2C device.
+ *
+ * \param[in]       func is the I2C write read function to call.
+ *
+ * \param[in]       dev is the device I2C address.
+ *
+ * \param[in]       lane is the data lane to configure.
+ * 
+ * \param[in]       polarity is TX polarity.
+ * 
+ * \param[in]       preTap is the Transmitter Cm coefficient (pre-tap). 
+ * 
+ * \param[in]       attenuation is the attenuation setting for transmitter 
+ *                  (output swing). 
+ * 
+ * \param[in]       postTap is the Transmitter C1 coefficient (post-tap). 
+ * 
+ * \return          FM_OK if successful.
+ * \return          Other ''Status Codes'' as appropriate in case of failure.
+ *
+ *****************************************************************************/
+fm_status fmUtilGN2412SetLaneTxEq(fm_uintptr                  handle,
+                                  fm_utilI2cWriteReadHdnlFunc func,
+                                  fm_uint                     dev,
+                                  fm_int                      lane,
+                                  fm_int                      polarity,
+                                  fm_int                      preTap,
+                                  fm_int                      attenuation,
+                                  fm_int                      postTap)
+{
+    fm_status status;
+
+    FM_LOG_ENTRY(FM_LOG_CAT_PHY, 
+                 "dev=0x%x lane=%d pol=0x%x preTap=%d att=%d postTap=%d\n", 
+                 dev, 
+                 lane,
+                 polarity,
+                 preTap,
+                 attenuation,
+                 postTap);
+
+    if ( lane >= 0 && lane < FM_GN2412_NUM_LANES )
+    {
+        status = ConfigureLaneDeEmphasis(handle,
+                                         func,
+                                         dev,
+                                         lane,
+                                         polarity,
+                                         preTap,
+                                         attenuation,
+                                         postTap);
+    }
+    else
+    {
+        status = FM_ERR_INVALID_ARGUMENT;
+    }
+
+    FM_LOG_EXIT(FM_LOG_CAT_PHY, status);
+
+}   /* end fmUtilGN2412SetLaneTxEq */
 
 
 
@@ -1003,19 +2156,26 @@ ABORT:
  *
  * \param[in]       dev is the device I2C address.
  *
- * \param[in]       tbCfg pointer to timebase 0 and 1 configuration.
+ * \param[in]       cfg pointer to GN2412 configuration.
  *
  * \return          FM_OK if successful.
- * \return          FM_FAIL if not successful.
+ * \return          Other ''Status Codes'' as appropriate in case of failure.
  *
  *****************************************************************************/
 fm_status fmUtilGN2412Initialize(fm_uintptr                  handle,
                                  fm_utilI2cWriteReadHdnlFunc func,
                                  fm_uint                     dev,
-                                 fm_gn2412TimebaseCfg *      tbCfg)
+                                 fm_gn2412Cfg *              cfg)
 {
     fm_status status;
     fm_int    i;
+
+    FM_LOG_ENTRY(FM_LOG_CAT_PHY, "dev=0x%x\n", dev);
+
+    if (cfg == NULL)
+    {
+        return FM_ERR_INVALID_ARGUMENT;
+    }
 
     /* Set firmware for API mode (0xff)*/
     status = RegisterWrite(handle, func, dev, EXTENDED_MODE, 0xFF);
@@ -1028,7 +2188,7 @@ fm_status fmUtilGN2412Initialize(fm_uintptr                  handle,
     /* Configure both timebases */
     for ( i = 0 ; i < FM_GN2412_NUM_TIMEBASES ; i++ )
     {
-        status = ConfigureTimebase(handle, func, dev, i, &tbCfg[i]);
+        status = ConfigureTimebase(handle, func, dev, i, &cfg->timebase[i]);
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PHY,status);
     }
 
@@ -1044,22 +2204,39 @@ fm_status fmUtilGN2412Initialize(fm_uintptr                  handle,
     {
         /* Currently all lanes use timebase 1
            This should eventually be configurable */
-        status = ConfigureDataLane(handle, func, dev, i, 1, &tbCfg[1]);
+        status = ConfigureDataLane(handle, func, dev, i, 1, &cfg->timebase[1]);
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PHY,status);
     }
 
-    /* Configure Crosspoint Connections */
-    status = ConfigureCrosspoint(handle, func, dev);
+    /* Configure all Crosspoint Connections */
+    status = ConfigureAllCrosspoint(handle, func, dev, cfg);
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PHY,status);
+
+    if (cfg->setTxEq)
+    {
+        /* Configure De-Emphasis per values provided in config file */
+        for ( i = 0 ; i < FM_GN2412_NUM_LANES ; i++ )
+        {
+            status = ConfigureLaneDeEmphasis(handle,
+                                             func,
+                                             dev,
+                                             i,
+                                             cfg->lane[i].polarity,
+                                             cfg->lane[i].preTap,
+                                             cfg->lane[i].attenuation,
+                                             cfg->lane[i].postTap);
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PHY,status);
+        }
+    }
 
     /* Configure port pairs */
     status = ConfigurePortPairs(handle, func, dev);
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PHY,status);
 
-    /* Set the application mode to Auto-config: 0x74 for all lanes */
+    /* Set the application mode for all lanes */
     for ( i = 0 ; i < FM_GN2412_NUM_LANES ; i++ )
     {
-        status = SetAppMode(handle, func, dev, i, 0x74);
+        status = SetAppMode(handle, func, dev, i, cfg->lane[i].appMode);
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PHY,status);
     }
 
@@ -1070,9 +2247,9 @@ fm_status fmUtilGN2412Initialize(fm_uintptr                  handle,
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PHY,status);
     }
 
-    status = QueryAppStatus(handle, func, dev, FM_GN2412_NUM_LANES);
+    status = QueryAppStatus(handle, func, dev, NULL);
 
- ABORT:
-    return status;
+ABORT:
+    FM_LOG_EXIT(FM_LOG_CAT_PHY, status);
 
 }   /* end fmUtilGN2412Initialize */

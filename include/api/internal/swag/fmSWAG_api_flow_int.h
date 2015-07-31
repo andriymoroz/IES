@@ -80,6 +80,16 @@ fm_status fmSWAGAddFlow(fm_int           sw,
                         fm_flowState     flowState,
                         fm_int *         flowId);
 
+fm_status fmSWAGGetFlow(fm_int             sw, 
+                        fm_int             tableIndex,
+                        fm_int             flowId,
+                        fm_flowCondition * flowCond,
+                        fm_flowValue *     flowValue,
+                        fm_flowAction *    flowAction,
+                        fm_flowParam *     flowParam,
+                        fm_int *           priority,
+                        fm_int *           precedence);
+
 fm_status fmSWAGModifyFlow(fm_int           sw, 
                            fm_int           tableIndex,
                            fm_int           flowId,
@@ -89,6 +99,26 @@ fm_status fmSWAGModifyFlow(fm_int           sw,
                            fm_flowValue *   condVal,
                            fm_flowAction    action,
                            fm_flowParam *   param);
+
+fm_status fmSWAGGetFlowTableType(fm_int             sw,
+                                 fm_int             tableIndex,
+                                 fm_flowTableType * flowTableType);
+
+fm_status fmSWAGGetFlowFirst(fm_int   sw,
+                             fm_int * firstTable);
+
+fm_status fmSWAGGetFlowNext(fm_int   sw,
+                            fm_int   currentTable,
+                            fm_int * nextTable);
+
+fm_status fmSWAGGetFlowRuleFirst(fm_int   sw,
+                                 fm_int   tableIndex,
+                                 fm_int * firstRule);
+
+fm_status fmSWAGGetFlowRuleNext(fm_int   sw,
+                                fm_int   tableIndex,
+                                fm_int   currentRule,
+                                fm_int * nextRule);
 
 fm_status fmSWAGDeleteFlow(fm_int sw, fm_int tableIndex, fm_int flowId);
 

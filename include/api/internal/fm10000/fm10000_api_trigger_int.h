@@ -5,7 +5,7 @@
  * Creation Date:   June 18th, 2013
  * Description:     Contains constants and functions used to support trigger.
  *
- * Copyright (c) 2007 - 2014, Intel Corporation
+ * Copyright (c) 2007 - 2015, Intel Corporation
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -29,7 +29,7 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
+ *****************************************************************************/
 
 #ifndef __FM_FM10000_API_TRIGGER_INT_H
 #define __FM_FM10000_API_TRIGGER_INT_H
@@ -76,33 +76,37 @@ enum
     /* Mirror trigger group. */
     FM10000_TRIGGER_GROUP_MIRROR = 100,
 
+    /* VLAN trigger group. */
+    FM10000_TRIGGER_GROUP_VLAN = 200,
+
     /* ACL trigger group. */
-    FM10000_TRIGGER_GROUP_ACL_SPECIAL = 200,
+    FM10000_TRIGGER_GROUP_ACL_SPECIAL = 300,
 
     /* Storm controllers can use up to 16 trigger groups
      * starting from this base. */
-    FM10000_TRIGGER_GROUP_STORM_CTRL = 300,
+    FM10000_TRIGGER_GROUP_STORM_CTRL = 400,
 
     /* Security trigger group. */
-    FM10000_TRIGGER_GROUP_SECURITY = 400,
+    FM10000_TRIGGER_GROUP_SECURITY = 500,
 
     /* Flood control trigger groups. */
-    FM10000_TRIGGER_GROUP_UCAST_FLOOD = 500,
-    FM10000_TRIGGER_GROUP_MCAST_FLOOD = 510,
-    FM10000_TRIGGER_GROUP_MCAST_MASK_DROP_TRAP = 520,
-    FM10000_TRIGGER_GROUP_MCAST_DROP_TRAP = 530,
+    FM10000_TRIGGER_GROUP_UCAST_FLOOD = 600,
+    FM10000_TRIGGER_GROUP_MCAST_FLOOD = 610,
+    FM10000_TRIGGER_GROUP_BCAST_FLOOD = 620,
+    FM10000_TRIGGER_GROUP_MCAST_MASK_DROP_TRAP = 630,
+    FM10000_TRIGGER_GROUP_MCAST_DROP_TRAP = 640,
 
     /* IP Options trigger group. */
-    FM10000_TRIGGER_GROUP_IP_OPTIONS = 600,
+    FM10000_TRIGGER_GROUP_IP_OPTIONS = 700,
 
     /* SFlow trigger group. */
-    FM10000_TRIGGER_GROUP_SFLOW = 700,
+    FM10000_TRIGGER_GROUP_SFLOW = 800,
 
     /* Routing trigger group. */
-    FM10000_TRIGGER_GROUP_ROUTING = 800,
+    FM10000_TRIGGER_GROUP_ROUTING = 900,
 
     /* Priority Mapper trigger group. */
-    FM10000_TRIGGER_GROUP_PRIORITY_MAP = 900,
+    FM10000_TRIGGER_GROUP_PRIORITY_MAP = 1000,
 
 };  /* end enum */
 
@@ -246,7 +250,7 @@ typedef struct _fm10000_mirrorCfg
     /* New VID to use for mirrored or logged copies. */
     fm_uint16   vlan;
 
-    /* New VPRI to use for mirrored or loggied copies. */
+    /* New VPRI to use for mirrored or logged copies. */
     fm_byte     vlanPri;
 
     /* Whether mirrored copies should be truncated. */

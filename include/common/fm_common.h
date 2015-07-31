@@ -109,6 +109,9 @@
 /* The number of entries of a statically allocated array. */
 #define FM_NENTRIES(x)  ( sizeof((x)) / sizeof((x)[0]) )
 
+/* Mac address size in bits */
+#define FM_MAC_ADDRESS_SIZE 48
+
 /* A typedef'd union to allow portable conversion of integers to pointers,
  * etc., designed to work in both 32-bit and 64-bit systems. */
 typedef union

@@ -88,34 +88,6 @@
 #define BIST_MODULE_SBM                      (1 << FM10000_BIST_CTRL_b_BistRun_SBM)
 
 
-/**************************************************/
-/** \ingroup intPlatform
- * Owner of the SPI peripheral lock:
- * 0: Lock taken by switch API.
- * 1: Lock taken by QV tools.
- * 2: Lock taken by board manager.
- * Used as an argument to ''fm10000UtilsSpiPeripheralLock'' and
- * ''fm10000UtilsSpiPeripheralUnlock''.
- * These enumerated values are used to configure and verify the owner
- * of the SPI peripheral lock.
- **************************************************/
-typedef enum
-{
-    /** Lock taken by switch API. */
-    FM10000_SPI_PERIPHERAL_LOCK_OWNER_SWITCH_API = 0,
-
-    /** Lock taken by QV tools. */
-    FM10000_SPI_PERIPHERAL_LOCK_OWNER_QV,
-
-    /** Lock taken by board manager. */
-    FM10000_SPI_PERIPHERAL_LOCK_OWNER_BOARD_MANAGER,
-
-    /** For internal use only. */
-    FM10000_SPI_PERIPHERAL_LOCK_OWNER_MAX
-
-} fm10000_spiPeripheralLockOwner;
-
-
 /* Structure that holds all the run-time configurable boot parameters. For
  * details on the parameters, refer to the description of the Liberty Trail
  * Boot Config Attributes.
@@ -379,13 +351,5 @@ fm_status fm10000PcieLoadPepSettings(fm_int                     sw,
                                      fm_int                     pepId,
                                      fm_registerReadUINT32Func  readFunc,
                                      fm_registerWriteUINT32Func writeFunc);
-fm_status fm10000UtilsDisableBsmInterrupts(fm_uint32 *switchMem,
-                                           fm_uint32  bsmIntMask[2]);
-fm_status fm10000UtilsRestoreBsmInterrupts(fm_uint32 *switchMem,
-                                           fm_uint32  bsmIntMask[2]);
-fm_status fm10000UtilsSpiPeripheralLock(fm_uint32 *                    switchMem,
-                                        fm10000_spiPeripheralLockOwner owner);
-fm_status fm10000UtilsSpiPeripheralUnlock(fm_uint32 *                    switchMem,
-                                          fm10000_spiPeripheralLockOwner owner);
- 
+
 #endif /* __FM_FM10000_UTILS_H */

@@ -56,11 +56,13 @@ typedef enum
     PCA_IO_9506,
     PCA_IO_9538,
     PCA_IO_9539,
+    PCA_IO_9554,
     PCA_IO_9555,
     PCA_IO_9698,
     /* All the PCA I2C LED driver model must be defined starting here  */
     PCA_IO_9634 = FM_PCA_LED_DRIVER_BIT_MASK,
     PCA_IO_9635,
+    PCA_IO_9551,
 
 } fm_pcaIoModel;
 
@@ -79,6 +81,10 @@ typedef enum
     PCA_IO_REG_TYPE_LEDOUT,
     PCA_IO_REG_TYPE_SUBADDR,
     PCA_IO_REG_TYPE_ALLCALLADR,
+    PCA_IO_REG_TYPE_PSC0,
+    PCA_IO_REG_TYPE_PSC1,
+    PCA_IO_REG_TYPE_PWM0,
+    PCA_IO_REG_TYPE_PWM1,
 
 }  fm_pcaIoRegType;
 
@@ -87,6 +93,12 @@ typedef enum
 #define FM_PCA_LEDOUT_OFF           0
 #define FM_PCA_LEDOUT_ON            2
 #define FM_PCA_LEDOUT_BLINK         3
+
+/* Per PCA9551 data sheet for LED Selector registers LS0/LS1  */
+#define FM_PCA_LS_ON            0
+#define FM_PCA_LS_OFF           1
+#define FM_PCA_LS_BLINK0        2
+#define FM_PCA_LS_BLINK1        3
 
 /* Max number of bytes supported by PCA IO */
 #define FM_PCA_IO_REG_MAX_SIZE             5
@@ -108,7 +120,7 @@ typedef enum
 /* Max number of LEDs supported by the PCA LED driver */
 #define FM_PCA_LED_MAX_LEDS         FM_PCA9635_NUM_LEDS
 
-/* Number of LEDs per LEDOUT register */
+/* Number of LEDs per LEDOUT register (apply to PCA9551 and PCA9634/35) */
 #define FM_PCA_LED_PER_LEDOUT       4
 
 /* Number of LEDOUT register */
@@ -153,20 +165,45 @@ typedef struct
 /* PCA LED driver registers */
 typedef struct
 {
+    /*************************************
+     Variables specific to the PCA9634/35
+    **************************************/
     /* Mode register 1 and 2 */
     fm_byte mode[2];
 
     /* Brightness control LEDn */
     fm_byte pwm[FM_PCA_LED_MAX_LEDS];
 
-    /* LED output state */
-    fm_byte ledout[FM_PCA_LED_NUM_LEDOUT];
-
     /* group[0] duty cycle control and group[1] frequency */
     fm_byte group[2];
 
     /* addr[0..2]: I2C-bus subaddresses, addr[3] All Call address */
     fm_byte addr[4];
+
+    /*************************************
+     Variables specific to the PCA9551
+    **************************************/
+
+    /* Frequency Prescaler: PSC0, PSC1 */
+    fm_byte psc0;
+    fm_byte psc1;
+
+    /* Pulse Width Moduleation: PWMSC0, PSC1 */
+    fm_byte pwm0;
+    fm_byte pwm1;
+
+    /*************************************
+     Variables shared between the PCA9551
+     and the PCA9634/35.
+    **************************************/
+
+    /* LED output state. Correspond to LS0/LS1 registers for the PCA9551 */
+    fm_byte ledout[FM_PCA_LED_NUM_LEDOUT];
+
+    /* Value to write the LEDOUT register to control the LED */
+    fm_int ledOn;
+    fm_int ledOff;
+    fm_int ledBlink;
 
 } fm_pcaLedRegs;
 

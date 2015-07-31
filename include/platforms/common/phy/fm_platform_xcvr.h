@@ -36,27 +36,43 @@
 
 typedef enum
 {
-    FM_PLATFORM_XCVR_TYPE_UNKNOWN,        /* Unable to decode tranceiver type */
-
-    FM_PLATFORM_XCVR_TYPE_OPTICAL,        /* Optical transceiver */
-
-    FM_PLATFORM_XCVR_TYPE_DAC,            /* Direct Attached Copper cable */
-
     FM_PLATFORM_XCVR_TYPE_NOT_PRESENT,    /* Transceiver is not present */
 
+    FM_PLATFORM_XCVR_TYPE_UNKNOWN,        /* Unable to decode tranceiver type */
+
+    FM_PLATFORM_XCVR_TYPE_1000BASE_T,     /* SFP 10/100/1000 BASE-T module */
+
+    FM_PLATFORM_XCVR_TYPE_SFP_DAC,        /* 10G Direct Attach Copper cable */
+
+    FM_PLATFORM_XCVR_TYPE_SFP_OPT,        /* 1G/10G Optical module */
+
+    FM_PLATFORM_XCVR_TYPE_QSFP_DAC,       /* 40G Direct Attach Copper cable */
+
+    FM_PLATFORM_XCVR_TYPE_QSFP_AOC,       /* 40G Active Optical Cable */
+
+    FM_PLATFORM_XCVR_TYPE_QSFP_OPT,       /* 40G Optical Separated Module */
+
+    FM_PLATFORM_XCVR_TYPE_QSFP28_DAC,     /* 100G Direct Attach Copper cable */
+
+    FM_PLATFORM_XCVR_TYPE_QSFP28_AOC,     /* 100G Active Optical Cable */
+
+    FM_PLATFORM_XCVR_TYPE_QSFP28_OPT,     /* 100G Optical Separated Module */
+ 
 } fm_platformXcvrType;
 
 
 fm_text fmPlatformXcvrTypeGetName(fm_platformXcvrType type);
+fm_bool fmPlatformXcvrIsOptical(fm_platformXcvrType type);
 fm_uint fmPlatformXcvrEepromIsBaseCsumValid(fm_byte *eeprom);
 fm_uint fmPlatformXcvrEepromIsExtCsumValid(fm_byte *eeprom);
 
-void fmPlatformXcvrEepromDumpBaseExt(fm_byte *eeprom);
+void fmPlatformXcvrEepromDumpBaseExt(fm_byte *eeprom, fm_bool qsfp);
 void fmPlatformXcvrSfppEepromDumpPage1(fm_byte *eeprom);
 void fmPlatformXcvrQsfpEepromDumpPage0(fm_byte *eeprom);
 
 fm_uint fmPlatformXcvrEepromGetLen(fm_byte *eeprom);
 fm_platformXcvrType fmPlatformXcvrEepromGetType(fm_byte *eeprom);
+fm_bool fmPlatformXcvrIs1G(fm_byte *eeprom);
 fm_bool fmPlatformXcvrIs10G1G(fm_byte *eeprom);
 fm_bool fmPlatformXcvrIs1000BaseT(fm_byte *eeprom);
 

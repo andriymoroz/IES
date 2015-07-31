@@ -6,7 +6,7 @@
  * Description:     Provide debugging functions for accessing SERDES
  *                  register fields by name.
  *
- * Copyright (c) 2013, Intel Corporation
+ * Copyright (c) 2013 - 2015, Intel Corporation
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -30,7 +30,7 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
+ *****************************************************************************/
 
 #include "fm_sdk_fm10000_int.h"
 
@@ -39,6 +39,7 @@
 /*****************************************************************************
  * Macros, Constants & Types
  *****************************************************************************/
+
 #define FIELD_FORMAT_B  "    %-20s: %d\n"
 #define FIELD_FORMAT_F  "    %-20s: %d 0x%x\n"
 #define FIELD_FORMAT_S  "    %-20s: %s\n"
@@ -101,7 +102,7 @@ fm_text fm10000SerdesGetRegName(fm_uint regOff)
 
     return regStr;
 
-} /* end fm10000SerdesGetRegName */
+}   /* end fm10000SerdesGetRegName */
 
 
 
@@ -141,7 +142,7 @@ const fmRegisterField  *fm10000SerdesGetRegFields(fm_uint regOff)
 
     return pField;
 
-} /* end fm10000SerdesGetRegFields */
+}   /* end fm10000SerdesGetRegFields */
 
 
 
@@ -218,6 +219,7 @@ const fmRegisterField  *fm10000SerdesSpicoIntrGetRegFields(fm_uint regOff)
     }
 
     return pField;
+
 }   /* end fm10000SerdesSpicoIntrGetRegFields */
 
 
@@ -245,7 +247,9 @@ fm_bool fm10000SpicoSerdesRegIsRead(fm_int intNum)
     }
 
     return FALSE;
-} /* fm10000SpicoSerdesRegIsRead */
+
+}   /* end fm10000SpicoSerdesRegIsRead */
+
 
 
 
@@ -286,6 +290,7 @@ static fm_text fm10000SBusGetIpIdCodeStr(fm_uint value)
     return regStr;
 
 }   /* end fm10000SBusGetIpIdCodeStr */
+
 
 
 
@@ -369,6 +374,7 @@ fm_status fm10000DumpEplSerdesRegFields(fm_int regOff, fm_uint32 value)
     return err;
 
 }   /* end fm10000DumpEplSerdesRegFields */
+
 
 
 

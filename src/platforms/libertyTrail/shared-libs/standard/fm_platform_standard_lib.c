@@ -29,7 +29,7 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
+ *****************************************************************************/
 
 #include <fm_sdk.h>
 #include <stdlib.h>
@@ -257,11 +257,20 @@ typedef struct
     /* I2C bus select type */
     fm_busSelType   busSelType;
 
-    /* mux to the transceiver I2C bus, if pin type is PCA */
+    /* mux to the transceiver I2C bus, if pin type is PCAMUX */
     fm_uint         parentMuxIdx;
 
     /* mux value to enable to this device */
     fm_uint         parentMuxValue;
+
+    /* IO to select transceiver I2C, if pin type is PCAIO */
+    fm_uint         ioIdx;
+
+    /* IO pin to select transceiver I2C, if pin type is PCAIO */
+    fm_uint         ioPin;
+
+    /* IO pin value to select transceiver I2C, if pin type is PCAIO */
+    fm_uint         ioPinPolarity;
 
 } fm_busSel;
 
@@ -598,6 +607,8 @@ static fm_platformStrMap pcaIoModelMap[] =
     { "PCA9506",     PCA_IO_9506    },
     { "PCA9538",     PCA_IO_9538    },
     { "PCA9539",     PCA_IO_9539    },
+    { "PCA9551",     PCA_IO_9551    },
+    { "PCA9554",     PCA_IO_9554    },
     { "PCA9555",     PCA_IO_9555    },
     { "PCA9634",     PCA_IO_9634    },
     { "PCA9635",     PCA_IO_9635    },
@@ -661,7 +672,7 @@ fm_status fmPlatformLibGetVrmVoltage(fm_int     sw,
  * The available values are: 
  *                                                                      \lb\lb
  *  
- * switchI2C - Use RRC as master (default) 
+ * switchI2C - Use FM10000 as master (default) 
  *                                                                      \lb
  * /dev/i2c-x - Use CPU i2c/SMBus bus 
  *                                                                      \lb
@@ -678,7 +689,7 @@ fm_status fmPlatformLibGetVrmVoltage(fm_int     sw,
 /** 
  * (Required) Number of PCA muxes present on the systems. 
  *                                                                      \lb\lb
- * This includes only the PCA muxes attached to a RRC I2C bus tree. 
+ * This includes only the PCA muxes attached to an FM10000 I2C bus tree.
  */
 #define FM_AAK_LIB_PCAMUX_COUNT         "api.platform.lib.config.pcaMux.count"
 #define FM_AAT_LIB_PCAMUX_COUNT         FM_API_ATTR_INT
@@ -725,7 +736,8 @@ fm_status fmPlatformLibGetVrmVoltage(fm_int     sw,
 /** 
  * (Required) Number of PCA IO expanders present on the systems.
  *                                                                      \lb\lb
- * This includes only the IO expander attached to a RRC I2C bus tree.
+ * This includes only the IO expander attached to an FM10000 I2C bus 
+ * tree. 
  */
 #define FM_AAK_LIB_PCAIO_COUNT          "api.platform.lib.config.pcaIo.count"
 #define FM_AAT_LIB_PCAIO_COUNT          FM_API_ATTR_INT
@@ -733,7 +745,7 @@ fm_status fmPlatformLibGetVrmVoltage(fm_int     sw,
 /** 
  * (Required) Specifies the PCA IO expander model.
  *                                                                      \lb\lb
- * Supported PCA models: 9505, 9506, 9538, 9539, 9555, 9634 and 9698
+ * Supported PCA models: 9505, 9506, 9551, 9554, 9555, 9634, 9635 and 9698
  */
 #define FM_AAK_LIB_PCAIO_MODEL          "api.platform.lib.config.pcaIo.%d.model"
 #define FM_AAT_LIB_PCAIO_MODEL          FM_API_ATTR_TEXT
@@ -770,10 +782,11 @@ fm_status fmPlatformLibGetVrmVoltage(fm_int     sw,
 #define FM_AAT_LIB_PCAIO_PARENT_VALUE   FM_API_ATTR_INT
 
 /** 
- * (Optional) Specifies the global blinking period for PCA9634/35 LED driver. 
+ * (Optional) Specifies the global blinking period for PCA9551 or PCA9634/35 
+ * LED driver. 
  *                                                                      \lb\lb
- * In fact that property defines the 8-bits GFRQ variable in the following 
- * formula. Applies to all LEDs connected to that LED driver.
+ * For the PCA9634/35, that property defines the 8-bits GFRQ variable in the 
+ * following formula. Applies to all LEDs connected to that LED driver.
  *                                                                      \lb\lb
  * Blinking period is controlled through 256 linear steps from
  * 00h (41 ms, frequency 24 Hz) to FFh (10.73 s).
@@ -783,6 +796,18 @@ fm_status fmPlatformLibGetVrmVoltage(fm_int     sw,
  *                                 24
  *                                                                      \lb\lb
  * The default is set to 5 for 1/4 sec period.
+ *                                                                      \lb\lb
+ * For the PCA9551, that property defines the 8-bits PSC variable in the 
+ * following formula. Applies to all LEDs connected to that LED driver.
+ *                                                                      \lb\lb
+ * Blinking period is controlled through 256 linear steps from
+ * 00h (26 ms, frequency 24 Hz) to FFh (6.74 s).
+ *                                                                      \lb\lb
+ *                     (PSC[7:0] + 1)
+ *  Blinking period = --------------- (sec)
+ *                           38
+ *                                                                      \lb\lb
+ * The default is set to 9 for ~1/4 sec period.
  */
 #define FM_AAK_LIB_PCAIO_LED_BLINK_PERIOD       "api.platform.lib.config.pcaIo.%d.ledBlinkPeriod"
 #define FM_AAT_LIB_PCAIO_LED_BLINK_PERIOD       FM_API_ATTR_INT
@@ -1037,6 +1062,29 @@ fm_status fmPlatformLibGetVrmVoltage(fm_int     sw,
  */
 #define FM_AAK_LIB_HWRES_XCVRI2C_PCAMUX_VALUE       "api.platform.lib.config.hwResourceId.%d.xcvrI2C.pcaMux.value"
 #define FM_AAT_LIB_HWRES_XCVRI2C_PCAMUX_VALUE       FM_API_ATTR_INT
+
+/** 
+ * (Required) Specifies the PCA IO index the front panel transceiver 
+ * is attached to. 
+ */
+#define FM_AAK_LIB_HWRES_XCVRI2C_PCAIO_INDEX       "api.platform.lib.config.hwResourceId.%d.xcvrI2C.pcaIo.index"
+#define FM_AAT_LIB_HWRES_XCVRI2C_PCAIO_INDEX       FM_API_ATTR_INT
+
+/** 
+ * (Required) Specifies the PCAIO pin to select the front 
+ *  panel transceiver I2C bus.
+ */
+#define FM_AAK_LIB_HWRES_XCVRI2C_PCAIO_PIN        "api.platform.lib.config.hwResourceId.%d.xcvrI2C.pcaIo.pin"
+#define FM_AAT_LIB_HWRES_XCVRI2C_PCAIO_PIN        FM_API_ATTR_INT
+
+/** 
+ * (Optional) Specifies the PCAIO pin value to select the front 
+ *  panel transceiver I2C bus.
+ *
+ * Default is 0 to enable.
+ */
+#define FM_AAK_LIB_HWRES_XCVRI2C_PCAIO_PIN_POLARITY  "api.platform.lib.config.hwResourceId.%d.xcvrI2C.pcaIo.pin.polarity"
+#define FM_AAT_LIB_HWRES_XCVRI2C_PCAIO_PIN_POLARITY  FM_API_ATTR_INT
 
 /** 
  * (Optional) Specifies the device type this port LED is attached to.
@@ -2495,7 +2543,7 @@ static fm_status LoadConfig(void)
             return status;
         }
 
-        if (pcaIo->dev.model & FM_PCA_LED_DRIVER_BIT_MASK)
+        if (pcaIo->dev.model == PCA_IO_9634 || pcaIo->dev.model == PCA_IO_9635)
         {
             /* Get the LED blinking period (default: 5) */
             SPRINTF_CNT(FM_AAK_LIB_PCAIO_LED_BLINK_PERIOD);
@@ -2513,6 +2561,19 @@ static fm_status LoadConfig(void)
             status = GetOptionalConfigInt(buf,
                                           (fm_int *)&pcaIo->dev.ledBrightness,
                                           255,
+                                          0,
+                                          255);
+            FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
+        }
+        else if (pcaIo->dev.model == PCA_IO_9551)
+        {
+            /* Get the LED blinking period (default: 9) */
+            SPRINTF_CNT(FM_AAK_LIB_PCAIO_LED_BLINK_PERIOD);
+
+            /* Default blink period to 1/4 sec => (PSC + 1)/38 sec */
+            status = GetOptionalConfigInt(buf,
+                                          (fm_int *)&pcaIo->dev.ledBlinkPeriod,
+                                          9,
                                           0,
                                           255);
             FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
@@ -2634,49 +2695,6 @@ static fm_status LoadConfig(void)
             xcvrIo = &hwCfg.hwResId[cnt].xcvrStateIo;
             xcvrI2cBus = &hwCfg.hwResId[cnt].xcvrI2cBusSel;
 
-            /**************************************************
-             * Get the I2C bus select configuration
-             **************************************************/
-
-            SPRINTF_CNT(FM_AAK_LIB_HWRES_XCVRI2C_BUSSELTYPE);
-            inputText = fmGetTextApiProperty(buf, 
-                                             BusSelTypeToStr(hwCfg.defBusSelType));
-
-            status = BusSelTypeStrToValue(inputText, &xcvrI2cBus->busSelType);
-            if (status)
-            {
-                FM_LOG_FATAL(FM_LOG_CAT_PLATFORM,
-                             "Invalid value (%s) for '%s'\n", 
-                             inputText, 
-                             buf);
-                return status;
-            }
-
-            if (xcvrI2cBus->busSelType == BUS_SEL_TYPE_PCA_MUX)
-            {
-                /* Get the mux index the port is attached to */
-                SPRINTF_CNT(FM_AAK_LIB_HWRES_XCVRI2C_PCAMUX_INDEX);
-                status = GetRequiredConfigInt(buf,
-                                              (fm_int *)&xcvrI2cBus->parentMuxIdx,
-                                              0,
-                                              hwCfg.numPcaMux-1);
-                FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
-
-                /* Get the mux value */
-                SPRINTF_CNT(FM_AAK_LIB_HWRES_XCVRI2C_PCAMUX_VALUE);
-                status = GetRequiredConfigInt(buf,
-                                              (fm_int *)&xcvrI2cBus->parentMuxValue,
-                                              0,
-                                              0xffff);
-                FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
-
-            }
-
-
-            /**************************************************
-             * Get transceiver status/control configuration
-             **************************************************/
-
             /* Get the port interface type */
             SPRINTF_CNT(FM_AAK_LIB_HWRES_INTERFACE_TYPE);
             inputText = fmGetTextApiProperty(buf, "UNKNOWN");
@@ -2684,28 +2702,102 @@ static fm_status LoadConfig(void)
             if (status)
             {
                 FM_LOG_FATAL(FM_LOG_CAT_PLATFORM,
-                             "Invalid value (%s) for '%s'\n", 
-                             inputText, 
+                             "Invalid value (%s) for '%s'\n",
+                             inputText,
                              buf);
                 return status;
             }
 
-            /* Get the PCA IO index the port is attached to */
-            SPRINTF_CNT(FM_AAK_LIB_HWRES_XCVRSTATE_PCAIO_INDEX);
-            status = GetRequiredConfigInt(buf,
-                                          (fm_int *)&xcvrIo->ioIdx,
-                                          0,
-                                          hwCfg.numPcaIo - 1);
-            FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
+            if ( xcvrIo->intfType == INTF_TYPE_SFPP ||
+                 xcvrIo->intfType == INTF_TYPE_QSFP )
+            {
+                /**************************************************
+                 * Get the I2C bus select configuration
+                 **************************************************/
 
-            /* Get base pin number */
-            SPRINTF_CNT(FM_AAK_LIB_HWRES_XCVRSTATE_PCAIO_BASEPIN);
-            valInt = hwCfg.pcaIo[xcvrIo->ioIdx].dev.devCap.numBits;
-            status = GetRequiredConfigInt(buf,
-                                          (fm_int *)&xcvrIo->basePin,
-                                          0,
-                                          valInt - 1);
-            FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
+                SPRINTF_CNT(FM_AAK_LIB_HWRES_XCVRI2C_BUSSELTYPE);
+                inputText = fmGetTextApiProperty(buf, 
+                                                 BusSelTypeToStr(hwCfg.defBusSelType));
+
+                status = BusSelTypeStrToValue(inputText, &xcvrI2cBus->busSelType);
+                if (status)
+                {
+                    FM_LOG_FATAL(FM_LOG_CAT_PLATFORM,
+                                 "Invalid value (%s) for '%s'\n", 
+                                 inputText, 
+                                 buf);
+                    return status;
+                }
+
+                if (xcvrI2cBus->busSelType == BUS_SEL_TYPE_PCA_MUX)
+                {
+                    /* Get the mux index the port is attached to */
+                    SPRINTF_CNT(FM_AAK_LIB_HWRES_XCVRI2C_PCAMUX_INDEX);
+                    status = GetRequiredConfigInt(buf,
+                                                  (fm_int *)&xcvrI2cBus->parentMuxIdx,
+                                                  0,
+                                                  hwCfg.numPcaMux-1);
+                    FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
+
+                    /* Get the mux value */
+                    SPRINTF_CNT(FM_AAK_LIB_HWRES_XCVRI2C_PCAMUX_VALUE);
+                    status = GetRequiredConfigInt(buf,
+                                                  (fm_int *)&xcvrI2cBus->parentMuxValue,
+                                                  0,
+                                                  0xffff);
+                    FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
+
+                }
+                else if (xcvrI2cBus->busSelType == BUS_SEL_TYPE_PCA_IO)
+                {
+                    /* Get the pca io index the port is attached to */
+                    SPRINTF_CNT(FM_AAK_LIB_HWRES_XCVRI2C_PCAIO_INDEX);
+                    status = GetRequiredConfigInt(buf,
+                                                  (fm_int *)&xcvrI2cBus->ioIdx,
+                                                  0,
+                                                  hwCfg.numPcaIo-1);
+                    FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
+
+                    /* Get the pin number */
+                    SPRINTF_CNT(FM_AAK_LIB_HWRES_XCVRI2C_PCAIO_PIN);
+                    status = GetRequiredConfigInt(buf,
+                                                  (fm_int *)&xcvrI2cBus->ioPin,
+                                                  0,
+                                                  64);
+                    FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
+
+                    /* Get the pin polarity */
+                    SPRINTF_CNT(FM_AAK_LIB_HWRES_XCVRI2C_PCAIO_PIN_POLARITY);
+                    status = GetOptionalConfigInt(buf,
+                                                  (fm_int *)&xcvrI2cBus->ioPinPolarity,
+                                                  0,
+                                                  0,
+                                                  1);
+                    FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
+                }
+
+                /* Get the PCA IO index the port is attached to */
+                SPRINTF_CNT(FM_AAK_LIB_HWRES_XCVRSTATE_PCAIO_INDEX);
+                status = GetRequiredConfigInt(buf,
+                                              (fm_int *)&xcvrIo->ioIdx,
+                                              0,
+                                              hwCfg.numPcaIo - 1);
+                FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
+
+                /* Get base pin number */
+                SPRINTF_CNT(FM_AAK_LIB_HWRES_XCVRSTATE_PCAIO_BASEPIN);
+                valInt = hwCfg.pcaIo[xcvrIo->ioIdx].dev.devCap.numBits;
+                status = GetRequiredConfigInt(buf,
+                                              (fm_int *)&xcvrIo->basePin,
+                                              0,
+                                              valInt - 1);
+                FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
+
+            }
+
+            /**************************************************
+             * Get transceiver status/control configuration
+             **************************************************/
 
             if (xcvrIo->intfType == INTF_TYPE_SFPP)
             {
@@ -2944,6 +3036,7 @@ static fm_status LoadConfig(void)
             SPRINTF_CNT(FM_AAK_LIB_HWRES_VRM_MODEL);
             vrmI2c->model = fmGetTextApiProperty(buf, "");
         }
+
     }   /* end for (cnt = 0 ; cnt < hwCfg.numResId; cnt++) */
 
     return FM_OK;
@@ -3072,6 +3165,15 @@ static void DumpConfig(void)
                 PRINT_VAL("  hwResId.%d.xcvrI2C.pcaMux.value", 
                           xcvrI2cBus->parentMuxValue);
             }
+            else if (xcvrI2cBus->busSelType == BUS_SEL_TYPE_PCA_IO)
+            {
+                PRINT_VAL("  hwResId.%d.xcvrI2C.pcaIo.index", 
+                          xcvrI2cBus->ioIdx);
+                PRINT_VAL("  hwResId.%d.xcvrI2C.pcaIo.pin", 
+                          xcvrI2cBus->ioPin);
+                PRINT_VAL("  hwResId.%d.xcvrI2C.pcaIo.pin.polarity", 
+                          xcvrI2cBus->ioPinPolarity);
+            }
 
             /* Transceiver status/control */
 
@@ -3169,18 +3271,25 @@ static void DumpConfig(void)
  * \param[in]       muxIdx is the index to the pca mux structure.
  *
  * \param[in]       muxValue is the value to set for the given mux.
+ * 
+ * \param[in]       disable indicates that other muxes sharing the same
+ *                  parent mux must be disabled.
  *
  * \return          FM_OK if successful.
  * \return          Other ''Status Codes'' as appropriate in case of
  *                  failure.
  *
  *****************************************************************************/
-static fm_status SetupMuxPathRcrsv(fm_uint muxIdx, fm_uint muxValue)
+static fm_status SetupMuxPathRcrsv(fm_uint muxIdx,
+                                   fm_uint muxValue,
+                                   fm_bool disable)
 {
     fm_i2cCfg *i2c;
     fm_pcaMux *pcaMux;
+    fm_pcaMux *mux;
     fm_status  status;
     fm_byte    data[1];
+    fm_uint    cnt;
 
     if ( muxIdx == UINT_NOT_USED)
     {
@@ -3189,7 +3298,9 @@ static fm_status SetupMuxPathRcrsv(fm_uint muxIdx, fm_uint muxValue)
 
     pcaMux = &hwCfg.pcaMux[muxIdx];
 
-    status = SetupMuxPathRcrsv(pcaMux->parentMuxIdx, pcaMux->parentMuxValue);
+    status = SetupMuxPathRcrsv(pcaMux->parentMuxIdx, 
+                               pcaMux->parentMuxValue, 
+                               FALSE);
     FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
 
     i2c = &hwCfg.i2c[pcaMux->bus];
@@ -3201,6 +3312,36 @@ static fm_status SetupMuxPathRcrsv(fm_uint muxIdx, fm_uint muxValue)
     }
     else
     {
+        if (disable && pcaMux->parentMuxIdx != UINT_NOT_USED)
+        {
+            /* Disable other muxes sharing the same parent mux. */
+            for (cnt = 0 ; cnt < hwCfg.numPcaMux; cnt++)
+            {
+                if (cnt == muxIdx)
+                {
+                    continue;
+                }
+
+                mux = &hwCfg.pcaMux[cnt];
+                if ( mux->parentMuxIdx == pcaMux->parentMuxIdx &&
+                     mux->model != PCA_MUX_9541 )
+                {
+                    /* Disable that mux */
+                    data[0] = 0;
+                    if (hwCfg.debug & DBG_I2C)
+                    {
+                        FM_LOG_PRINT("Clear Mux 0x%x\n", mux->addr);
+                    }
+                    status = i2c->writeReadFunc(i2c->handle,
+                                                mux->addr, 
+                                                data, 
+                                                1, 
+                                                0);
+                    FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
+                }
+            }
+        }
+
         data[0] = muxValue;
         if (hwCfg.debug & DBG_I2C)
         {
@@ -3272,7 +3413,7 @@ static fm_status SetupMuxPath(fm_uint muxIdx, fm_uint muxValue)
         }
     }
 
-    return SetupMuxPathRcrsv(muxIdx, muxValue);
+    return SetupMuxPathRcrsv(muxIdx, muxValue, TRUE);
 
 } /* end SetupMuxPath */
 
@@ -3336,7 +3477,7 @@ static fm_status InitPca(void)
         ioDev->i2cBlockSupported = i2c->i2cBlockSupported;
         ioDev->func = i2c->writeReadFunc;
 
-        if (ioDev->model & FM_PCA_LED_DRIVER_BIT_MASK)
+        if (ioDev->model == PCA_IO_9634 || ioDev->model == PCA_IO_9635)
         {
             /* Mode1 register: Normal mode, auto-increment enabled,
                                all subaddresses and AllCall address disabled */
@@ -3348,7 +3489,7 @@ static fm_status InitPca(void)
             /* GRPPWM: Set 50% duty cycle (range 00h-FFh) */
             ioDev->ledRegs.group[0] = 0x7f;
 
-            /* GRPFREQ: Set blink period to 1/2 sec => (GFRQ + 1)/24 sec */
+            /* GRPFREQ: Set blink period */
             ioDev->ledRegs.group[1] = ioDev->ledBlinkPeriod; 
 
             for (led = 0 ; led < (ioDev->devCap.numBits) ; led++)
@@ -3362,6 +3503,29 @@ static fm_status InitPca(void)
                 /* All LEDs OFF */
                 ioDev->ledRegs.ledout[led] = 0;
             }
+
+            ioDev->ledRegs.ledOff   = FM_PCA_LEDOUT_OFF;
+            ioDev->ledRegs.ledOn    = FM_PCA_LEDOUT_ON;
+            ioDev->ledRegs.ledBlink = FM_PCA_LEDOUT_BLINK;
+        }
+        else if (ioDev->model == PCA_IO_9551)
+        {
+            /* PSC0/PSC1: Set blink period */
+            ioDev->ledRegs.psc0 = ioDev->ledBlinkPeriod;
+            ioDev->ledRegs.psc1 = ioDev->ledBlinkPeriod;
+
+            /* PWM0/PWM1: duty cycle = (256 - PWM)/256 */
+            /* Set to 50% --> 0.5 = (256 - 128)/256    */
+            ioDev->ledRegs.pwm0 = 128;
+            ioDev->ledRegs.pwm1 = 128;
+
+            /* All LEDs OFF */
+            ioDev->ledRegs.ledout[0] = 0x55;
+            ioDev->ledRegs.ledout[1] = 0x55;
+
+            ioDev->ledRegs.ledOff   = FM_PCA_LS_OFF;
+            ioDev->ledRegs.ledOn    = FM_PCA_LS_ON;
+            ioDev->ledRegs.ledBlink = FM_PCA_LS_BLINK0;
         }
         else
         {
@@ -3380,9 +3544,18 @@ static fm_status InitPca(void)
     for (cnt = 0 ; cnt < hwCfg.numResId; cnt++)
     {
         hwResId = &hwCfg.hwResId[cnt];
-        if (hwResId->xcvrI2cBusSel.busSelType == BUS_SEL_TYPE_PCA_MUX)
+        if (hwResId->xcvrI2cBusSel.busSelType == BUS_SEL_TYPE_PCA_IO)
         {
-            /* Anything to do here? */
+            ioRegs = &hwCfg.pcaIo[hwResId->xcvrI2cBusSel.ioIdx].dev.cachedRegs;
+            offset = hwResId->xcvrI2cBusSel.ioPin;
+            byteIdx = offset / 8;
+            if (byteIdx < FM_PCA_IO_REG_MAX_SIZE)
+            {
+                bitIdx  = offset % 8;
+                SET_BIT(ioRegs->ioc[byteIdx], bitIdx, IOC_OUTPUT);
+                SET_BIT(ioRegs->output[byteIdx], bitIdx, 
+                    !hwResId->xcvrI2cBusSel.ioPinPolarity);
+            }
         }
 
         /* Transceiver status/control */
@@ -3501,14 +3674,16 @@ static fm_status InitPca(void)
                               hwCfg.pcaIo[cnt].parentMuxValue);
         if (status)
         {
-            FM_LOG_PRINT("Error to init PCA mux\n");
+            FM_LOG_ERROR(FM_LOG_CAT_PLATFORM,
+                "Error to init PCA mux\n");
             break;
         }
 
         status = fmUtilPcaIoInit(&hwCfg.pcaIo[cnt].dev);
         if (status)
         {
-            FM_LOG_PRINT("Error to init PCIO (%d) device\n", cnt);
+            FM_LOG_ERROR(FM_LOG_CAT_PLATFORM,
+                "Error to init PCA IO (%d) device\n", cnt);
             break;
         }
     }
@@ -4044,6 +4219,14 @@ fm_status fmPlatformLibSelectBus(fm_int    sw,
     fm_hwResId *hwResId;
     fm_uint     muxIdx;
     fm_uint     muxValue;
+    fm_uint     ioIdx;
+    fm_uint     offset;
+    fm_uint     byteIdx;
+    fm_uint     bitIdx;
+    fm_uint     cnt;
+    fm_busSel  *xcvrI2cBus;
+    fm_uint     lastId;
+    fm_uint     id;
 
     FM_LOG_ENTRY(FM_LOG_CAT_PLATFORM,
                  "sw=%d busType=%d resId=%d\n",
@@ -4119,7 +4302,53 @@ fm_status fmPlatformLibSelectBus(fm_int    sw,
         }
         else if (hwResId->xcvrI2cBusSel.busSelType == BUS_SEL_TYPE_PCA_IO)
         {
-            FM_LOG_ERROR(FM_LOG_CAT_PLATFORM, "Need support\n");
+            idx = hwResId->xcvrI2cBusSel.ioIdx;
+            muxIdx = hwCfg.pcaIo[idx].parentMuxIdx;
+            muxValue = hwCfg.pcaIo[idx].parentMuxValue;
+
+            if (muxIdx == UINT_NOT_USED)
+            {
+                /* Means the IO is not behind a MUX and located directly on the
+                   main I2C branch. So use the IO bus number for bus selection */
+                hwCfg.selectedBus = hwCfg.pcaIo[idx].dev.bus;
+            }
+
+            /* Enable I2C select bit only on the one selected
+             * and disable the rest */
+            lastId = UINT_NOT_USED;
+            for (cnt = 0 ; cnt < hwCfg.numResId; cnt++)
+            {
+                if (hwCfg.hwResId[cnt].type == HWRESOURCE_TYPE_PORT)
+                {
+                    xcvrI2cBus = &hwCfg.hwResId[cnt].xcvrI2cBusSel;
+
+                    if (xcvrI2cBus->busSelType == BUS_SEL_TYPE_PCA_IO)
+                    {
+                        offset = xcvrI2cBus->ioPin;
+                        byteIdx = offset / 8;
+                        if (byteIdx < FM_PCA_IO_REG_MAX_SIZE)
+                        {
+                            bitIdx  = offset % 8;
+                            ioIdx = xcvrI2cBus->ioIdx;
+                            SET_BIT(hwCfg.pcaIo[ioIdx].dev.cachedRegs.output[byteIdx],
+                                    bitIdx,
+                                    (cnt == hwIdx) ? xcvrI2cBus->ioPinPolarity :
+                                        !xcvrI2cBus->ioPinPolarity);
+                            id = byteIdx | (ioIdx << 8);
+                            /* Only update HW only when change to different byte */
+                            if ((lastId != UINT_NOT_USED && (id != lastId)) ||
+                                 (cnt == (hwCfg.numResId - 1)))
+                            {
+                                status = fmUtilPcaIoWriteRegs(&hwCfg.pcaIo[ioIdx].dev,
+                                                              PCA_IO_REG_TYPE_OUTPUT,
+                                                              byteIdx,
+                                                              1);
+                            }
+                            lastId = id;
+                        }
+                    }
+                }
+            }
         }
     }
     else if (busType == FM_PLAT_BUS_PHY)
@@ -4771,31 +5000,33 @@ fm_status fmPlatformLibSetPortLed(fm_int     sw,
                         if ( ledState == LED_STATE_ON )
                         {
                             /* Turn ON the LED */
-                            ledPcaState = FM_PCA_LEDOUT_ON;
+                            ledPcaState = ioDev->ledRegs.ledOn;
                         }
                         else if ( ledState == LED_STATE_BLINK_ON ||
                                   ledState == LED_STATE_BLINK_OFF )
                         {
                             /* Enable LED blinking */
-                            ledPcaState = FM_PCA_LEDOUT_BLINK;
+                            ledPcaState = ioDev->ledRegs.ledBlink;
                         }
                         else
                         {
                             /* Turn OFF the LED */
-                            ledPcaState = FM_PCA_LEDOUT_OFF;
+                            ledPcaState = ioDev->ledRegs.ledOff;
                         }
 
                         byteIdx = pin / FM_PCA_LED_PER_LEDOUT;
                         ledout = ioDev->ledRegs.ledout[byteIdx];
                         if (hwCfg.debug & DBG_PORT_LED)
                         {
-                            FM_LOG_PRINT("ledout: 0x%x pin=%d ledPcaState %d\n", 
+                            FM_LOG_PRINT("ledout: 0x%x pin=%d "
+                                         "byteIdx=%d ledPcaState %d\n", 
                                          ledout, 
                                          pin,
+                                         byteIdx,
                                          ledPcaState);
                         }
 
-                        pin = pin % 4;
+                        pin = pin % FM_PCA_LED_PER_LEDOUT;
                         ledout &= ~(0x3 << (pin * 2));
                         ledout |= (ledPcaState << (pin * 2));
                         if (hwCfg.debug & DBG_PORT_LED)
@@ -4837,8 +5068,11 @@ fm_status fmPlatformLibSetPortLed(fm_int     sw,
                             }
                         }
                     }
-                }
-            }
+
+                }   /* end if ( pin != UINT_NOT_USED ) */
+
+            }  /* for (subLed = 0 ; subLed < NUM_SUB_LED ; subLed++) */
+
         }
         else if (portLed->type == LED_TYPE_NONE)
         {

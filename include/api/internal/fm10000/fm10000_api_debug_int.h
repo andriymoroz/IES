@@ -138,6 +138,12 @@ fm_status fm10000DbgDeleteEyeDiagram(fm_eyeDiagramSample *sampleTable);
 
 fm_status fm10000DbgDumpPortMap(fm_int sw, fm_int port, fm_int portType);
 
+fm_status fm10000DbgGetNominalSwitchVoltages(fm_int     sw,
+                                             fm_uint32 *vdds,
+                                             fm_uint32 *rawVdds,
+                                             fm_uint32 *vddf,
+                                             fm_uint32 *rawVddf);
+
 #if 0
 fm_status fm10000DbgSwitchSelfTest(fm_int sw);
 

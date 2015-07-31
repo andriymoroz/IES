@@ -45,6 +45,9 @@
 
 /* Simple helper macro that counts and returns the number of bits set in
  * value. */
+#define ABSTRACT_SELECT(selKey) [selKey] =
+
+
 #define FM_COUNT_SET_BITS(value, bits)                                         \
     {                                                                          \
         fm_int modifValue = value;                                             \
@@ -64,8 +67,6 @@
  * Local Variables
  *****************************************************************************/
 
-
-#define ABSTRACT_SELECT(selKey) [selKey] =
 
 /**
  * This array maps abstract selects to concrete mux.
@@ -2835,7 +2836,7 @@ void fmFreeCompiledAcl(void *value)
     fm_fm10000CompiledAcl *compiledAcl = (fm_fm10000CompiledAcl*)value;
     if (compiledAcl != NULL)
     {
-        if (compiledAcl->aclParts == 0)
+        if (compiledAcl->aclParts == 0 && compiledAcl->portSetId != NULL)
         {
             fmTreeDestroy(compiledAcl->portSetId, NULL);
             fmFree(compiledAcl->portSetId);
@@ -4735,6 +4736,20 @@ fm_status fmConfigureActionData(fm_int                      sw,
     switchPtr = GET_SWITCH_PTR(sw);
     switchExt = (fm10000_switch *) switchPtr->extension;
 
+#ifdef FM_SUPPORT_SWAG
+    if (rule->action & FM_ACL_ACTIONEXT_PUSH_VLAN)
+    {
+        fm10000FormatAclStatus(errReport,
+                                      TRUE,
+                                      "FM_ACL_ACTIONEXT_PUSH_VLAN is "
+                                      "unsupported in SWAG environment, "
+                                      "use FM_ACL_ACTIONEXT_SET_VLAN "
+                                      "instead\n");
+               err = FM_ERR_UNSUPPORTED;
+               FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_ACL, err);
+    }
+#endif
+
     /* Look for action group that must not be defined together. */
     FM_COUNT_SET_BITS((rule->action & FM_ACL_ACTIONEXT_PERMIT) |
                       (rule->action & FM_ACL_ACTIONEXT_DENY),
@@ -4902,7 +4917,9 @@ fm_status fmConfigureActionData(fm_int                      sw,
             if (actionToSet & FM_ACL_ACTIONEXT_CAPTURE_EGRESS_TIMESTAMP)
             {
                 currentActionType = FM_FFU_ACTION_SET_FLAGS;
-                currentActionData.flags.captureTime = FM_FFU_FLAG_SET;
+                currentActionData.flags.captureTime = 
+                         rule->param.captureEgressTimestamp ? FM_FFU_FLAG_SET :
+                                                              FM_FFU_FLAG_CLEAR;
                 actionToSet &= ~FM_ACL_ACTIONEXT_CAPTURE_EGRESS_TIMESTAMP;
             }
 

@@ -29,7 +29,7 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
+ *****************************************************************************/
 
 #include <fm_sdk_int.h>
 
@@ -1144,8 +1144,6 @@ fm_status fmRouterAlloc(fm_int sw)
     switchPtr->routeLookupTrees      = NULL;
 
     /* If routing is not supported, exit */
-    // marka: check for a more uniform / general validation
-    // marka: add a general switch variable to indicate if the feature is supported or not.
     if (switchPtr->RouterInit != NULL)
     {
         /**************************************************
@@ -1248,18 +1246,10 @@ fm_status fmRouterAlloc(fm_int sw)
 fm_status fmRouterFree(fm_int sw)
 {
     fm_switch *      switchPtr;
-    fm_status        err;
 
     FM_LOG_ENTRY(FM_LOG_CAT_ROUTING, "sw = %d\n", sw);
 
-    err = FM_OK;
     switchPtr = GET_SWITCH_PTR(sw);
-
-    /**************************************************
-     * Destroy route tables
-     **************************************************/
-    fmCustomTreeDestroy(&switchPtr->routeTree, DestroyRecord);
-    fmCustomTreeDestroy(&switchPtr->ecmpRouteTree, NULL);
 
     /**************************************************
      * Deallocate Virtual Router Tables
@@ -1288,7 +1278,7 @@ fm_status fmRouterFree(fm_int sw)
         switchPtr->routeLookupTrees = NULL;
     }
 
-    FM_LOG_EXIT(FM_LOG_CAT_ROUTING, err);
+    FM_LOG_EXIT(FM_LOG_CAT_ROUTING, FM_OK);
 
 }   /* end fmRouterFree */
 
@@ -1400,10 +1390,6 @@ fm_status fmRouterInit(fm_int sw)
 fm_status fmRouterCleanup(fm_int sw)
 {
     fm_switch            *switchPtr;
-    fm_status             err;
-    fm_customTreeIterator iter;
-    fm_intRouteEntry     *key;
-    fm_intRouteEntry     *route;
     fm_int                vrid;
     fm_int                prefix;
     fm_customTree        *routeLookupTree;
@@ -1411,13 +1397,11 @@ fm_status fmRouterCleanup(fm_int sw)
     FM_LOG_ENTRY(FM_LOG_CAT_ROUTING, "sw = %d\n", sw);
 
     switchPtr = GET_SWITCH_PTR(sw);
-    err = FM_OK;
 
     /***************************************************
      * Destroy route lookup trees.
      ***************************************************/
-    // marka document/verify this: route LookupTrees points to an array of pointers
-    // to trees. check for an alternative solution
+
     if (switchPtr->routeLookupTrees != NULL)
     {
         routeLookupTree = switchPtr->routeLookupTrees;
@@ -1435,59 +1419,16 @@ fm_status fmRouterCleanup(fm_int sw)
     }
 
     /**************************************************
-     * Remove all routes from the route trees
+     * Destroy route tables
      **************************************************/
     if ( fmCustomTreeIsInitialized(&switchPtr->routeTree) )
     {
-        while (err == FM_OK)
-        {
-            fmCustomTreeIterInit(&iter, 
-                                 &switchPtr->routeTree);
-
-            err = fmCustomTreeIterNext(&iter,
-                                       (void **) &key,
-                                       (void **) &route);
-            if (err == FM_OK)
-            {
-                err = fmCustomTreeRemoveCertain(&switchPtr->routeTree, 
-                                                key, 
-                                                FreeRoute);
-            }
-        }
-
-        if (err != FM_OK && err != FM_ERR_NO_MORE)
-        {
-            /* report the error. This could cause a memory leak */
-            FM_LOG_ERROR(FM_LOG_CAT_ROUTING, 
-                         "while cleaning up routeTree\n");
-        }
-        /* clear the error to continue */
-        err = FM_OK;
+    	fmCustomTreeDestroy(&switchPtr->routeTree, DestroyRecord);
     }
 
     if ( fmCustomTreeIsInitialized(&switchPtr->ecmpRouteTree) )
     {
-        while (err == FM_OK)
-        {
-            fmCustomTreeIterInit(&iter, &switchPtr->ecmpRouteTree);
-
-            err = fmCustomTreeIterNext(&iter, (void **) &key, (void **) &route);
-
-            if (err == FM_OK)
-            {
-                err = fmCustomTreeRemoveCertain(&switchPtr->ecmpRouteTree,
-                                                key,
-                                                NULL);
-            }
-        }
-        if (err != FM_OK && err != FM_ERR_NO_MORE)
-        {
-            /* report the error. This could cause a memory leak */
-            FM_LOG_ERROR(FM_LOG_CAT_ROUTING, 
-                         "while cleaning up ecmpRouteTree\n");
-        }
-        /* clear the error to continue */
-        err = FM_OK;
+    	fmCustomTreeDestroy(&switchPtr->ecmpRouteTree, NULL);
     }
 
     FM_LOG_EXIT(FM_LOG_CAT_ROUTING, FM_OK);
@@ -6497,11 +6438,6 @@ fm_status fmDbgValidateRouteTables(fm_int sw)
     fm_char                 prevRouteDesc[500];
     fm_int                  index;
     fm_bool                 bitValue;
-// marka    fm_int                  numArps;
-// marka    fm_intArpEntry *        prevArp;
-// marka    fm_intArpEntry *        curArp;
-// marka    fm_intArpEntry *        arpKey;
-// marka    fm_intArpEntry *        arpValue;
     fm_char                 tempText[200];
     fm_char                 tempText2[200];
     fm_char                 curArpDesc[500];
@@ -6678,8 +6614,6 @@ fm_status fmDbgValidateRouteTables(fm_int sw)
         }
 
 #if 0
-/* marka arpTree was removed, check for an alternative solution */
- 
         i = fmCustomTreeSize(&switchPtr->arpTree);
 
         if ( (i < 0) || (i > switchPtr->maxArpEntries) )

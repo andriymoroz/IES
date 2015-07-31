@@ -268,6 +268,9 @@ ABORT:
         fmReleaseLock( &task->lock );
     }
 
+    FM_LOG_ERROR(FM_LOG_CAT_ALOS_TIME,
+                 "ERROR: PeriodicTimerLoop: exiting inadvertently!\n");
+
     fmExitThread( thisThread );
 
     return NULL;
@@ -317,7 +320,12 @@ static void *EventDrivenTimerLoop( void *args )
     while ( task->initialized )
     {
         status = SuspendTimerTask( task, timeout );
-        FM_LOG_ABORT_ON_ERR( FM_LOG_CAT_ALOS_TIME, status );
+        if ( status != FM_OK )
+        {
+            /* ignore the return code, we can't give up */
+            FM_LOG_ERROR(FM_LOG_CAT_ALOS_TIME,
+                         "ERROR: SuspendTimerTask: status = %d\n", status);
+        }
 
         /******************************************************
          * Here's where we need to process the list of 
@@ -338,7 +346,12 @@ static void *EventDrivenTimerLoop( void *args )
          ******************************************************/
 
         status = fmGetTime( &curTime );
-        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_ALOS_TIME, status );
+        if ( status != FM_OK )
+        {
+            /* ignore the return code, we can't give up */
+            FM_LOG_ERROR(FM_LOG_CAT_ALOS_TIME,
+                         "ERROR: fmGetTime: status = %d\n", status);
+        }
 
         timer = FM_DLL_GET_FIRST( task, firstActiveTimer );
         if ( timeout == NULL || fmCompareTimestamps( &curTime, timeout ) < 0 )
@@ -416,6 +429,10 @@ ABORT:
     {
         fmReleaseLock( &task->lock );
     }
+
+    FM_LOG_ERROR(FM_LOG_CAT_ALOS_TIME,
+                 "ERROR: EventDrivenTimerLoop: exiting inadvertently!\n");
+
     fmExitThread( thisThread );
 
     return NULL;
@@ -928,7 +945,7 @@ void fmAddTimestamps(fm_timestamp *t1, fm_timestamp *t2)
     t1->sec  += t2->sec;
     t1->usec += t2->usec;
 
-    if (t1->usec > 1000000)
+    if (t1->usec >= 1000000)
     {
         t1->sec += (t1->usec / 1000000);
         t1->usec = (t1->usec % 1000000);

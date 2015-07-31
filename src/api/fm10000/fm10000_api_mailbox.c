@@ -641,6 +641,12 @@ static const char* MessageIdToText(fm_uint16 msgId)
         case FM_MAILBOX_MSG_SET_TIMESTAMP_MODE_ID:
             return "TX_TIMESTAMP_MODE";
 
+        case FM_MAILBOX_MSG_MASTER_CLK_OFFSET_ID:
+            return "MASTER_CLK_OFFSET";
+
+        case FM_MAILBOX_MSG_INN_OUT_MAC_ID:
+            return "FILTER_INNER_OUTER_MAC";
+
         default:
             return "UNKNOWN";
     }
@@ -1185,11 +1191,19 @@ static fm_status PCIeMailboxProcessRequest(fm_int sw,
                     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
                     break;
 
-                case FM_MAILBOX_MSG_SET_TIMESTAMP_MODE_ID:
-                    status = fmSetTimestampModeProcess(swToExecute,
-                                                       pepNbToExecute,
-                                                       &controlHeader,
-                                                       &pfTransactionHeader);
+                case FM_MAILBOX_MSG_MASTER_CLK_OFFSET_ID:
+                    status = fmMasterClkOffsetProcess(swToExecute,
+                                                      pepNbToExecute,
+                                                      &controlHeader,
+                                                      &pfTransactionHeader);
+                    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+                    break;
+
+                case FM_MAILBOX_MSG_INN_OUT_MAC_ID:
+                    status = fmFilterInnerOuterMacProcess(swToExecute,
+                                                          pepNbToExecute,
+                                                          &controlHeader,
+                                                          &pfTransactionHeader);
                     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
                     break;
 
@@ -1471,9 +1485,9 @@ static fm_status AllocateMailboxGlortCams(fm_int sw)
 
             if (currentGlort < maxGlort)
             {
-                status = fm10000MapVsiGlortToLogicalPort(sw,
-                                                         currentGlort,
-                                                         &logicalPort);
+                status = fm10000MapVirtualGlortToLogicalPort(sw,
+                                                             currentGlort,
+                                                             &logicalPort);
 
                 if (status == FM_OK)
                 {
@@ -1501,6 +1515,7 @@ ABORT:
     FM_LOG_EXIT(FM_LOG_CAT_MAILBOX, status);
 
 }   /* end AllocateMailboxGlortCams */
+
 
 
 
@@ -1862,6 +1877,8 @@ static fm_status CleanupResourcesWhenDeletingLport(fm_int sw,
     fm_int          mcastGroup;
     fm_int          flowTableIndex;
     fm_int          flowId;
+    fm_int          firstRule;
+    fm_int          bitNum;
     fm_uint16       vlan;
     fm_uintptr      tableType;
     fm_uint64       key;
@@ -1872,7 +1889,18 @@ static fm_status CleanupResourcesWhenDeletingLport(fm_int sw,
     fm_macAddressEntry macEntry;
     fm_mailboxResources *mailboxResourcesUsed;
     fm_treeIterator treeIterMailboxRes;
-
+    fm_bool         routingLockTaken;
+    fm_bool         ruleDeleted;
+    fm_hostSrvInnOutMac *macFilterKey;
+    fm_hostSrvInnOutMac *macFilterVal;
+    fm_mailboxMcastMacVni  macVniKey;
+    fm_mailboxMcastMacVni *macVniVal;
+    fm_aclCondition cond;
+    fm_aclValue     value;
+    fm_aclActionExt action;
+    fm_aclParamExt  param;
+    fm_char         statusText[1024];
+    fm_customTreeIterator filterIterator;
 
     FM_LOG_ENTRY(FM_LOG_CAT_MAILBOX,
                  "sw=%d, pepNb=%d, portNumber=%d\n",
@@ -1889,6 +1917,8 @@ static fm_status CleanupResourcesWhenDeletingLport(fm_int sw,
     key            = 0;
     flowTableIndex = -1;
     flowId         = -1;
+    ruleDeleted    = FALSE;
+    routingLockTaken = FALSE;
     mailboxResourcesUsed = NULL;
 
     info = GET_MAILBOX_INFO(sw);
@@ -1961,11 +1991,14 @@ static fm_status CleanupResourcesWhenDeletingLport(fm_int sw,
                     continue;
                 }
 
-                status = fmGetMcastGroupListenerFirst(sw,
-                                                      mcastGroup,
-                                                      &listener);
+                /* Take routing lock needed by fmHasMcastGroupNonFloodingListeners */
+                status = fmCaptureWriteLock(&switchPtr->routingLock, FM_WAIT_FOREVER);
+                FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
 
-                if (status  == FM_ERR_NO_MORE)
+                routingLockTaken = TRUE;
+
+                if ( !fmHasMcastGroupNonFloodingListeners(sw,
+                                                          mcastGroup) )
                 {
                     status = fmDeactivateMcastGroup(sw,
                                                     mcastGroup);
@@ -1974,11 +2007,14 @@ static fm_status CleanupResourcesWhenDeletingLport(fm_int sw,
                     status = fmDeleteMcastGroup(sw,
                                                 mcastGroup);
                     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+                    info->macEntriesAdded[pepNb]--;
                 }
-                else if (status != FM_OK)
-                {
-                    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
-                }
+
+                status = fmReleaseWriteLock(&switchPtr->routingLock);
+                FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+                routingLockTaken = FALSE;
             }
             else
             {
@@ -2115,9 +2151,165 @@ static fm_status CleanupResourcesWhenDeletingLport(fm_int sw,
                      portNumber);
     }
 
+    if (fmCustomTreeIsInitialized(&mailboxResourcesUsed->innOutMacResource))
+    {
+        /* Delete MAC filtering entries associated with logical port. */
+        fmCustomTreeIterInit(&filterIterator,
+                             &mailboxResourcesUsed->innOutMacResource);
+
+        while (status == FM_OK)
+        {
+            status = fmCustomTreeIterNext(&filterIterator,
+                                          (void **) &macFilterKey,
+                                          (void **) &macFilterVal);
+
+            if (status == FM_OK)
+            {
+                status = fmDeleteACLRule(sw,
+                                         macFilterVal->acl,
+                                         macFilterVal->aclRule);
+                FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+                ruleDeleted = TRUE;
+            }
+            else if (status == FM_ERR_NO_MORE)
+            {
+                break;
+            }
+            else
+            {
+                FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+            }
+
+            /* The rule id scheme is:
+               ( (0b000000) |(High 12 bit) | (Low 14 bit)
+               where only 14 lower bits from rule id are taken from bitarray,
+               so we need to mask id before releasing it. */
+            bitNum = macFilterVal->aclRule & 0x3FFF;
+
+            status = fmSetBitArrayBit(&info->innOutMacRuleInUse,
+                                      bitNum,
+                                      0);
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+            /* Decrementing counters */
+            mailboxResourcesUsed->innerOuterMacEntriesAdded--;
+            info->innerOuterMacEntriesAdded[pepNb]--;
+            
+            if (fmIsMulticastMacAddress(macFilterVal->innerMacAddr))
+            {
+                /* If inner MAC is a mcast one, ACL rule should redirect frame 
+                   to a multicast group. We need to remove listener
+                   from such group. */
+
+                macVniKey.macAddr = macFilterVal->innerMacAddr;
+                macVniKey.vni     = macFilterVal->vni;
+
+                status = fmCustomTreeFind(&info->mcastMacVni,
+                                          &macVniKey,
+                                          (void **) &macVniVal);
+                FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+                FM_CLEAR(listener);
+
+                listener.port = portNumber;
+                listener.vlan = 0;
+
+                status = fmDeleteMcastGroupListener(sw,
+                                                    macVniVal->mcastGroup,
+                                                    &listener);
+                FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+                /* If there is no other listeners, delete mcast group */
+                status = fmGetMcastGroupListenerFirst(sw,
+                                                      macVniVal->mcastGroup,
+                                                      &listener);
+
+                if (status == FM_ERR_NO_MORE)
+                {
+                    status = fmDeactivateMcastGroup(sw,
+                                                    macVniVal->mcastGroup);
+                    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+                    status = fmDeleteMcastGroup(sw,
+                                                macVniVal->mcastGroup);
+                    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+                    status = fmCustomTreeRemoveCertain(&info->mcastMacVni,
+                                                       &macVniKey,
+                                                       fmFreeMcastMacVni);
+                    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+                }
+                else if (status != FM_OK)
+                {
+                    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+                }
+            }
+        }
+
+        fmCustomTreeDestroy(&mailboxResourcesUsed->innOutMacResource, 
+                            fmFreeSrvInnOutMac);
+
+        /* If any rule was deleted, compile & apply ACL*/
+        if (ruleDeleted)
+        {
+            /* Remove ACL if empty */
+            status = fmGetACLRuleFirstExt(sw,
+                                          info->aclIdForMacFiltering,
+                                          &firstRule,
+                                          &cond,
+                                          &value,
+                                          &action,
+                                          &param);
+
+            if (status == FM_ERR_NO_RULES_IN_ACL)
+            {
+                status = fmDeleteACL(sw,
+                                     info->aclIdForMacFiltering);
+                FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+            }
+            else if (status != FM_OK)
+            {
+                FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+            }
+
+            status = fmCompileACLExt(sw,
+                                     statusText,
+                                     sizeof(statusText),
+                                     FM_ACL_COMPILE_FLAG_NON_DISRUPTIVE |
+                                     FM_ACL_COMPILE_FLAG_INTERNAL,
+                                     (void*) &info->aclIdForMacFiltering);
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+            FM_LOG_DEBUG(FM_LOG_CAT_MAILBOX,
+                         "ACL compiled, status=%d, statusText=%s\n",
+                         status,
+                         statusText);
+
+            status = fmApplyACLExt(sw,
+                                   FM_ACL_APPLY_FLAG_NON_DISRUPTIVE |
+                                   FM_ACL_APPLY_FLAG_INTERNAL,
+                                   (void*) &info->aclIdForMacFiltering);
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+        }
+    }
+    else
+    {
+        FM_LOG_DEBUG(FM_LOG_CAT_MAILBOX,
+                     "Cleanup for inner/outer MAC filtering entries "
+                     "for given port (%d) will not be processed "
+                     "as resource tree is not initialized.\n",
+                     portNumber);
+    }
+
     status = FM_OK;
 
 ABORT:
+
+    if (routingLockTaken)
+    {
+        fmReleaseWriteLock(&switchPtr->routingLock);
+    }
 
     FM_LOG_EXIT(FM_LOG_CAT_MAILBOX, status);
 
@@ -2175,6 +2367,7 @@ fm_status fm10000WriteResponseMessage(fm_int                        sw,
     fm_hostSrvUpdatePvid * updatePvid;
     fm_hostSrvPacketTimestamp *packetTimestamp;
     fm_hostSrvTimestampModeResp *timestampMode;
+    fm_hostSrvMasterClkOffset *clkOffset;
   
     FM_LOG_ENTRY(FM_LOG_CAT_MAILBOX,
                  "sw=%d, pepNb=%d, ctrlHdr=%p, argType=%d, message=%p\n",
@@ -2192,6 +2385,7 @@ fm_status fm10000WriteResponseMessage(fm_int                        sw,
     dataToWrite        = NULL;
     updatePvid         = NULL;
     timestampMode      = NULL;
+    clkOffset          = NULL;
     dataElements       = 0;
     allocSize          = 0;
     rv                 = 0;
@@ -2439,15 +2633,41 @@ fm_status fm10000WriteResponseMessage(fm_int                        sw,
 
             FM_SET_FIELD(dataToWrite[dataElements],
                          FM_MAILBOX_SRV_TIMESTAMP_MODE_RESP,
-                         MAX_MODE,
-                         timestampMode->maxMode);
+                         MODE_ENABLED,
+                         timestampMode->modeEnabled);
+
+            break;
+
+        case FM_HOST_SRV_MASTER_CLK_OFFSET_TYPE:
+
+            argSize = FM_HOST_SRV_MASTER_CLK_OFFSET_TYPE_SIZE;
+
+            allocSize = sizeof(fm_uint32) *
+                        (argSize / FM_MAILBOX_QUEUE_ENTRY_BYTE_LENGTH);
+
+            dataToWrite = fmAlloc(allocSize);
+
+            if (dataToWrite == NULL)
+            {
+                status = FM_ERR_NO_MEM;
+                FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+            }
+
+            FM_MEMSET_S(dataToWrite, allocSize, 0, allocSize);
+
+            clkOffset = (fm_hostSrvMasterClkOffset *) message;
+
+            FM_SET_FIELD(dataToWrite[dataElements],
+                         FM_MAILBOX_SRV_MASTER_CLK_OFFSET,
+                         OFFSET_LOW,
+                         clkOffset->offsetValueLower);
 
             dataElements++;
 
             FM_SET_FIELD(dataToWrite[dataElements],
-                         FM_MAILBOX_SRV_TIMESTAMP_MODE_RESP,
-                         STATUS,
-                         timestampMode->status);
+                         FM_MAILBOX_SRV_MASTER_CLK_OFFSET,
+                         OFFSET_UPP,
+                         clkOffset->offsetValueUpper);
 
             break;
 
@@ -2836,7 +3056,8 @@ fm_status fm10000ReadRequestArguments(fm_int                   sw,
     fm_hostSrvDeleteFlow *   srvDeleteFlow;
     fm_hostSrvFlowState *    srvFlowState;
     fm_hostSrvUpdateFlow *   srvUpdateFlow;
-    fm_hostSrvTimestampModeReq * modeReq;
+    fm_hostSrvMasterClkOffset *clkOffset;
+    fm_hostSrvInnOutMac *   macFilter;
     fm_flowCondition        condition;
     fm_flowAction           action;
     fm_flowValue *          flowVal;
@@ -2875,7 +3096,8 @@ fm_status fm10000ReadRequestArguments(fm_int                   sw,
     srvDeleteFlow  = NULL;
     srvFlowState   = NULL;
     srvUpdateFlow  = NULL;
-    modeReq        = NULL;
+    clkOffset      = NULL;
+    macFilter      = NULL;
 
     flowVal   = NULL;
     flowParam = NULL;
@@ -3955,9 +4177,9 @@ fm_status fm10000ReadRequestArguments(fm_int                   sw,
                     bytesRead += argBytesRead;
                     break;
 
-                case FM_HOST_SRV_SET_TIMESTAMP_MODE_REQ_TYPE:
+                 case FM_HOST_SRV_MASTER_CLK_OFFSET_TYPE:
 
-                    modeReq = (fm_hostSrvTimestampModeReq *) message;
+                    clkOffset = (fm_hostSrvMasterClkOffset *) message;
 
                     status = ReadFromRequestQueue(sw,
                                                   pepNb,
@@ -3965,13 +4187,178 @@ fm_status fm10000ReadRequestArguments(fm_int                   sw,
                                                   ctrlHdr);
                     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
 
-                    modeReq->glort = FM_GET_FIELD(rv,
-                                                 FM_MAILBOX_SRV_TIMESTAMP_MODE_REQ,
-                                                 GLORT);
+                    clkOffset->offsetValueLower = 
+                              FM_GET_FIELD(rv,
+                                           FM_MAILBOX_SRV_MASTER_CLK_OFFSET,
+                                           OFFSET_LOW);
 
-                    modeReq->mode = FM_GET_FIELD(rv,
-                                                FM_MAILBOX_SRV_TIMESTAMP_MODE_REQ,
-                                                MODE);
+                    argBytesRead += FM_MAILBOX_QUEUE_ENTRY_BYTE_LENGTH;
+
+                    status = ReadFromRequestQueue(sw,
+                                                  pepNb,
+                                                  &rv,
+                                                  ctrlHdr);
+                    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+                    clkOffset->offsetValueUpper = 
+                              FM_GET_FIELD(rv,
+                                           FM_MAILBOX_SRV_MASTER_CLK_OFFSET,
+                                           OFFSET_UPP);
+
+                    argBytesRead += FM_MAILBOX_QUEUE_ENTRY_BYTE_LENGTH;
+
+                    argHdrRead = TRUE;
+
+                    /* If there is any more data from the argument - ignore it */
+                    while (argBytesRead < argHdr.length)
+                    {
+                        INCREMENT_QUEUE_INDEX(ctrlHdr->reqHead);
+                        argBytesRead += FM_MAILBOX_QUEUE_ENTRY_BYTE_LENGTH;
+                    }
+
+                    bytesRead += argBytesRead;
+                    break;
+
+                case FM_HOST_SRV_INN_OUT_MAC_TYPE:
+
+                    macFilter = (fm_hostSrvInnOutMac *) message;
+
+                    /* See fm_hostSrvInnOutMac for MAC field details */
+                    status = ReadFromRequestQueue(sw,
+                                                  pepNb,
+                                                  &rv,
+                                                  ctrlHdr);
+                    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+                    macFilter->outerMacAddr = 
+                              FM_GET_FIELD(rv,
+                                           FM_MAILBOX_SRV_INN_OUT_MAC,
+                                           OUT_MAC_LOW);
+
+                    argBytesRead += FM_MAILBOX_QUEUE_ENTRY_BYTE_LENGTH;
+
+                    status = ReadFromRequestQueue(sw,
+                                                  pepNb,
+                                                  &rv,
+                                                  ctrlHdr);
+                    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+                    macFilter->outerMacAddr |= (fm_macaddr)
+                              FM_GET_FIELD(rv,
+                                           FM_MAILBOX_SRV_INN_OUT_MAC,
+                                           OUT_MAC_UPP) << 32; 
+
+                    macFilter->outerMacAddrMask =
+                              FM_GET_FIELD(rv,
+                                           FM_MAILBOX_SRV_INN_OUT_MAC,
+                                           OUT_MAC_MASK_LOW);
+
+                    argBytesRead += FM_MAILBOX_QUEUE_ENTRY_BYTE_LENGTH;
+
+                    status = ReadFromRequestQueue(sw,
+                                                  pepNb,
+                                                  &rv,
+                                                  ctrlHdr);
+                    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+                    macFilter->outerMacAddrMask |= (fm_macaddr)
+                              FM_GET_FIELD(rv,
+                                           FM_MAILBOX_SRV_INN_OUT_MAC,
+                                           OUT_MAC_MASK_UPP) << 16;
+
+                    argBytesRead += FM_MAILBOX_QUEUE_ENTRY_BYTE_LENGTH;
+
+                    status = ReadFromRequestQueue(sw,
+                                                  pepNb,
+                                                  &rv,
+                                                  ctrlHdr);
+                    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+                    macFilter->innerMacAddr =
+                              FM_GET_FIELD(rv,
+                                           FM_MAILBOX_SRV_INN_OUT_MAC,
+                                           INN_MAC_LOW);
+
+                    argBytesRead += FM_MAILBOX_QUEUE_ENTRY_BYTE_LENGTH;
+
+                    status = ReadFromRequestQueue(sw,
+                                                  pepNb,
+                                                  &rv,
+                                                  ctrlHdr);
+                    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+                    macFilter->innerMacAddr |= (fm_macaddr)
+                              FM_GET_FIELD(rv,
+                                           FM_MAILBOX_SRV_INN_OUT_MAC,
+                                           INN_MAC_UPP) << 32;
+
+                    macFilter->innerMacAddrMask =
+                              FM_GET_FIELD(rv,
+                                           FM_MAILBOX_SRV_INN_OUT_MAC,
+                                           INN_MAC_MASK_LOW);
+
+                    argBytesRead += FM_MAILBOX_QUEUE_ENTRY_BYTE_LENGTH;
+
+                    status = ReadFromRequestQueue(sw,
+                                                  pepNb,
+                                                  &rv,
+                                                  ctrlHdr);
+                    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+                    macFilter->innerMacAddrMask |= (fm_macaddr)
+                              FM_GET_FIELD(rv,
+                                           FM_MAILBOX_SRV_INN_OUT_MAC,
+                                           INN_MAC_MASK_UPP) << 16;
+
+                    argBytesRead += FM_MAILBOX_QUEUE_ENTRY_BYTE_LENGTH;
+
+                    status = ReadFromRequestQueue(sw,
+                                                  pepNb,
+                                                  &rv,
+                                                  ctrlHdr);
+                    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+                    macFilter->vni =
+                              FM_GET_FIELD(rv,
+                                           FM_MAILBOX_SRV_INN_OUT_MAC,
+                                           VNI);
+
+                    argBytesRead += FM_MAILBOX_QUEUE_ENTRY_BYTE_LENGTH;
+
+
+                    status = ReadFromRequestQueue(sw,
+                                                  pepNb,
+                                                  &rv,
+                                                  ctrlHdr);
+                    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+                    macFilter->outerL4Port =
+                              FM_GET_FIELD(rv,
+                                           FM_MAILBOX_SRV_INN_OUT_MAC,
+                                           OUTER_L4_PORT);
+
+                    macFilter->tunnelType =
+                              FM_GET_FIELD(rv,
+                                           FM_MAILBOX_SRV_INN_OUT_MAC,
+                                           TUNNEL_TYPE);
+
+                    macFilter->action =
+                              FM_GET_FIELD(rv,
+                                           FM_MAILBOX_SRV_INN_OUT_MAC,
+                                           ACTION);
+
+                    argBytesRead += FM_MAILBOX_QUEUE_ENTRY_BYTE_LENGTH;
+
+                    status = ReadFromRequestQueue(sw,
+                                                  pepNb,
+                                                  &rv,
+                                                  ctrlHdr);
+                    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+                    macFilter->glort =
+                              FM_GET_FIELD(rv,
+                                           FM_MAILBOX_SRV_INN_OUT_MAC,
+                                           GLORT);
 
                     argBytesRead += FM_MAILBOX_QUEUE_ENTRY_BYTE_LENGTH;
 
@@ -4657,7 +5044,6 @@ fm_status fm10000MailboxInit(fm_int sw)
     /* Perform initialization in single chip configuration */
     if ( (GET_SWITCH_AGGREGATE_ID_IF_EXIST(sw)) == sw)
     {
-
         status = AllocateMailboxGlortCams(sw);
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
 
@@ -4726,6 +5112,10 @@ fm_status fm10000MailboxInit(fm_int sw)
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
 
         status = fmActivateMcastGroup(sw, info->mcastGroupForBcastFlood);
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+        status = fmCreateBitArray(&info->innOutMacRuleInUse,
+                                  FM10000_MAILBOX_MAX_INN_OUT_MAC_RULES);
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
     }
 
@@ -4861,6 +5251,9 @@ fm_status fm10000MailboxFreeResources(fm_int sw)
         }
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
     }
+
+    status = fmDeleteBitArray(&info->innOutMacRuleInUse);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
 
 ABORT:
 
@@ -5541,6 +5934,7 @@ fm_status fm10000AssociateMcastGroupWithFlood(fm_int                sw,
     fm_status               status;
     fm_uint32               mcastIdx;
     fm_intReplicationGroup *repliGroup;
+    fm_multicastListener    listener;
 
     FM_LOG_ENTRY(FM_LOG_CAT_MAILBOX,
                  "sw=%d, pepNb=%d, floodPort=%d, mcastGroup=%p, associate=%d\n",
@@ -5589,12 +5983,19 @@ fm_status fm10000AssociateMcastGroupWithFlood(fm_int                sw,
                 FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
             }
 
-            mcastIdx = 0;
-            status = fmSetLogicalPortAttribute(sw,
-                                               floodPort,
-                                               FM_LPORT_MULTICAST_INDEX,
-                                               (void *)&mcastIdx);
-            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+            /* If there is no other listener, clear the mcastIndex */
+            status = fmGetMcastGroupListenerFirst(sw,
+                                                  mcastGroup->handle,
+                                                  &listener);
+            if (status == FM_ERR_NO_MORE)
+            {
+                mcastIdx = 0;
+                status = fmSetLogicalPortAttribute(sw,
+                                                   floodPort,
+                                                   FM_LPORT_MULTICAST_INDEX,
+                                                   (void *)&mcastIdx);
+                FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+            }
         }
     }
 
@@ -5648,3 +6049,338 @@ fm_status fm10000GetMailboxGlortRange(fm_int     sw,
    FM_LOG_EXIT(FM_LOG_CAT_MAILBOX, status);
 
 }  /* end fm10000GetMailboxGlortRange */
+
+
+
+
+/*****************************************************************************/
+/** fm10000AnnounceTxTimestampMode
+ * \ingroup intMailbox
+ *
+ * \desc            Process TX_TIMESTAMP_MODE message.
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \param[in]       isTxTimestampEnabled specifies whether TX_TIMESTAMP_MODE 
+ *                  is enabled/disabled.
+ *
+ * \return          FM_OK if successful.
+ *
+ *****************************************************************************/
+fm_status fm10000AnnounceTxTimestampMode(fm_int  sw,
+                                         fm_bool isTxTimestampEnabled)
+{
+    fm_switch *switchPtr;
+    fm_port *  portPtr;
+    fm_status  status;
+    fm_int     pepNb;
+    fm_int     logicalPort;
+    fm_int     i;
+    fm_uint32  glort;
+    fm_mailboxControlHeader controlHeader;
+    fm_hostSrvTimestampModeResp timestampMode;
+
+    FM_LOG_ENTRY(FM_LOG_CAT_MAILBOX,
+                 "sw=%d, isTxTimestampEnabled=%d\n",
+                 sw,
+                 isTxTimestampEnabled);
+
+    switchPtr = GET_SWITCH_PTR(sw);
+    status  = FM_OK;
+    glort   = 0;
+    pepNb   = -1;
+
+    status = fmGetSwitchAttribute(sw,
+                                  FM_SWITCH_ETH_TIMESTAMP_OWNER,
+                                  &logicalPort);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+    /* If no Ethernet Timestamp Owner is configured, send txTimestampMode
+     * as FM_DISABLED to all PEPs. */
+    if (logicalPort != -1)
+    {
+        status = fmGetLogicalPortGlort(sw,
+                                       logicalPort,
+                                       &glort);
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+        portPtr = GET_PORT_PTR(sw, logicalPort);
+
+        if (portPtr->portType != FM_PORT_TYPE_VIRTUAL)
+        {
+            status = FM_ERR_INVALID_PORT;
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+        }
+
+        /* find pep number */
+        FM_API_CALL_FAMILY(status,
+                           switchPtr->MapVirtualGlortToPepNumber,
+                           sw,
+                           glort,
+                           &pepNb);
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+    }
+
+    /* Send message to all PEPs */
+    for (i = 0 ; i < FM10000_NUM_PEPS ; i++)
+    {
+        FM_CLEAR(controlHeader);
+        FM_CLEAR(timestampMode);
+
+        FM_API_CALL_FAMILY(status,
+                           switchPtr->ReadMailboxControlHdr,
+                           sw,
+                           i,
+                           &controlHeader);
+
+        /* Ignore peps in reset or disabled */
+        if (status == FM_ERR_INVALID_STATE)
+        {
+            continue;
+        }
+        else if (status != FM_OK)
+        {
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+        }
+
+        if (i == pepNb)
+        {
+            timestampMode.modeEnabled = isTxTimestampEnabled;
+            timestampMode.glort = glort;
+        }
+        else
+        {
+            timestampMode.modeEnabled = FM_DISABLED;
+            timestampMode.glort = 0;
+        }
+
+        FM_API_CALL_FAMILY(status,
+                           switchPtr->WriteMailboxResponseMessage,
+                           sw,
+                           i,
+                           &controlHeader,
+                           FM_MAILBOX_MSG_SET_TIMESTAMP_MODE_ID,
+                           FM_HOST_SRV_SET_TIMESTAMP_MODE_RESP_TYPE,
+                           (void *) &timestampMode);
+
+        if (status != FM_OK)
+        {
+            FM_LOG_DEBUG(FM_LOG_CAT_MAILBOX,
+                         "Cannot send TX_TIMESTAMP_MODE to PEP %d (err=%d)\n",
+                         i,
+                         status);
+        }
+    }
+
+    status = FM_OK;
+
+ABORT:
+
+    FM_LOG_EXIT(FM_LOG_CAT_MAILBOX, status);
+
+}   /* end fm10000AnnounceTxTimestampMode */
+
+
+
+
+/*****************************************************************************/
+/** fm10000MasterClkOffsetProcess
+ * \ingroup intMailbox
+ *
+ * \desc            Process MASTER_CLK_OFFSET message.
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \param[in]       pepNb is the number of PEP receiving message.
+ *
+ * \param[in]       clkOffset points to a structure containing 
+ *                  offset value.
+ *
+ * \return          FM_OK if successful.
+ *
+ *****************************************************************************/
+fm_status fm10000MasterClkOffsetProcess(fm_int                     sw,
+                                        fm_int                     pepNb,
+                                        fm_hostSrvMasterClkOffset *clkOffset)
+{
+    fm_switch *switchPtr;
+    fm_status  status;
+    fm_int     i;
+    fm_mailboxControlHeader controlHeader;
+
+    FM_LOG_ENTRY(FM_LOG_CAT_MAILBOX,
+                 "sw=%d, pepNb=%d, offsetValueLower=0x%x, "
+                 "offsetValueUpper=0x%x\n",
+                 sw,
+                 pepNb,
+                 clkOffset->offsetValueLower,
+                 clkOffset->offsetValueUpper);
+
+    switchPtr = GET_SWITCH_PTR(sw);
+    status  = FM_OK;
+
+    /* Send message to all PEPs excluding receiving one. */
+    for (i = 0 ; i < FM10000_NUM_PEPS ; i++)
+    {
+        if (i != pepNb)
+        {
+            FM_CLEAR(controlHeader);
+
+            FM_API_CALL_FAMILY(status,
+                               switchPtr->ReadMailboxControlHdr,
+                               sw,
+                               i,
+                               &controlHeader);
+
+            /* Ignore peps in reset or disabled */
+            if (status == FM_ERR_INVALID_STATE)
+            {
+                continue;
+            }
+            else if (status != FM_OK)
+            {
+                FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+            }
+
+            FM_API_CALL_FAMILY(status,
+                               switchPtr->WriteMailboxResponseMessage,
+                               sw,
+                               i,
+                               &controlHeader,
+                               FM_MAILBOX_MSG_MASTER_CLK_OFFSET_ID,
+                               FM_HOST_SRV_MASTER_CLK_OFFSET_TYPE,
+                               (void *) clkOffset);
+
+            if (status != FM_OK)
+            {
+                FM_LOG_DEBUG(FM_LOG_CAT_MAILBOX,
+                             "Cannot send MASTER_CLK_OFFSET to PEP %d (err=%d)\n",
+                             i,
+                             status);
+            }
+        }
+    }
+
+    status = FM_OK;
+
+ABORT:
+
+    FM_LOG_EXIT(FM_LOG_CAT_MAILBOX, status);
+
+}   /* end fm10000MasterClkOffsetProcess */
+
+
+
+
+/*****************************************************************************/
+/** fm10000MailboxConfigureCounters
+ * \ingroup intMailbox
+ *
+ * \desc            Configures mailbox counters.
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \return          FM_OK if successful.
+ *
+ *****************************************************************************/
+fm_status fm10000MailboxConfigureCounters(fm_int sw)
+{
+    fm_mailboxInfo *info;
+    fm_status       status;
+    fm_uint16       nbytes;
+    fm_int          value;
+
+    FM_LOG_ENTRY(FM_LOG_CAT_MAILBOX,
+                 "sw=%d\n",
+                 sw);
+
+    status = FM_OK;
+    info   = GET_MAILBOX_INFO(sw);
+
+    nbytes = sizeof(fm_int) * FM10000_NUM_PEPS;
+
+    info->macEntriesAdded = fmAlloc(nbytes);
+
+    if (info->macEntriesAdded == NULL)
+    {
+        status = FM_ERR_NO_MEM;
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+    }
+
+    FM_CLEAR(*info->macEntriesAdded);
+
+    info->innerOuterMacEntriesAdded = fmAlloc(nbytes);
+
+    if (info->innerOuterMacEntriesAdded == NULL)
+    {
+        status = FM_ERR_NO_MEM;
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+    }
+
+    FM_CLEAR(*info->innerOuterMacEntriesAdded);
+
+    value = fmGetIntApiProperty(FM_AAK_API_HNI_MAC_ENTRIES_PER_PEP,
+                                FM_AAD_API_HNI_MAC_ENTRIES_PER_PEP);
+
+    info->maxMacEntriesToAddPerPep = value;
+
+    value = fmGetIntApiProperty(FM_AAK_API_HNI_INN_OUT_ENTRIES_PER_PEP,
+                                FM_AAD_API_HNI_INN_OUT_ENTRIES_PER_PEP);
+
+    info->maxInnerOuterMacEntriesToAddPerPep = value;
+
+    value = fmGetIntApiProperty(FM_AAK_API_HNI_MAC_ENTRIES_PER_PORT,
+                                FM_AAD_API_HNI_MAC_ENTRIES_PER_PORT);
+
+    info->maxMacEntriesToAddPerPort = value;
+
+    value = fmGetIntApiProperty(FM_AAK_API_HNI_INN_OUT_ENTRIES_PER_PORT,
+                                FM_AAD_API_HNI_INN_OUT_ENTRIES_PER_PORT);
+
+    info->maxInnerOuterMacEntriesToAddPerPort = value;
+
+ABORT:
+
+    FM_LOG_EXIT(FM_LOG_CAT_MAILBOX, status);
+
+}   /* end fm10000MailboxConfigureCounters */
+
+
+
+
+/*****************************************************************************/
+/** fm10000MailboxUnconfigureCounters
+ * \ingroup intMailbox
+ *
+ * \desc            Unconfigures mailbox counters.
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \return          FM_OK if successful.
+ *
+ *****************************************************************************/
+fm_status fm10000MailboxUnconfigureCounters(fm_int sw)
+{
+    fm_mailboxInfo *info;
+    fm_status       status;
+
+    FM_LOG_ENTRY(FM_LOG_CAT_MAILBOX,
+                 "sw=%d\n",
+                 sw);
+
+    status = FM_OK;
+    info   = GET_MAILBOX_INFO(sw);
+
+    fmFree(info->macEntriesAdded);
+
+    fmFree(info->innerOuterMacEntriesAdded);
+
+    info->maxMacEntriesToAddPerPep            = -1;
+    info->maxInnerOuterMacEntriesToAddPerPep  = -1;
+    info->maxMacEntriesToAddPerPort           = -1;
+    info->maxInnerOuterMacEntriesToAddPerPort = -1;
+
+    FM_LOG_EXIT(FM_LOG_CAT_MAILBOX, status);
+
+}   /* end fm10000MailboxUnconfigureCounters */
+

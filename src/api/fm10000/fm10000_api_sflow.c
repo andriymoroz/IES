@@ -5,7 +5,7 @@
  * Creation Date:   February 14, 2014
  * Description:     FM10000 sFlow API implementation.
  *
- * Copyright (c) 2008 - 2014, Intel Corporation
+ * Copyright (c) 2008 - 2015, Intel Corporation
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -29,7 +29,7 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
+ *****************************************************************************/
 
 #include <fm_sdk_fm10000_int.h>
 
@@ -627,7 +627,7 @@ fm_status fm10000FreeSFlows(fm_int sw)
 /** fm10000CreateSFlow
  * \ingroup intSflow
  *
- * \desc            Create a sflow instance on a FM10000 chip. 
+ * \desc            Create a sflow instance on an FM10000 chip. 
  *                  The switch has been validated by the top-level fuction.
  *
  * \param[in]       sw is the switch number to operate on.
@@ -639,6 +639,8 @@ fm_status fm10000FreeSFlows(fm_int sw)
  * \return          FM_OK if successful.
  * \return          FM_ERR_INVALID_SFLOW_INSTANCE if sFlowId is out of range
  *                  or the instance already exists.
+ * \return          FM_ERR_NO_FREE_TRIG_RES if no free trigger resources are
+ *                  available.
  * \return          FM_ERR_TRIGGER_UNAVAILABLE if no free trigger is available.
  *
  *****************************************************************************/

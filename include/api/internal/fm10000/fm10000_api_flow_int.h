@@ -82,6 +82,9 @@ typedef struct _fm10000_flowTableInfo
     /* Mapping for flows in table. */
     fm_int *               mapping;
 
+    /* This variable count the number of reference to this particular flow. */
+    fm_int *               useCnt;
+
     /* Indicates if flow ID is in use. */
     fm_bitArray            idInUse;
 
@@ -192,8 +195,7 @@ fm_status fm10000GetFlow(fm_int             sw,
                          fm_flowAction *    flowAction,
                          fm_flowParam *     flowParam,
                          fm_int *           priority,
-                         fm_int *           precedence,
-                         fm_int *           tunnelGrp);
+                         fm_int *           precedence);
 
 fm_status fm10000ModifyFlow(fm_int           sw, 
                             fm_int           tableIndex,
@@ -279,5 +281,13 @@ fm_status fm10000DeleteFlowBalanceGrpEntry(fm_int sw,
                                            fm_int groupId,
                                            fm_int tableIndex,
                                            fm_int flowId);
+
+fm_status fm10000AddFlowUser(fm_int sw,
+                             fm_int tableIndex,
+                             fm_int flowId);
+
+fm_status fm10000DelFlowUser(fm_int sw,
+                             fm_int tableIndex,
+                             fm_int flowId);
 
 #endif /* __FM_FM10000_API_FLOW_INT_H */

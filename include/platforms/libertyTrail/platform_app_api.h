@@ -90,6 +90,10 @@ fm_status fmPlatformXcvrEnable(fm_int sw,
                                fm_int port,
                                fm_bool enable);
 
+fm_status fmPlatformXcvrEnableLpMode(fm_int sw,
+                                     fm_int port,
+                                     fm_bool enable);
+
 fm_status fmPlatformXcvrMemWrite(fm_int   sw,
                                  fm_int   port,
                                  fm_int   page,
@@ -137,5 +141,9 @@ fm_status fmPlatformSwitchGpioUnmaskIntr(fm_int            sw,
 
 fm_status fmPlatformSwitchGpioSetValue(fm_int sw, fm_int gpio, fm_int value);
 fm_status fmPlatformSwitchGpioGetValue(fm_int sw, fm_int gpio, fm_int *value);
+
+fm_status fmPlatformGetNominalSwitchVoltages(fm_int     sw,
+                                             fm_uint32 *vdds,
+                                             fm_uint32 *vddf);
 
 #endif /* __FM_PLATFORM_APP_API_H */

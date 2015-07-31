@@ -2,9 +2,9 @@
  * (No tabs, indent level is 4 spaces)  */
 /*****************************************************************************
  * File:            fm10000_api_port_int.h
- * Creation Date:   Branched from fm4000_api_port_int.h on April 18, 2013
- * Description:     Contains functions dealing with the state of
- *                  FM10xxx individual ports
+ * Creation Date:   Branched from fm4000_api_port_int.h on April 18, 2013.
+ * Description:     Functions dealing with the state of individual FM10xxx
+ *                  ports.
  *
  * Copyright (c) 2005 - 2015, Intel Corporation
  *
@@ -30,7 +30,7 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
+ *****************************************************************************/
 
 #ifndef __FM_FM10000_API_PORT_INT_H
 #define __FM_FM10000_API_PORT_INT_H
@@ -192,6 +192,7 @@ typedef struct _fm10000_portAttrEntryTable
     fm_portAttrEntry autoNegPartnerBasePage;
     fm_portAttrEntry autoNegNextPages;
     fm_portAttrEntry autoNegPartnerNextPages;
+    fm_portAttrEntry bcastFlooding;
     fm_portAttrEntry bcastPruning;
     fm_portAttrEntry enableTxCutThrough;
     fm_portAttrEntry enableRxCutThrough;
@@ -203,10 +204,17 @@ typedef struct _fm10000_portAttrEntryTable
     fm_portAttrEntry defIslUser;
     fm_portAttrEntry defVlan;
     fm_portAttrEntry defVlan2;
+    fm_portAttrEntry rxTermination;
     fm_portAttrEntry dfeMode;
     fm_portAttrEntry txLaneCursor;
     fm_portAttrEntry txLanePreCursor;
     fm_portAttrEntry txLanePostCursor;
+    fm_portAttrEntry txLaneKrInitCursor;
+    fm_portAttrEntry txLaneKrInitPreCursor;
+    fm_portAttrEntry txLaneKrInitPostCursor;
+    fm_portAttrEntry txLaneEnableConfigKrInit;
+    fm_portAttrEntry txLaneKrInitialPreDec;
+    fm_portAttrEntry txLaneKrInitialPostDec;
     fm_portAttrEntry dot1xState;
     fm_portAttrEntry dropBv;
     fm_portAttrEntry dropTagged;
@@ -226,6 +234,7 @@ typedef struct _fm10000_portAttrEntryTable
     fm_portAttrEntry replaceDscp;
     fm_portAttrEntry routable;
     fm_portAttrEntry rxClassPause;
+    fm_portAttrEntry txClassPause;
     fm_portAttrEntry rxLanePolarity;
     fm_portAttrEntry rxPause;
     fm_portAttrEntry swpriDscpPref;
@@ -286,6 +295,7 @@ typedef struct _fm10000_portAttrEntryTable
     fm_portAttrEntry replaceVlanFields;
     fm_portAttrEntry txClkCompensation;
     fm_portAttrEntry smpLosslessPause;
+    fm_portAttrEntry autoDetectModule;
 
 } fm10000_portAttrEntryTable;
 
@@ -495,11 +505,10 @@ struct _fm10000_port
     fm_uint         anRestartCnt;
 
     /* Bit array indicating the status of the transceiver module attached
-       to the port, if any. The transceiver status comprends the following
-       signals: module present, receiver Lost of Signal, and transmitter
-       fault. See see the ''Transceiver Signals'' for bit definitions. */
+     * to the port, if any. The transceiver status comprends the following
+     * signals: module present, receiver Lost of Signal, and transmitter
+     * fault. See the ''Transceiver Signals'' for bit definitions. */
     fm_uint         portModStatus[FM10000_MAX_LANES_PER_PORT];
-
 
     /* Indicates that port attribute can be set on the port. It is set to TRUE
      * when an attribute is set on a LAG just before iterating through
@@ -565,6 +574,9 @@ struct _fm10000_port
     /* timer associated to this lane serdes */
     fm_timerHandle        timerHandle;
 
+    /* timer associated to the pcie port interrupt stuck recovery */
+    fm_timerHandle        pcieIntrTimerHandle;
+
     /* native lane for Ethernet ports */
     struct _fm10000_lane *nativeLaneExt;
 
@@ -592,6 +604,12 @@ fm_status fm10000GetPortAttribute(fm_int sw,
                                   fm_int lane,
                                   fm_int attr,
                                   void * value);
+
+
+fm_status fm10000GetPortLowLevelState(fm_int  sw,
+                                      fm_int  port,
+                                      fm_int *portState);
+
 
 fm_status fm10000SetPortState(fm_int sw,
                               fm_int port,
@@ -676,7 +694,10 @@ fm_status fm10000IsPciePort( fm_int sw, fm_int port, fm_bool *isPciePort );
 fm_status fm10000IsSpecialPort( fm_int sw, fm_int port, fm_bool *isSpecialPort );
 fm_status fm10000ConfigurePepMode( fm_int sw, fm_int port );
 
-fm_status fm10000PepEventHandler( fm_int sw, fm_int pep, fm_uint32 pepIp );
+fm_status fm10000PepEventHandler( fm_int sw, 
+                                  fm_int pep, 
+                                  fm_uint32 pepIp, 
+                                  fm_bool *sendLinkDownEvent );
 
 fm_status fm10000LinkEventHandler( fm_int    sw, 
                                    fm_int    epl, 

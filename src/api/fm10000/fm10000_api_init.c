@@ -29,7 +29,7 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
+ ****************************************************************************/
 
 #include <fm_sdk_fm10000_int.h>
 
@@ -78,6 +78,14 @@
      FM10000_INT_TUNNEL_1)
 
 #define MAX_INT_VALUE                         2147483647
+
+/* BSM - API SOFT_RESET locking mechanism states */
+enum
+{
+    FM10000_SOFT_RESET_LOCK_FREE = 0,
+    FM10000_SOFT_RESET_LOCK_NVM  = 1,
+    FM10000_SOFT_RESET_LOCK_API  = 2,
+};
 
 
 /*****************************************************************************
@@ -345,6 +353,7 @@ const fm_switch FM10000SwitchDefaultTable =
     .RemoveVirtualRouter                = fm10000RemoveVirtualRouter,
     .SetRouterState                     = fm10000SetRouterState,
     .SetRouterMacMode                   = fm10000SetRouterMacMode,
+    .RoutingProcessArpRedirect          = fm10000RoutingProcessArpRedirect,
     .DbgDumpRouteStats                  = fm10000DbgDumpRouteStats,
     .DbgDumpRouteTables                 = fm10000DbgDumpRouteTables,
     .DbgValidateRouteTables             = fm10000DbgValidateRouteTables,
@@ -398,6 +407,10 @@ const fm_switch FM10000SwitchDefaultTable =
 #if 0
     .UpdateVNTunnelECMPGroup            = fm10000UpdateVNTunnelECMPGroup,
 #endif
+     .DbgDumpVN                         = fm10000DbgDumpVN,
+     .DbgDumpVirtualNetwork             = fm10000DbgDumpVirtualNetwork,
+     .DbgDumpVNTunnel                   = fm10000DbgDumpVNTunnel,
+
 
     /**************************************************
      * ACL Operations
@@ -483,7 +496,7 @@ const fm_switch FM10000SwitchDefaultTable =
     .GetFlowFirst                       = fm10000GetFlowFirst,
     .GetFlowNext                        = fm10000GetFlowNext,
     .GetFlowRuleFirst                   = fm10000GetFlowRuleFirst,
-    .GetFlowRuleNext                    = fm10000GetFlowRuleNext,   
+    .GetFlowRuleNext                    = fm10000GetFlowRuleNext,
     .ModifyFlow                         = fm10000ModifyFlow,
     .DeleteFlow                         = fm10000DeleteFlow,
     .SetFlowState                       = fm10000SetFlowState,
@@ -603,7 +616,7 @@ const fm_switch FM10000SwitchDefaultTable =
     .DbgSetSerDesPolarity               = fm10000DbgSetSerdesPolarity,
     .DbgSetSerDesLoopback               = fm10000DbgSetSerdesLoopback,
 #if 0
-    .DbgPlotEyeDiagram                  = fm10000DbgPlotEyeDiagram,    
+    .DbgPlotEyeDiagram                  = fm10000DbgPlotEyeDiagram,
     .DbgDeleteEyeDiagram                = fm10000DbgDeleteEyeDiagram,
 #endif
 
@@ -623,12 +636,12 @@ const fm_switch FM10000SwitchDefaultTable =
     .DbgDumpVid                         = fm10000DbgDumpVid,
     .DbgDumpWatermarks                  = fm10000DbgDumpWatermarks,
     .DbgDumpPortMap                     = fm10000DbgDumpPortMap,
-    .DbgDumpPortEeeStatus               = fm10000DbgDumpPortEeeStatus, 
-    .DbgEnablePortEee                   = fm10000DbgEnablePortEee, 
+    .DbgDumpPortEeeStatus               = fm10000DbgDumpPortEeeStatus,
+    .DbgEnablePortEee                   = fm10000DbgEnablePortEee,
     .DbgDumpPortStateTransitionsV2      = fm10000DbgDumpPortStateTransitionsV2,
-    .DbgDumpPortStateTransitions        = fm10000DbgDumpPortStateTransitions, 
-    .DbgClearPortStateTransitions       = fm10000DbgClearPortStateTransitions, 
-    .DbgSetPortStateTransitionHistorySize   
+    .DbgDumpPortStateTransitions        = fm10000DbgDumpPortStateTransitions,
+    .DbgClearPortStateTransitions       = fm10000DbgClearPortStateTransitions,
+    .DbgSetPortStateTransitionHistorySize
                                         = fm10000DbgSetPortStateTransitionHistorySize,
     .DbgDumpSAFTable                    = fm10000DbgDumpSAFTable,
 .    DbgDumpPortIdxMap                  = fm10000DbgDumpPortIdxMap,
@@ -677,8 +690,8 @@ const fm_switch FM10000SwitchDefaultTable =
     .MapPepToLogicalPort                 = fm10000MapPepToLogicalPort,
     .MapLogicalPortToPep                 = fm10000MapLogicalPortToPep,
     .ProcessMailboxLoopbackRequest       = fm10000ProcessLoopbackRequest,
-    .MapVsiGlortToPepNumber              = fm10000MapGlortToPepNumber,
-    .MapVsiGlortToPepLogicalPort         = fm10000MapVsiGlortToLogicalPort,
+    .MapVirtualGlortToPepNumber          = fm10000MapGlortToPepNumber,
+    .MapVirtualGlortToPepLogicalPort     = fm10000MapVirtualGlortToLogicalPort,
     .MailboxAllocateDataStructures       = fm10000MailboxAllocateDataStructures,
     .MailboxInit                         = fm10000MailboxInit,
     .MailboxFreeDataStructures           = fm10000MailboxFreeDataStructures,
@@ -689,6 +702,15 @@ const fm_switch FM10000SwitchDefaultTable =
     .SetXcastFlooding                    = fm10000SetXcastFlooding,
     .AssociateMcastGroupWithFlood        = fm10000AssociateMcastGroupWithFlood,
     .GetMailboxGlortRange                = fm10000GetMailboxGlortRange,
+    .MailboxAnnounceTxTimestampMode      = fm10000AnnounceTxTimestampMode,
+    .ProcessMasterClkOffset              = fm10000MasterClkOffsetProcess,
+    .MailboxConfigureCounters            = fm10000MailboxConfigureCounters,
+    .MailboxUnconfigureCounters          = fm10000MailboxUnconfigureCounters,
+
+    /* BSM functions */
+    .DbgDumpBsmScratch                   = fm10000DbgDumpBsmScratch,
+    .DbgPollBsmStatus                    = fm10000DbgPollBsmStatus,
+    .DbgPollLtssm                        = fm10000DbgPollLtssm,
 
 };  /* end FM10000SwitchDefaultTable */
 
@@ -814,7 +836,7 @@ ABORT:
  * \desc            Initializes one of the special logical ports.
  *
  * \param[in]       sw is the switch number.
- * 
+ *
  * \param[in]       port is the port number.
  *
  * \return          FM_OK if successful.
@@ -855,10 +877,10 @@ static fm_status InitSpecialPort(fm_int sw, fm_int port)
                 /* Get logical port number and its pointer. */
                 portNumber = GET_LOGICAL_PORT(sw, cpi);
                 portPtr = GET_PORT_PTR(sw, portNumber);
-               
+
                 err = fmIsPciePort(sw, portNumber, &isPciePort);
                 FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
- 
+
                 /* Now exclude the unwanted ports in destMask. */
                 if ( (portPtr->portType == FM_PORT_TYPE_CPU) ||
                      (portPtr->portType == FM_PORT_TYPE_TE) ||
@@ -1056,31 +1078,31 @@ static void GetIMProperties(fm_int sw)
     switchExt = GET_SWITCH_EXT(sw);
 
     /* API property interrupt masks to override interrupt handler behaviour */
-    switchExt->anImProp = 
+    switchExt->anImProp =
         fmGetIntApiProperty(FM_AAK_API_FM10000_INTR_AUTONEG_IGNORE_MASK,
                             FM_AAD_API_FM10000_INTR_AUTONEG_IGNORE_MASK);
 
-    switchExt->linkImProp = 
+    switchExt->linkImProp =
         fmGetIntApiProperty(FM_AAK_API_FM10000_INTR_LINK_IGNORE_MASK,
                             FM_AAD_API_FM10000_INTR_LINK_IGNORE_MASK);
 
-    switchExt->serdesImProp = 
+    switchExt->serdesImProp =
         fmGetIntApiProperty(FM_AAK_API_FM10000_INTR_SERDES_IGNORE_MASK,
                             FM_AAD_API_FM10000_INTR_SERDES_IGNORE_MASK);
 
-    switchExt->pcieImProp = 
+    switchExt->pcieImProp =
         fmGetIntApiProperty(FM_AAK_API_FM10000_INTR_PCIE_IGNORE_MASK,
                             FM_AAD_API_FM10000_INTR_PCIE_IGNORE_MASK);
 
-    switchExt->maTcnImProp = 
+    switchExt->maTcnImProp =
         fmGetIntApiProperty(FM_AAK_API_FM10000_INTR_MATCN_IGNORE_MASK,
                             FM_AAD_API_FM10000_INTR_MATCN_IGNORE_MASK);
 
-    switchExt->fhTailImProp = 
+    switchExt->fhTailImProp =
         fmGetIntApiProperty(FM_AAK_API_FM10000_INTR_FHTAIL_IGNORE_MASK,
                             FM_AAD_API_FM10000_INTR_FHTAIL_IGNORE_MASK);
 
-    switchExt->swImProp = 
+    switchExt->swImProp =
         fmGetIntApiProperty(FM_AAK_API_FM10000_INTR_SW_IGNORE_MASK,
                             FM_AAD_API_FM10000_INTR_SW_IGNORE_MASK);
 }   /* end GetIMProperties */
@@ -1092,7 +1114,7 @@ static void GetIMProperties(fm_int sw)
  * \ingroup intSwitch
  *
  * \desc            Initializes the glort ranges for the FM10000 switch
- *                  if they have not already been defined. 
+ *                  if they have not already been defined.
  *
  * \param[in]       sw contains the switch number
  *
@@ -1105,7 +1127,7 @@ static fm_status fm10000InitializeGlortRanges(fm_int sw)
     fm_switch *    switchPtr;
     fm_glortRange *glorts;
     fm_int         numStackMcastGroups;
-    
+
     FM_LOG_ENTRY(FM_LOG_CAT_SWITCH, "sw=%d\n", sw);
 
     switchPtr = GET_SWITCH_PTR(sw);
@@ -1139,14 +1161,14 @@ static fm_status fm10000InitializeGlortRanges(fm_int sw)
 
     if (glorts->lagBaseGlort == (fm_uint32) ~0)
     {
-        /* Allocate the LAG glort range from the end. If stacking 
+        /* Allocate the LAG glort range from the end. If stacking
          * is used, the boundary will not have to be calculated, those
          * can start at FM10000_GLORT_LAG_BASE. */
         glorts->lagCount     = FM_NUM_LOCAL_LAGS * FM10000_GLORTS_PER_LAG;
         glorts->lagBaseGlort = (FM10000_GLORT_LAG_BASE + FM10000_GLORT_LAG_SIZE)
                                - glorts->lagCount;
 
-        FM_LOG_ABORT_ON_ASSERT(FM_LOG_CAT_SWITCH, 
+        FM_LOG_ABORT_ON_ASSERT(FM_LOG_CAT_SWITCH,
                                glorts->lagCount <= FM10000_GLORT_LAG_SIZE,
                                err = FM_ERR_ASSERTION_FAILED,
                                "Lag glort space (%d) exceeded (%d)\n",
@@ -1155,17 +1177,17 @@ static fm_status fm10000InitializeGlortRanges(fm_int sw)
 
         /* For FM10000, the glort space allocated for LAG is limited to
          * 0x2000-0x2FFF. Make sure that this will not be exceeded by
-         * stacking glort requirements. If this glort space needs to be 
-         * exceeded, the default glort range for local lags should be overridden 
+         * stacking glort requirements. If this glort space needs to be
+         * exceeded, the default glort range for local lags should be overridden
          * with fmSetStackGlortRangeExt(). */
-        FM_LOG_ABORT_ON_ASSERT(FM_LOG_CAT_SWITCH, 
-                               ((FM_NUM_LOCAL_LAGS + FM_NUM_STACK_LAGS) 
+        FM_LOG_ABORT_ON_ASSERT(FM_LOG_CAT_SWITCH,
+                               ((FM_NUM_LOCAL_LAGS + FM_NUM_STACK_LAGS)
                                 * FM10000_GLORTS_PER_LAG) <=
                                (FM10000_GLORT_LAG_SIZE),
                                err = FM_ERR_ASSERTION_FAILED,
                                "Lag glort space (%d) exceeded (%d)\n",
                                FM10000_GLORT_LAG_SIZE,
-                               ((FM_NUM_LOCAL_LAGS + FM_NUM_STACK_LAGS) 
+                               ((FM_NUM_LOCAL_LAGS + FM_NUM_STACK_LAGS)
                                 * FM10000_GLORTS_PER_LAG) );
     }
 
@@ -1186,16 +1208,16 @@ static fm_status fm10000InitializeGlortRanges(fm_int sw)
          * If stacking is used, the boundary will not have to be calculated,
          * those can start at FM10000_GLORT_MCAST_BASE. */
         glorts->mcastBaseGlort =
-            FM10000_GLORT_MCAST_BASE + numStackMcastGroups; 
+            FM10000_GLORT_MCAST_BASE + numStackMcastGroups;
         glorts->mcastCount     =
             FM10000_GLORT_MCAST_SIZE - numStackMcastGroups;
 
         /* For FM10000, the default glort space allocated for multicasts is
          * 0x3000-0x3FFF. Make sure that this will not be exceeded by
-         * stacking glort requirements. If this glort space needs to be 
+         * stacking glort requirements. If this glort space needs to be
          * exceeded, the default glort range for local mulitcasts should be
          * overridden with fmSetStackGlortRangeExt(). */
-        FM_LOG_ABORT_ON_ASSERT(FM_LOG_CAT_SWITCH, 
+        FM_LOG_ABORT_ON_ASSERT(FM_LOG_CAT_SWITCH,
                                numStackMcastGroups <=
                                FM10000_GLORT_MCAST_SIZE,
                                err = FM_ERR_ASSERTION_FAILED,
@@ -1206,7 +1228,7 @@ static fm_status fm10000InitializeGlortRanges(fm_int sw)
 
     if (switchPtr->mailboxInfo.glortBase == (fm_uint16) ~0)
     {
-        switchPtr->mailboxInfo.glortBase    = FM10000_MAILBOX_GLORT_BASE; 
+        switchPtr->mailboxInfo.glortBase    = FM10000_MAILBOX_GLORT_BASE;
         switchPtr->mailboxInfo.glortMask    = FM10000_MAILBOX_GLORT_MASK;
         switchPtr->mailboxInfo.glortsPerPep = FM10000_MAILBOX_GLORTS_PER_PEP;
     }
@@ -1226,8 +1248,8 @@ static fm_status fm10000InitializeGlortRanges(fm_int sw)
     glorts    = &switchPtr->glortRange;
 
     /*****************************************************************
-     * Multicast glort information 
-     *  
+     * Multicast glort information
+     *
      * The value must be a a power of 2 greater then 64 but not greater
      * then FM_MCG_MAX_ENTRIES_PER_GLORT
      ****************************************************************/
@@ -1296,7 +1318,7 @@ static fm_status fm10000InitializeAfterReset(fm_int sw)
                      fmErrorMsg(err));
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
     }
-    
+
     /***************************************************
      * Initialize all the cache arrays
      **************************************************/
@@ -1426,15 +1448,39 @@ static fm_status fm10000InitializeAfterReset(fm_int sw)
     err = switchPtr->GetSwitchInfo(sw, &switchPtr->info);
     if (err != FM_OK )
     {
-        FM_LOG_FATAL(FM_LOG_CAT_SWITCH, 
+        FM_LOG_FATAL(FM_LOG_CAT_SWITCH,
                      "Unable to get switch info: %s\n",
                      fmErrorMsg(err));
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
     }
 
+    /***************************************************
+     * Disable Crm Interrupts
+     **************************************************/
+    err = fmDbgDisableCrmInterrupts(sw);
+    if (err != FM_OK )
+    {
+        FM_LOG_FATAL(FM_LOG_CAT_SWITCH,
+                     "Unable to disable Crm Interrupts: %s\n",
+                     fmErrorMsg(err));
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
+    }
+#ifndef FM_SUPPORT_SWAG
+    /***************************************************
+     * Enable Crm Interrupts
+     **************************************************/
+    err = fmDbgEnableCrmInterrupts(sw);
+    if (err != FM_OK )
+    {
+        FM_LOG_FATAL(FM_LOG_CAT_SWITCH,
+                     "Unable to enable Crm Interrupts: %s\n",
+                     fmErrorMsg(err));
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
+    }
+#endif
 ABORT:
     FM_LOG_EXIT(FM_LOG_CAT_SWITCH, err);
-    
+
 }   /* end fm10000InitializeAfterReset */
 
 
@@ -1444,7 +1490,7 @@ ABORT:
 /** InitDefaultAttributes
  * \ingroup intSwitch
  *
- * \desc            Initializes all physical ports and switch to have default 
+ * \desc            Initializes all physical ports and switch to have default
  *                  attributes.
  *
  * \param[in]       sw is the switch number to operate on.
@@ -1465,7 +1511,7 @@ static fm_status InitDefaultAttributes(fm_int sw)
     fm10000_portAttr *   portAttrExt;
     fm_portAttr *        portAttr;
     fm_bool              isPciePort;
-    
+
 
     FM_LOG_ENTRY(FM_LOG_CAT_SWITCH, "sw=%d\n", sw);
 
@@ -1477,7 +1523,7 @@ static fm_status InitDefaultAttributes(fm_int sw)
      * setting these port attribute, register values are updated as per the
      * API default values.
      **********************************************************************/
-    for (cpi = 0; cpi < switchPtr->numCardinalPorts; cpi++)
+    for (cpi = 0 ; cpi < switchPtr->numCardinalPorts ; cpi++)
     {
         port  = GET_LOGICAL_PORT(sw, cpi);
 
@@ -1486,7 +1532,7 @@ static fm_status InitDefaultAttributes(fm_int sw)
 
         err = fmIsPciePort(sw, port, &isPciePort);
         FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_SWITCH, err);
- 
+
         err = fm10000MapLogicalPortToEplLane(sw, port, &epl, &lane);
         hasEpl = (err == FM_OK);
 
@@ -1500,7 +1546,7 @@ static fm_status InitDefaultAttributes(fm_int sw)
                                           FM_PORT_MAX_FRAME_SIZE,
                                           &portAttr->maxFrameSize);
             FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_SWITCH, err);
-        } 
+        }
 
         err = fm10000SetPortAttribute(sw,
                                       port,
@@ -1528,10 +1574,10 @@ static fm_status InitDefaultAttributes(fm_int sw)
 
         if (isPciePort)
         {
-            err = fm10000SetPortAttribute(sw, 
+            err = fm10000SetPortAttribute(sw,
                                           port,
-                                          FM_PORT_ACTIVE_MAC, 
-                                          FM_PORT_LANE_NA, 
+                                          FM_PORT_ACTIVE_MAC,
+                                          FM_PORT_LANE_NA,
                                           FM_PORT_ISL_TAG_FORMAT,
                                           &portAttr->islTagFormat);
             FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_SWITCH, err);
@@ -1548,7 +1594,7 @@ static fm_status InitDefaultAttributes(fm_int sw)
     FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_SWITCH, err);
 
     FM_LOG_EXIT(FM_LOG_CAT_SWITCH, FM_OK);
- 
+
 }   /* end InitDefaultAttributes */
 
 
@@ -1577,6 +1623,9 @@ static fm_status ResetSwitch(fm_int sw)
 
     TAKE_REG_LOCK(sw);
 
+    err = fm10000TakeSoftResetLock(sw);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
+
     err = switchPtr->ReadUINT32(sw, FM10000_SOFT_RESET(), &rv);
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
 
@@ -1599,6 +1648,9 @@ static fm_status ResetSwitch(fm_int sw)
 
     /* wait 1ms */
     fmDelay(0, 1000000);
+
+    err = fm10000DropSoftResetLock(sw);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
 
 ABORT:
     DROP_REG_LOCK(sw);
@@ -1637,7 +1689,7 @@ static fm_status ReleaseSwitch(fm_int sw)
 
     /* The switch is assumed to be in reset */
 
-    /******************************** 
+    /********************************
      * Clear the switch/tunnel/EPL memories
      ********************************/
     err = switchPtr->ReadUINT64(sw, FM10000_BIST_CTRL(0), &rv64);
@@ -1646,7 +1698,7 @@ static fm_status ReleaseSwitch(fm_int sw)
     FM_SET_BIT64(rv64, FM10000_BIST_CTRL, BistMode_FABRIC, 1);
     FM_SET_BIT64(rv64, FM10000_BIST_CTRL, BistMode_TUNNEL, 1);
     FM_SET_BIT64(rv64, FM10000_BIST_CTRL, BistMode_EPL, 1);
-    
+
     err = switchPtr->WriteUINT64(sw, FM10000_BIST_CTRL(0), rv64);
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
 
@@ -1667,13 +1719,16 @@ static fm_status ReleaseSwitch(fm_int sw)
     FM_SET_BIT64(rv64, FM10000_BIST_CTRL, BistMode_FABRIC, 0);
     FM_SET_BIT64(rv64, FM10000_BIST_CTRL, BistMode_TUNNEL, 0);
     FM_SET_BIT64(rv64, FM10000_BIST_CTRL, BistMode_EPL, 0);
-    
+
     err = switchPtr->WriteUINT64(sw, FM10000_BIST_CTRL(0), rv64);
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
 
-    /******************************** 
-     * Take the switch out of reset 
+    /********************************
+     * Take the switch out of reset
      ********************************/
+    err = fm10000TakeSoftResetLock(sw);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
+
     err = switchPtr->ReadUINT32(sw, FM10000_SOFT_RESET(), &rv);
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
 
@@ -1685,6 +1740,9 @@ static fm_status ReleaseSwitch(fm_int sw)
 
     /* wait 100ns */
     fmDelay(0, 100);
+
+    err = fm10000DropSoftResetLock(sw);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
 
 ABORT:
     DROP_REG_LOCK(sw);
@@ -1702,22 +1760,22 @@ ABORT:
  *
  * \desc            Find the PLL parameters that gives the closest frequency
  *                  for the given frame handler clock. The resulting
- *                  clock frequency is rounded to the nearest upper clock value. 
+ *                  clock frequency is rounded to the nearest upper clock value.
  *
  * \param[in]       fhClock is the requested clock in Hz
- * 
+ *
  * \param[out]      refDiv is a pointer to the caller allocated storage where
  *                  the refDiv value should be stored.
- * 
+ *
  * \param[out]      outDiv is a pointer to the caller allocated storage where
  *                  the outDiv value should be stored.
- * 
+ *
  * \param[out]      fbDiv4 is a pointer to the caller allocated storage where
  *                  the fbDiv4 value should be stored.
- * 
+ *
  * \param[out]      fbDiv255 is a pointer to the caller allocated storage where
  *                  the fbDiv255 value should be stored.
- * 
+ *
  * \param[out]      outFhClock is a pointer to the caller allocated storage where
  *                  the resulting clock value should be stored.
  *
@@ -1755,20 +1813,20 @@ static fm_status FindFabricPllParams(fm_uint32  fhClock,
     perfectMatch = FALSE;
 
     /* Iterate over all possibilities to find the best match. This looping
-     * is not very efficient, it takes roughly 300ms to go through all 
+     * is not very efficient, it takes roughly 300ms to go through all
      * possibilities.
-     *  
+     *
      * We could use a pre-computed table of PLL values for
      * frequencies between 350MHz and 1200Mhz with a 1Mhz increment. */
-    for (outDivA = 63; outDivA >= 2; outDivA--)
+    for (outDivA = 63 ; outDivA >= 2 ; outDivA--)
     {
-        for (refDivA = 63; refDivA >= 1; refDivA--)
+        for (refDivA = 63 ; refDivA >= 1 ; refDivA--)
         {
-            for (fbDiv4A = 0; fbDiv4A < 2; fbDiv4A++)
+            for (fbDiv4A = 0 ; fbDiv4A < 2 ; fbDiv4A++)
             {
-                for (fbDiv255A = 1; fbDiv255A < 256; fbDiv255A++)
+                for (fbDiv255A = 1 ; fbDiv255A < 256 ; fbDiv255A++)
                 {
-                    vco = ((fm_uint64)FM10000_ETH_REF_CLOCK_FREQ * 4 * 
+                    vco = ((fm_uint64)FM10000_ETH_REF_CLOCK_FREQ * 4 *
                           fbDiv255A * (1 + fbDiv4A)) / refDivA;
 
                     /* VCO must be in the (8GHz <= VCO <= 12GHz) range. */
@@ -1825,11 +1883,11 @@ static fm_status FindFabricPllParams(fm_uint32  fhClock,
     {
         *outFhClock = closestFreq;
 
-        FM_LOG_DEBUG(FM_LOG_CAT_SWITCH, 
+        FM_LOG_DEBUG(FM_LOG_CAT_SWITCH,
                      "fhClock=%d Hz, outFhClock=%d Hz, "
                      "diff=%d Hz, VCO=%" FM_FORMAT_64 "d\n",
-                     fhClock, 
-                     *outFhClock, 
+                     fhClock,
+                     *outFhClock,
                      *outFhClock - fhClock,
                      closestVco);
     }
@@ -1854,7 +1912,7 @@ ABORT:
  *
  * \desc            Sets the frame handler PLL multipliers to match the
  *                  requested FH clock. Use -1 for default clock.
- * 
+ *
  *                  Will be rounded to the closest matching value.
  *
  * \param[in]       sw is the switch on which to operate.
@@ -1876,11 +1934,15 @@ static fm_status SetFHClockFreq(fm_int sw, fm_int fhClock)
     fm_uint32   fbDiv4;
     fm_uint32   fbDiv255;
     fm_uint32   outFhClock;
+    fm_uint32   tmpRefDiv;
+    fm_uint32   tmpOutDiv;
+    fm_uint32   tmpFbDiv4;
+    fm_uint32   tmpFbDiv255;
     fm_bool     regLockTaken;
     fm_int      sku;
     fm_int      skuClock;
 
-    fm_switch * switchPtr = GET_SWITCH_PTR(sw); 
+    fm_switch * switchPtr = GET_SWITCH_PTR(sw);
 
     regLockTaken = FALSE;
 
@@ -1928,34 +1990,41 @@ static fm_status SetFHClockFreq(fm_int sw, fm_int fhClock)
     /* Full control over the PLL */
     if (featureCode == FM10000_PFL_FEATURE_CODE_FULL)
     {
-        if (fhClock == -1)
+        if (fhClock != -1)
         {
-            outFhClock = (fm_uint32)skuClock;
-        }
-        else
-        {
-            err = FindFabricPllParams(fhClock, 
-                                      &refDiv, 
-                                      &outDiv, 
-                                      &fbDiv4, 
-                                      &fbDiv255, 
+            err = FindFabricPllParams(fhClock,
+                                      &tmpRefDiv,
+                                      &tmpOutDiv,
+                                      &tmpFbDiv4,
+                                      &tmpFbDiv255,
                                       &outFhClock);
             FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
 
-            if(outFhClock > (fm_uint32)skuClock)
+            if ( ( outFhClock > (fm_uint32)skuClock ) && ( sku != NO_SKU ) )
             {
                 FM_LOG_WARNING(FM_LOG_CAT_SWITCH,
                                "fhClock=%d is greater than maximum SKU frequency %d, using %d\n",
                                fhClock,
                                skuClock,
                                skuClock);
-
-                outFhClock = skuClock;
+            }
+            else
+            {
+                if ( ( outFhClock > (fm_uint32)skuClock ) && ( sku == NO_SKU ) )
+                {
+                    FM_LOG_WARNING(FM_LOG_CAT_SWITCH,
+                                   "This part has no SKU and has not been tested for fhClock %d\n",
+                                   fhClock);
+                }
+                refDiv = tmpRefDiv;
+                outDiv = tmpOutDiv;
+                fbDiv4 = tmpFbDiv4;
+                fbDiv255 = tmpFbDiv255;
             }
         }
 
         FM_FLAG_TAKE_REG_LOCK(sw);
-        
+
         err = switchPtr->ReadUINT32(sw, FM10000_PLL_FABRIC_CTRL(), &rv);
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
 
@@ -1985,9 +2054,9 @@ static fm_status SetFHClockFreq(fm_int sw, fm_int fhClock)
         err = switchPtr->ReadUINT32(sw, FM10000_PLL_FABRIC_LOCK(), &rv);
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
 
-        FM_SET_FIELD(rv, 
-                     FM10000_PLL_FABRIC_LOCK, 
-                     FreqSel, 
+        FM_SET_FIELD(rv,
+                     FM10000_PLL_FABRIC_LOCK,
+                     FreqSel,
                      FM10000_PFL_FREQ_SEL_USE_CTRL);
 
         err = switchPtr->WriteUINT32(sw, FM10000_PLL_FABRIC_LOCK(), rv);
@@ -2027,9 +2096,9 @@ static fm_status SetFHClockFreq(fm_int sw, fm_int fhClock)
         }
         if (fhClock > (maxFreq))
         {
-            FM_LOG_WARNING(FM_LOG_CAT_SWITCH, 
+            FM_LOG_WARNING(FM_LOG_CAT_SWITCH,
                            "fhClock=%d is greater than maximum supported frequency %d, using %d\n",
-                           fhClock, 
+                           fhClock,
                            maxFreq,
                            maxFreq);
 
@@ -2059,7 +2128,7 @@ static fm_status SetFHClockFreq(fm_int sw, fm_int fhClock)
         }
 
         FM_FLAG_TAKE_REG_LOCK(sw);
-        
+
         err = switchPtr->ReadUINT32(sw, FM10000_PLL_FABRIC_LOCK(), &rv);
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
 
@@ -2078,7 +2147,7 @@ ABORT:
     }
 
     return err;
-    
+
 }   /* end SetFHClockFreq */
 
 
@@ -2121,11 +2190,353 @@ static fm_status ResetSwitchExtension(fm_switch * switchPtr)
 }   /* end ResetSwitchExtension */
 
 
+/*****************************************************************************/
+/** WaitForSoftResetLockOwner
+ * \ingroup intSwitch
+ *
+ * \desc            Wait for lock owner value to be some specified value.
+  *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \param[in]       owner is the lock value to wait for.
+ *
+ * \param[in]       timeoutNsec is the timeout in nanoseconds to wait for.
+ *
+ * \return          FM_OK if successful.
+ * \return          Other ''Status Codes'' as appropriate in case of failure.
+ *
+ *****************************************************************************/
+static fm_status WaitForSoftResetLockOwner(fm_int sw, fm_uint owner, fm_uint timeoutNsec)
+{
+    fm_status       err;
+    fm_switch *     switchPtr;
+    fm_uint         waitLoopCnt;
+    fm_uint32       busLock;
+    fm_uint         prevOwner;
+    fm_uint         lockOwner;
+    fm_uint         delayNsec;
+    fm_uint         totalDelayNsec;
+
+
+    switchPtr = GET_SWITCH_PTR(sw);
+
+    waitLoopCnt = 0;
+    totalDelayNsec = 0;
+    err = switchPtr->ReadUINT32( sw, 
+                                 FM10000_BSM_SCRATCH(2),
+                                 &busLock );
+    FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_SWITCH, err);
+
+    lockOwner = FM_GET_UNNAMED_FIELD( busLock, 0, 2);
+
+    if (lockOwner == FM10000_SOFT_RESET_LOCK_API)
+    {
+        if (owner != FM10000_SOFT_RESET_LOCK_API)
+        {
+            FM_LOG_ERROR(FM_LOG_CAT_SWITCH,
+                         "Lockowner is already held by API. Request %d\n", owner);
+        }
+        FM_LOG_EXIT(FM_LOG_CAT_SWITCH, err);
+    }
+
+    while (lockOwner != owner)
+    {
+        if (totalDelayNsec >= timeoutNsec)
+        {
+            if (timeoutNsec > 0)
+            {
+                FM_LOG_ERROR(FM_LOG_CAT_SWITCH,
+                             "Lock is still taken by %d != %d in %d usec. Interations %d\n",
+                             lockOwner, owner, totalDelayNsec/1000, waitLoopCnt);
+            }
+            err = FM_FAIL;
+            FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_SWITCH, err);
+        }
+
+        waitLoopCnt++;
+        delayNsec = 1000 * waitLoopCnt;
+        fmDelay(0, delayNsec);
+        totalDelayNsec += delayNsec;
+        err = switchPtr->ReadUINT32( sw, 
+                                     FM10000_BSM_SCRATCH(2),
+                                     &busLock );
+        FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_SWITCH, err);
+
+        prevOwner = lockOwner;
+        lockOwner = FM_GET_UNNAMED_FIELD( busLock, 0, 2);
+    }
+
+    if (waitLoopCnt)
+    {
+        FM_LOG_DEBUG(FM_LOG_CAT_SWITCH,
+                    "Wait for lock = %d (lastOwner = %d) in %d usec. Interations %d\n",
+                     owner, prevOwner, totalDelayNsec/1000, waitLoopCnt);
+    }
+
+    FM_LOG_EXIT(FM_LOG_CAT_SWITCH, err);
+
+} /* end WaitForSoftResetLockOwner */
+
+
+/*****************************************************************************/
+/** CreateSendDirectedTrigger
+ * \ingroup intSwitch
+ *
+ * \desc            Creates the VLAN trigger which is neccesary for sending
+ *                  specially handled frame as is. This trigger replaces VID
+ *                  in FTAG for specially handled packets which came from CPU
+ *                  port to 0.
+ *
+ * \param[in]       sw is the switch number to operate on.
+ *
+ * \return          FM_OK if successful.
+ *
+ *****************************************************************************/
+static fm_status CreateSendDirectedTrigger(fm_int sw)
+{
+    fm_triggerCondition trigCond;
+    fm_triggerAction    trigAction;
+    fm_status           err;
+
+    FM_LOG_ENTRY(FM_LOG_CAT_SWITCH, "sw=%d\n", sw);
+
+    /**************************************************
+     * Create the trigger.
+     **************************************************/
+
+    err = fm10000CreateTrigger(sw,
+                               FM10000_TRIGGER_GROUP_VLAN,
+                               FM10000_SEND_DIRECTED_REASSIGN_VLAN,
+                               TRUE,
+                               "sendDirectedTrigger");
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
+
+    /**************************************************
+     * Configure trigger condition.
+     **************************************************/
+
+    err = fmInitTriggerCondition(sw, &trigCond);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
+
+    /* Match on special handled frames. */
+    trigCond.cfg.matchFtypeMask = FM_TRIGGER_FTYPE_SPECIAL;
+
+    /* Match on the CPU port. */
+    trigCond.cfg.rxPortset = FM_PORT_SET_CPU;
+
+    /**************************************************
+     * Configure trigger action.
+     **************************************************/
+
+    err = fmInitTriggerAction(sw, &trigAction);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
+
+    trigAction.cfg.vlan1Action = FM_TRIGGER_VLAN_ACTION_REASSIGN;
+
+    /**************************************************
+     * Configure trigger param.
+     **************************************************/
+
+    trigAction.param.newVlan1  = 0;
+
+    /**************************************************
+     * Apply trigger configuration.
+     **************************************************/
+
+    err = fm10000SetTriggerAction(sw,
+                                  FM10000_TRIGGER_GROUP_VLAN,
+                                  FM10000_SEND_DIRECTED_REASSIGN_VLAN,
+                                  &trigAction,
+                                  TRUE);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
+
+    err = fm10000SetTriggerCondition(sw,
+                                     FM10000_TRIGGER_GROUP_VLAN,
+                                     FM10000_SEND_DIRECTED_REASSIGN_VLAN,
+                                     &trigCond,
+                                     TRUE);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
+
+ABORT:
+
+    FM_LOG_EXIT(FM_LOG_CAT_SWITCH, err);
+
+}   /* end CreateSendDirectedTrigger */
 
 
 /*****************************************************************************
  * Public Functions
  *****************************************************************************/
+
+
+/*****************************************************************************/
+/** fm10000TakeSoftResetLock
+ * \ingroup intSwitch
+ *
+ * \desc            Take SOFT_RESET lock to avoid contention with NVM.
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \return          FM_OK if successful.
+ * \return          Other ''Status Codes'' as appropriate in case of failure.
+ *
+ *****************************************************************************/
+fm_status fm10000TakeSoftResetLock(fm_int sw)
+{
+    fm_status       err;
+    fm_switch *     switchPtr;
+    fm_uint         waitLoopCnt;
+    fm_uint32       softReset;
+    fm_uint32       PCIeActive;
+    fm_uint         delayNsec;
+    fm_uint         totalDelayNsec; 
+    fm_int          cnt;
+    fm_uint         nvmVer;
+
+    switchPtr = GET_SWITCH_PTR(sw);
+
+    err = fm10000GetNvmImageVersion(sw, &nvmVer);
+    FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_SWITCH, err);
+
+    if ( nvmVer >= NVM_PCIE_RECOVERY_VER )
+    {
+        /* Has support for locking in NVM */
+        for (cnt = 0; cnt < 3; cnt++)
+        {
+            /* Wait for lock is free */
+            err = WaitForSoftResetLockOwner(sw, FM10000_SOFT_RESET_LOCK_FREE, 1000*1000*2000);
+            FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_SWITCH, err);
+
+            /* Write to take lock 
+             * 0: free
+             * 2: API
+             * x: others
+             */
+            err = switchPtr->WriteUINT32( sw, 
+                                          FM10000_BSM_SCRATCH(2),
+                                          FM10000_SOFT_RESET_LOCK_API );
+            FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_SWITCH, err);
+
+            /* NVM is slower, so must delay before checking */
+            fmDelay(0, 50*1000);
+
+            /* Check to make sure lock is taken correctly, if not try again */
+            err = WaitForSoftResetLockOwner(sw, FM10000_SOFT_RESET_LOCK_API, 0);
+            if (err == FM_OK)
+            {
+                FM_LOG_EXIT(FM_LOG_CAT_SWITCH, err);
+            }
+            else
+            {
+                FM_LOG_DEBUG(FM_LOG_CAT_SWITCH,
+                            "Unable to take lock. Try #%d\n", cnt);                
+            }
+        }
+    }
+    else
+    {
+        /* No locking support in NVM, NVM is accessing the SOFT_RESET */
+        err = switchPtr->ReadUINT32( sw,
+                                     FM10000_SOFT_RESET(),
+                                     &softReset );
+        FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_SWITCH, err);
+
+        PCIeActive =
+            FM_GET_UNNAMED_FIELD( softReset,
+                                  FM10000_SOFT_RESET_b_PCIeActive_0,
+                                  9 );
+        waitLoopCnt = 0;
+        totalDelayNsec = 0;
+        while (PCIeActive)
+        {
+            if (totalDelayNsec > 1000*1000*500)
+            {
+                FM_LOG_ERROR(FM_LOG_CAT_SWITCH,
+                             "PCIE is still active in %d usec. Interations %d\n",
+                             totalDelayNsec/1000, waitLoopCnt);
+                err = FM_FAIL;
+                FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_SWITCH, err);
+            }
+
+            waitLoopCnt++;
+            delayNsec = 1000 * waitLoopCnt;
+            fmDelay(0, delayNsec);
+
+            switchPtr->ReadUINT32( sw,
+                                   FM10000_SOFT_RESET(),
+                                   &softReset );
+            PCIeActive =
+                FM_GET_UNNAMED_FIELD( softReset,
+                                      FM10000_SOFT_RESET_b_PCIeActive_0,
+                                      9 );
+            totalDelayNsec += delayNsec;
+        }
+        if (waitLoopCnt)
+        {
+            FM_LOG_DEBUG(FM_LOG_CAT_SWITCH, "PCIeActive in %d usec. Interations %d\n",
+                         totalDelayNsec/1000, waitLoopCnt);
+        }
+    }
+
+    FM_LOG_EXIT(FM_LOG_CAT_SWITCH, err);
+
+} /* fm10000TakeSoftResetLock */
+
+
+
+/*****************************************************************************/
+/** fm10000DropSoftResetLock
+ * \ingroup intSwitch
+ *
+ * \desc            Drop SOFT_RESET lock, if needed.
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \return          FM_OK if successful.
+ * \return          Other ''Status Codes'' as appropriate in case of failure.
+ *
+ *****************************************************************************/
+fm_status fm10000DropSoftResetLock(fm_int sw)
+{
+    fm_status       err = FM_OK;
+    fm_switch *     switchPtr;
+    fm_uint32       busLock;
+    fm_uint         lockOwner;
+    fm_uint32       nvmVer;
+
+    switchPtr = GET_SWITCH_PTR(sw);
+
+    err = fm10000GetNvmImageVersion(sw, &nvmVer);
+    FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_SWITCH, err);
+
+    if ( nvmVer >= NVM_PCIE_RECOVERY_VER )
+    {
+        err = switchPtr->ReadUINT32( sw, 
+                                     FM10000_BSM_SCRATCH(2),
+                                     &busLock );
+        FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_SWITCH, err);
+
+        lockOwner = FM_GET_UNNAMED_FIELD( busLock, 0, 2);
+
+        switch (lockOwner)
+        {
+            case FM10000_SOFT_RESET_LOCK_API:
+                return (switchPtr->WriteUINT32( sw, 
+                                                FM10000_BSM_SCRATCH(2),
+                                                0 ));
+                break;
+            default:
+                FM_LOG_WARNING(FM_LOG_CAT_SWITCH,
+                    "Attemp to release API lock but lock is being used by %d\n",
+                    lockOwner);
+                break;
+        }
+    }
+
+    FM_LOG_EXIT(FM_LOG_CAT_SWITCH, err);
+    
+} /* fm10000DropSoftResetLock */
+
 
 
 /*****************************************************************************/
@@ -2161,7 +2572,7 @@ fm_status fm10000AllocateDataStructures(fm_switch *switchPtr)
                                               FM10000_GLORT_DEST_TABLE_ENTRIES);
     FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_SWITCH, err);
 
-    err = fmMailboxAllocateDataStructures(sw); 
+    err = fmMailboxAllocateDataStructures(sw);
     FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_SWITCH, err);
 
     FM_LOG_EXIT(FM_LOG_CAT_SWITCH, FM_OK);
@@ -2224,7 +2635,7 @@ fm_status fm10000FreeDataStructures(fm_switch *switchPtr)
 /** fm10000FreeResources
  * \ingroup intSwitch
  *
- * \desc            This is called before the switch is brought down, to free 
+ * \desc            This is called before the switch is brought down, to free
  *                  the switch resources pre-allocated when the switch is
  *                  brought up. Called through the FreeResources function
  *                  pointer.
@@ -2329,7 +2740,7 @@ fm_status fm10000FreeResources(fm_int sw)
         retErr = err;
         /* Don't return, just continue on */
     }
-   
+
     /* Free Mailbox resources before routing and multicast */
     err = fm10000MailboxFreeResources(sw);
     if (err != FM_OK)
@@ -2341,7 +2752,7 @@ fm_status fm10000FreeResources(fm_int sw)
         /* Don't return, just continue on */
     }
 
- 
+
     /* Free router resources before Triggers. */
     err = fm10000RouterFree(sw);
     if (err != FM_OK)
@@ -2481,6 +2892,16 @@ fm_status fm10000FreeResources(fm_int sw)
         /* Don't return, just continue on */
     }
 
+    err = fm10000FreeCrmStructures();
+    if (err != FM_OK)
+    {
+        FM_LOG_ERROR( FM_LOG_CAT_SWITCH,
+                      "Error freeing Crm structures: %s\n",
+                      fmErrorMsg(err) );
+        retErr = err;
+        /* Don't return, just continue on */
+    }
+
     FM_LOG_EXIT(FM_LOG_CAT_SWITCH, retErr);
 
 }   /* end fm10000FreeResources */
@@ -2519,8 +2940,8 @@ fm_status fm10000BootSwitch(fm_int sw)
     fm_timestamp tDiff;
 
     fmGetTime(&t1);
-#endif 
-    
+#endif
+
     FM_LOG_ENTRY(FM_LOG_CAT_SWITCH, "sw=%d\n", sw);
 
     err       = FM_OK;
@@ -2538,7 +2959,7 @@ fm_status fm10000BootSwitch(fm_int sw)
 #endif
 
     /***************************************************
-     * Step 0a: Put the switch domain into reset. 
+     * Step 0a: Put the switch domain into reset.
      *          We may be recovering from a bad state
      *          so we must enforce reset state here
      *          such that we have a clean start.
@@ -2547,24 +2968,24 @@ fm_status fm10000BootSwitch(fm_int sw)
     FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_SWITCH, err);
 
     /***************************************************
-     * Step 0b: We are in reset, let's setup the 
+     * Step 0b: We are in reset, let's setup the
      *          FABRIC_PLL based on requested
      *          frame handler clock.
      **************************************************/
-   
+
     /* Retrieve the clock from platform config attribute */
-    FM_SNPRINTF_S(buf, 
-                  MAX_BUF_SIZE, 
-                  FM_AAK_API_PLATFORM_FH_CLOCK, 
+    FM_SNPRINTF_S(buf,
+                  MAX_BUF_SIZE,
+                  FM_AAK_API_PLATFORM_FH_CLOCK,
                   sw);
     fhClock = fmGetIntApiProperty(buf, FM_AAD_API_PLATFORM_FH_CLOCK);
 
-    if ( ( (fhClock < 0) && (fhClock != -1)) || 
+    if ( ( (fhClock < 0) && (fhClock != -1)) ||
          (fhClock > MAX_INT_VALUE) )
     {
-        FM_LOG_ERROR(FM_LOG_CAT_SWITCH, 
+        FM_LOG_ERROR(FM_LOG_CAT_SWITCH,
                      FM_AAK_API_PLATFORM_FH_CLOCK " is out of range: [-1, %d]\n",
-                     sw, 
+                     sw,
                      MAX_INT_VALUE);
 
         err = FM_ERR_INVALID_ARGUMENT;
@@ -2574,32 +2995,35 @@ fm_status fm10000BootSwitch(fm_int sw)
     /* Configure the clock */
     err = SetFHClockFreq(sw, fhClock);
     FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_SWITCH, err);
-    
+
     /***************************************************
-     * Step 1a: Determine SerDes OpMode 
+     * Step 1a: Determine SerDes OpMode
      *          This MUST be done before initializing
      *          the SBus and SerDes
      **************************************************/
     err = fm10000SerdesInitOpMode(sw);
     FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_SWITCH, err);
-    
+
     /***************************************************
      * Step 1b: Initialize switch SBus (EPL ring only)
      **************************************************/
     err = fm10000SbusInit(sw, TRUE);
     FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_SWITCH, err);
-    
+
     /***************************************************
      * Step 1c: Initialize switch SERDES
      **************************************************/
     err = fm10000InitSwSerdes(sw);
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
-   
+
     /***************************************************
      * Step 2: Take EPLs out of reset
      **************************************************/
 
     FM_FLAG_TAKE_REG_LOCK(sw);
+
+    err = fm10000TakeSoftResetLock(sw);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
 
     err = switchPtr->ReadUINT32(sw, FM10000_SOFT_RESET(), &rv);
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
@@ -2607,6 +3031,9 @@ fm_status fm10000BootSwitch(fm_int sw)
     FM_SET_BIT(rv, FM10000_SOFT_RESET, EPLReset, 0);
 
     err = switchPtr->WriteUINT32(sw, FM10000_SOFT_RESET(), rv);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
+
+    err = fm10000DropSoftResetLock(sw);
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
 
     FM_FLAG_DROP_REG_LOCK(sw);
@@ -2625,24 +3052,30 @@ fm_status fm10000BootSwitch(fm_int sw)
     {
         /* Must be done after ReleaseSwitch because the model starts changing
          * SOFT_RESET during its init */
-        FM_LOG_DEBUG(FM_LOG_CAT_SWITCH, 
+        FM_LOG_DEBUG(FM_LOG_CAT_SWITCH,
                      "Setting PCIeReset to ~PCIeEnable ... \n");
 
         /* Need to take PCIe devices out of warm reset */
         err = switchPtr->ReadUINT32(sw, FM10000_DEVICE_CFG(), &rv);
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
-        
-        pcieEnable = FM_GET_UNNAMED_FIELD(rv, 
+
+        pcieEnable = FM_GET_UNNAMED_FIELD(rv,
                                           FM10000_DEVICE_CFG_b_PCIeEnable_0,
                                           FM10000_NUM_PEPS);
 
+        err = fm10000TakeSoftResetLock(sw);
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
+
         err = switchPtr->ReadUINT32(sw, FM10000_SOFT_RESET(), &rv);
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
-      
+
         /* PCIeReset and PCIeEnable are going to be the same value */
         FM_SET_FIELD(rv, FM10000_SOFT_RESET, PCIeReset, ~pcieEnable);
 
         err = switchPtr->WriteUINT32(sw, FM10000_SOFT_RESET(), rv);
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
+
+        err = fm10000DropSoftResetLock(sw);
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
 
         /* Configure the clock (because the Release Switch cleared
@@ -2670,8 +3103,8 @@ fm_status fm10000BootSwitch(fm_int sw)
 
     FM_FLAG_TAKE_REG_LOCK(sw);
 
-    /* Disable loopback on EPLs */ 
-    for (i = 0; i < FM10000_NUM_EPLS; i++)
+    /* Disable loopback on EPLs */
+    for (i = 0 ; i < FM10000_NUM_EPLS ; i++)
     {
         regAddr = FM10000_EPL_CFG_A(i);
 
@@ -2741,6 +3174,9 @@ fm_status fm10000BootSwitch(fm_int sw)
 
     FM_FLAG_TAKE_REG_LOCK(sw);
 
+    err = fm10000TakeSoftResetLock(sw);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
+
     err = switchPtr->ReadUINT32(sw, FM10000_SOFT_RESET(), &rv);
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
 
@@ -2749,8 +3185,11 @@ fm_status fm10000BootSwitch(fm_int sw)
     err = switchPtr->WriteUINT32(sw, FM10000_SOFT_RESET(), rv);
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
 
+    err = fm10000DropSoftResetLock(sw);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
+
     FM_FLAG_DROP_REG_LOCK(sw);
-    
+
     /***************************************************
      * Step 10: Proceed with initialization per block
      **************************************************/
@@ -2812,7 +3251,7 @@ fm_status fm10000GetSwitchPartNumber(fm_int sw, fm_switchPartNum *pn)
 /** fm10000IdentifySwitch
  * \ingroup intSwitch
  *
- * \desc            This function attempts to determine if a chip is an 
+ * \desc            This function attempts to determine if a chip is an
  *                  FM10xxx device.
  *
  * \param[in]       sw contains the switch number
@@ -2839,7 +3278,7 @@ fm_status fm10000IdentifySwitch(fm_int            sw,
     fm_uint32  vpd;
 
     FM_LOG_ENTRY(FM_LOG_CAT_SWITCH,
-                 "sw=%d family=%p model=%p version=%p\n", 
+                 "sw=%d family=%p model=%p version=%p\n",
                  sw,
                  (void *) family,
                  (void *) model,
@@ -2858,8 +3297,8 @@ fm_status fm10000IdentifySwitch(fm_int            sw,
 
     status = switchPtr->ReadUINT32(sw, FM10000_VITAL_PRODUCT_DATA(), &vpd);
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, status);
-    
-    partNumber = FM_GET_FIELD(vpd, 
+
+    partNumber = FM_GET_FIELD(vpd,
                               FM10000_VITAL_PRODUCT_DATA,
                               PartNumber);
 
@@ -2924,7 +3363,7 @@ fm_status fm10000InitSwitch(fm_switch *switchPtr)
     if (switchPtr->extension != NULL)
     {
         FM_LOG_DEBUG(FM_LOG_CAT_SWITCH,
-                     "Switch %d extension not NULL on entry: %p\n", 
+                     "Switch %d extension not NULL on entry: %p\n",
                      sw, switchPtr->extension);
         FM_LOG_EXIT(FM_LOG_CAT_SWITCH, FM_FAIL);
     }
@@ -2955,14 +3394,14 @@ fm_status fm10000InitSwitch(fm_switch *switchPtr)
     extension->dropPacketUnknownPort = TRUE;
 
     /*****************************************************
-     * register all known state machine types. NOTE: 
-     * all registration functions handle gracefully the 
-     * case where the same state machine type is 
-     * registered multiple times. Therefore the 
-     * registrations below are safe when multiple switches 
-     * of the same type exist and across reset cycles 
-     * of the same switch (the state machines types aren't 
-     * unregistered when a switch is reset) 
+     * register all known state machine types. NOTE:
+     * all registration functions handle gracefully the
+     * case where the same state machine type is
+     * registered multiple times. Therefore the
+     * registrations below are safe when multiple switches
+     * of the same type exist and across reset cycles
+     * of the same switch (the state machines types aren't
+     * unregistered when a switch is reset)
      *****************************************************/
 
     /* port level state machines */
@@ -2997,6 +3436,9 @@ fm_status fm10000InitSwitch(fm_switch *switchPtr)
     status = fm10000RegisterPcieSerDesStateMachine();
     FM_LOG_ABORT_ON_ERR( FM_LOG_CAT_SWITCH, status );
 
+    status = fm10000RegisterBasicCrmStateMachine();
+    FM_LOG_ABORT_ON_ERR( FM_LOG_CAT_SWITCH, status );
+
     /* Initialize the cardinal port map. */
     status = InitCardinalPortMap(switchPtr);
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, status);
@@ -3004,9 +3446,11 @@ fm_status fm10000InitSwitch(fm_switch *switchPtr)
     switchPtr->ReadUINT32(sw, FM10000_VITAL_PRODUCT_DATA(), &rv);
     if (rv != 0xAE21)
     {
-        FM_LOG_ERROR( FM_LOG_CAT_SWITCH, 
-              "Register access to switch#%d is lost. "
-              "VPD = 0x%x\n", sw, rv);
+        FM_LOG_ERROR( FM_LOG_CAT_SWITCH,
+                      "Register access to switch#%d is lost. "
+                      "VPD = 0x%x\n",
+                      sw,
+                      rv);
         return FM_FAIL;
     }
 
@@ -3014,7 +3458,7 @@ fm_status fm10000InitSwitch(fm_switch *switchPtr)
     FM_FLAG_TAKE_REG_LOCK(sw);
 
     status = switchPtr->ReadUINT32(sw, FM10000_BSM_SCRATCH(1), &rv);
-    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, status);  
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, status);
 
     /* Clear API NVM lock taken by previous API exiting not cleanly */
     if (FM_GET_UNNAMED_FIELD(rv, 0, 2) == 2)
@@ -3022,64 +3466,76 @@ fm_status fm10000InitSwitch(fm_switch *switchPtr)
         switchPtr->WriteUINT32(sw, FM10000_BSM_SCRATCH(1), 0);
     }
 
+    status = switchPtr->ReadUINT32(sw, FM10000_BSM_SCRATCH(2), &rv);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, status);
+
+    /* Clear API NVM lock taken by previous API exiting not cleanly */
+    if (FM_GET_UNNAMED_FIELD(rv, 0, 2) == 2)
+    {
+        switchPtr->WriteUINT32(sw, FM10000_BSM_SCRATCH(2), 0);
+    }
+
+    /* Clear API NVM Recovery status vector */
+    switchPtr->WriteUINT32(sw, FM10000_BSM_SCRATCH(3), 0);
+
     status = switchPtr->ReadUINT64(sw, FM10000_INTERRUPT_MASK_FIBM(0), &rv64);
-    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, status);                            
-                                                                               
-    FM_SET_UNNAMED_FIELD64(rv64,                                               
-                           FM10000_INTERRUPT_MASK_FIBM_b_PCIE_0,                                   
-                           FM10000_INTERRUPT_MASK_FIBM_b_BSM -                                     
-                           FM10000_INTERRUPT_MASK_FIBM_b_PCIE_0 + 1,                               
-                           0x1FFFFFFFF);                                       
-                                                                               
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, status);
+
+    FM_SET_UNNAMED_FIELD64(rv64,
+                           FM10000_INTERRUPT_MASK_FIBM_b_PCIE_0,
+                           FM10000_INTERRUPT_MASK_FIBM_b_BSM -
+                           FM10000_INTERRUPT_MASK_FIBM_b_PCIE_0 + 1,
+                           0x1FFFFFFFF);
+
     status = switchPtr->WriteUINT64(sw, FM10000_INTERRUPT_MASK_FIBM(0), rv64);
-    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, status);                            
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, status);
 
     /* FM10000_INTERRUPT_MASK_INT */
     status = switchPtr->ReadUINT64(sw, FM10000_INTERRUPT_MASK_INT(0), &rv64);
-    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, status);                            
-                                                                               
-    FM_SET_UNNAMED_FIELD64(rv64,                                               
-                           FM10000_INTERRUPT_MASK_INT_b_PCIE_0,                                   
-                           FM10000_INTERRUPT_MASK_INT_b_BSM -                                     
-                           FM10000_INTERRUPT_MASK_INT_b_PCIE_0 + 1,                               
-                           0x1FFFFFFFF);                                       
-    status = switchPtr->WriteUINT64(sw, FM10000_INTERRUPT_MASK_INT(0), rv64);
-    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, status);                            
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, status);
 
-    for (pepId = 0; pepId < FM10000_NUM_PEPS; pepId++)
+    FM_SET_UNNAMED_FIELD64(rv64,
+                           FM10000_INTERRUPT_MASK_INT_b_PCIE_0,
+                           FM10000_INTERRUPT_MASK_INT_b_BSM -
+                           FM10000_INTERRUPT_MASK_INT_b_PCIE_0 + 1,
+                           0x1FFFFFFFF);
+    status = switchPtr->WriteUINT64(sw, FM10000_INTERRUPT_MASK_INT(0), rv64);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, status);
+
+    for (pepId = 0 ; pepId < FM10000_NUM_PEPS ; pepId++)
     {
         /* FM10000_INTERRUPT_MASK_PCIE[pepId] */
         status = switchPtr->ReadUINT64(sw,
                                        FM10000_INTERRUPT_MASK_PCIE(pepId, 0),
                                        &rv64);
-        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, status);                            
-                                                                                   
-        FM_SET_UNNAMED_FIELD64(rv64,                                               
-                               FM10000_INTERRUPT_MASK_PCIE_b_PCIE_0,                                   
-                               FM10000_INTERRUPT_MASK_PCIE_b_BSM -                                     
-                               FM10000_INTERRUPT_MASK_PCIE_b_PCIE_0 + 1,                               
-                               0x1FFFFFFFF);                                       
-                                                                                   
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, status);
+
+        FM_SET_UNNAMED_FIELD64(rv64,
+                               FM10000_INTERRUPT_MASK_PCIE_b_PCIE_0,
+                               FM10000_INTERRUPT_MASK_PCIE_b_BSM -
+                               FM10000_INTERRUPT_MASK_PCIE_b_PCIE_0 + 1,
+                               0x1FFFFFFFF);
+
         status = switchPtr->WriteUINT64(sw,
                                         FM10000_INTERRUPT_MASK_PCIE(pepId, 0),
                                         rv64);
-        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, status);                            
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, status);
     }
-    
+
     FM_FLAG_DROP_REG_LOCK(sw);
 
     /* Clear and mask software interrupts */
-    status = switchPtr->WriteUINT32(sw, 
-                                    FM10000_SW_IM(), 
+    status = switchPtr->WriteUINT32(sw,
+                                    FM10000_SW_IM(),
                                     0xffffffff);
     status = switchPtr->WriteUINT32(sw,
                                     FM10000_SW_IP(),
                                     0x0);
 
     /* Select the desired interrupt mask register */
-    FM_SNPRINTF_S(buf, 
-                  MAX_BUF_SIZE, 
-                  FM_AAK_API_PLATFORM_MSI_ENABLED, 
+    FM_SNPRINTF_S(buf,
+                  MAX_BUF_SIZE,
+                  FM_AAK_API_PLATFORM_MSI_ENABLED,
                   sw);
     msiEnabled = fmGetBoolApiProperty(buf, FM_AAD_API_PLATFORM_MSI_ENABLED);
 
@@ -3098,7 +3554,7 @@ fm_status fm10000InitSwitch(fm_switch *switchPtr)
     else
     {
         status = switchPtr->ReadUINT64(sw, FM10000_INTERRUPT_MASK_INT(0), &rv64);
-        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, status);   
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, status);
 
         extension->interruptMaskReg = FM10000_INTERRUPT_MASK_INT(0);
         extension->interruptMaskValue = rv64;
@@ -3108,14 +3564,17 @@ fm_status fm10000InitSwitch(fm_switch *switchPtr)
     status = switchPtr->ReadUINT32(sw, FM10000_DEVICE_CFG(), &devCfg);
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, status);
 
+    status = fm10000TakeSoftResetLock(sw);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, status);
+
     status = switchPtr->ReadUINT32(sw, FM10000_SOFT_RESET(), &softReset);
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, status);
 
-    for (pepId = 0; pepId < FM10000_NUM_PEPS; pepId++)
+    for (pepId = 0 ; pepId < FM10000_NUM_PEPS ; pepId++)
     {
         /* Only enable for enabled PEPs */
-        if (FM_GET_UNNAMED_FIELD(devCfg, 
-                                 FM10000_DEVICE_CFG_b_PCIeEnable_0 + pepId, 
+        if (FM_GET_UNNAMED_FIELD(devCfg,
+                                 FM10000_DEVICE_CFG_b_PCIeEnable_0 + pepId,
                                  1))
         {
             FM_SET_UNNAMED_FIELD64(extension->interruptMaskValue,
@@ -3125,9 +3584,9 @@ fm_status fm10000InitSwitch(fm_switch *switchPtr)
 
             /* Force PEP into active state so we can update its PCIE_IM mask
              * to come out of reset (from API PoV) */
-            FM_SET_UNNAMED_FIELD(softReset, 
-                                 FM10000_SOFT_RESET_b_PCIeActive_0 + pepId, 
-                                 1, 
+            FM_SET_UNNAMED_FIELD(softReset,
+                                 FM10000_SOFT_RESET_b_PCIeActive_0 + pepId,
+                                 1,
                                  1);
 
             status = switchPtr->WriteUINT32(sw, FM10000_SOFT_RESET(), softReset);
@@ -3138,16 +3597,16 @@ fm_status fm10000InitSwitch(fm_switch *switchPtr)
 
             FM_SET_BIT(rv, FM10000_PCIE_IP, DeviceStateChange, 0);
 
-            status = switchPtr->WriteUINT32(sw, 
-                                            FM10000_PCIE_PF_ADDR(FM10000_PCIE_IM(), 
-                                                                 pepId), 
+            status = switchPtr->WriteUINT32(sw,
+                                            FM10000_PCIE_PF_ADDR(FM10000_PCIE_IM(),
+                                                                 pepId),
                                            rv);
             FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, status);
 
             /* Restore PEP state */
-            FM_SET_UNNAMED_FIELD(softReset, 
-                                 FM10000_SOFT_RESET_b_PCIeActive_0 + pepId, 
-                                 1, 
+            FM_SET_UNNAMED_FIELD(softReset,
+                                 FM10000_SOFT_RESET_b_PCIeActive_0 + pepId,
+                                 1,
                                  0);
 
             status = switchPtr->WriteUINT32(sw, FM10000_SOFT_RESET(), softReset);
@@ -3155,8 +3614,11 @@ fm_status fm10000InitSwitch(fm_switch *switchPtr)
         }
     }
 
+    status = fm10000DropSoftResetLock(sw);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, status);
+
     /* This should only enable for EPLs in use */
-    for (epl = 0; epl < 9 ; epl++)
+    for (epl = 0 ; epl < 9 ; epl++)
     {
         FM_SET_UNNAMED_FIELD64(extension->interruptMaskValue,
                                FM10000_INTERRUPT_MASK_INT_b_EPL_0 + epl,
@@ -3214,8 +3676,10 @@ fm_status fm10000SetSwitchState(fm_int sw, fm_bool state)
     fm_status  err;
     fm_switch *switchPtr;
 
-    FM_LOG_ENTRY(FM_LOG_CAT_SWITCH, "sw=%d state=%d\n",
-                 sw, state);
+    FM_LOG_ENTRY(FM_LOG_CAT_SWITCH,
+                 "sw=%d state=%d\n",
+                 sw,
+                 state);
 
     switchPtr = GET_SWITCH_PTR(sw);
 
@@ -3227,7 +3691,7 @@ fm_status fm10000SetSwitchState(fm_int sw, fm_bool state)
         /**************************************************
          * Now start configuring switch with defaults.
          **************************************************/
-        
+
         switchPtr->state = FM_SWITCH_STATE_BOOT_DONE;
 
     }
@@ -3333,7 +3797,7 @@ fm_status fm10000InitPortTable(fm_switch *switchPtr)
         if (lanePtr == NULL)
         {
             FM_LOG_FATAL( FM_LOG_CAT_PORT,
-                          "Unable to allocate memory for lane table entry %d\n", 
+                          "Unable to allocate memory for lane table entry %d\n",
                           cnt );
             FM_LOG_EXIT( FM_LOG_CAT_PORT, FM_ERR_NO_MEM );
         }
@@ -3356,30 +3820,30 @@ fm_status fm10000InitPortTable(fm_switch *switchPtr)
         laneExtPtr->base = lanePtr;
 
         /* Create the state machine associated to this serdes/lane */
-        err = fmCreateStateMachine( cnt, 
+        err = fmCreateStateMachine( cnt,
                                     FM10000_SERDES_SM_HISTORY_SIZE,
                                     FM10000_SERDES_SM_RECORD_SIZE,
                                     &laneExtPtr->smHandle );
         if ( err != FM_OK )
         {
             FM_LOG_ERROR( FM_LOG_CAT_PORT,
-                          "Unable to create the state machine for serdes %d\n", 
+                          "Unable to create the state machine for serdes %d\n",
                           cnt );
             FM_LOG_EXIT( FM_LOG_CAT_PORT, err );
         }
 
         /* Create the timer(s) associated to this serdes/lane */
-        FM_SPRINTF_S( serdesTimerName,  
+        FM_SPRINTF_S( serdesTimerName,
                       sizeof(serdesTimerName),
                       "SerDes%02dTimer",
-                      cnt ); 
-        err = fmCreateTimer( serdesTimerName, 
-                             fmApiTimerTask, 
+                      cnt );
+        err = fmCreateTimer( serdesTimerName,
+                             fmApiTimerTask,
                              &laneExtPtr->timerHandle );
         if ( err != FM_OK )
         {
             FM_LOG_ERROR( FM_LOG_CAT_PORT,
-                          "Unable to create the timer for serdes %d\n", 
+                          "Unable to create the timer for serdes %d\n",
                           cnt );
             FM_LOG_EXIT( FM_LOG_CAT_PORT, err );
         }
@@ -3390,14 +3854,14 @@ fm_status fm10000InitPortTable(fm_switch *switchPtr)
         laneDfePtr->pLaneExt = laneExtPtr;
 
         /* create the SerDes-DFE state machine */
-        err = fmCreateStateMachine(cnt, 
+        err = fmCreateStateMachine(cnt,
                                    FM10000_SERDES_DFE_SM_HISTORY_SIZE,
                                    FM10000_SERDES_DFE_SM_RECORD_SIZE,
                                    &laneDfePtr->smHandle);
         if ( err != FM_OK )
         {
             FM_LOG_ERROR( FM_LOG_CAT_PORT,
-                          "Unable to create the DFE state machine for serdes %d\n", 
+                          "Unable to create the DFE state machine for serdes %d\n",
                           cnt );
             FM_LOG_EXIT( FM_LOG_CAT_PORT, err );
         }
@@ -3405,18 +3869,18 @@ fm_status fm10000InitPortTable(fm_switch *switchPtr)
 
 
         /* Create the timer(s) associated to the dfe state machine */
-        FM_SPRINTF_S(serdesDfeTimerName,  
+        FM_SPRINTF_S(serdesDfeTimerName,
                      sizeof(serdesDfeTimerName),
                      "SerDesDfe%02dTimer",
                      cnt );
 
-        err = fmCreateTimer(serdesDfeTimerName, 
-                            fmApiTimerTask, 
+        err = fmCreateTimer(serdesDfeTimerName,
+                            fmApiTimerTask,
                             &laneDfePtr->timerHandle);
         if ( err != FM_OK )
         {
             FM_LOG_ERROR(FM_LOG_CAT_PORT,
-                         "Unable to create the timer for serdes %d\n", 
+                         "Unable to create the timer for serdes %d\n",
                          cnt );
 
             FM_LOG_EXIT( FM_LOG_CAT_PORT, err );
@@ -3426,7 +3890,7 @@ fm_status fm10000InitPortTable(fm_switch *switchPtr)
         if ( err != FM_OK )
         {
             FM_LOG_ERROR(FM_LOG_CAT_PORT,
-                         "Unable to init the lane structure for SerDes %d\n", 
+                         "Unable to init the lane structure for SerDes %d\n",
                          cnt );
 
             FM_LOG_EXIT( FM_LOG_CAT_PORT, err );
@@ -3492,11 +3956,11 @@ fm_status fm10000InitPortTable(fm_switch *switchPtr)
     FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_SWITCH, err);
 
     /* set the destmask for all cardinal ports */
-    for (cpi = 1 ; cpi < switchPtr->numCardinalPorts ; cpi++)
+    for (cpi = 0 ; cpi < switchPtr->numCardinalPorts ; cpi++)
     {
         /* Get logical port number for this cardinal port. */
         portNumber = GET_LOGICAL_PORT(sw, cpi);
-        
+
         /* the set function takes a logical destination mask */
         FM_PORTMASK_ASSIGN_BIT(&destMask, cpi);
 
@@ -3616,6 +4080,7 @@ fm_status fm10000InitPort( fm_int sw, fm_port *portPtr )
     fm_int            channel;
     fm_int            physLane;
     fm_char           portTimerName[16];
+    fm_char           pcieTimerName[16];
     fm_int            fabricPort;
     fm_bool           isPciePort;
     fm_ethMode        ethMode;
@@ -3641,9 +4106,9 @@ fm_status fm10000InitPort( fm_int sw, fm_port *portPtr )
     portAttr->autoNegMode                       = FM_PORT_AUTONEG_NONE;
     portAttr->autoNegBasePage                   = 0;
     portAttr->autoNegPartnerBasePage            = 0;
-    portAttr->autoNegNextPages.numPages         = 0;      
+    portAttr->autoNegNextPages.numPages         = 0;
     portAttr->autoNegNextPages.nextPages        = NULL;
-    portAttr->autoNegPartnerNextPages.numPages  = 0;      
+    portAttr->autoNegPartnerNextPages.numPages  = 0;
     portAttr->autoNegPartnerNextPages.nextPages = NULL;
 
     portAttr->bcastPruning               = FM_DISABLED;
@@ -3671,6 +4136,7 @@ fm_status fm10000InitPort( fm_int sw, fm_port *portPtr )
     portAttr->parserFlagOptions          = 0;
     portAttr->replaceDscp                = FM_DISABLED;
     portAttr->rxClassPause               = 0;
+    portAttr->txClassPause               = 0xFF;
     portAttr->rxPause                    = FM_DISABLED;
     portAttr->smpLosslessPause           = 0;
     portAttr->swpriDscpPref              = FM_DISABLED;
@@ -3686,23 +4152,24 @@ fm_status fm10000InitPort( fm_int sw, fm_port *portPtr )
     portAttr->updateDscp                 = FM_ENABLED;
     portAttr->updateTtl                  = FM_ENABLED;
     portAttr->ignoreIfgErrors            = FM_DISABLED;
+    portAttr->autoDetectModule           = FM_DISABLED;
 
     /**************************************************
      * Defaults for FM10000-specific attributes
      **************************************************/
 
-    portAttrExt->autoNegLinkInhbTimer   =  LINK_INHIBIT_TIMER_USEC;    
-    portAttrExt->autoNegLinkInhbTimerKx =  LINK_INHIBIT_TIMER_USEC_KX;
-    portAttrExt->autoNegIgnoreNonce     =  FM_DISABLED;              
-    
+    portAttrExt->autoNegLinkInhbTimer   =  LINK_INHIBIT_TIMER_MILLISEC;
+    portAttrExt->autoNegLinkInhbTimerKx =  LINK_INHIBIT_TIMER_MILLISEC_KX;
+    portAttrExt->autoNegIgnoreNonce     =  FM_DISABLED;
+
     portAttrExt->taggingMode             = FM_PORT_TAGGING_8021Q;
     portAttrExt->parserVlan1Tag          = 1;
     portAttrExt->parserVlan2Tag          = 0;
     portAttrExt->modifyVlan1Tag          = 1;
     portAttrExt->modifyVlan2Tag          = 1;
     portAttrExt->mirrorTruncSize         = 64;
-    portAttrExt->parserFirstCustomTag    = 0; 
-    portAttrExt->parserSecondCustomTag   = 0; 
+    portAttrExt->parserFirstCustomTag    = 0;
+    portAttrExt->parserSecondCustomTag   = 0;
     portAttrExt->parseMpls               = FM_DISABLED;
     portAttrExt->storeMpls               = 0;
     portAttrExt->routedFrameUpdateFields = FM_PORT_ROUTED_FRAME_UPDATE_ALL;
@@ -3714,11 +4181,11 @@ fm_status fm10000InitPort( fm_int sw, fm_port *portPtr )
 
     /* 1 msec */
     portAttrExt->txPcActTimescale        = FM10000_PORT_EEE_TX_ACT_TIME_SCALE;
-    portAttrExt->txPcActTimeout          = 1000 / 
+    portAttrExt->txPcActTimeout          = 1000 /
                                            FM10000_PORT_EEE_TX_ACT_TOUT_DIV;
     /* 20 usec */
     portAttrExt->txLpiTimescale          = FM10000_PORT_EEE_TX_LPI_TIME_SCALE;
-    portAttrExt->txLpiTimeout            = 180 / 
+    portAttrExt->txLpiTimeout            = 180 /
                                            FM10000_PORT_EEE_TX_LPI_TOUT_DIV;
 
     portAttrExt->parserVlan2First        = FM_DISABLED;
@@ -3742,14 +4209,14 @@ fm_status fm10000InitPort( fm_int sw, fm_port *portPtr )
         if ( err == FM_OK )
         {
             /* fill out the event info structure */
-            portExt->eventInfo.switchPtr     = switchPtr; 
-            portExt->eventInfo.portPtr       = portPtr;   
-            portExt->eventInfo.portExt       = portExt;   
-            portExt->eventInfo.portAttr      = portAttr;  
-            portExt->eventInfo.portAttrExt   = portAttrExt; 
+            portExt->eventInfo.switchPtr     = switchPtr;
+            portExt->eventInfo.portPtr       = portPtr;
+            portExt->eventInfo.portExt       = portExt;
+            portExt->eventInfo.portAttr      = portAttr;
+            portExt->eventInfo.portAttrExt   = portAttrExt;
             portExt->transitionHistorySize   = FM10000_PORT_SM_HISTORY_SIZE;
 
-            err = fm10000MapPhysicalPortToFabricPort( sw, 
+            err = fm10000MapPhysicalPortToFabricPort( sw,
                                                       portPtr->physicalPort,
                                                       &portExt->fabricPort );
             FM_LOG_EXIT_ON_ERR( FM_LOG_CAT_SWITCH, err );
@@ -3757,18 +4224,18 @@ fm_status fm10000InitPort( fm_int sw, fm_port *portPtr )
             /* Create the port state machine, start it assuming basic type */
             err = fmCreateStateMachine( portPtr->portNumber,
                                         FM10000_PORT_SM_HISTORY_SIZE,
-                                        FM10000_PORT_SM_RECORD_SIZE, 
+                                        FM10000_PORT_SM_RECORD_SIZE,
                                         &portExt->smHandle );
             FM_LOG_EXIT_ON_ERR( FM_LOG_CAT_SWITCH, err );
 
             /* Create the timer(s) associated to this port */
-            FM_SPRINTF_S( portTimerName,  
+            FM_SPRINTF_S( portTimerName,
                           sizeof(portTimerName),
                           "Port%02dTimer",
-                          portPtr->portNumber ); 
+                          portPtr->portNumber );
 
-            err = fmCreateTimer( portTimerName, 
-                                 fmApiTimerTask, 
+            err = fmCreateTimer( portTimerName,
+                                 fmApiTimerTask,
                                  &portExt->timerHandle );
             FM_LOG_EXIT_ON_ERR( FM_LOG_CAT_SWITCH, err );
 
@@ -3789,20 +4256,20 @@ fm_status fm10000InitPort( fm_int sw, fm_port *portPtr )
                 /* Create the AN state machine */
                 err = fmCreateStateMachine( portPtr->portNumber,
                                             FM10000_AN_SM_HISTORY_SIZE,
-                                            FM10000_AN_SM_RECORD_SIZE, 
+                                            FM10000_AN_SM_RECORD_SIZE,
                                             &portExt->anSmHandle );
                 FM_LOG_EXIT_ON_ERR( FM_LOG_CAT_SWITCH, err );
 
 
-                err = 
-                    fm10000MapPhysicalPortToEplChannel( sw, 
-                                                        portPtr->physicalPort, 
+                err =
+                    fm10000MapPhysicalPortToEplChannel( sw,
+                                                        portPtr->physicalPort,
                                                         &portExt->endpoint.epl,
-                                                        &channel );     
+                                                        &channel );
                 FM_LOG_EXIT_ON_ERR( FM_LOG_CAT_SWITCH, err );
 
-                err = fm10000MapEplChannelToLane( sw, 
-                                                  portExt->endpoint.epl, 
+                err = fm10000MapEplChannelToLane( sw,
+                                                  portExt->endpoint.epl,
                                                   channel,
                                                   &physLane );
                 FM_LOG_EXIT_ON_ERR( FM_LOG_CAT_SWITCH, err );
@@ -3823,7 +4290,7 @@ fm_status fm10000InitPort( fm_int sw, fm_port *portPtr )
 
                 ethMode = FM_ETH_MODE_DISABLED;
                 err = fm10000ConfigureEthMode( sw,
-                                               portPtr->portNumber, 
+                                               portPtr->portNumber,
                                                ethMode,
                                                &unused );
                 FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_SWITCH, err);
@@ -3838,6 +4305,17 @@ fm_status fm10000InitPort( fm_int sw, fm_port *portPtr )
             {
                 portAttr->maxFrameSize = FM10000_PCIE_MAX_FRAME_SIZE;
                 portAttr->minFrameSize = FM10000_PCIE_MIN_FRAME_SIZE;
+
+                /* Create the timer(s) associated to this port */
+                FM_SPRINTF_S( pcieTimerName,
+                              sizeof(pcieTimerName),
+                              "PCIE%02dTimer",
+                              portPtr->portNumber );
+
+                err = fmCreateTimer( pcieTimerName,
+                                     fmApiTimerTask,
+                                     &portExt->pcieIntrTimerHandle );
+                FM_LOG_EXIT_ON_ERR( FM_LOG_CAT_SWITCH, err );
 
                 portPtr->mode   = FM_PORT_MODE_UP;
                 portExt->ring   = FM10000_SERDES_RING_PCIE;
@@ -3883,7 +4361,7 @@ fm_status fm10000InitPort( fm_int sw, fm_port *portPtr )
              (fabricPort == FM10000_TE_TO_FABRIC_PORT(1)) )
         {
             portPtr->portType = FM_PORT_TYPE_TE;
-        } 
+        }
         else if (fabricPort == FM10000_FIBM_TO_FABRIC_PORT)
         {
             portPtr->portType = FM_PORT_TYPE_CPU_MGMT2;
@@ -3897,14 +4375,14 @@ fm_status fm10000InitPort( fm_int sw, fm_port *portPtr )
 
     err = fmIsPciePort(sw, portPtr->portNumber, &isPciePort);
     FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_SWITCH, err);
- 
+
     switch (portPtr->portType)
     {
         case FM_PORT_TYPE_CPU:
         case FM_PORT_TYPE_CPU_MGMT2:
             if (isPciePort)
             {
-                portAttr->islTagFormat = FM_ISL_TAG_F56; 
+                portAttr->islTagFormat = FM_ISL_TAG_F56;
             }
             if (portPtr->portNumber == 0)
             {
@@ -3921,10 +4399,10 @@ fm_status fm10000InitPort( fm_int sw, fm_port *portPtr )
         case FM_PORT_TYPE_PHYSICAL:
             if (isPciePort)
             {
-                portAttr->islTagFormat = FM_ISL_TAG_F56; 
+                portAttr->islTagFormat = FM_ISL_TAG_F56;
             }
             /* Fall through to set other different default values. */
-            
+
         case FM_PORT_TYPE_LOOPBACK:
         case FM_PORT_TYPE_TE:
         case FM_PORT_TYPE_LAG:
@@ -3980,6 +4458,7 @@ fm_status fm10000PostBootSwitch(fm_int sw)
     fm10000_switch *        switchExt;
     fm_uint32               regVal;
     fm_int                  pepId;
+    fm_bool                 isWhiteModel;
 #if 0
     fm_int                  L3McastFwdToCPU;
     fm_triggerRequestInfo   trigInfo;
@@ -3990,6 +4469,9 @@ fm_status fm10000PostBootSwitch(fm_int sw)
 
     switchPtr = GET_SWITCH_PTR(sw);
     switchExt = (fm10000_switch *) switchPtr->extension;
+
+    isWhiteModel = fmGetBoolApiProperty(FM_AAK_API_PLATFORM_IS_WHITE_MODEL,
+                                        FM_AAD_API_PLATFORM_IS_WHITE_MODEL);
 
     /**********************************************************
      * Initialize default values for port and switch attributes
@@ -4215,6 +4697,9 @@ fm_status fm10000PostBootSwitch(fm_int sw)
      * Create internal triggers.
      **************************************************/
 
+    err = CreateSendDirectedTrigger(sw);
+    FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_SWITCH, err);
+
 #if 0
     /****************************************************************************
      *  Pre-allocate a trigger for dropping routed/multicast/special delivery
@@ -4279,7 +4764,7 @@ fm_status fm10000PostBootSwitch(fm_int sw)
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
 
     /**************************************************
-     * Configure the Interrupt Mask 
+     * Configure the Interrupt Mask
      **************************************************/
 
     /* Enable interrupt */
@@ -4299,9 +4784,23 @@ fm_status fm10000PostBootSwitch(fm_int sw)
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
     }
 
-    /* Debug intermittent DMA issue */
-    if (!fmGetBoolApiProperty(FM_AAK_API_PLATFORM_IS_WHITE_MODEL,
-                              FM_AAD_API_PLATFORM_IS_WHITE_MODEL))
+    /**************************************************
+     * Start TCAM monitors.
+     **************************************************/
+#ifndef FM_SUPPORT_SWAG
+    if ( ( fmGetBoolApiProperty(FM_AAK_API_FM10000_START_TCAM_MONITORS,
+                                FM_AAD_API_FM10000_START_TCAM_MONITORS) ) &&
+         ( !isWhiteModel ) )
+    {
+        err = fm10000StartCrmMonitors(sw);
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
+    }
+#endif
+    /**************************************************
+     * Debug intermittent DMA issue.
+     **************************************************/
+
+    if ( !isWhiteModel )
     {
         err = fm10000MapLogicalPortToPep(sw, switchPtr->cpuPort, &pepId);
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
@@ -4312,11 +4811,13 @@ fm_status fm10000PostBootSwitch(fm_int sw)
         if (!FM_GET_BIT(regVal, FM10000_PCIE_RXQCTL, ENABLE))
         {
             FM_LOG_ERROR(FM_LOG_CAT_SWITCH,
-                 "RX DMA Disabled. Expect pep %d RXQCTL[0].enable=1 but is 0. RXQCTL=0x%x\n",
-                 pepId, regVal);
+                         "RX DMA Disabled. Expect pep %d RXQCTL[0].enable=1"
+                         "but is 0. RXQCTL=0x%x\n",
+                         pepId,
+                         regVal);
         }
     }
-   
+
 ABORT:
     FM_LOG_EXIT(FM_LOG_CAT_SWITCH, err);
 
@@ -4395,7 +4896,7 @@ fm_status fm10000GetSwitchInfo(fm_int sw, fm_switchInfo *info)
      * to compute it every time */
     err = fm10000ComputeFHClockFreq(sw, &fhMhz);
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
-    
+
     info->fhRefClock = (fm_int)fhMhz;
 
     info->numPorts = switchPtr->maxPhysicalPort + 1;
@@ -4457,7 +4958,7 @@ fm_status fm10000ComputeFHClockFreq(fm_int sw, fm_float *fhMhz)
     fm_uint32   fbDiv4;
     fm_uint32   fbDiv255;
     fm_uint32   outDiv;
-    fm_switch * switchPtr = GET_SWITCH_PTR(sw); 
+    fm_switch * switchPtr = GET_SWITCH_PTR(sw);
 
     *fhMhz = 0;
 
@@ -4473,10 +4974,10 @@ fm_status fm10000ComputeFHClockFreq(fm_int sw, fm_float *fhMhz)
     {
         /* RefClk in MHZ */
         refClk = FM10000_ETH_REF_CLOCK_FREQ / (1e6);
-        
+
         err = switchPtr->ReadUINT32(sw, FM10000_PLL_FABRIC_CTRL(), &rv);
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
-        
+
         refDiv   = FM_GET_FIELD(rv, FM10000_PLL_FABRIC_CTRL, RefDiv);
         fbDiv4   = FM_GET_BIT  (rv, FM10000_PLL_FABRIC_CTRL, FbDiv4);
         fbDiv255 = FM_GET_FIELD(rv, FM10000_PLL_FABRIC_CTRL, FbDiv255);
@@ -4549,10 +5050,11 @@ fm_status fm10000ComputeFHClockFreq(fm_int sw, fm_float *fhMhz)
     }
 
 ABORT:
-    
+
     return err;
-    
+
 }   /* end fm10000ComputeFHClockFreq */
+
 
 
 
@@ -4563,7 +5065,7 @@ ABORT:
  * \desc            Check whether access to the switch registers is still
  *                  alive by verifying switch VPD register. If the switch VDP
  *                  is not valid, switch state is set to FAILED.
- * 
+ *
  * \param[in]       sw is the ID of the switch on which to operate
  *
  * \return          FM_OK if switch VPD is still valid.
@@ -4588,9 +5090,11 @@ fm_status fm10000VerifySwitchAliveStatus(fm_int sw)
                           &vpd);
     if (vpd != 0xAE21)
     {
-        FM_LOG_ERROR( FM_LOG_CAT_SWITCH, 
+        FM_LOG_ERROR( FM_LOG_CAT_SWITCH,
               "Register access to switch#%d is lost. "
-              "Set switch state to FAILED. VPD = 0x%x\n", sw, vpd);
+              "Set switch state to FAILED. VPD = 0x%x\n",
+              sw,
+              vpd);
         if (FM_IS_STATE_ALIVE(
                 fmRootApi->fmSwitchStateTable[sw]->state))
         {
@@ -4604,6 +5108,8 @@ fm_status fm10000VerifySwitchAliveStatus(fm_int sw)
     return FM_OK;
 
 }   /* end fm10000VerifySwitchAliveStatus */
+
+
 
 
 /*****************************************************************************/
@@ -4641,6 +5147,9 @@ fm_status fm10000Write1588SystimeCfg(fm_int sw, fm_int step)
 
     FM_FLAG_TAKE_REG_LOCK(sw);
 
+    err = fm10000TakeSoftResetLock(sw);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
+
     err = switchPtr->ReadUINT32(sw, FM10000_SOFT_RESET(), &rvSoftReset);
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
 
@@ -4654,7 +5163,7 @@ fm_status fm10000Write1588SystimeCfg(fm_int sw, fm_int step)
     newPcieActive = FM_GET_FIELD(rvDeviceCfg, FM10000_DEVICE_CFG, PCIeEnable);
 
     FM_SET_FIELD(rvSoftReset, FM10000_SOFT_RESET, PCIeActive, newPcieActive);
-        
+
     err = switchPtr->WriteUINT32(sw, FM10000_SOFT_RESET(), rvSoftReset);
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
 
@@ -4668,19 +5177,19 @@ fm_status fm10000Write1588SystimeCfg(fm_int sw, fm_int step)
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
 
     /* Update STEP value in all end points SYSTIME_CFG config */
-    for (i = 0; i < FM10000_NUM_EPLS; i++)
+    for (i = 0 ; i < FM10000_NUM_EPLS ; i++)
     {
         err = switchPtr->WriteUINT32(sw, FM10000_EPL_SYSTIME_CFG(i), step);
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
     }
 
-    for (i = 0; i < FM10000_NUM_TUNNEL_ENGINES; i++)
+    for (i = 0 ; i < FM10000_NUM_TUNNEL_ENGINES ; i++)
     {
         err = switchPtr->WriteUINT32(sw, FM10000_TE_SYSTIME_CFG(i, 0), step);
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
     }
-    
-    for (i = 0; i < FM10000_NUM_PEPS; i++)
+
+    for (i = 0 ; i < FM10000_NUM_PEPS ; i++)
     {
         if ( newPcieActive & (1 << i))
         {
@@ -4693,12 +5202,15 @@ fm_status fm10000Write1588SystimeCfg(fm_int sw, fm_int step)
 
     /* Restore PCIeActive back to original value. */
     FM_SET_FIELD(rvSoftReset, FM10000_SOFT_RESET, PCIeActive, origPcieActive);
-        
+
     err = switchPtr->WriteUINT32(sw, FM10000_SOFT_RESET(), rvSoftReset);
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
 
+    err = fm10000DropSoftResetLock(sw);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
+
     FM_FLAG_DROP_REG_LOCK(sw);
-    
+
 ABORT:
     if (regLockTaken)
     {
@@ -4717,7 +5229,7 @@ ABORT:
  * \ingroup intSwitch
  *
  * \desc            Returns NVM image version.
- * 
+ *
  * \param[in]       sw is the ID of the switch on which to operate.
  *
  * \param[out]      version points to a caller supplied area where

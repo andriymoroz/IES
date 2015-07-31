@@ -271,19 +271,47 @@
 #define FM_MAILBOX_SRV_PACKET_TIMESTAMP_l_INGR_TIME_UP             0
 #define FM_MAILBOX_SRV_PACKET_TIMESTAMP_h_INGR_TIME_UP             31
 
-/* fm_hostSrvTimestampModeReq */
-#define FM_MAILBOX_SRV_TIMESTAMP_MODE_REQ_l_GLORT                  0
-#define FM_MAILBOX_SRV_TIMESTAMP_MODE_REQ_h_GLORT                  15
-#define FM_MAILBOX_SRV_TIMESTAMP_MODE_REQ_l_MODE                   16
-#define FM_MAILBOX_SRV_TIMESTAMP_MODE_REQ_h_MODE                   31
-
 /* fm_hostSrvTimestampModeResp */
 #define FM_MAILBOX_SRV_TIMESTAMP_MODE_RESP_l_GLORT                 0
 #define FM_MAILBOX_SRV_TIMESTAMP_MODE_RESP_h_GLORT                 15
-#define FM_MAILBOX_SRV_TIMESTAMP_MODE_RESP_l_MAX_MODE              16
-#define FM_MAILBOX_SRV_TIMESTAMP_MODE_RESP_h_MAX_MODE              31
-#define FM_MAILBOX_SRV_TIMESTAMP_MODE_RESP_l_STATUS                0
-#define FM_MAILBOX_SRV_TIMESTAMP_MODE_RESP_h_STATUS                31
+#define FM_MAILBOX_SRV_TIMESTAMP_MODE_RESP_l_MODE_ENABLED          16
+#define FM_MAILBOX_SRV_TIMESTAMP_MODE_RESP_h_MODE_ENABLED          31
+
+/* fm_hostSrvMasterClkOffset */
+#define FM_MAILBOX_SRV_MASTER_CLK_OFFSET_l_OFFSET_LOW              0
+#define FM_MAILBOX_SRV_MASTER_CLK_OFFSET_h_OFFSET_LOW              31
+#define FM_MAILBOX_SRV_MASTER_CLK_OFFSET_l_OFFSET_UPP              0
+#define FM_MAILBOX_SRV_MASTER_CLK_OFFSET_h_OFFSET_UPP              31
+
+/* fm_hostSrvInnOutMac */
+#define FM_MAILBOX_SRV_INN_OUT_MAC_l_OUT_MAC_LOW                   0
+#define FM_MAILBOX_SRV_INN_OUT_MAC_h_OUT_MAC_LOW                   31
+#define FM_MAILBOX_SRV_INN_OUT_MAC_l_OUT_MAC_UPP                   0
+#define FM_MAILBOX_SRV_INN_OUT_MAC_h_OUT_MAC_UPP                   15
+#define FM_MAILBOX_SRV_INN_OUT_MAC_l_OUT_MAC_MASK_LOW              16
+#define FM_MAILBOX_SRV_INN_OUT_MAC_h_OUT_MAC_MASK_LOW              31
+#define FM_MAILBOX_SRV_INN_OUT_MAC_l_OUT_MAC_MASK_UPP              0
+#define FM_MAILBOX_SRV_INN_OUT_MAC_h_OUT_MAC_MASK_UPP              31
+
+#define FM_MAILBOX_SRV_INN_OUT_MAC_l_INN_MAC_LOW                   0
+#define FM_MAILBOX_SRV_INN_OUT_MAC_h_INN_MAC_LOW                   31
+#define FM_MAILBOX_SRV_INN_OUT_MAC_l_INN_MAC_UPP                   0
+#define FM_MAILBOX_SRV_INN_OUT_MAC_h_INN_MAC_UPP                   15
+#define FM_MAILBOX_SRV_INN_OUT_MAC_l_INN_MAC_MASK_LOW              16
+#define FM_MAILBOX_SRV_INN_OUT_MAC_h_INN_MAC_MASK_LOW              31
+#define FM_MAILBOX_SRV_INN_OUT_MAC_l_INN_MAC_MASK_UPP              0
+#define FM_MAILBOX_SRV_INN_OUT_MAC_h_INN_MAC_MASK_UPP              31
+
+#define FM_MAILBOX_SRV_INN_OUT_MAC_l_VNI                           0
+#define FM_MAILBOX_SRV_INN_OUT_MAC_h_VNI                           31
+#define FM_MAILBOX_SRV_INN_OUT_MAC_l_OUTER_L4_PORT                 0
+#define FM_MAILBOX_SRV_INN_OUT_MAC_h_OUTER_L4_PORT                 15
+#define FM_MAILBOX_SRV_INN_OUT_MAC_l_TUNNEL_TYPE                   16
+#define FM_MAILBOX_SRV_INN_OUT_MAC_h_TUNNEL_TYPE                   23
+#define FM_MAILBOX_SRV_INN_OUT_MAC_l_ACTION                        24
+#define FM_MAILBOX_SRV_INN_OUT_MAC_h_ACTION                        31
+#define FM_MAILBOX_SRV_INN_OUT_MAC_l_GLORT                         0
+#define FM_MAILBOX_SRV_INN_OUT_MAC_h_GLORT                         15
 
 /* Mailbox control header versions used in control header. */
 #define FM_MAILBOX_VERSION_RESET                                   0
@@ -312,11 +340,18 @@
 /* Add/delete flag is bit 0 from fm_hostSrvMACUpdate action area. */
 #define FM_HOST_SRV_MAC_UPDATE_b_ADD_DELETE                    0
 
-/* MAC secure flag is bit 0 from fm10000_hostSrvMACUpdate flag area. */
+/* MAC secure flag is bit 0 from fm_hostSrvMACUpdate flag area. */
 #define FM_HOST_SRV_MAC_UPDATE_b_MAC_SECURE                    0
 
 /* Flow ID indticating that new flow will be added via HNI Services. */
 #define FM_MAILBOX_FLOW_ID_ADD_NEW                             0xFFFF
+
+/* Action types for filtering inner/outer MAC adresses */
+#define FM_HOST_SRV_INN_OUT_MAC_ACTION_TYPE_ADD                0
+#define FM_HOST_SRV_INN_OUT_MAC_ACTION_TYPE_DEL                1
+
+/* Value for no matching the VNI field when filtering inner/outer MAC */
+#define FM_HOST_SRV_INN_OUT_MAC_VNI_NO_MATCH                   0xFFFFFFFF
 
 /* For adding virtual ports as a listeners to flooding multicast
  * groups we will use the vlan = 0. */
@@ -324,6 +359,9 @@
 
 /* Max number of actions supported by rules in flow table */
 #define FM_MAILBOX_FLOW_TABLE_MAX_ACTION_SUPPORTED             1
+
+/* The ACL rule that will be used for filtering INNER/OUTER MAC addresses */
+#define FM_MAILBOX_MAC_FILTER_ACL                              24000000
 
 /* Length of mailbox message entry in bits */
 #define FM_MAILBOX_QUEUE_ENTRY_BIT_LENGTH  32
@@ -347,8 +385,9 @@
 #define FM_HOST_SRV_PORT_TYPE_SIZE              (1 * FM_MAILBOX_QUEUE_ENTRY_BYTE_LENGTH)
 #define FM_HOST_SRV_UPDATE_PVID_TYPE_SIZE       (1 * FM_MAILBOX_QUEUE_ENTRY_BYTE_LENGTH)
 #define FM_HOST_SRV_PACKET_TIMESTAMP_TYPE_SIZE  (5 * FM_MAILBOX_QUEUE_ENTRY_BYTE_LENGTH)
-#define FM_HOST_SRV_TMSTAMP_MODE_REQ_TYPE_SIZE  (1 * FM_MAILBOX_QUEUE_ENTRY_BYTE_LENGTH)
-#define FM_HOST_SRV_TMSTAMP_MODE_RESP_TYPE_SIZE (2 * FM_MAILBOX_QUEUE_ENTRY_BYTE_LENGTH)
+#define FM_HOST_SRV_TMSTAMP_MODE_RESP_TYPE_SIZE (1 * FM_MAILBOX_QUEUE_ENTRY_BYTE_LENGTH)
+#define FM_HOST_SRV_MASTER_CLK_OFFSET_TYPE_SIZE (2 * FM_MAILBOX_QUEUE_ENTRY_BYTE_LENGTH)
+#define FM_HOST_SRV_INN_OUT_MAC_TYPE_SIZE       (9 * FM_MAILBOX_QUEUE_ENTRY_BYTE_LENGTH)
 
 
 /* Mailbox message IDs. Used in transaction headers. */
@@ -362,6 +401,9 @@ typedef enum _fm_mailboxMessageId
 
     /* ID for the UPDATE_MAC_FWD_RULE message. */
     FM_MAILBOX_MSG_UPDATE_MAC_FWD_RULE_ID = 0x002,
+
+    /* ID for the FILTER_INNER_OUTER_MAC message. */
+    FM_MAILBOX_MSG_INN_OUT_MAC_ID = 0x011,
 
     /* ID for the LPORT_MAP message. */
     FM_MAILBOX_MSG_MAP_LPORT_ID = 0x100,
@@ -400,7 +442,10 @@ typedef enum _fm_mailboxMessageId
     FM_MAILBOX_MSG_DELIVER_PACKET_TIMESTAMP_ID = 0x701,
 
     /* ID for the TX_TIMESTAMP_MODE message. */
-    FM_MAILBOX_MSG_SET_TIMESTAMP_MODE_ID = 0x702
+    FM_MAILBOX_MSG_SET_TIMESTAMP_MODE_ID = 0x702,
+
+    /* ID for the MASTER_CLK_OFFSET message. */
+    FM_MAILBOX_MSG_MASTER_CLK_OFFSET_ID = 0x703
 
 } fm_mailboxMessageId;
 
@@ -471,13 +516,17 @@ typedef enum _fm_mailboxMessageArgumentType
      * service. Used with fm_hostSrvPacketTimestamp argument. */
     FM_HOST_SRV_PACKET_TIMESTAMP_TYPE = 0x0010,
 
-    /* Argument type for request message for TX_TIMESTAMP_MODE
-     * service. Used with fm_hostSrvTimestampModeReq argument. */
-    FM_HOST_SRV_SET_TIMESTAMP_MODE_REQ_TYPE = 0x0011,
-
     /* Argument type for response message for TX_TIMESTAMP_MODE
      * service. Used with fm_hostSrvTimestampModeResp argument. */
-    FM_HOST_SRV_SET_TIMESTAMP_MODE_RESP_TYPE = 0x0012
+    FM_HOST_SRV_SET_TIMESTAMP_MODE_RESP_TYPE = 0x0012,
+
+    /* Argument type for request message for FILTER_INNER_OUTER_MAC service.
+     * Used with fm_hostSrvInnOutMac argument. */
+    FM_HOST_SRV_INN_OUT_MAC_TYPE = 0x0013,
+
+    /* Argument type for request message for MASTER_CLK_OFFSET
+     * service. Used with fm_hostSrvMasterClkOffset argument. */
+    FM_HOST_SRV_MASTER_CLK_OFFSET_TYPE = 0x0014
 
 } fm_mailboxMessageArgumentType;
 
@@ -514,6 +563,23 @@ typedef enum _fm_mailboxXcastFloodingMode
     FM_MAILBOX_XCAST_FLOOD_MODE_BCAST = (1 << 2),
 
 } fm_mailboxXcastFloodingMode;
+
+/* Mailbox tunnel type modes for FILTER_INNER_OUTER_MAC request. */
+typedef enum _fm_filterMacTunnelType
+{
+    /* VXLAN Virtual Network tunnel type */
+    FM_MAILBOX_TUNNEL_TYPE_VXLAN,
+
+    /* NVGRE Virtual Network tunnel type */
+    FM_MAILBOX_TUNNEL_TYPE_NVGRE,
+
+    /* GENEVE Virtual Network tunnel type */
+    FM_MAILBOX_TUNNEL_TYPE_GENEVE,
+
+    /** UNPUBLISHED: For internal use only. */
+    FM_MAILBOX_TUNNEL_TYPE_MAX       /* Must be last */
+
+} fm_filterMacTunnelType;
 
 /* Mailbox control header structure to manage request/response queues. */
 typedef struct _fm_mailboxControlHeader
@@ -827,36 +893,75 @@ typedef struct _fm_hostSrvPacketTimestamp
 
 } fm_hostSrvPacketTimestamp;
 
-
-/* Mailbox structure used as an argument for 
- * TX_TIMESTAMP_MODE message. */
-typedef struct _fm_hostSrvTimestampModeReq
-{
-
-    /* Glort value. */
-    fm_uint16 glort;
-
-    /* Mode value to be set. */
-    fm_portTxTimestampMode mode;
-
-} fm_hostSrvTimestampModeReq;
-
-
 /* Mailbox structure used as a return type for 
  * TX_TIMESTAMP_MODE message. */
 typedef struct _fm_hostSrvTimestampModeResp
 {
-
     /* Glort value. */
     fm_uint16 glort;
 
-    /* Max mode value that can be set. */
-    fm_portTxTimestampMode maxMode;
-
-    /* Status value from setting mode.*/
-    fm_status status;
+    /* Is TX_TIMESTAMP_MODE enabled. */
+    fm_bool modeEnabled;
 
 } fm_hostSrvTimestampModeResp;
+
+/* Mailbox structure used as an argument and return type for 
+ * MASTER_CLK_OFFSET message. */
+typedef struct _fm_hostSrvMasterClkOffset
+{
+    /* Lower bytes of offset value. */
+    fm_uint32 offsetValueLower;
+
+    /* Upper bytes of offset value. */
+    fm_uint32 offsetValueUpper;
+
+} fm_hostSrvMasterClkOffset;
+
+/* Mailbox structure used as an argument for 
+ * FILTER_INNER_OUTER_MAC message. */
+typedef struct _fm_hostSrvInnOutMac
+{
+    /* Outer MAC address to add */
+    fm_macaddr outerMacAddr;
+
+    /* Outer MAC address mask to add */
+    fm_macaddr outerMacAddrMask;
+
+    /* Inner MAC address to add */
+    fm_macaddr innerMacAddr;
+
+    /* Inner Mac address mask to add */
+    fm_macaddr innerMacAddrMask;
+
+    /* Virtual Network Identifier */
+    fm_uint32 vni;
+
+    /* Outer L4 Port */
+    fm_uint16 outerL4Port;
+
+    /* Tunnel type */
+    fm_filterMacTunnelType tunnelType;
+
+    /* Action field. Current action definitions are as follows:
+     *
+     * +--------------+
+     * |    ADD (0)   |
+     * +--------------+
+     * |   DELETE (1) |
+     * +--------------+
+     */
+    fm_byte action;
+
+    /* Glort value */
+    fm_uint16 glort;
+
+    /* ACL number */
+    fm_int acl;
+
+    /* ACL rule number */
+    fm_int aclRule;
+
+} fm_hostSrvInnOutMac;
 
 /* Tracks resources created on Host Interface requests via mailbox
  * for a given virtual port. */
@@ -867,14 +972,38 @@ typedef struct _fm_mailboxResources
     fm_tree mailboxMacResource;
 
     /* A tree holding flow tables and IDs. 
-       Entries would include {key == FLOWID_FLOWTABLE, value == NULL} pairs. */
+     * Entries would include {key == FLOWID_FLOWTABLE, value == NULL} pairs. */
     fm_tree mailboxFlowResource;
 
     /* A tree holding flow tables.
-       Entries would include {key = FLOW_TABLE, value = TABLE_TYPE } pairs. */
+     * Entries would include {key = FLOW_TABLE, value = TABLE_TYPE } pairs. */
     fm_tree mailboxFlowTableResource;
 
+    /* A tree holding inner + outer MAC filtering structures. */
+    fm_customTree innOutMacResource;
+
+    /* MAC entries counter per virtual port. */
+    fm_int macEntriesAdded;
+
+    /* Inner/Outer Mac filtering entries counter per virtual port. */
+    fm_int innerOuterMacEntriesAdded;
+
 } fm_mailboxResources;
+
+/* Structure to track mcast MACs and VNIs used for FILTER_INNER_OUTER_MAC
+ * message. Each mcastMac_VNI pair would be connected to mcast group. */
+typedef struct _fm_mailboxMcastMacVni
+{
+    /* Mcast MAC address */
+    fm_macaddr macAddr;
+
+    /* Virtual network identifier */
+    fm_uint32  vni;
+
+    /* Multicast group number created for mcast inner mac filtering */
+    fm_int mcastGroup;
+
+} fm_mailboxMcastMacVni;
 
 /* Holds the state of mailbox related information. */
 typedef struct _fm_mailboxInfo
@@ -902,6 +1031,9 @@ typedef struct _fm_mailboxInfo
     /* Mcast group number created to manage multicast flooding for HNI services */
     fm_int mcastGroupForMcastFlood;
 
+    /* Id of ACL created for inner/outer mac filtering purpose. */
+    fm_int aclIdForMacFiltering;
+
     /* Array to store number of virtual ports
      * added to a multicast flood glort portmask per PEP. 
      * In SWAG configuration these number will be stored only by SWAG members. */
@@ -923,6 +1055,34 @@ typedef struct _fm_mailboxInfo
      * host driver calls LPORT_DELETE/LPORT_CREATE during resets. 
      * After such reset we want to keep PVID values. */
     fm_tree defaultPvidPerGlort;
+
+    /* Indicates which acl rule are currently used or free. */
+    fm_bitArray innOutMacRuleInUse;
+
+    /* Maximum numer MAC entries that can be added on driver demand per PEP.*/
+    fm_int maxMacEntriesToAddPerPep;
+
+    /* Maximum numer Inner/Outer Mac filtering entries entries
+     * that can be added on driver demand per PEP.*/
+    fm_int maxInnerOuterMacEntriesToAddPerPep;
+
+    /* Maximum numer MAC entries that can be added on driver demand 
+     * per virtual port. */
+    fm_int maxMacEntriesToAddPerPort;
+
+    /* Maximum numer Inner/Outer Mac filtering entries entries
+     * that can be added on driver demand per virtual port. */
+    fm_int maxInnerOuterMacEntriesToAddPerPort;
+
+    /* MAC entries counter per PEP. */
+    fm_int *macEntriesAdded;
+
+    /* Inner/Outer Mac filtering entries counter per PEP */
+    fm_int *innerOuterMacEntriesAdded;
+
+    /* A tree tracking mcast MAC addresses and VNIs needed for 
+     * FILTER_INNER_OUTER_MAC message. This will be used for inner mcast MACs. */
+    fm_customTree mcastMacVni;
 
 } fm_mailboxInfo;
 
@@ -993,6 +1153,15 @@ fm_status fmSetTimestampModeProcess(fm_int                   sw,
                                     fm_mailboxControlHeader *ctrlHdr,
                                     fm_mailboxMessageHeader *pfTrHdr);
 
+fm_status fmFilterInnerOuterMacProcess(fm_int                   sw,
+                                       fm_int                   pepNb,
+                                       fm_mailboxControlHeader *ctrlHdr,
+                                       fm_mailboxMessageHeader *pfTrHdr);
+
+fm_status fmSetInnerOuterMacFilter(fm_int               sw,
+                                   fm_int               pepNb,
+                                   fm_hostSrvInnOutMac *macFilter);
+
 fm_status fmUnknownRequestProcess(fm_int                   sw,
                                   fm_int                   pepNb,
                                   fm_mailboxControlHeader *ctrlHdr,
@@ -1026,6 +1195,22 @@ fm_status fmCleanupResourcesForPep(fm_int sw,
 fm_status fmFindInternalPortByMailboxGlort(fm_int    sw,
                                            fm_uint32 glort,
                                            fm_int *  logicalPort);
+
+fm_status fmAnnounceTxTimestampMode(fm_int  sw,
+                                    fm_bool isTxTimestampEnabled);
+
+fm_status fmMasterClkOffsetProcess(fm_int                   sw,
+                                   fm_int                   pepNb,
+                                   fm_mailboxControlHeader *ctrlHdr,
+                                   fm_mailboxMessageHeader *pfTrHdr);
+
+void fmFreeMcastMacVni(void *key, void *value);
+
+void fmFreeSrvInnOutMac(void *key, void *value);
+
+fm_status fmSetMgmtPepXcastModes(fm_int sw, 
+                                 fm_int xCastLogPort, 
+                                 fm_bool addToMcastGroup);
 
 #endif /* __FM_FM_API_MAILBOX_INT_H */
 

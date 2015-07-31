@@ -168,9 +168,9 @@ static fm_status MoveListenersToReplicationGroup(fm_int                sw,
 
             if ( (portPtr != NULL) && (portPtr->portType == FM_PORT_TYPE_VIRTUAL) )
             {
-                err = fm10000MapVsiGlortToLogicalPort(sw,
-                                                      portPtr->glort,
-                                                      &listener.port);
+                err = fm10000MapVirtualGlortToLogicalPort(sw,
+                                                          portPtr->glort,
+                                                          &listener.port);
                 FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MULTICAST, err);
                 
                 listener.dglortUpdate = TRUE;
@@ -312,9 +312,9 @@ static fm_status RemoveListenersFromReplicationGroup(fm_int                sw,
 
             if ( (portPtr != NULL) && (portPtr->portType == FM_PORT_TYPE_VIRTUAL) )
             {
-                err = fm10000MapVsiGlortToLogicalPort(sw,
-                                                      portPtr->glort,
-                                                      &mcastListener.port);
+                err = fm10000MapVirtualGlortToLogicalPort(sw,
+                                                          portPtr->glort,
+                                                          &mcastListener.port);
                 FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MULTICAST, err);
                 
                 mcastListener.dglortUpdate = TRUE;

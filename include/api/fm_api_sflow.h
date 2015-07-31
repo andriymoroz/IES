@@ -5,7 +5,7 @@
  * Creation Date:   May 29, 2008
  * Description:     Public definitions for the sFlow API.
  *
- * Copyright (c) 2005 - 2014, Intel Corporation
+ * Copyright (c) 2005 - 2015, Intel Corporation
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -29,7 +29,7 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
+ *****************************************************************************/
 
 #ifndef __FM_FM_API_SFLOW_H
 #define __FM_FM_API_SFLOW_H
@@ -79,11 +79,12 @@ enum _fm_sFlowAttr
     /** Type fm_uint: The sFlow sampling rate, expressed as a positive integer
      *  N, indicating that every Nth frame is to be sampled. The specified
      *  value will be rounded up or down to the nearest value supported
-     *  by the hardware so the value read back may not exactly match the
+     *  by the hardware, so the value read back may not exactly match the
      *  value that was set. 
      *                                                              \lb\lb
-     *  For FM3000 and FM4000 devices the value ranges from 1 (the default) 
-     *  to 16,777,215. The value set applies only to the specified sFlow.
+     *  For FM3000, FM4000, and FM10000 devices, the value ranges from 1
+     *  (the default) to 16,777,215. The value set applies only to the
+     *  specified sFlow.
      *                                                              \lb\lb
      *  For FM6000 devices, the value ranges from 1 to 65535 with 
      *  a default of 1. Only one sample rate can be set for the entire 
@@ -112,6 +113,9 @@ enum _fm_sFlowAttr
      *  used for sampling. 
      *                                                                  \lb\lb
      *  For FM6000 devices, the identifier is the frame destination GLORT.
+     *                                                                  \lb\lb
+     *  For FM10000 devices, the identifier is the rule number of the
+     *  trigger used for sampling.
      *
      *  \chips  FM3000, FM4000, FM6000, FM10000 */
     FM_SFLOW_TRAP_CODE, 

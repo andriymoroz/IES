@@ -5,7 +5,7 @@
  * Creation Date:  March 19, 2007
  * Description:    Functions to manipulate bitfields
  *
- * Copyright (c) 2007 - 2013, Intel Corporation
+ * Copyright (c) 2007 - 2015, Intel Corporation
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -29,7 +29,8 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
+ *****************************************************************************/
+
 #include <fm_sdk_int.h>
 
 /*****************************************************************************
@@ -805,6 +806,8 @@ fm_int64 fmSignExtendInt64(fm_int64 value, fm_uint signifigantBits)
 }   /* end fmSignExtendInt64 */
 
 
+
+
 /*****************************************************************************/
 /** fmGenerateCAMKey
  * \ingroup intBitfield
@@ -815,7 +818,7 @@ fm_int64 fmSignExtendInt64(fm_int64 value, fm_uint signifigantBits)
  *                  Operates on arrays of 32-bit words in order to support
  *                  keys wider than 32 bits.
  *
- * \note            The Key/KeyInvert method used in Alta provides:         \lb
+ * \note            The Key/KeyInvert method used on FM6000 provides:       \lb
  *                      * Key = ~KeyInvert for do care bits                 \lb
  *                      * Key = KeyInvert = 1 for don't care bits           \lb
  *                      * Key = KeyInvert = 0 to disable CAM entry
@@ -874,6 +877,7 @@ void fmGenerateCAMKey(fm_uint32 *value,
 
 
 
+
 /*****************************************************************************/
 /** fmGenerateCAMKey2
  * \ingroup intBitfield
@@ -884,7 +888,7 @@ void fmGenerateCAMKey(fm_uint32 *value,
  *                  Operates on arrays of 32-bit words in order to support
  *                  keys wider than 32 bits.
  *
- * \note            The Key/KeyInvert method used in RRC provides:          \lb
+ * \note            The Key/KeyInvert method used on FM10000 provides:      \lb
  *                      * Key = ~KeyInvert for do care bits                 \lb
  *                      * Key = KeyInvert = 0 for don't care bits           \lb
  *                      * Key = KeyInvert = 1 to disable CAM entry
@@ -941,6 +945,7 @@ void fmGenerateCAMKey2(fm_uint32 *value,
 
 
 
+
 /*****************************************************************************/
 /** fmGenerateCAMValueMask
  * \ingroup intBitfield
@@ -951,7 +956,7 @@ void fmGenerateCAMKey2(fm_uint32 *value,
  *                  Operates on arrays of 32-bit words in order to support
  *                  keys wider than 32 bits.
  *
- * \note            The Key/KeyInvert method used in Alta provides:         \lb
+ * \note            The Key/KeyInvert method used on FM6000 provides:       \lb
  *                      * Key = ~KeyInvert for do care bits                 \lb
  *                      * Key = KeyInvert = 1 for don't care bits           \lb
  *                      * Key = KeyInvert = 0 to disable CAM entry
@@ -995,7 +1000,7 @@ void fmGenerateCAMValueMask(fm_uint32 *key,
 {
     fm_int    i;
     
-    if ( IsCamKeyValid(key, keyInvert, size) )
+    if ( fmIsCamKeyValid(key, keyInvert, size) )
     {
         for (i = 0 ; i < size ; i++)
         {
@@ -1018,6 +1023,7 @@ void fmGenerateCAMValueMask(fm_uint32 *key,
 
 
 
+
 /*****************************************************************************/
 /** fmGenerateCAMValueMask2
  * \ingroup intBitfield
@@ -1028,7 +1034,7 @@ void fmGenerateCAMValueMask(fm_uint32 *key,
  *                  Operates on arrays of 32-bit words in order to support
  *                  keys wider than 32 bits.
  *
- * \note            The Key/KeyInvert method used in RRC provides:          \lb
+ * \note            The Key/KeyInvert method used on FM10000 provides:      \lb
  *                      * Key = ~KeyInvert for do care bits                 \lb
  *                      * Key = KeyInvert = 0 for don't care bits           \lb
  *                      * Key = KeyInvert = 1 to disable CAM entry
@@ -1072,7 +1078,7 @@ void fmGenerateCAMValueMask2(fm_uint32 *key,
 {
     fm_int    i;
     
-    if ( IsCamKeyValid2(key, keyInvert, size) )
+    if ( fmIsCamKeyValid2(key, keyInvert, size) )
     {
         for (i = 0 ; i < size ; i++)
         {
@@ -1095,15 +1101,16 @@ void fmGenerateCAMValueMask2(fm_uint32 *key,
 
 
 
+
 /*****************************************************************************/
-/** IsCamKeyValid
+/** fmIsCamKeyValid
  * \ingroup intBitfield
  * 
  * \chips           FM6000
  *
  * \desc            Determine if a CAM rule is invalid
  *
- * \note            The Key/KeyInvert method used in Alta provides:         \lb
+ * \note            The Key/KeyInvert method used on FM6000 provides:       \lb
  *                      * Key = ~KeyInvert for do care bits                 \lb
  *                      * Key = KeyInvert = 1 for don't care bits           \lb
  *                      * Key = KeyInvert = 0 to disable CAM entry
@@ -1121,9 +1128,9 @@ void fmGenerateCAMValueMask2(fm_uint32 *key,
  * \return          FALSE if the rule is invalid
  *
  *****************************************************************************/
-fm_bool IsCamKeyValid(fm_uint32 *key,
-                      fm_uint32 *keyInvert,
-                      fm_int     size)
+fm_bool fmIsCamKeyValid(fm_uint32 *key,
+                        fm_uint32 *keyInvert,
+                        fm_int     size)
 {
     fm_int  i;
     fm_bool result = TRUE;
@@ -1139,19 +1146,20 @@ fm_bool IsCamKeyValid(fm_uint32 *key,
     
     return result;
     
-}   /* end IsCamKeyValid */
+}   /* end fmIsCamKeyValid */
+
 
 
 
 /*****************************************************************************/
-/** IsCamKeyValid2
+/** fmIsCamKeyValid2
  * \ingroup intBitfield
  * 
  * \chips           FM10000
  *
  * \desc            Determine if a CAM rule is invalid
  *
- * \note            The Key/KeyInvert method used in RRC provides:          \lb
+ * \note            The Key/KeyInvert method used on FM10000 provides:      \lb
  *                      * Key = ~KeyInvert for do care bits                 \lb
  *                      * Key = KeyInvert = 0 for don't care bits           \lb
  *                      * Key = KeyInvert = 1 to disable CAM entry
@@ -1169,9 +1177,9 @@ fm_bool IsCamKeyValid(fm_uint32 *key,
  * \return          FALSE if the rule is invalid
  *
  *****************************************************************************/
-fm_bool IsCamKeyValid2(fm_uint32 *key,
-                       fm_uint32 *keyInvert,
-                       fm_int     size)
+fm_bool fmIsCamKeyValid2(fm_uint32 *key,
+                         fm_uint32 *keyInvert,
+                         fm_int     size)
 {
     fm_int  i;
     fm_bool result = TRUE;
@@ -1187,5 +1195,5 @@ fm_bool IsCamKeyValid2(fm_uint32 *key,
     
     return result;
     
-}   /* end IsCamKeyValid2 */
+}   /* end fmIsCamKeyValid2 */
 

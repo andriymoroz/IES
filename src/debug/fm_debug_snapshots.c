@@ -29,7 +29,7 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
+ *****************************************************************************/
 
 #include <fm_sdk_int.h>
 
@@ -42,7 +42,7 @@
  
 /* To allocate snapshot memory from shared-memory, set this #if to 1. This allows
  * any process to take and compare snapshots, but greatly limits the number of
- * snapshots that can be taken. For Alta chips, for instance, a maximum of 2
+ * snapshots that can be taken. For FM6000 chips, for instance, a maximum of 2
  * snapshots can be taken without increasing the shared-memory size.
  * Setting this #if to 0 causes snapshots to be allocated from process-local
  * storage. This relaxes the number of snapshot limitation but restricts

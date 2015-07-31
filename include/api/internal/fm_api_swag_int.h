@@ -519,6 +519,24 @@ typedef struct _fmSWAG_logicalPortInfo
 
 
 /*  Structure that contains information related to the Flow API. */
+typedef struct _fmSWAG_flowEntry
+{
+    fm_flowCondition   condition;
+    fm_flowValue       condVal;
+    fm_flowAction      action;
+    fm_flowParam       param;
+    fm_int             priority;
+    fm_int             precedence;
+
+} fmSWAG_flowEntry;
+
+typedef struct _fmSWAG_flowTable
+{
+    /* Flow rule information, key = flowId, value = fmSWAG_flowEntry */
+    fm_tree                flowEntry;
+
+} fmSWAG_flowTable;
+
 typedef struct _fmSWAG_flowInfo
 {
     /* Is Flow API initialized? */
@@ -532,6 +550,9 @@ typedef struct _fmSWAG_flowInfo
 
     /* Indicates if the ECMP balance group is used by Flow API */
     fm_bitArray            balanceGrpInUse;
+
+    /* Flow table information, key = tableIndex, value = fmSWAG_flowTable */
+    fm_tree                table;
 
 } fmSWAG_flowInfo;
 
@@ -636,6 +657,9 @@ typedef struct _fmSWAG_switch
     /* Information related to the Flow API. */
     fmSWAG_flowInfo          flowInfo;
 
+    /* Specifies whether parsing VLAN2 is enabled on all internal ports. */
+    fm_bool                  isIntPortsParseVlan2;
+
     /* Configuration information.  Stored so that a switch can be properly
      * configured after being added to a switch aggregate and started up */
     fm_int                   vlanTunnelMode;
@@ -722,6 +746,13 @@ typedef struct _fmSWAG_switch
     fm_bool                  reservedMacUsePri[FM_NUM_RESERVED_MACS];
     fm_uint32                reservedMacTrapPri;
     fm_bool                  dropInvalidSmac;
+    fm_status                (*GetSwitchTrapCode)(fm_int      sw,
+                                                  fm_trapType type,
+                                                  fm_int      *code);
+
+    fm_status                (*GetSwitchTrapType)(fm_int      sw,
+                                                  fm_int      code,
+                                                  fm_trapType *type);
 
 } fmSWAG_switch;
 

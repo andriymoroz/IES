@@ -29,7 +29,7 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
+ *****************************************************************************/
 
 #ifndef __FM_FM10000_PROPERTY_H
 #define __FM_FM10000_PROPERTY_H
@@ -65,7 +65,9 @@
 #define FM_AAD_API_FM10000_CM_RX_SMP_PRIVATE_BYTES  14336
 
 /** Specifies the amount of memory (in bytes) to allocate to each port for
- *  the TX hog watermark. */
+ *  the TX hog watermark. This value will be limited during automatic
+ *  watermark calculation to minimize the occurrence of the scenario
+ *  when all TX queue entries are consumed. */
 #define FM_AAK_API_FM10000_CM_TX_TC_HOG_BYTES      "api.FM10000.cmTxTcHogBytes"
 #define FM_AAT_API_FM10000_CM_TX_TC_HOG_BYTES      FM_API_ATTR_INT
 #define FM_AAD_API_FM10000_CM_TX_TC_HOG_BYTES      2097152
@@ -237,6 +239,11 @@
 #define FM_AAT_API_FM10000_INIT_MCAST_FLOODING_TRIGGERS FM_API_ATTR_BOOL
 #define FM_AAD_API_FM10000_INIT_MCAST_FLOODING_TRIGGERS FALSE
 
+/** Whether to initialize broadcast flooding triggers at boot time. */
+#define FM_AAK_API_FM10000_INIT_BCAST_FLOODING_TRIGGERS "api.FM10000.initBcastFloodingTriggers"
+#define FM_AAT_API_FM10000_INIT_BCAST_FLOODING_TRIGGERS FM_API_ATTR_BOOL
+#define FM_AAD_API_FM10000_INIT_BCAST_FLOODING_TRIGGERS FALSE
+
 /** Force the switch priority of packets trapped using the
  *  FM_PORT_MCAST_FLOODING or FM_PORT_UCAST_FLOODING port attribute.
  *  By default, trapped frames will keep whatever switch priority they are
@@ -329,21 +336,41 @@
 
 /** The mode in which the scheduler should operate:
  *                                                                      \lb\lb
- *  "static" (FM10000_SCHED_MODE_STATIC). In this mode, the total
- *  bandwidth is assigned during init. During switch operation, it is
- *  not possible to reallocate bandwidth other than for ports in the
- *  same QPC (Quad Port Channel), i.e. EPL, PCIE, TE, etc. For example,
- *  if a port in an EPL is administratively put in the power-down state,
- *  it keeps its scheduler allocated bandwidth.
+ *  "static" (FM10000_SCHED_MODE_STATIC). In this mode, the scheduler
+ *  bandwidth is determined at init based on the
+ *  api.platform.config.switch.%d.portIndex.%d.speed properties
+ *  specified in the Liberty Trail config file. After initialization, it
+ *  is only possible to reallocate that same bandwidth amongst ports
+ *  within the same QPC (Quad Port Channel). For example, a 100G capable
+ *  EPL port (that was assigned 100G) can be split into 4x25G. If the
+ *  port is powered down, or put into disabled state, the scheduler BW
+ *  (100G) remains reserved for that EPL port.
  *                                                                      \lb\lb
- *  "dynamic" (FM10000_SCHED_MODE_DYNAMIC). In this mode, the total
- *  bandwidth changes dynamically based on the mode of each port. Thus,
- *  ports that are not used (admin power-down state) do not keep their
- *  scheduler bandwidth, and that bandwidth becomes available to other
- *  ports if needed. */
+ *  "dynamic" (FM10000_SCHED_MODE_DYNAMIC). In this mode, the scheduler
+ *  bandwidth is determined at run-time (dynamic) based on the Ethernet
+ *  mode for EPL ports, and based on the
+ *  api.platform.config.switch.%d.portIndex.%d.speed property for PCIe,
+ *  TE, or Loopback ports. Thus, ports that are not used (powered down
+ *  or in disabled mode) do not keep their scheduler bandwidth, and that
+ *  bandwidth becomes available to other ports if needed. To have the
+ *  scheduler BW be adjusted on link state change, see
+ *  ''api.FM10000.updateSchedOnLinkChange''. */
 #define FM_AAK_API_FM10000_SCHED_MODE   "api.FM10000.schedMode"
 #define FM_AAT_API_FM10000_SCHED_MODE   FM_API_ATTR_TEXT
 #define FM_AAD_API_FM10000_SCHED_MODE   "static"
+
+/** Whether the scheduler bandwidth assignments should be updated on
+ *  link down/up when using the scheduler dynamic mode (see
+ *  ''api.FM10000.schedMode''). When enabled, the bandwidth of ports
+ *  that go into link down is released, and is re-assigned on link up.
+ *  For EPL ports, when the link is up, the BW assigned to the port will
+ *  match the ethernet mode. For PCIe ports, when the link is up the BW
+ *  assigned will be determined from the
+ *  api.platform.config.switch.%d.portIndex.%d.speed property in the
+ *  Liberty Trail config file. */
+#define FM_AAK_API_FM10000_UPD_SCHED_ON_LNK_CHANGE     "api.FM10000.updateSchedOnLinkChange"
+#define FM_AAT_API_FM10000_UPD_SCHED_ON_LNK_CHANGE     FM_API_ATTR_BOOL
+#define FM_AAD_API_FM10000_UPD_SCHED_ON_LNK_CHANGE     FALSE
 
 /* -------- Add new DOCUMENTED api properties above this line! -------- */
 
@@ -429,6 +456,11 @@
 #define FM_AAK_API_FM10000_PARITY_INTERRUPTS    "api.FM10000.parity.enableInterrupts"
 #define FM_AAT_API_FM10000_PARITY_INTERRUPTS    FM_API_ATTR_BOOL
 #define FM_AAD_API_FM10000_PARITY_INTERRUPTS    TRUE
+
+/* Whether to start the TCAM monitors. */
+#define FM_AAK_API_FM10000_START_TCAM_MONITORS  "api.FM10000.parity.startTcamMonitors"
+#define FM_AAT_API_FM10000_START_TCAM_MONITORS  FM_API_ATTR_BOOL
+#define FM_AAD_API_FM10000_START_TCAM_MONITORS  TRUE
 
 /* The number of uncorrectable MOD_REFCOUNT parity errors that may occur
  * before the API sends a Deferred Reset event to the application. 

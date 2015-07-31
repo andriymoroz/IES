@@ -48,6 +48,7 @@ api/fm10000/fm10000_api_an_actions.c                                            
 api/fm10000/fm10000_api_an_state_machines.c                                                       \
 api/fm10000/fm10000_api_attr.c                                                                    \
 api/fm10000/fm10000_api_crm.c                                                                     \
+api/fm10000/fm10000_api_crm_state_machines.c                                                      \
 api/fm10000/fm10000_api_event_fast_maint.c                                                        \
 api/fm10000/fm10000_api_event_intr.c                                                              \
 api/fm10000/fm10000_api_event_mac_maint.c                                                         \
@@ -184,7 +185,8 @@ debug/fm_debug_regs.c                                                           
 debug/fm_debug_selftest.c                                                                         \
 debug/fm_debug_serdes.c                                                                           \
 debug/fm_debug_snapshots.c                                                                        \
-debug/fm_debug_trace.c
+debug/fm_debug_trace.c                                                                            \
+debug/fm_debug_bsm.c
 
 lib_LTLIBRARIES += libLTStdPlatform.la
 
@@ -210,7 +212,7 @@ platforms/common/stubs/platform_api_stubs.c                                     
 platforms/common/stubs/platform_app_stubs.c                                                       \
 platforms/common/switch/fm10000/fm10000_sbus_server.c                                             \
 platforms/common/switch/fm10000/fm10000_utils.c                                                   \
-platforms/common/switch/fm10000/fm10000_utils_bsm.c                                               \
+platforms/common/switch/fm10000/fm10000_voltage_scaling.c                                         \
 platforms/common/switch/fm_regs_access_ebi.c                                                      \
 platforms/common/switch/fm_regs_access_i2c.c                                                      \
 platforms/common/switch/fm_regs_access_memmap.c                                                   \
@@ -230,6 +232,7 @@ platforms/libertyTrail/platform_sched.c                                         
 platforms/libertyTrail/platform_timestamp.c                                                       \
 platforms/libertyTrail/shared-libs/standard/fm_platform_standard_lib.c                            \
 platforms/util/fm10000/fm10000_util_spi.c                                                         \
+platforms/util/fm10000/fm10000_util_bsm.c                                                         \
 platforms/util/fm_util_device_lock.c                                                              \
 platforms/util/fm_util_pca.c                                                                      \
 platforms/util/retimer/fm_util_gn2412.c

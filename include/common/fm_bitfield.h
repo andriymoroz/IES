@@ -6,7 +6,7 @@
  * Description:    Macros to manipulate bitfields using the bit
  *                 position constants in fmxxxx_api_regs_int.h
  *
- * Copyright (c) 2007 - 2014, Intel Corporation
+ * Copyright (c) 2007 - 2015, Intel Corporation
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -30,7 +30,7 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
+ *****************************************************************************/
 
 #ifndef __FM_FM_BITFIELD_H
 #define __FM_FM_BITFIELD_H
@@ -327,9 +327,9 @@ void fmGenerateCAMValueMask(fm_uint32 *key,
                             fm_uint32 *mask,
                             fm_int     size);
 
-fm_bool IsCamKeyValid(fm_uint32 *key,
-                      fm_uint32 *keyInvert,
-                      fm_int     size);
+fm_bool fmIsCamKeyValid(fm_uint32 *key,
+                        fm_uint32 *keyInvert,
+                        fm_int     size);
 
 /* Key/KeyInvert Generation on FM10000 switch family */
 
@@ -345,9 +345,9 @@ void fmGenerateCAMValueMask2(fm_uint32 *key,
                              fm_uint32 *mask,
                              fm_int     size);
 
-fm_bool IsCamKeyValid2(fm_uint32 *key,
-                       fm_uint32 *keyInvert,
-                       fm_int     size);
+fm_bool fmIsCamKeyValid2(fm_uint32 *key,
+                         fm_uint32 *keyInvert,
+                         fm_int     size);
 
 
 #endif /* __FM_FM_BITFIELD_H */

@@ -29,16 +29,14 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
+ *****************************************************************************/
 
 #include <unistd.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
 
-#include <fm_std.h>
-#include <common/fm_common.h>
-#include <fm_alos_logging.h>
+#include <fm_sdk.h>
 
 #include <platforms/util/fm_util.h>
 #include <platforms/util/fm_util_pca.h>
@@ -48,7 +46,9 @@
  *****************************************************************************/
 
 #define MAX_PCA9506_IO     5
+#define MAX_PCA9554_IO     1
 #define MAX_PCA9555_IO     2
+#define MAX_PCA9551_IO     2
 
 /*****************************************************************************
  * Global Variables
@@ -165,7 +165,7 @@ static fm_status WritePca9506Registers(fm_pcaIoDevice *dev,
  * \ingroup platformUtils
  *
  * \desc            Write the content of the given cached registers to
- *                  the given PCA9555 device.
+ *                  the given PCA9554/9555 device.
  *
  * \param[in]       dev pointer to fm_pcaIoDevice structure.
  * 
@@ -199,12 +199,12 @@ static fm_status WritePca9555Registers(fm_pcaIoDevice *dev,
     switch (regType)
     {
         case PCA_IO_REG_TYPE_OUTPUT:
-            ioReg = 0x02;
+            ioReg = dev->devCap.numBytes * 0x01;
             dataPtr = dev->cachedRegs.output;
         break;
 
         case PCA_IO_REG_TYPE_IOC:
-            ioReg = 0x06;
+            ioReg = dev->devCap.numBytes * 0x03;
             dataPtr = dev->cachedRegs.ioc;
             break;
 
@@ -228,6 +228,107 @@ static fm_status WritePca9555Registers(fm_pcaIoDevice *dev,
     return status;
 
 }   /* end WritePca9555Registers */
+
+
+
+
+/*****************************************************************************/
+/* WritePca9551Registers
+ * \ingroup platformUtils
+ *
+ * \desc            Write the content of the given cached registers to
+ *                  the given PCA9551 device.
+ *
+ * \param[in]       dev pointer to fm_pcaIoDevice structure.
+ * 
+ * \param[in]       regType type of registers to write.
+ * 
+ * \param[in]       startReg first register offset to write.
+ * 
+ * \param[in]       numBytes number of registers to write.
+ * 
+ * \return          FM_OK if successful.
+ * \return          Other ''Status Codes'' as appropriate in case of
+ *                  failure.
+ *
+ *****************************************************************************/
+static fm_status WritePca9551Registers(fm_pcaIoDevice *dev,
+                                       fm_pcaIoRegType regType,
+                                       fm_uint         startReg,
+                                       fm_uint         numBytes)
+{
+    fm_uint   i;
+    fm_byte * dataPtr;
+    fm_byte   data[MAX_PCA9551_IO+1];
+    fm_byte   ioReg;
+    fm_status status = FM_FAIL;
+
+    if ( (startReg + numBytes) > MAX_PCA9555_IO)
+    {
+        return FM_ERR_INVALID_ARGUMENT;
+    }
+
+    switch (regType)
+    {
+        case PCA_IO_REG_TYPE_PSC0:
+            ioReg = 0x1;
+            dataPtr = &dev->ledRegs.psc0;
+            break;
+
+        case PCA_IO_REG_TYPE_PWM0:
+            ioReg = 0x2;
+            dataPtr = &dev->ledRegs.pwm0;
+            break;
+
+        case PCA_IO_REG_TYPE_PSC1:
+            ioReg = 0x3;
+            dataPtr = &dev->ledRegs.psc1;
+            break;
+
+        case PCA_IO_REG_TYPE_PWM1:
+            ioReg = 0x4;
+            dataPtr = &dev->ledRegs.pwm1;
+            break;
+
+        case PCA_IO_REG_TYPE_OUTPUT:
+        case PCA_IO_REG_TYPE_LEDOUT:
+            ioReg = 0x5;
+            dataPtr = &dev->ledRegs.ledout[0];
+        break;
+
+        default:
+            return FM_ERR_INVALID_ARGUMENT;
+    }
+
+    if (dev->i2cBlockSupported)
+    {
+        /* Use auto-increment to write to registers */
+        data[0] = (ioReg + startReg) | 0x10;
+        for (i = 0 ; i < numBytes ; i++)
+        {
+            data[1 + i] = dataPtr[i + startReg];
+        }
+        status = dev->func(dev->fd, dev->addr, data, 1 + numBytes, 0);
+    }
+    else
+    {
+        /* Write to registers one byte at the time */
+        for (i = 0 ; i < numBytes ; i++)
+        {
+            data[0] = ioReg + startReg + i;
+            data[1] = dataPtr[i + startReg];
+
+            status = dev->func(dev->fd, dev->addr, data, 2, 0);
+            if (status != FM_OK)
+            {
+                break;
+            }
+        }
+    }
+
+    return status;
+
+}   /* end WritePca9551Registers */
 
 
 
@@ -445,7 +546,7 @@ static fm_status ReadPca9506Registers(fm_pcaIoDevice *dev,
 /* ReadPca9555Registers
  * \ingroup platformUtils
  *
- * \desc            Read the PCA9555 registers and store them in the
+ * \desc            Read the PCA9554/9555 registers and store them in the
  *                  cached registers.
  *
  * \param[in]       dev pointer to fm_pcaIoDevice structure.
@@ -484,12 +585,12 @@ static fm_status ReadPca9555Registers(fm_pcaIoDevice *dev,
         break;
 
         case PCA_IO_REG_TYPE_OUTPUT:
-            ioReg = 0x02;
+            ioReg = dev->devCap.numBytes * 0x01;
             dataPtr = &dev->cachedRegs.output[startReg];
         break;
 
         case PCA_IO_REG_TYPE_IOC:
-            ioReg = 0x06;
+            ioReg = dev->devCap.numBytes * 0x03;
             dataPtr = &dev->cachedRegs.ioc[startReg];
             break;
 
@@ -503,6 +604,103 @@ static fm_status ReadPca9555Registers(fm_pcaIoDevice *dev,
     return status;
 
 }   /* end ReadPca9555Registers */
+
+
+
+
+/*****************************************************************************/
+/* ReadPca9551Registers
+ * \ingroup platformUtils
+ *
+ * \desc            Read the PCA9551 registers and store them in the
+ *                  cached registers.
+ *
+ * \param[in]       dev pointer to fm_pcaIoDevice structure.
+ * 
+ * \param[in]       regType type of registers to read.
+ * 
+ * \param[in]       startReg first register offset to read.
+ * 
+ * \param[in]       numBytes number of registers to read.
+ * 
+ * \return          FM_OK if successful.
+ * \return          Other ''Status Codes'' as appropriate in case of
+ *                  failure.
+ *
+ *****************************************************************************/
+static fm_status ReadPca9551Registers(fm_pcaIoDevice *dev,
+                                      fm_pcaIoRegType regType,
+                                      fm_uint         startReg,
+                                      fm_uint         numBytes)
+{
+    fm_uint   i;
+    fm_byte * dataPtr;
+    fm_byte   data[MAX_PCA9551_IO+1];
+    fm_byte   ioReg;
+    fm_status status = FM_FAIL;
+
+    if ( (startReg + numBytes) > MAX_PCA9551_IO)
+    {
+        return FM_ERR_INVALID_ARGUMENT;
+    }
+
+    switch (regType)
+    {
+        case PCA_IO_REG_TYPE_PSC0:
+            ioReg = 0x1;
+            dataPtr = &dev->ledRegs.psc0;
+            break;
+
+        case PCA_IO_REG_TYPE_PWM0:
+            ioReg = 0x2;
+            dataPtr = &dev->ledRegs.pwm0;
+            break;
+
+        case PCA_IO_REG_TYPE_PSC1:
+            ioReg = 0x3;
+            dataPtr = &dev->ledRegs.psc1;
+            break;
+
+        case PCA_IO_REG_TYPE_PWM1:
+            ioReg = 0x4;
+            dataPtr = &dev->ledRegs.pwm1;
+            break;
+
+        case PCA_IO_REG_TYPE_OUTPUT:
+        case PCA_IO_REG_TYPE_LEDOUT:
+            ioReg = 0x5;
+            dataPtr = &dev->ledRegs.ledout[0];
+        break;
+
+        default:
+            return FM_ERR_INVALID_ARGUMENT;
+    }
+
+    if (dev->i2cBlockSupported)
+    {
+        /* Use auto-increment to read the registers */
+        dataPtr[0] = (ioReg + startReg) | 0x10;
+
+        status = dev->func(dev->fd, dev->addr, dataPtr, 1, numBytes);
+    }
+    else
+    {
+        /* Read the registers one byte at the time */
+        for (i = 0 ; i < numBytes ; i++)
+        {
+            dataPtr[i] = ioReg + startReg + i;
+
+            status = dev->func(dev->fd, dev->addr, &dataPtr[i], 1, 1);
+            if (status != FM_OK)
+            {
+                break;
+            }
+        }
+    }
+
+    return status;
+
+}   /* end ReadPca99551Registers */
 
 
 
@@ -691,7 +889,7 @@ static fm_status InitPca9506(fm_pcaIoDevice *dev)
 /* InitPca9555
  * \ingroup platformUtils
  *
- * \desc            Init PCA9555 IO device registers.
+ * \desc            Init PCA9554/9555 IO device registers.
  *
  * \param[in]       dev pointer to fm_pcaIoDevice structure.
  * 
@@ -704,7 +902,10 @@ static fm_status InitPca9555(fm_pcaIoDevice *dev)
 {
     fm_status status;
 
-    /* The PCA9555 provides 16-bit parallel input/output (I/O) port extension
+    /* The PCA9554 provides 8-bit parallel input/output (I/O) port extension
+     * organized in 1 banks of 8 I/Os.
+     * 
+     * The PCA9555 provides 16-bit parallel input/output (I/O) port extension
      * organized in 2 banks of 8 I/Os.
      *
      * Bank0: I/O:0     Bank1: I/O:0
@@ -723,11 +924,11 @@ static fm_status InitPca9555(fm_pcaIoDevice *dev)
     status = WritePca9555Registers(dev, 
                                    PCA_IO_REG_TYPE_IOC, 
                                    0, 
-                                   MAX_PCA9555_IO);
+                                   dev->devCap.numBytes);
     if (status != FM_OK)
     {
         FM_LOG_ERROR(FM_LOG_CAT_PLATFORM,
-                     "Unable to write to IOC reg of PCA9555 dev 0x%x.\n",
+                     "Unable to write to IOC reg of PCA9554/55 dev 0x%x.\n",
                      dev->addr);
     }
 
@@ -735,17 +936,107 @@ static fm_status InitPca9555(fm_pcaIoDevice *dev)
     status = WritePca9555Registers(dev, 
                                    PCA_IO_REG_TYPE_OUTPUT, 
                                    0, 
-                                   MAX_PCA9555_IO);
+                                   dev->devCap.numBytes);
     if (status != FM_OK)
     {
         FM_LOG_ERROR(FM_LOG_CAT_PLATFORM,
-                     "Unable to write to OP reg of PCA9555 dev 0x%x.\n",
+                     "Unable to write to OP reg of PCA9554/55 dev 0x%x.\n",
                      dev->addr);
     }
 
     return status;
 
 }   /* end InitPca9555 */
+
+
+
+
+/*****************************************************************************/
+/* InitPca9551
+ * \ingroup platformUtils
+ *
+ * \desc            Init PCA9551 device registers.
+ *
+ * \param[in]       dev pointer to fm_pcaIoDevice structure.
+ * 
+ * \return          FM_OK if successful.
+ * \return          Other ''Status Codes'' as appropriate in case of
+ *                  failure.
+ *
+ *****************************************************************************/
+static fm_status InitPca9551(fm_pcaIoDevice *dev)
+{
+    fm_status status;
+
+    if (dev == NULL)
+    {
+        return FM_ERR_INVALID_ARGUMENT;
+    }
+
+    /* Set PSC0 register */
+    status = WritePca9551Registers(dev, 
+                                   PCA_IO_REG_TYPE_PSC0, 
+                                   0, 
+                                   1);
+    if (status != FM_OK)
+    {
+        FM_LOG_ERROR(FM_LOG_CAT_PLATFORM,
+                     "Unable to write to PSC0 reg of PCA9551 dev 0x%x.\n",
+                     dev->addr);
+    }
+
+    /* Set PSC1 register */
+    status = WritePca9551Registers(dev, 
+                                   PCA_IO_REG_TYPE_PSC1, 
+                                   0, 
+                                   1);
+    if (status != FM_OK)
+    {
+        FM_LOG_ERROR(FM_LOG_CAT_PLATFORM,
+                     "Unable to write to PSC1 reg of PCA9551 dev 0x%x.\n",
+                     dev->addr);
+    }
+
+    /* Set PWM0 register */
+    status = WritePca9551Registers(dev, 
+                                   PCA_IO_REG_TYPE_PWM0, 
+                                   0, 
+                                   1);
+    if (status != FM_OK)
+    {
+        FM_LOG_ERROR(FM_LOG_CAT_PLATFORM,
+                     "Unable to write to PWM0 reg of PCA9551 dev 0x%x.\n",
+                     dev->addr);
+    }
+
+    /* Set PWM1 register */
+    status = WritePca9551Registers(dev, 
+                                   PCA_IO_REG_TYPE_PWM1, 
+                                   0, 
+                                   1);
+    if (status != FM_OK)
+    {
+        FM_LOG_ERROR(FM_LOG_CAT_PLATFORM,
+                     "Unable to write to PWM1 reg of PCA9551 dev 0x%x.\n",
+                     dev->addr);
+    }
+
+    /* Set LEDOUT registers */
+    status = WritePca9551Registers(dev, 
+                                   PCA_IO_REG_TYPE_LEDOUT, 
+                                   0, 
+                                   2);
+
+    if (status != FM_OK)
+    {
+        FM_LOG_ERROR(FM_LOG_CAT_PLATFORM,
+                     "Unable to write to LEDOUT reg of PCA9551 dev 0x%x.\n",
+                     dev->addr);
+    }
+
+    return status;
+
+}   /* end InitPca9551 */
 
 
 
@@ -797,8 +1088,8 @@ static fm_status InitPca9634(fm_pcaIoDevice *dev)
                      dev->addr);
     }
 
-    /* Set PWM registers. The RRC I2C master is limited to 12 bytes per
-       transaction. So split it into 8-bytes transaction */
+    /* Set PWM registers. The FM10000 I2C master is limited to 12 bytes per
+     * transaction, o split it into 8-bytes transaction. */
     for ( i = 0 ; i < dev->devCap.numBits ; i += 8 )
     {
         status = WritePca9634Registers(dev, 
@@ -1048,9 +1339,9 @@ static fm_status DumpPca9555(fm_pcaIoDevice *dev)
     devCap = &dev->devCap;
     cachedRegs = &dev->cachedRegs;
 
-    numBytes = MAX_PCA9555_IO;
+    numBytes = dev->devCap.numBytes;
 
-    /* Input Port registers (registers 0 and 1) */
+    /* Input Port registers */
     data[0] = 0x00;
 
     status = func(fd, addr, data, 1, numBytes);
@@ -1058,7 +1349,7 @@ static fm_status DumpPca9555(fm_pcaIoDevice *dev)
     if (status != FM_OK)
     {
         FM_LOG_ERROR(FM_LOG_CAT_PLATFORM,
-                     "Unable to read IP regs of PCA9555 device 0x%x.\n",
+                     "Unable to read IP regs of PCA9554/55 device 0x%x.\n",
                      addr);
     }
     else
@@ -1082,20 +1373,20 @@ static fm_status DumpPca9555(fm_pcaIoDevice *dev)
         FM_LOG_PRINT("\n");
     }
 
-    /* Output Port registers (registers 2 and 3) */
-    data[0] = 0x02;
+    /* Output Port registers */
+    data[0] = numBytes * 0x01;
 
     status = func(fd, addr, data, 1, numBytes);
 
     if (status != FM_OK)
     {
         FM_LOG_ERROR(FM_LOG_CAT_PLATFORM,
-                     "Unable to read OP regs of PCA9555 device 0x%x.\n",
+                     "Unable to read OP regs of PCA9554/55 device 0x%x.\n",
                      addr);
     }
     else
     {
-        FM_LOG_PRINT("OP[0x02]  : ");
+        FM_LOG_PRINT("OP[0x%02x]  : ", numBytes * 0x01);
 
         for (i = (numBytes - 1) ; i >= 0 ; i--)
         {
@@ -1114,20 +1405,20 @@ static fm_status DumpPca9555(fm_pcaIoDevice *dev)
         FM_LOG_PRINT("\n");
     }
 
-    /* I/O Configuration registers (register 6 and 7) */
-    data[0] = 0x6;
+    /* I/O Configuration registers */
+    data[0] = numBytes * 0x03;
 
     status = func(fd, addr, data, 1, numBytes);
 
     if (status != FM_OK)
     {
         FM_LOG_ERROR(FM_LOG_CAT_PLATFORM,
-                     "Unable to read IOC regs of PCA9555 device 0x%x.\n",
+                     "Unable to read IOC regs of PCA9554/55 device 0x%x.\n",
                      addr);
     }
     else
     {
-        FM_LOG_PRINT("IOC[0x06] : ");
+        FM_LOG_PRINT("IOC[0x%02x] : ", numBytes * 0x03);
 
         for (i = (numBytes - 1) ; i >= 0 ; i--)
         {
@@ -1196,6 +1487,12 @@ fm_status fmUtilPcaIoGetCap(fm_pcaIoModel model, fm_pcaIoCap *devCap)
             devCap->cap = FM_PCA_IO_CAP_INTR;
         break;
 
+        case PCA_IO_9554:
+            devCap->numBits = 8;
+            devCap->numBytes = MAX_PCA9554_IO;
+            devCap->cap = 0;
+        break;
+
         case PCA_IO_9555:
             devCap->numBits = 16;
             devCap->numBytes = MAX_PCA9555_IO;
@@ -1208,6 +1505,14 @@ fm_status fmUtilPcaIoGetCap(fm_pcaIoModel model, fm_pcaIoCap *devCap)
             devCap->numBits = 40;
             devCap->numBytes = MAX_PCA9506_IO;
             devCap->cap = FM_PCA_IO_CAP_INTR;
+        break;
+
+        case PCA_IO_9551:
+            /* Number of LED pins */
+            devCap->numBits = 8;
+
+            /* Number of LEDOUT registers */
+            devCap->numBytes = MAX_PCA9551_IO;
         break;
 
         case PCA_IO_9634:
@@ -1264,8 +1569,13 @@ fm_status fmUtilPcaIoInit(fm_pcaIoDevice *dev)
             status = InitPca9506(dev);
             break;
 
+        case PCA_IO_9554:
         case PCA_IO_9555:
             status = InitPca9555(dev);
+            break;
+
+        case PCA_IO_9551:
+            status = InitPca9551(dev);
             break;
 
         case PCA_IO_9634:
@@ -1310,6 +1620,7 @@ fm_status fmUtilPcaIoDump(fm_pcaIoDevice *dev)
             status = DumpPca9506(dev);
             break;
 
+        case PCA_IO_9554:
         case PCA_IO_9555:
             status = DumpPca9555(dev);
             break;
@@ -1354,11 +1665,12 @@ fm_status fmUtilPcaIoUpdateInputRegs(fm_pcaIoDevice *dev)
                                           MAX_PCA9506_IO);
             break;
 
+        case PCA_IO_9554:
         case PCA_IO_9555:
             status = ReadPca9555Registers(dev, 
                                           PCA_IO_REG_TYPE_INPUT, 
                                           0, 
-                                          MAX_PCA9555_IO);
+                                          dev->devCap.numBytes);
 
         default:
             status = FM_ERR_INVALID_ARGUMENT;
@@ -1407,8 +1719,13 @@ fm_status fmUtilPcaIoWriteRegs(fm_pcaIoDevice *dev,
             status = WritePca9506Registers(dev, regType, startReg, numBytes);
             break;
 
+        case PCA_IO_9554:
         case PCA_IO_9555:
             status = WritePca9555Registers(dev, regType, startReg, numBytes);
+            break;
+
+        case PCA_IO_9551:
+            status = WritePca9551Registers(dev, regType, startReg, numBytes);
             break;
 
         case PCA_IO_9634:
@@ -1462,8 +1779,13 @@ fm_status fmUtilPcaIoReadRegs(fm_pcaIoDevice  *dev,
             status = ReadPca9506Registers(dev, regType, startReg, numBytes);
             break;
 
+        case PCA_IO_9554:
         case PCA_IO_9555:
             status = ReadPca9555Registers(dev, regType, startReg, numBytes);
+            break;
+
+        case PCA_IO_9551:
+            status = ReadPca9551Registers(dev, regType, startReg, numBytes);
             break;
 
         case PCA_IO_9634:
@@ -1530,7 +1852,6 @@ fm_status fmUtilPca9541TakeBusControl(fm_uintptr                  handle,
         if (nextVal == -1)
         {
             /* Has control */
-            FM_LOG_PRINT("Take bus control on 9541 (loop = %d)\n", loop);
             return FM_OK;
         }
 

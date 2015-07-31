@@ -444,7 +444,7 @@ fm_status fm10000IsPortAutonegReady( fm_int     sw,
  *
  * \param[in]       port is the logical port number.
  *
- * \param[in]       timeoutUsec is the time value to configure.
+ * \param[in]       timeout is the time value in milliseconds to configure.
  *                  NOTE: The saved timeout might be different than
  *                  then configured timeout to reflect values supported in
  *                  hardware.
@@ -454,46 +454,47 @@ fm_status fm10000IsPortAutonegReady( fm_int     sw,
  *****************************************************************************/
 fm_status fm10000An73SetLinkInhibitTimer( fm_int  sw,
                                           fm_int  port,
-                                          fm_uint timeoutUsec )
+                                          fm_uint timeout )
 {
     fm10000_portAttr *portAttrExt;
-    fm_uint           timeScale;
-    fm_uint           linkTimeout;
-    fm_uint           hwTimeoutUsec;
+    fm_uint           linkTimeoutMax;
 
     portAttrExt = GET_FM10000_PORT_ATTR(sw, port);
 
     /* Use the default */
-    if (timeoutUsec == 0)
+    if (timeout == 0)
     {
-        portAttrExt->autoNegLinkInhbTimer = LINK_INHIBIT_TIMER_USEC;
+        portAttrExt->autoNegLinkInhbTimer = LINK_INHIBIT_TIMER_MILLISEC;
         FM_LOG_EXIT_V2( FM_LOG_CAT_PORT_AUTONEG, port, FM_OK );
     }
 
-    /* Find the best timescale based on the timeout */
-    hwTimeoutUsec = 
-        fm10000AnGetTimeScale( timeoutUsec,
-                               FM10000_AN73_LINK_FAIL_INHIBIT_TIMEOUT_MAX,
-                               &timeScale, 
-                               &linkTimeout );
-
-    if (linkTimeout >= FM10000_AN73_LINK_FAIL_INHIBIT_TIMEOUT_MAX || 
-        linkTimeout <= 1)
+    /* Timescale is equal 5 (granularity => 1ms) for timeout < 512
+     * or 6 (granularity => 10ms) for timeout >= 512 and <= 1023, so values
+     * from 512 to 1023 will be rounded down to the closest multiple of 10.
+     * By default a valid range is from 1 to 511, but it is possible to extend
+     * it to <1..1023> by setting attribute api.an.timerAllowOutSpec */
+    if (fmGetBoolApiProperty(FM_AAK_API_AN_INHBT_TIMER_ALLOW_OUT_OF_SPEC,
+                             FM_AAD_API_AN_INHBT_TIMER_ALLOW_OUT_OF_SPEC))
+    {
+        linkTimeoutMax = FM10000_AN73_LINK_FAIL_INHIBIT_TIMEOUT_DEBUG;
+    }
+    else
+    {
+        linkTimeoutMax = FM10000_AN73_LINK_FAIL_INHIBIT_TIMEOUT_MAX;
+    }
+    if (timeout > linkTimeoutMax || timeout < 1)
     {
         FM_LOG_DEBUG_V2( FM_LOG_CAT_PORT_AUTONEG,
                          port,
                          "Invalid configuration: "
-                         "linkTimeoutUsec=%d timeScale=%d "
                          "LinkTimerTimeout=%d\n",
-                         timeoutUsec, 
-                         timeScale, 
-                         linkTimeout );
+                         timeout );
         FM_LOG_EXIT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, 
                                port,
                                FM_ERR_INVALID_ARGUMENT );
     }
 
-    portAttrExt->autoNegLinkInhbTimer = hwTimeoutUsec;
+    portAttrExt->autoNegLinkInhbTimer = timeout;
 
     FM_LOG_EXIT_V2(FM_LOG_CAT_PORT_AUTONEG, port, FM_OK);
 
@@ -511,7 +512,7 @@ fm_status fm10000An73SetLinkInhibitTimer( fm_int  sw,
  *
  * \param[in]       port is the logical port number.
  *
- * \param[in]       timeoutUsec is the time value to configure.
+ * \param[in]       timeout is the time value in milliseconds to configure.
  *                  NOTE: The saved timeout might be different than
  *                  then configured timeout to reflect values supported in
  *                  hardware.
@@ -521,47 +522,48 @@ fm_status fm10000An73SetLinkInhibitTimer( fm_int  sw,
  *****************************************************************************/
 fm_status fm10000An73SetLinkInhibitTimerKx( fm_int  sw,
                                             fm_int  port,
-                                            fm_uint timeoutUsec )
+                                            fm_uint timeout )
 {
     fm10000_portAttr *portAttrExt;
-    fm_uint           timeScale;
-    fm_uint           linkTimeout;
-    fm_uint           hwTimeoutUsec;
+    fm_uint           linkTimeoutMax;
 
     portAttrExt = GET_FM10000_PORT_ATTR(sw, port);
 
     /* Use the default */
-    if (timeoutUsec == 0)
+    if (timeout == 0)
     {
-        portAttrExt->autoNegLinkInhbTimerKx = LINK_INHIBIT_TIMER_USEC_KX;
+        portAttrExt->autoNegLinkInhbTimerKx = LINK_INHIBIT_TIMER_MILLISEC_KX;
 
         FM_LOG_EXIT_V2( FM_LOG_CAT_PORT_AUTONEG, port, FM_OK );
     }
 
-    /* Find the best timescale based on the timeout */
-    hwTimeoutUsec = 
-        fm10000AnGetTimeScale( timeoutUsec,
-                               FM10000_AN73_LINK_FAIL_INHIBIT_TIMEOUT_MAX,
-                               &timeScale, 
-                               &linkTimeout );
-
-    if( linkTimeout >= FM10000_AN73_LINK_FAIL_INHIBIT_TIMEOUT_MAX || 
-        linkTimeout <= 1 )
+    /* Timescale is equal 5 (granularity => 1ms) for timeout < 512
+     * or 6 (granularity => 10ms) for timeout >= 512 and <= 1023, so values
+     * from 512 to 1023 will be rounded down to the closest multiple of 10.
+     * By default a valid range is from 1 to 511, but it is possible to extend
+     * it to <1..1023> by setting attribute api.an.timerAllowOutSpec */
+    if (fmGetBoolApiProperty(FM_AAK_API_AN_INHBT_TIMER_ALLOW_OUT_OF_SPEC,
+                             FM_AAD_API_AN_INHBT_TIMER_ALLOW_OUT_OF_SPEC))
+    {
+        linkTimeoutMax = FM10000_AN73_LINK_FAIL_INHIBIT_TIMEOUT_DEBUG;
+    }
+    else
+    {
+        linkTimeoutMax = FM10000_AN73_LINK_FAIL_INHIBIT_TIMEOUT_MAX;
+    }
+    if (timeout > linkTimeoutMax || timeout < 1)
     {
         FM_LOG_DEBUG_V2( FM_LOG_CAT_PORT_AUTONEG,
                          port,
                          "Invalid configuration: "
-                         "linkTimeoutUsec=%d timeScale=%d "
                          "LinkTimerTimeout=%d\n",
-                         timeoutUsec, 
-                         timeScale, 
-                         linkTimeout);
+                         timeout );
         FM_LOG_EXIT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, 
                                port,
                                FM_ERR_INVALID_ARGUMENT );
     }
 
-    portAttrExt->autoNegLinkInhbTimerKx = hwTimeoutUsec;
+    portAttrExt->autoNegLinkInhbTimerKx = timeout;
 
     FM_LOG_EXIT_V2(FM_LOG_CAT_PORT_AUTONEG, port, FM_OK);
 

@@ -159,6 +159,7 @@ typedef struct _fm_portAttribute
     fm_uint64      autoNegPartnerBasePage;
     fm_anNextPages autoNegNextPages;
     fm_anNextPages autoNegPartnerNextPages;
+    fm_int         bcastFlooding;
     fm_bool        bcastPruning;
     fm_bool        enableTxCutThrough;
     fm_bool        enableRxCutThrough;
@@ -195,6 +196,7 @@ typedef struct _fm_portAttribute
     fm_bool        replaceDscp;
     fm_bool        routable;
     fm_uint32      rxClassPause;
+    fm_uint32      txClassPause;
     fm_bool        rxPause;
     fm_uint32      rxPauseMode;
     fm_uint32      saf;
@@ -223,7 +225,7 @@ typedef struct _fm_portAttribute
     fm_uint32      txDrainMode;
     fm_uint32      rxDrainMode;
     fm_int         serdesLoopback;
-
+    fm_bool        autoDetectModule;
 
     /* NOTE: These are moved to fm_laneAttr for FM10000 */
     fm_int         driveStrength;
@@ -252,8 +254,15 @@ typedef struct _fm_laneAttr
     fm_int         preCursor;
     fm_int         cursor;
     fm_int         postCursor;
+    fm_int         initializePreCursor;
+    fm_int         initializeCursor;
+    fm_int         initializePostCursor;
+    fm_bool        txLaneEnableConfigKrInit;
+    fm_int         preCursorDecOnPreset;
+    fm_int         postCursorDecOnPreset;
     fm_uint32      rxPolarity;
     fm_uint32      txPolarity;
+    fm_rxTermination rxTermination;
     fm_dfeMode     dfeMode;
     /* This field make mapping of pep to serdes more efficient */
     fm_int         pepOffset;

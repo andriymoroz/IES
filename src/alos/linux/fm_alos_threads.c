@@ -29,7 +29,7 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
+ *****************************************************************************/
 
 #include <fm_sdk_int.h>
 
@@ -78,34 +78,39 @@ pthread_key_t fmTLSKeyLock;
  *
  * \param[in]       None.
  *
- * \return          Pointer to current thread's state or NULL if error.
+ * \return          Pointer to current thread's state, or NULL if error.
  *
  *****************************************************************************/
 static fm_thread *fmGetCurrentThreadState(void)
 {
-    fm_status  err;
-    pthread_t  handle = (pthread_t) fmGetCurrentThreadId();
-    fm_thread *thread;
+    fm_status   err;
+    pthread_t   handle;
+    fm_thread * thread;
 
-    err = FM_FAIL;
-
-    if (fmAlosThreadState.initialized &&
-        pthread_mutex_lock(&fmAlosThreadState.threadTreeLock) == 0)
+    if (!fmAlosThreadState.initialized)
     {
-        err = fmTreeFind(&fmAlosThreadState.dbgThreadTree,
-                         (fm_uint64) handle, 
-                         (void *) &thread);
-
-        if (pthread_mutex_unlock(&fmAlosThreadState.threadTreeLock) != 0 &&
-            err == FM_OK)
-        {
-            err = FM_FAIL;
-        }
+        return NULL;
     }
+
+    if (pthread_mutex_lock(&fmAlosThreadState.threadTreeLock) != 0)
+    {
+        return NULL;
+    }
+
+    handle = (pthread_t) fmGetCurrentThreadId();
+
+    err = fmTreeFind(&fmAlosThreadState.dbgThreadTree,
+                     (fm_uint64) handle, 
+                     (void *) &thread);
 
     if (err != FM_OK)
     {
-        return NULL;
+        thread = NULL;
+    }
+
+    if (pthread_mutex_unlock(&fmAlosThreadState.threadTreeLock) != 0)
+    {
+        thread = NULL;
     }
 
     return thread;

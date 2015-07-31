@@ -47,9 +47,6 @@
  * Macros, Constants & Types
  *****************************************************************************/
 
-/* The BSM interrupt status should be polled at a 5ms rate */
-#define BSM_INTERRUPT_POLL_DELAY_MSEC         5
-
 #define SPI_FREQ_KHZ                          50000
 
 #define NVM_HEADER_LT_CFG                     0x4
@@ -395,9 +392,6 @@ fm_status fmPlatformLoadPropertiesFromNVM(fm_text devName)
     void        *memmapAddr;
     fm_uint32   *switchMem;
     fm_timestamp start;
-    fm_timestamp end;
-    fm_timestamp diff;
-    fm_uint      delTime;
     fm_bool      isSpiPeripheralLockTaken;
     fm_uint32    bsmIntMask[2];
     fm_uint32    pollCnt;
@@ -410,7 +404,6 @@ fm_status fmPlatformLoadPropertiesFromNVM(fm_text devName)
     fm_uint32    dataAddr;
     int          lineNumAttr;
     fm_bool      disabledBsmInterrupts;
-    fm_uint32    globalInt;
     fm_int       size;
 
     FM_LOG_ENTRY(FM_LOG_CAT_PLATFORM, "%p\n", (void*)devName);
@@ -423,13 +416,18 @@ fm_status fmPlatformLoadPropertiesFromNVM(fm_text devName)
 
     switchMem = (fm_uint32*) memmapAddr;
 
-    err = fm10000UtilsSpiPeripheralLock(switchMem,
-                                        FM10000_SPI_PERIPHERAL_LOCK_OWNER_SWITCH_API);
+    err = fm10000UtilSpiPeripheralLock((fm_uintptr)switchMem,
+                                       FM_SPI_PERIPHERAL_LOCK_OWNER_SWITCH_API,
+                                       RegRead32,
+                                       RegWrite32);
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PLATFORM, err);
 
     isSpiPeripheralLockTaken = TRUE;
 
-    err = fm10000UtilsDisableBsmInterrupts(switchMem, bsmIntMask);
+    err = fm10000UtilsDisableBsmInterrupts((fm_uintptr)switchMem,
+                                           bsmIntMask,
+                                           RegRead32,
+                                           RegWrite32);
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PLATFORM, err);
 
     disabledBsmInterrupts = TRUE;
@@ -526,74 +524,16 @@ fm_status fmPlatformLoadPropertiesFromNVM(fm_text devName)
                          "Error reading from line %d\n",
                          err);
         }
-
-        err = fmGetTime(&end);
+        
+        err =
+            fm10000UtilsPollBsmInterrupts((fm_uintptr)switchMem,
+                                          RegRead32,
+                                          RegWrite32,
+                                          bsmIntMask,
+                                          &start,
+                                          &pollCnt,
+                                          &disabledBsmInterrupts);
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PLATFORM, err);
-
-        fmSubTimestamps(&end, &start, &diff);
-        delTime = diff.sec*1000 + diff.usec/1000;
-
-        if (delTime >=  BSM_INTERRUPT_POLL_DELAY_MSEC * pollCnt)
-        {
-            
-            globalInt = switchMem[FM10000_GLOBAL_INTERRUPT_DETECT(0)];
-
-            if ( FM_GET_BIT(globalInt,
-                            FM10000_GLOBAL_INTERRUPT_DETECT,
-                            PCIE_BSM_0) ||
-                 FM_GET_BIT(globalInt,
-                            FM10000_GLOBAL_INTERRUPT_DETECT,
-                            PCIE_BSM_1) ||
-                 FM_GET_BIT(globalInt,
-                            FM10000_GLOBAL_INTERRUPT_DETECT,
-                            PCIE_BSM_2) ||
-                 FM_GET_BIT(globalInt,
-                            FM10000_GLOBAL_INTERRUPT_DETECT,
-                            PCIE_BSM_3) ||
-                 FM_GET_BIT(globalInt,
-                            FM10000_GLOBAL_INTERRUPT_DETECT,
-                            PCIE_BSM_4) ||
-                 FM_GET_BIT(globalInt,
-                            FM10000_GLOBAL_INTERRUPT_DETECT,
-                            PCIE_BSM_5) ||
-                 FM_GET_BIT(globalInt,
-                            FM10000_GLOBAL_INTERRUPT_DETECT,
-                            PCIE_BSM_6) ||
-                 FM_GET_BIT(globalInt,
-                            FM10000_GLOBAL_INTERRUPT_DETECT,
-                            PCIE_BSM_7) ||
-                 FM_GET_BIT(globalInt,
-                            FM10000_GLOBAL_INTERRUPT_DETECT,
-                            PCIE_BSM_8) )
-            {
-                err = fm10000UtilsRestoreBsmInterrupts(switchMem, bsmIntMask);
-                FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PLATFORM, err);
-
-                disabledBsmInterrupts = FALSE;
-
-                err = fm10000UtilsDisableBsmInterrupts(switchMem, bsmIntMask);
-                FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PLATFORM, err);
-
-                disabledBsmInterrupts = TRUE;
-                
-                err = fmGetTime(&start);
-                FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PLATFORM, err);
-                
-                pollCnt = 1;
-            }
-            else
-            {
-                pollCnt++;
-
-                if (BSM_INTERRUPT_POLL_DELAY_MSEC * pollCnt > 10000)
-                {
-                    err = fmGetTime(&start);
-                    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PLATFORM, err);
-                    
-                    pollCnt = 1;
-                }
-            }
-        }
     }
 
     FM_LOG_DEBUG(FM_LOG_CAT_PLATFORM,
@@ -604,7 +544,10 @@ ABORT:
     
     if (disabledBsmInterrupts == TRUE)
     {
-        status = fm10000UtilsRestoreBsmInterrupts(switchMem, bsmIntMask);
+        status =
+            fm10000UtilsRestoreBsmInterrupts((fm_uintptr)switchMem,
+                                             bsmIntMask,
+                                             RegWrite32);
         if (status != FM_OK)
         {
             FM_LOG_ERROR(FM_LOG_CAT_PLATFORM,
@@ -618,8 +561,10 @@ ABORT:
     if (isSpiPeripheralLockTaken == TRUE)
     {
         status = 
-            fm10000UtilsSpiPeripheralUnlock(switchMem,
-                                            FM10000_SPI_PERIPHERAL_LOCK_OWNER_SWITCH_API);
+            fm10000UtilSpiPeripheralUnlock((fm_uintptr)switchMem,
+                                           FM_SPI_PERIPHERAL_LOCK_OWNER_SWITCH_API,
+                                           RegRead32,
+                                           RegWrite32);
         if (status != FM_OK)
         {
             FM_LOG_ERROR(FM_LOG_CAT_PLATFORM,

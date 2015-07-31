@@ -35,11 +35,41 @@
 #define __FM_PLATFORM_DEBUG_H
 
 void fmPlatformHexDump(fm_int addr, fm_byte *buf, fm_int nbytes);
+
 fm_status fmPlatformDoDebug(fm_int  sw,
                             fm_int  port,
                             fm_text action,
                             fm_text args);
+
 fm_status fmPlatformDumpXcvrEeprom(fm_int sw, fm_int port);
+
 fm_status fmPlatformDumpXcvrState(fm_int sw, fm_int port);
+
+fm_status fmPlatformRetimerDumpInfo(fm_int  sw, 
+                                    fm_int  idx, 
+                                    fm_text cmd, 
+                                    fm_text arg);
+
+fm_status fmPlatformRetimerDumpPortMap(fm_int sw, fm_int port);
+
+fm_status fmPlatformRetimerSetAppMode(fm_int sw, fm_int port, fm_int mode);
+
+fm_status fmPlatformRetimerSetLaneTxEq(fm_int sw,
+                                       fm_int port,
+                                       fm_int internal,
+                                       fm_int polarity,
+                                       fm_int preTap,
+                                       fm_int attenuation,
+                                       fm_int postTap);
+
+fm_status fmPlatformRetimerRegisterRead(fm_int     sw, 
+                                        fm_int     phyIdx,
+                                        fm_int     reg, 
+                                        fm_uint32 *value);
+
+fm_status fmPlatformRetimerRegisterWrite(fm_int     sw, 
+                                         fm_int     phyIdx,
+                                         fm_int     reg, 
+                                         fm_uint32  value);
 
 #endif /* __FM_PLATFORM_DEBUG_H */

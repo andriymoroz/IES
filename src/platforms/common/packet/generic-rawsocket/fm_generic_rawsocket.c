@@ -493,6 +493,13 @@ fm_status fmRawPacketSocketSendPackets(fm_int sw)
     switchPtr = GET_SWITCH_PTR(sw);
     pktState  = GET_PLAT_PKT_STATE(sw);
 
+    if (GET_PLAT_STATE(sw)->rawSocket <= 0)
+    {
+        FM_LOG_ERROR(FM_LOG_CAT_EVENT_PKT_TX, 
+                     "Socket is not initialized.\n");
+        FM_LOG_EXIT(FM_LOG_CAT_EVENT_PKT_TX, FM_ERR_UNINITIALIZED);
+    }
+
     /* initialize the message header */
     FM_CLEAR(msg);
     msg.msg_name = NULL; /* Optional field */

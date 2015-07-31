@@ -4,9 +4,8 @@
  * File:            fm_debug_selftest.c
  * Creation Date:   March 5, 2009
  * Description:     FM4000 self test
- *              
  *
- * Copyright (c) 2005 - 2011, Intel Corporation
+ * Copyright (c) 2005 - 2015, Intel Corporation
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -30,7 +29,7 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
+ *****************************************************************************/
 
 #include <fm_sdk_int.h>
 
@@ -80,7 +79,7 @@
  *
  *****************************************************************************/
  
-/* Some implementation note core test code on Tahoe:
+/* Some implementation note core test code on FM2000:
  *
  *      On FM2000, it may be necessary to disable LEDs at beginning of test 
  *      and reenable at end raw register accesses can be made without fear of 

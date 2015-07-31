@@ -41,7 +41,7 @@
 
 /* For switch utility functions */
 #include <platforms/common/switch/fm10000/fm10000_utils.h>
-#include <platforms/common/switch/fm10000/fm10000_utils_bsm.h>
+#include <platforms/util/fm10000/fm10000_util_bsm.h>
 
 /* For packet transfer */
 #include <platforms/common/packet/generic-packet/fm_generic_packet.h>

@@ -286,7 +286,6 @@ fm_status fm10000DeleteForwardingRule(fm_int sw, fm_int ruleId)
  * \param[out]      logicalPort is a pointer to an integer into which the
  *                  new logical port will be written.
  *
- *
  * \return          FM_OK if successful.
  * \return          FM_ERR_GLORT_IN_USE if the specified is already being used
  *                  by others.
@@ -312,10 +311,6 @@ fm_status fm10000CreateLogicalPortForGlort(fm_int    sw,
     fm_forwardRuleInternal *tmpRule;
     fm_uint64               tmpId;
     fm_bool                 found;
-#if 0
-    fm_int                  hogWm;
-#endif
-
 
     FM_LOG_ENTRY( FM_LOG_CAT_STACKING,
                   "sw=%d, glort=%d, logicalPort=%p\n",
@@ -424,17 +419,8 @@ fm_status fm10000CreateLogicalPortForGlort(fm_int    sw,
     /* Increase the CAM reference use count */
     portPtr->camEntry->useCount++;
 
-    /* What to do here? */
     portPtr->destEntry  = NULL;
     portPtr->numDestEntries = 0;
-
-#if 0
-    for (hogWm = 0; hogWm < 4; hogWm++)
-    {
-        portExt->txHogWm[hogWm] = -1;
-        portExt->autoTxHogWm[hogWm] = -1;
-    }
-#endif
 
     /* Initialize multicast group membership list */
     fmTreeInit(&portPtr->mcastGroupList);
@@ -690,18 +676,6 @@ fm_status fm10000RedirectCpuTrafficToPort(fm_int sw, fm_int port)
 
     /* Update the CPU_TRAP_MASK so trapped frames go to the CPU. */
     err = switchPtr->WriteUINT64(sw, FM10000_CPU_TRAP_MASK_FH(0), rv1);
-    FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_STACKING, err);
-
-    /* Should update FM_FLOOD_PORT destination mask? */
-
-#if 0
-    /* Figure out how logging will be handled in FM10000 */
-    err = switchPtr->WriteUINT32( sw, FM10000_CPU_LOG_MASK_FH, rv1 );
-    FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_STACKING, err);
-
-    err = switchPtr->WriteUINT32(sw, FM10000_LOG_MASK, rv1 );
-    FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_STACKING, err);
-#endif
 
     FM_LOG_EXIT(FM_LOG_CAT_STACKING, err);
 

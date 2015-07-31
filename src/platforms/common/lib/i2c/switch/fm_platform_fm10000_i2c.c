@@ -423,13 +423,24 @@ static fm_status _fmPlatformFm10000I2cWriteRead(fm_uintptr handle,
 
     if (FM_GET_FIELD(regValue, FM10000_I2C_CTRL, CommandCompleted) != 1)
     {
-        FM_LOG_ERROR(FM_LOG_CAT_PLATFORM,
-                     "Dev=0x%02x: I2C Command completed with error 0x%x. "
-                     "I2C_CTRL(0x%x)=0x%x\n",
-                     device,
-                     FM_GET_FIELD(regValue, FM10000_I2C_CTRL, CommandCompleted),
-                     FM10000_I2C_CTRL,
-                     regValue);
+        if (FM_GET_FIELD(regValue, FM10000_I2C_CTRL, CommandCompleted) == 3)
+        {
+            if (i2cDebug & 0x4)
+            {
+                FM_LOG_PRINT("No ACK received for address 0x%02x\n", device);
+            }
+        }
+        else
+        {
+            FM_LOG_ERROR(FM_LOG_CAT_PLATFORM,
+                         "Dev=0x%02x: I2C Command completed with error 0x%x. "
+                         "I2C_CTRL(0x%x)=0x%x\n",
+                         device,
+                         FM_GET_FIELD(regValue, FM10000_I2C_CTRL, CommandCompleted),
+                         FM10000_I2C_CTRL,
+                         regValue);
+        }
+
         FM_LOG_EXIT(FM_LOG_CAT_PLATFORM, FM_ERR_I2C_NO_RESPONSE);
     }
 

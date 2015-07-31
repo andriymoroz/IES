@@ -59,6 +59,28 @@
 
 
 /*****************************************************************************/
+/** fm10000DecodeVID
+ *
+ * \desc            Decodes voltage VR12 VID format to millivolts.
+ *
+ * \param[in]       vid is the voltage in VR12 VID format.
+ *
+ * \return          Voltage in millivolts.
+ *
+ *****************************************************************************/
+static fm_uint fm10000DecodeVID(fm_uint vid)
+{
+    if (vid == 0)
+    {
+        return 0;
+    }
+    return 5 * (vid - 1) + 250;
+
+}   /* end fm10000DecodeVID */
+
+
+
+/*****************************************************************************/
 /** fm10000DbgDumpLogicalPortMapping
  * \ingroup intDiagPorts
  *
@@ -339,4 +361,84 @@ fm_status fm10000DbgDumpPortMap(fm_int sw, fm_int port, fm_int portType)
 }   /* end fm10000DbgDumpPortMap */
 
 
+
+/*****************************************************************************/
+/** fm10000DbgGetNominalSwitchVoltages
+ * \ingroup intDiag
+ *
+ * \desc            Retrieve nominal switch voltages.
+ *
+ * \param[in]       sw is the switch number.
+ *
+ * \param[out]      vdds is a pointer to nominal VDDS in millivolts
+ *
+ * \param[out]      rawVdds is a pointer to nominal VDDS in VR12 VID format
+ *
+ * \param[out]      vddf is a pointer to nominal VDDF in millivolts
+ *
+ * \param[out]      rawVddf is a pointer to nominal VDDF in VR12 VID format
+ *
+ * \return          FM_OK if successful.
+ * \return          FM_ERR_INVALID_ARGUMENTS if one of the pointer arguments is
+ *                    NULL.
+ * \return          FM_ERR_INVALID_SWITCH if sw is invalid.
+ * \return          FM_ERR_SWITCH_NOT_UP if switch is not up.
+ *
+ *****************************************************************************/
+fm_status fm10000DbgGetNominalSwitchVoltages(fm_int     sw,
+                                             fm_uint32 *vdds,
+                                             fm_uint32 *rawVdds,
+                                             fm_uint32 *vddf,
+                                             fm_uint32 *rawVddf)
+{
+    fm_switch *switchPtr;
+    fm_uint32  regValue;
+    fm_status  status;
+
+    FM_LOG_ENTRY(FM_LOG_CAT_SWITCH, "sw=%d\n", sw);
+
+    if ( (vdds == NULL) || (rawVdds == NULL) ||
+         (vddf == NULL) || (rawVddf == NULL) )
+    {
+        FM_LOG_EXIT(FM_LOG_CAT_SWITCH, FM_ERR_INVALID_ARGUMENT);
+    }
+    
+    VALIDATE_AND_PROTECT_SWITCH(sw);
+
+    switchPtr = GET_SWITCH_PTR(sw);
+    
+    *vdds = 0;
+    *rawVdds = 0;
+    *vddf = 0;
+    *rawVddf = 0;
+    
+    status = switchPtr->ReadUINT32(sw, FM10000_FUSE_DATA_0(), &regValue );
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH_FM6000, status);
+    
+    *rawVdds = FM_GET_UNNAMED_FIELD(regValue, 16, 8);
+
+    if (*rawVdds == 0)
+    {
+        *vdds = 850;
+    }
+    else
+    {
+        *vdds = fm10000DecodeVID(*rawVdds);
+    }
+
+    *rawVddf = FM_GET_UNNAMED_FIELD(regValue, 24, 8);
+    if (*rawVddf == 0)
+    {
+        *vddf = 950;
+    }
+    else
+    {
+        *vddf = fm10000DecodeVID(*rawVddf);
+    }
+
+ABORT:  
+    UNPROTECT_SWITCH(sw);
+    FM_LOG_EXIT(FM_LOG_CAT_SWITCH, status);
+
+} /* end fm10000DbgGetNominalSwitchVoltages */
 

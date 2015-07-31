@@ -50,6 +50,10 @@ enum
     RULE_MCAST_FLOOD_LOG,
     RULE_MCAST_FLOOD_DROP,
 
+    RULE_BCAST_FLOOD_TRAP,
+    RULE_BCAST_FLOOD_LOG,
+    RULE_BCAST_FLOOD_DROP,
+
 #if (ENABLE_AUX_TRIGGERS)
     RULE_MCAST_DROP_TRAP,
     RULE_MCAST_MASK_DROP_TRAP,
@@ -108,6 +112,46 @@ typedef struct
 /*****************************************************************************
  * Local Variables
  *****************************************************************************/
+
+/**************************************************
+ * Broadcast trigger descriptors.
+ **************************************************/
+
+static const triggerDesc bcastDropDesc =
+{
+    .descName   = "BCAST_DROP",
+    .trigName   = "bcastFloodingDropTrigger",
+    .group      = FM10000_TRIGGER_GROUP_BCAST_FLOOD,
+    .rule       = RULE_BCAST_FLOOD_DROP,
+    .classMask  = FM_TRIGGER_FRAME_CLASS_BCAST,
+    .glort      = FM10000_GLORT_BCAST,
+    .trigType   = TRIG_TYPE_DROP,
+    .portSetOff = offsetof(fm10000_floodInfo, bcastDropSet),
+};
+
+static const triggerDesc bcastLogDesc =
+{
+    .descName   = "BCAST_LOG",
+    .trigName   = "bcastFloodingLogTrigger",
+    .group      = FM10000_TRIGGER_GROUP_BCAST_FLOOD,
+    .rule       = RULE_BCAST_FLOOD_LOG,
+    .classMask  = FM_TRIGGER_FRAME_CLASS_BCAST,
+    .glort      = FM10000_GLORT_BCAST,
+    .trigType   = TRIG_TYPE_LOG,
+    .portSetOff = offsetof(fm10000_floodInfo, bcastLogSet),
+};
+
+static const triggerDesc bcastTrapDesc =
+{
+    .descName   = "BCAST_TRAP",
+    .trigName   = "bcastFloodingTrapTrigger",
+    .group      = FM10000_TRIGGER_GROUP_BCAST_FLOOD,
+    .rule       = RULE_BCAST_FLOOD_TRAP,
+    .classMask  = FM_TRIGGER_FRAME_CLASS_BCAST,
+    .glort      = FM10000_GLORT_BCAST,
+    .trigType   = TRIG_TYPE_TRAP,
+    .portSetOff = offsetof(fm10000_floodInfo, bcastTrapSet),
+};
 
 
 /**************************************************
@@ -418,6 +462,10 @@ static fm_status ConfigFloodingTrigger(fm_int sw, const triggerDesc * desc)
     trigCond.cfg.matchRoutedMask = FM_TRIGGER_SWITCHED_FRAMES;
 
     trigCond.cfg.HAMask = FM_TRIGGER_HA_FORWARD_FLOOD;
+    if (desc->group == FM10000_TRIGGER_GROUP_BCAST_FLOOD)
+    {
+        trigCond.cfg.HAMask |= FM_TRIGGER_HA_FORWARD_FID;
+    }
 
     trigCond.cfg.matchDestGlort  = FM_TRIGGER_MATCHCASE_MATCHIFEQUAL;
     trigCond.param.destGlort     = desc->glort;
@@ -817,6 +865,9 @@ static const char * fmMcastFloodingToText(fm_int floodType)
         case FM_MCAST_DISCARD:
             return "MCAST_DISCARD";
 
+        case FM_MCAST_FWD_EXCPU:
+            return "MCAST_FWD_EXCPU";
+
         case FM_MCAST_FLOODING_PER_PORT:
             return "MCAST_FLOODING_PER_PORT";
 
@@ -851,6 +902,9 @@ static const char * fmUcastFloodingToText(fm_int floodType)
 
         case FM_UCAST_DISCARD:
             return "UCAST_DISCARD";
+
+        case FM_UCAST_FWD_EXCPU:
+            return "UCAST_FWD_EXCPU";
 
         case FM_UCAST_FLOODING_PER_PORT:
             return "UCAST_FLOODING_PER_PORT";
@@ -1075,6 +1129,23 @@ static fm_status InitConfigTriggers(fm_int sw)
 
     }   /* end if (floodInfo->initMcastFlooding) */
 
+    if (floodInfo->initBcastFlooding)
+    {
+        /**************************************************
+         * Configure the broadcast flooding triggers.
+         **************************************************/
+
+        err = ConfigFloodingTrigger(sw, &bcastTrapDesc);
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
+
+        err = ConfigFloodingTrigger(sw, &bcastLogDesc);
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
+
+        err = ConfigFloodingTrigger(sw, &bcastDropDesc);
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
+
+    }   /* end if (floodInfo->initBcastFlooding) */
+
 ABORT:
     FM_LOG_EXIT(FM_LOG_CAT_SWITCH, err);
 
@@ -1146,6 +1217,23 @@ static fm_status InitCreateTriggers(fm_int sw)
 
     }   /* end if (floodInfo->initMcastFlooding) */
 
+    /**************************************************
+     * Create broadcast flooding triggers.
+     **************************************************/
+
+    if (floodInfo->initBcastFlooding)
+    {
+        err = CreateFloodingTrigger(sw, &bcastTrapDesc);
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
+
+        err = CreateFloodingTrigger(sw, &bcastLogDesc);
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
+
+        err = CreateFloodingTrigger(sw, &bcastDropDesc);
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
+
+    }   /* end if (floodInfo->initBcastFlooding) */
+
 
 ABORT:
     FM_LOG_EXIT(FM_LOG_CAT_SWITCH, err);
@@ -1188,6 +1276,10 @@ static fm_status InitFloodStructures(fm_int sw)
     floodInfo->mcastLogSet  = FM_PORT_SET_NONE;
     floodInfo->mcastTrapSet = FM_PORT_SET_NONE;
 
+    floodInfo->bcastDropSet = FM_PORT_SET_NONE;
+    floodInfo->bcastLogSet  = FM_PORT_SET_NONE;
+    floodInfo->bcastTrapSet = FM_PORT_SET_NONE;
+
     floodInfo->dropMaskSet  = FM_PORT_SET_NONE;
 
     floodInfo->trapAlwaysId = -1;
@@ -1203,6 +1295,10 @@ static fm_status InitFloodStructures(fm_int sw)
     floodInfo->initMcastFlooding = fmGetBoolApiProperty(
         FM_AAK_API_FM10000_INIT_MCAST_FLOODING_TRIGGERS,
         FM_AAD_API_FM10000_INIT_MCAST_FLOODING_TRIGGERS);
+
+    floodInfo->initBcastFlooding = fmGetBoolApiProperty(
+        FM_AAK_API_FM10000_INIT_BCAST_FLOODING_TRIGGERS,
+        FM_AAD_API_FM10000_INIT_BCAST_FLOODING_TRIGGERS);
 
     /* Should this be a switch attribute, rather than a property? */
     floodInfo->trapPri = fmGetIntApiProperty(
@@ -1361,7 +1457,7 @@ ABORT:
  *****************************************************************************/
 static fm_status SetFloodingTriggerPriority(fm_int               sw,
                                             const triggerDesc *  desc,
-                                            fm_int               priority)
+                                            fm_uint32            priority)
 {
     fm10000_switch *    switchExt;
     fm_triggerCondition trigCond;
@@ -1392,9 +1488,10 @@ static fm_status SetFloodingTriggerPriority(fm_int               sw,
          * The trigger exists. Update the trigger action
          **************************************************/
 
-         trigAction.cfg.switchPriAction = FM_TRIGGER_SWPRI_ACTION_REASSIGN;
+        trigAction.cfg.switchPriAction = FM_TRIGGER_SWPRI_ACTION_REASSIGN;
 
-        if(priority >= 0)
+        if( (priority != FM_QOS_SWPRI_DEFAULT) && 
+            (priority < FM10000_MAX_SWITCH_PRIORITIES) )
         {
             /**************************************************
              * New priority is valid set this value.
@@ -1409,8 +1506,8 @@ static fm_status SetFloodingTriggerPriority(fm_int               sw,
              * New priority is not valid go back to the initial
              * configuration. First check cached api property.
              **************************************************/
-
-             if(switchExt->floodInfo.trapPri >= 0)
+             if((switchExt->floodInfo.trapPri >= 0) && 
+                (switchExt->floodInfo.trapPri < FM10000_MAX_SWITCH_PRIORITIES))
              {
 
                  trigAction.param.newSwitchPri = switchExt->floodInfo.trapPri;
@@ -1433,6 +1530,7 @@ static fm_status SetFloodingTriggerPriority(fm_int               sw,
                                       &trigAction,
                                       TRUE);
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
+
     }
 
 ABORT:
@@ -1722,10 +1820,12 @@ fm_status fm10000DbgDumpFlooding(fm_int sw)
                  fmUcastFloodingToText(switchExt->ucastFlooding));
 
     FM_LOG_PRINT("\n");
-    FM_LOG_PRINT("initUcastFlooding   : %s\n",
-                 FM_BOOLSTRING(floodInfo->initUcastFlooding));
+    FM_LOG_PRINT("initBcastFlooding   : %s\n",
+                 FM_BOOLSTRING(floodInfo->initBcastFlooding));
     FM_LOG_PRINT("initMcastFlooding   : %s\n",
                  FM_BOOLSTRING(floodInfo->initMcastFlooding));
+    FM_LOG_PRINT("initUcastFlooding   : %s\n",
+                 FM_BOOLSTRING(floodInfo->initUcastFlooding));
     FM_LOG_PRINT("trapPri             : %d\n",
                  floodInfo->trapPri);
     FM_LOG_PRINT("trapAlwaysId        : %d\n",
@@ -1742,6 +1842,10 @@ fm_status fm10000DbgDumpFlooding(fm_int sw)
     FM_LOG_PRINT("\n");
     FM_LOG_PRINT("Name              PortSet  DestMask\n");
     FM_LOG_PRINT("----------------  -------  --------------\n");
+
+    DbgDumpPortSet(sw, floodInfo->bcastDropSet, "bcastDropSet");
+    DbgDumpPortSet(sw, floodInfo->bcastLogSet,  "bcastLogSet");
+    DbgDumpPortSet(sw, floodInfo->bcastTrapSet, "bcastTrapSet");
 
     DbgDumpPortSet(sw, floodInfo->mcastDropSet, "mcastDropSet");
     DbgDumpPortSet(sw, floodInfo->mcastLogSet,  "mcastLogSet");
@@ -1850,6 +1954,19 @@ fm_status fm10000FreeFlooding(fm_int sw)
     FM_ERR_COMBINE(retVal, err);
 
     /**************************************************
+     * Free broadcast triggers.
+     **************************************************/
+
+    err = FreeFloodingTrigger(sw, &bcastDropDesc);
+    FM_ERR_COMBINE(retVal, err);
+
+    err = FreeFloodingTrigger(sw, &bcastLogDesc);
+    FM_ERR_COMBINE(retVal, err);
+
+    err = FreeFloodingTrigger(sw, &bcastTrapDesc);
+    FM_ERR_COMBINE(retVal, err);
+
+    /**************************************************
      * Free auxiliary triggers.
      **************************************************/
 
@@ -1924,6 +2041,130 @@ ABORT:
 
 
 /*****************************************************************************/
+/** fm10000SetPortBcastFlooding
+ * \ingroup intSwitch
+ *
+ * \desc            Applies the specified broadcast flooding attribute
+ *                  to a port.
+ *
+ * \param[in]       sw is the switch on which to operate.
+ * 
+ * \param[in]       port is the port number to be configured.
+ * 
+ * \param[in]       value is the broadcast flooding attribute to be applied.
+ *                  See ''fm_bcastFlooding'' for possible values.
+ *
+ * \return          FM_OK if successful.
+ *
+ *****************************************************************************/
+fm_status fm10000SetPortBcastFlooding(fm_int sw, fm_int port, fm_int value)
+{
+    fm_switch *         switchPtr;
+    fm10000_switch *    switchExt;
+    fm10000_floodInfo * floodInfo;
+    fm_uint32           trapClassSwPriMap;
+    fm_status           err;
+
+    switchPtr = GET_SWITCH_PTR(sw);
+    switchExt = GET_SWITCH_EXT(sw);
+    floodInfo = &switchExt->floodInfo;
+
+    switch (value)
+    {
+        case FM_PORT_BCAST_FWD_EXCPU:
+            /* Disable broadcast DROP. */
+            err = SetFloodingTriggerPort(sw, &bcastDropDesc, port, FALSE);
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
+
+            /* Disable broadcast TRAP. */
+            err = SetFloodingTriggerPort(sw, &bcastTrapDesc, port, FALSE);
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
+
+            /* Disable broadcast LOG. */
+            err = SetFloodingTriggerPort(sw, &bcastLogDesc, port, FALSE);
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
+
+            break;
+
+        case FM_PORT_BCAST_FWD:
+            /* Disable broadcast DROP. */
+            err = SetFloodingTriggerPort(sw, &bcastDropDesc, port, FALSE);
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
+
+            /* Disable broadcast TRAP. */
+            err = SetFloodingTriggerPort(sw, &bcastTrapDesc, port, FALSE);
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
+
+            /* Enable broadcast LOG. */
+            err = SetFloodingTriggerPort(sw, &bcastLogDesc, port, TRUE);
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
+
+            break;
+
+        case FM_PORT_BCAST_DISCARD:
+            /* Enable broadcast DROP. */
+            err = SetFloodingTriggerPort(sw, &bcastDropDesc, port, TRUE);
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
+
+            /* Disable broadcast TRAP. */
+            err = SetFloodingTriggerPort(sw, &bcastTrapDesc, port, FALSE);
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
+
+            /* Disable broadcast LOG. */
+            err = SetFloodingTriggerPort(sw, &bcastLogDesc, port, FALSE);
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
+
+            break;
+
+        case FM_PORT_BCAST_TRAP:
+            /* Disable broadcast DROP. */
+            err = SetFloodingTriggerPort(sw, &bcastDropDesc, port, FALSE);
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
+
+            /* Enable broadcast TRAP. */
+            err = SetFloodingTriggerPort(sw, &bcastTrapDesc, port, TRUE);
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
+
+            /* Disable broadcast LOG. */
+            err = SetFloodingTriggerPort(sw, &bcastLogDesc, port, FALSE);
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
+
+            /* Update qos sw priority mapping */
+            err = fm10000GetSwitchQOS(sw,
+                                      FM_QOS_TRAP_CLASS_SWPRI_MAP,
+                                      FM_QOS_TRAP_CLASS_BCAST_FLOODING,
+                                      &trapClassSwPriMap);
+
+            if ((err == FM_OK) && (trapClassSwPriMap != FM_QOS_SWPRI_DEFAULT))
+            {
+                err = SetFloodingTriggerPriority(sw,
+                                                 &bcastTrapDesc,
+                                                 trapClassSwPriMap);
+                FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
+            }
+            else
+            {
+                /* Ignore error when the trap class was not found */
+                err = FM_OK;
+            }
+
+            break;
+
+        default:
+            err = FM_ERR_INVALID_VALUE;
+            break;
+
+    }   /* end switch (value) */
+
+ABORT:
+    FM_LOG_EXIT(FM_LOG_CAT_SWITCH, err);
+
+}   /* end fm10000SetPortBcastFlooding */
+
+
+
+
+/*****************************************************************************/
 /** fm10000SetPortMcastFlooding
  * \ingroup intSwitch
  *
@@ -1944,7 +2185,7 @@ fm_status fm10000SetPortMcastFlooding(fm_int sw, fm_int port, fm_int value)
 {
     fm10000_switch *    switchExt;
     fm10000_floodInfo * floodInfo;
-    fm_int              trapClassSwPriMap;
+    fm_uint32           trapClassSwPriMap;
     fm_status           err;
 
     switchExt = GET_SWITCH_EXT(sw);
@@ -1952,7 +2193,7 @@ fm_status fm10000SetPortMcastFlooding(fm_int sw, fm_int port, fm_int value)
 
     switch (value)
     {
-        case FM_PORT_MCAST_FWD:
+        case FM_PORT_MCAST_FWD_EXCPU:
             /* Disable multicast DROP. */
             err = SetFloodingTriggerPort(sw, &mcastDropDesc, port, FALSE);
             FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
@@ -2001,7 +2242,7 @@ fm_status fm10000SetPortMcastFlooding(fm_int sw, fm_int port, fm_int value)
                                       FM_QOS_TRAP_CLASS_MCAST_FLOODING,
                                       &trapClassSwPriMap);
 
-            if ((err == FM_OK) && (trapClassSwPriMap > 0))
+            if ((err == FM_OK) && (trapClassSwPriMap != FM_QOS_SWPRI_DEFAULT))
             {
                 err = SetFloodingTriggerPriority(sw,
                                                  &mcastTrapDesc,
@@ -2016,7 +2257,7 @@ fm_status fm10000SetPortMcastFlooding(fm_int sw, fm_int port, fm_int value)
 
             break;
 
-        case FM_PORT_MCAST_LOG:
+        case FM_PORT_MCAST_FWD:
             /* Disable multicast DROP. */
             err = SetFloodingTriggerPort(sw, &mcastDropDesc, port, FALSE);
             FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
@@ -2066,7 +2307,7 @@ fm_status fm10000SetPortUcastFlooding(fm_int sw, fm_int port, fm_int value)
 {
     fm10000_switch *    switchExt;
     fm10000_floodInfo * floodInfo;
-    fm_int              trapClassSwPriMap;
+    fm_uint32           trapClassSwPriMap;
     fm_status           err;
 
     FM_LOG_ENTRY(FM_LOG_CAT_SWITCH,
@@ -2080,7 +2321,7 @@ fm_status fm10000SetPortUcastFlooding(fm_int sw, fm_int port, fm_int value)
 
     switch (value)
     {
-        case FM_PORT_UCAST_FWD:
+        case FM_PORT_UCAST_FWD_EXCPU:
             /* Disable unicast DROP. */
             err = SetFloodingTriggerPort(sw, &ucastDropDesc, port, FALSE);
             FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
@@ -2128,7 +2369,7 @@ fm_status fm10000SetPortUcastFlooding(fm_int sw, fm_int port, fm_int value)
                                       FM_QOS_TRAP_CLASS_SWPRI_MAP,
                                       FM_QOS_TRAP_CLASS_UCAST_FLOODING,
                                       &trapClassSwPriMap);
-            if ((err == FM_OK) && (trapClassSwPriMap > 0))
+            if ((err == FM_OK) && (trapClassSwPriMap != FM_QOS_SWPRI_DEFAULT))
             {
                 err = SetFloodingTriggerPriority(sw,
                                                  &ucastTrapDesc,
@@ -2143,7 +2384,7 @@ fm_status fm10000SetPortUcastFlooding(fm_int sw, fm_int port, fm_int value)
 
             break;
 
-        case FM_PORT_UCAST_LOG:
+        case FM_PORT_UCAST_FWD:
             /* Disable unicast DROP. */
             err = SetFloodingTriggerPort(sw, &ucastDropDesc, port, FALSE);
             FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
@@ -2185,7 +2426,7 @@ ABORT:
  * \return          FM_OK if successful.
  *
  *****************************************************************************/
-fm_status fm10000SetTrapPriorityUcastFlooding(fm_int sw, fm_int priority)
+fm_status fm10000SetTrapPriorityUcastFlooding(fm_int sw, fm_uint32 priority)
 {
     fm_status           err;
 
@@ -2217,7 +2458,7 @@ fm_status fm10000SetTrapPriorityUcastFlooding(fm_int sw, fm_int priority)
  * \return          FM_OK if successful.
  *
  *****************************************************************************/
-fm_status fm10000SetTrapPriorityMcastFlooding(fm_int sw, fm_int priority)
+fm_status fm10000SetTrapPriorityMcastFlooding(fm_int sw, fm_uint32 priority)
 {
     fm_status           err;
 
@@ -2231,6 +2472,94 @@ fm_status fm10000SetTrapPriorityMcastFlooding(fm_int sw, fm_int priority)
     FM_LOG_EXIT(FM_LOG_CAT_SWITCH, err);
 
 } /* end fm10000SetTrapPriorityMcastFlooding */
+
+
+
+
+/*****************************************************************************/
+/** fm10000SetTrapPriorityBcastFlooding
+ * \ingroup intSwitch
+ *
+ * \desc            Configures the specified switch priority for broadcast 
+ *                  flooding.
+ *
+ * \param[in]       sw is the switch on which to operate.
+ * 
+ * \param[in]       priority is the switch priority to be configured.
+ * 
+ * \return          FM_OK if successful.
+ *
+ *****************************************************************************/
+fm_status fm10000SetTrapPriorityBcastFlooding(fm_int sw, fm_uint32 priority)
+{
+    fm_status           err;
+
+    FM_LOG_ENTRY(FM_LOG_CAT_SWITCH,
+                 "sw=%d priority=%d\n",
+                 sw,
+                 priority);
+
+    err = SetFloodingTriggerPriority(sw, &bcastTrapDesc, priority);
+
+    FM_LOG_EXIT(FM_LOG_CAT_SWITCH, err);
+
+} /* end fm10000SetTrapPriorityBcastFlooding */
+
+
+
+
+/*****************************************************************************/
+/** fm10000GetStateBcastTrapFlooding
+ * \ingroup intSwitch
+ *
+ * \desc            Get state of trapping broadcast flooding.
+ *
+ * \param[in]       sw is the switch on which to operate.
+ * 
+ * \param[out]      enabled points to a caller allocated memory where broadcast 
+ *                  flooding trapping state will be set (TRUE if the broadcast 
+ *                  flooding trapping is enabled).
+ * 
+ * \return          FM_OK if successful.
+ *
+ *****************************************************************************/
+fm_status fm10000GetStateBcastTrapFlooding(fm_int sw, fm_bool * enabled)
+{
+    fm10000_switch *    switchExt;
+    fm10000_floodInfo * floodInfo;
+    fm_int *            portSet;
+    fm_status           err;
+
+    FM_LOG_ENTRY(FM_LOG_CAT_SWITCH,
+                 "sw=%d\n",
+                 sw);
+
+    /* Check input argument */
+    if(enabled == NULL)
+    {
+        err = FM_ERR_INVALID_ARGUMENT;
+        FM_LOG_EXIT(FM_LOG_CAT_SWITCH, err);
+    }
+
+    err = FM_OK;
+
+    /* Get flood info */
+    switchExt = GET_SWITCH_EXT(sw);
+    floodInfo = &switchExt->floodInfo;
+
+    /* Based on the porset for bcast trap trigger set requested state */
+    portSet  = GET_PORTSET_PTR(floodInfo, &bcastTrapDesc);
+    *enabled = FALSE;
+
+    if (*portSet != FM_PORT_SET_NONE)
+    {
+        /* portSet configured - trap flooding enabled */
+        *enabled = TRUE;
+    }
+
+    FM_LOG_EXIT(FM_LOG_CAT_SWITCH, err);
+
+} /* end fm10000GetStateBcastTrapFlooding */
 
 
 

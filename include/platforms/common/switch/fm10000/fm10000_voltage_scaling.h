@@ -1,11 +1,11 @@
 /* vim:ts=4:sw=4:expandtab
  * (No tabs, indent level is 4 spaces)  */
 /*****************************************************************************
- * File:            fmSWAG_api_routing_int.h
- * Creation Date:   April 15, 2008
- * Description:     Contains constants and functions used to support routing.
+ * File:            fm10000_voltage_scaling.h
+ * Creation Date:   April 17, 2015
+ * Description:     Functions to access chip power supply voltage scaling.
  *
- * Copyright (c) 2007 - 2011, Intel Corporation
+ * Copyright (c) 2015, Intel Corporation
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -29,21 +29,27 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
-
-#ifndef __FM_FMSWAG_API_ROUTING_INT_H
-#define __FM_FMSWAG_API_ROUTING_INT_H
-
-
-/*****************************************************************************
- *
- *  Function Prototypes and Function Macros
- *
  *****************************************************************************/
 
-fm_status fmSWAGRoutingProcessArpRedirect(fm_int sw, fm_bool *plogArpRedirect);
-void fmSWAGDbgDumpRouteStats(fm_int sw);
-void fmSWAGDbgDumpRouteTables(fm_int sw, fm_int flags);
+#ifndef __FM_FM10000_VOLTAGE_SCALING_H
+#define __FM_FM10000_VOLTAGE_SCALING_H
 
 
-#endif  /* __FM_FMSWAG_API_ROUTING_INT_H */
+/**************************************************/
+/* This structure represents fm10000 nominal voltages: VDD and VDDS.
+ * Used as an argument to ''fm10000GetNominalSwitchVoltages''.
+ **************************************************/
+typedef struct _fm_fm10000NominalVoltages
+{
+    fm_uint32 VDDF;    /* in millivolts */
+    fm_uint32 VDDS;    /* in millivolts */
+
+} fm_fm10000NominalVoltages;
+
+
+fm_status fm10000GetNominalSwitchVoltages(fm_int                    sw,
+                                          fm_fm10000NominalVoltages *nominalVoltages,
+                                          fm_registerReadUINT32Func readFunction);
+
+
+#endif /* __FM_FM10000_VOLTAGE_SCALING_H */

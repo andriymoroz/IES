@@ -30,7 +30,7 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
+ *****************************************************************************/
 
 #include <fm_sdk_fm10000_int.h>
 
@@ -39,37 +39,37 @@
  *****************************************************************************/
 
 
- 
- 
- 
+
+
+
 static fm_int serDesWidthModeArray[FM10000_LANE_BITRATE_MAX] =
 {
-     
+
     FM10000_SERDES_WIDTH_40,
 
-     
+
     FM10000_SERDES_WIDTH_20,
 
-     
+
     FM10000_SERDES_WIDTH_20,
 
-     
+
     FM10000_SERDES_WIDTH_10,
 
-     
+
     FM10000_SERDES_WIDTH_10,
 
-     
+
     FM10000_SERDES_WIDTH_10,
 
-     
+
     FM10000_SERDES_WIDTH_10
 };
 
 
- 
- 
- 
+
+
+
 static fm_int serDesRateSelArray[FM10000_LANE_BITRATE_MAX] =
 {
     FM10000_SERDES_DIVIDER_ETHMODE_25G,
@@ -104,7 +104,7 @@ static fm_status fm10000SerdesInitXServices(fm_int sw);
 
 fm_status __attribute__((weak)) fm10000SerdesInitXServicesExt(fm_int sw);
 
- 
+
 fm_text fm10000LaneBitRatesMap[FM10000_LANE_BITRATE_MAX] =
 {
     "25 Gbps",
@@ -119,82 +119,82 @@ fm_text fm10000LaneBitRatesMap[FM10000_LANE_BITRATE_MAX] =
 
 fm10000_serdesMap fm10000SerdesMap[FM10000_NUM_SERDES] =
 {
-     
-    {  FM10000_SERDES_RING_EPL,  FM10000_EPL_RING_SERDES_SBUS_BASE_ADDR + 0x00,     0,          { 0 },    0    },  
-    {  FM10000_SERDES_RING_EPL,  FM10000_EPL_RING_SERDES_SBUS_BASE_ADDR + 0x01,     1,          { 0 },    1    },  
-    {  FM10000_SERDES_RING_EPL,  FM10000_EPL_RING_SERDES_SBUS_BASE_ADDR + 0x02,     2,          { 0 },    2    },  
-    {  FM10000_SERDES_RING_EPL,  FM10000_EPL_RING_SERDES_SBUS_BASE_ADDR + 0x03,     3,          { 0 },    3    },  
-    {  FM10000_SERDES_RING_EPL,  FM10000_EPL_RING_SERDES_SBUS_BASE_ADDR + 0x04,     4,          { 1 },    0    },  
-    {  FM10000_SERDES_RING_EPL,  FM10000_EPL_RING_SERDES_SBUS_BASE_ADDR + 0x05,     5,          { 1 },    1    },  
-    {  FM10000_SERDES_RING_EPL,  FM10000_EPL_RING_SERDES_SBUS_BASE_ADDR + 0x06,     6,          { 1 },    2    },  
-    {  FM10000_SERDES_RING_EPL,  FM10000_EPL_RING_SERDES_SBUS_BASE_ADDR + 0x07,     7,          { 1 },    3    },  
-    {  FM10000_SERDES_RING_EPL,  FM10000_EPL_RING_SERDES_SBUS_BASE_ADDR + 0x08,     8,          { 2 },    0    },  
-    {  FM10000_SERDES_RING_EPL,  FM10000_EPL_RING_SERDES_SBUS_BASE_ADDR + 0x09,     9,          { 2 },    1    },  
-    {  FM10000_SERDES_RING_EPL,  FM10000_EPL_RING_SERDES_SBUS_BASE_ADDR + 0x0a,     10,         { 2 },    2    },  
-    {  FM10000_SERDES_RING_EPL,  FM10000_EPL_RING_SERDES_SBUS_BASE_ADDR + 0x0b,     11,         { 2 },    3    },  
-    {  FM10000_SERDES_RING_EPL,  FM10000_EPL_RING_SERDES_SBUS_BASE_ADDR + 0x0c,     12,         { 3 },    0    },  
-    {  FM10000_SERDES_RING_EPL,  FM10000_EPL_RING_SERDES_SBUS_BASE_ADDR + 0x0d,     13,         { 3 },    1    },  
-    {  FM10000_SERDES_RING_EPL,  FM10000_EPL_RING_SERDES_SBUS_BASE_ADDR + 0x0e,     14,         { 3 },    2    },  
-    {  FM10000_SERDES_RING_EPL,  FM10000_EPL_RING_SERDES_SBUS_BASE_ADDR + 0x0f,     15,         { 3 },    3    },  
-    {  FM10000_SERDES_RING_EPL,  FM10000_EPL_RING_SERDES_SBUS_BASE_ADDR + 0x10,     16,         { 4 },    0    },  
-    {  FM10000_SERDES_RING_EPL,  FM10000_EPL_RING_SERDES_SBUS_BASE_ADDR + 0x11,     17,         { 4 },    1    },  
-    {  FM10000_SERDES_RING_EPL,  FM10000_EPL_RING_SERDES_SBUS_BASE_ADDR + 0x12,     18,         { 4 },    2    },  
-    {  FM10000_SERDES_RING_EPL,  FM10000_EPL_RING_SERDES_SBUS_BASE_ADDR + 0x13,     19,         { 4 },    3    },  
-    {  FM10000_SERDES_RING_EPL,  FM10000_EPL_RING_SERDES_SBUS_BASE_ADDR + 0x14,     20,         { 5 },    0    },  
-    {  FM10000_SERDES_RING_EPL,  FM10000_EPL_RING_SERDES_SBUS_BASE_ADDR + 0x15,     21,         { 5 },    1    },  
-    {  FM10000_SERDES_RING_EPL,  FM10000_EPL_RING_SERDES_SBUS_BASE_ADDR + 0x16,     22,         { 5 },    2    },  
-    {  FM10000_SERDES_RING_EPL,  FM10000_EPL_RING_SERDES_SBUS_BASE_ADDR + 0x17,     23,         { 5 },    3    },  
-    {  FM10000_SERDES_RING_EPL,  FM10000_EPL_RING_SERDES_SBUS_BASE_ADDR + 0x18,     24,         { 6 },    0    },  
-    {  FM10000_SERDES_RING_EPL,  FM10000_EPL_RING_SERDES_SBUS_BASE_ADDR + 0x19,     25,         { 6 },    1    },  
-    {  FM10000_SERDES_RING_EPL,  FM10000_EPL_RING_SERDES_SBUS_BASE_ADDR + 0x1a,     26,         { 6 },    2    },  
-    {  FM10000_SERDES_RING_EPL,  FM10000_EPL_RING_SERDES_SBUS_BASE_ADDR + 0x1b,     27,         { 6 },    3    },  
-    {  FM10000_SERDES_RING_EPL,  FM10000_EPL_RING_SERDES_SBUS_BASE_ADDR + 0x1c,     28,         { 7 },    0    },  
-    {  FM10000_SERDES_RING_EPL,  FM10000_EPL_RING_SERDES_SBUS_BASE_ADDR + 0x1d,     29,         { 7 },    1    },  
-    {  FM10000_SERDES_RING_EPL,  FM10000_EPL_RING_SERDES_SBUS_BASE_ADDR + 0x1e,     30,         { 7 },    2    },  
-    {  FM10000_SERDES_RING_EPL,  FM10000_EPL_RING_SERDES_SBUS_BASE_ADDR + 0x1f,     31,         { 7 },    3    },  
-    {  FM10000_SERDES_RING_EPL,  FM10000_EPL_RING_SERDES_SBUS_BASE_ADDR + 0x20,     32,         { 8 },    0    },  
-    {  FM10000_SERDES_RING_EPL,  FM10000_EPL_RING_SERDES_SBUS_BASE_ADDR + 0x21,     33,         { 8 },    1    },  
-    {  FM10000_SERDES_RING_EPL,  FM10000_EPL_RING_SERDES_SBUS_BASE_ADDR + 0x22,     34,         { 8 },    2    },  
-    {  FM10000_SERDES_RING_EPL,  FM10000_EPL_RING_SERDES_SBUS_BASE_ADDR + 0x23,     35,         { 8 },    3    },  
 
-     
-    {  FM10000_SERDES_RING_PCIE, FM10000_PCIE_RING_SERDES_SBUS_BASE_ADDR + 0x00,    36,         { 0 },    0    },  
-    {  FM10000_SERDES_RING_PCIE, FM10000_PCIE_RING_SERDES_SBUS_BASE_ADDR + 0x02,    36,         { 0 },    1    },  
-    {  FM10000_SERDES_RING_PCIE, FM10000_PCIE_RING_SERDES_SBUS_BASE_ADDR + 0x04,    36,         { 0 },    2    },  
-    {  FM10000_SERDES_RING_PCIE, FM10000_PCIE_RING_SERDES_SBUS_BASE_ADDR + 0x06,    36,         { 0 },    3    },  
-    {  FM10000_SERDES_RING_PCIE, FM10000_PCIE_RING_SERDES_SBUS_BASE_ADDR + 0x08,    38,         { 1 },    0    },  
-    {  FM10000_SERDES_RING_PCIE, FM10000_PCIE_RING_SERDES_SBUS_BASE_ADDR + 0x0a,    38,         { 1 },    1    },  
-    {  FM10000_SERDES_RING_PCIE, FM10000_PCIE_RING_SERDES_SBUS_BASE_ADDR + 0x0c,    38,         { 1 },    2    },  
-    {  FM10000_SERDES_RING_PCIE, FM10000_PCIE_RING_SERDES_SBUS_BASE_ADDR + 0x0e,    38,         { 1 },    3    },  
+    {  FM10000_SERDES_RING_EPL,  FM10000_EPL_RING_SERDES_SBUS_BASE_ADDR + 0x00,     0,          { 0 },    0    },
+    {  FM10000_SERDES_RING_EPL,  FM10000_EPL_RING_SERDES_SBUS_BASE_ADDR + 0x01,     1,          { 0 },    1    },
+    {  FM10000_SERDES_RING_EPL,  FM10000_EPL_RING_SERDES_SBUS_BASE_ADDR + 0x02,     2,          { 0 },    2    },
+    {  FM10000_SERDES_RING_EPL,  FM10000_EPL_RING_SERDES_SBUS_BASE_ADDR + 0x03,     3,          { 0 },    3    },
+    {  FM10000_SERDES_RING_EPL,  FM10000_EPL_RING_SERDES_SBUS_BASE_ADDR + 0x04,     4,          { 1 },    0    },
+    {  FM10000_SERDES_RING_EPL,  FM10000_EPL_RING_SERDES_SBUS_BASE_ADDR + 0x05,     5,          { 1 },    1    },
+    {  FM10000_SERDES_RING_EPL,  FM10000_EPL_RING_SERDES_SBUS_BASE_ADDR + 0x06,     6,          { 1 },    2    },
+    {  FM10000_SERDES_RING_EPL,  FM10000_EPL_RING_SERDES_SBUS_BASE_ADDR + 0x07,     7,          { 1 },    3    },
+    {  FM10000_SERDES_RING_EPL,  FM10000_EPL_RING_SERDES_SBUS_BASE_ADDR + 0x08,     8,          { 2 },    0    },
+    {  FM10000_SERDES_RING_EPL,  FM10000_EPL_RING_SERDES_SBUS_BASE_ADDR + 0x09,     9,          { 2 },    1    },
+    {  FM10000_SERDES_RING_EPL,  FM10000_EPL_RING_SERDES_SBUS_BASE_ADDR + 0x0a,     10,         { 2 },    2    },
+    {  FM10000_SERDES_RING_EPL,  FM10000_EPL_RING_SERDES_SBUS_BASE_ADDR + 0x0b,     11,         { 2 },    3    },
+    {  FM10000_SERDES_RING_EPL,  FM10000_EPL_RING_SERDES_SBUS_BASE_ADDR + 0x0c,     12,         { 3 },    0    },
+    {  FM10000_SERDES_RING_EPL,  FM10000_EPL_RING_SERDES_SBUS_BASE_ADDR + 0x0d,     13,         { 3 },    1    },
+    {  FM10000_SERDES_RING_EPL,  FM10000_EPL_RING_SERDES_SBUS_BASE_ADDR + 0x0e,     14,         { 3 },    2    },
+    {  FM10000_SERDES_RING_EPL,  FM10000_EPL_RING_SERDES_SBUS_BASE_ADDR + 0x0f,     15,         { 3 },    3    },
+    {  FM10000_SERDES_RING_EPL,  FM10000_EPL_RING_SERDES_SBUS_BASE_ADDR + 0x10,     16,         { 4 },    0    },
+    {  FM10000_SERDES_RING_EPL,  FM10000_EPL_RING_SERDES_SBUS_BASE_ADDR + 0x11,     17,         { 4 },    1    },
+    {  FM10000_SERDES_RING_EPL,  FM10000_EPL_RING_SERDES_SBUS_BASE_ADDR + 0x12,     18,         { 4 },    2    },
+    {  FM10000_SERDES_RING_EPL,  FM10000_EPL_RING_SERDES_SBUS_BASE_ADDR + 0x13,     19,         { 4 },    3    },
+    {  FM10000_SERDES_RING_EPL,  FM10000_EPL_RING_SERDES_SBUS_BASE_ADDR + 0x14,     20,         { 5 },    0    },
+    {  FM10000_SERDES_RING_EPL,  FM10000_EPL_RING_SERDES_SBUS_BASE_ADDR + 0x15,     21,         { 5 },    1    },
+    {  FM10000_SERDES_RING_EPL,  FM10000_EPL_RING_SERDES_SBUS_BASE_ADDR + 0x16,     22,         { 5 },    2    },
+    {  FM10000_SERDES_RING_EPL,  FM10000_EPL_RING_SERDES_SBUS_BASE_ADDR + 0x17,     23,         { 5 },    3    },
+    {  FM10000_SERDES_RING_EPL,  FM10000_EPL_RING_SERDES_SBUS_BASE_ADDR + 0x18,     24,         { 6 },    0    },
+    {  FM10000_SERDES_RING_EPL,  FM10000_EPL_RING_SERDES_SBUS_BASE_ADDR + 0x19,     25,         { 6 },    1    },
+    {  FM10000_SERDES_RING_EPL,  FM10000_EPL_RING_SERDES_SBUS_BASE_ADDR + 0x1a,     26,         { 6 },    2    },
+    {  FM10000_SERDES_RING_EPL,  FM10000_EPL_RING_SERDES_SBUS_BASE_ADDR + 0x1b,     27,         { 6 },    3    },
+    {  FM10000_SERDES_RING_EPL,  FM10000_EPL_RING_SERDES_SBUS_BASE_ADDR + 0x1c,     28,         { 7 },    0    },
+    {  FM10000_SERDES_RING_EPL,  FM10000_EPL_RING_SERDES_SBUS_BASE_ADDR + 0x1d,     29,         { 7 },    1    },
+    {  FM10000_SERDES_RING_EPL,  FM10000_EPL_RING_SERDES_SBUS_BASE_ADDR + 0x1e,     30,         { 7 },    2    },
+    {  FM10000_SERDES_RING_EPL,  FM10000_EPL_RING_SERDES_SBUS_BASE_ADDR + 0x1f,     31,         { 7 },    3    },
+    {  FM10000_SERDES_RING_EPL,  FM10000_EPL_RING_SERDES_SBUS_BASE_ADDR + 0x20,     32,         { 8 },    0    },
+    {  FM10000_SERDES_RING_EPL,  FM10000_EPL_RING_SERDES_SBUS_BASE_ADDR + 0x21,     33,         { 8 },    1    },
+    {  FM10000_SERDES_RING_EPL,  FM10000_EPL_RING_SERDES_SBUS_BASE_ADDR + 0x22,     34,         { 8 },    2    },
+    {  FM10000_SERDES_RING_EPL,  FM10000_EPL_RING_SERDES_SBUS_BASE_ADDR + 0x23,     35,         { 8 },    3    },
 
-    {  FM10000_SERDES_RING_PCIE, FM10000_PCIE_RING_SERDES_SBUS_BASE_ADDR + 0x10,    40,         { 2 },    0    },  
-    {  FM10000_SERDES_RING_PCIE, FM10000_PCIE_RING_SERDES_SBUS_BASE_ADDR + 0x12,    40,         { 2 },    1    },  
-    {  FM10000_SERDES_RING_PCIE, FM10000_PCIE_RING_SERDES_SBUS_BASE_ADDR + 0x14,    40,         { 2 },    2    },  
-    {  FM10000_SERDES_RING_PCIE, FM10000_PCIE_RING_SERDES_SBUS_BASE_ADDR + 0x16,    40,         { 2 },    3    },  
-    {  FM10000_SERDES_RING_PCIE, FM10000_PCIE_RING_SERDES_SBUS_BASE_ADDR + 0x18,    42,         { 3 },    0    },  
-    {  FM10000_SERDES_RING_PCIE, FM10000_PCIE_RING_SERDES_SBUS_BASE_ADDR + 0x1a,    42,         { 3 },    1    },  
-    {  FM10000_SERDES_RING_PCIE, FM10000_PCIE_RING_SERDES_SBUS_BASE_ADDR + 0x1c,    42,         { 3 },    2    },  
-    {  FM10000_SERDES_RING_PCIE, FM10000_PCIE_RING_SERDES_SBUS_BASE_ADDR + 0x1e,    42,         { 3 },    3    },  
 
-    {  FM10000_SERDES_RING_PCIE, FM10000_PCIE_RING_SERDES_SBUS_BASE_ADDR + 0x20,    44,         { 4 },    0    },  
-    {  FM10000_SERDES_RING_PCIE, FM10000_PCIE_RING_SERDES_SBUS_BASE_ADDR + 0x22,    44,         { 4 },    1    },  
-    {  FM10000_SERDES_RING_PCIE, FM10000_PCIE_RING_SERDES_SBUS_BASE_ADDR + 0x24,    44,         { 4 },    2    },  
-    {  FM10000_SERDES_RING_PCIE, FM10000_PCIE_RING_SERDES_SBUS_BASE_ADDR + 0x26,    44,         { 4 },    3    },  
-    {  FM10000_SERDES_RING_PCIE, FM10000_PCIE_RING_SERDES_SBUS_BASE_ADDR + 0x28,    46,         { 5 },    0    },  
-    {  FM10000_SERDES_RING_PCIE, FM10000_PCIE_RING_SERDES_SBUS_BASE_ADDR + 0x2a,    46,         { 5 },    1    },  
-    {  FM10000_SERDES_RING_PCIE, FM10000_PCIE_RING_SERDES_SBUS_BASE_ADDR + 0x2c,    46,         { 5 },    2    },  
-    {  FM10000_SERDES_RING_PCIE, FM10000_PCIE_RING_SERDES_SBUS_BASE_ADDR + 0x2e,    46,         { 5 },    3    },  
+    {  FM10000_SERDES_RING_PCIE, FM10000_PCIE_RING_SERDES_SBUS_BASE_ADDR + 0x00,    36,         { 0 },    0    },
+    {  FM10000_SERDES_RING_PCIE, FM10000_PCIE_RING_SERDES_SBUS_BASE_ADDR + 0x02,    36,         { 0 },    1    },
+    {  FM10000_SERDES_RING_PCIE, FM10000_PCIE_RING_SERDES_SBUS_BASE_ADDR + 0x04,    36,         { 0 },    2    },
+    {  FM10000_SERDES_RING_PCIE, FM10000_PCIE_RING_SERDES_SBUS_BASE_ADDR + 0x06,    36,         { 0 },    3    },
+    {  FM10000_SERDES_RING_PCIE, FM10000_PCIE_RING_SERDES_SBUS_BASE_ADDR + 0x08,    38,         { 1 },    0    },
+    {  FM10000_SERDES_RING_PCIE, FM10000_PCIE_RING_SERDES_SBUS_BASE_ADDR + 0x0a,    38,         { 1 },    1    },
+    {  FM10000_SERDES_RING_PCIE, FM10000_PCIE_RING_SERDES_SBUS_BASE_ADDR + 0x0c,    38,         { 1 },    2    },
+    {  FM10000_SERDES_RING_PCIE, FM10000_PCIE_RING_SERDES_SBUS_BASE_ADDR + 0x0e,    38,         { 1 },    3    },
 
-    {  FM10000_SERDES_RING_PCIE, FM10000_PCIE_RING_SERDES_SBUS_BASE_ADDR + 0x30,    48,         { 6 },    0    },  
-    {  FM10000_SERDES_RING_PCIE, FM10000_PCIE_RING_SERDES_SBUS_BASE_ADDR + 0x32,    48,         { 6 },    1    },  
-    {  FM10000_SERDES_RING_PCIE, FM10000_PCIE_RING_SERDES_SBUS_BASE_ADDR + 0x34,    48,         { 6 },    2    },  
-    {  FM10000_SERDES_RING_PCIE, FM10000_PCIE_RING_SERDES_SBUS_BASE_ADDR + 0x36,    48,         { 6 },    3    },  
-    {  FM10000_SERDES_RING_PCIE, FM10000_PCIE_RING_SERDES_SBUS_BASE_ADDR + 0x38,    50,         { 7 },    0    },  
-    {  FM10000_SERDES_RING_PCIE, FM10000_PCIE_RING_SERDES_SBUS_BASE_ADDR + 0x3a,    50,         { 7 },    1    },  
-    {  FM10000_SERDES_RING_PCIE, FM10000_PCIE_RING_SERDES_SBUS_BASE_ADDR + 0x3c,    50,         { 7 },    2    },  
-    {  FM10000_SERDES_RING_PCIE, FM10000_PCIE_RING_SERDES_SBUS_BASE_ADDR + 0x3e,    50,         { 7 },    3    },  
+    {  FM10000_SERDES_RING_PCIE, FM10000_PCIE_RING_SERDES_SBUS_BASE_ADDR + 0x10,    40,         { 2 },    0    },
+    {  FM10000_SERDES_RING_PCIE, FM10000_PCIE_RING_SERDES_SBUS_BASE_ADDR + 0x12,    40,         { 2 },    1    },
+    {  FM10000_SERDES_RING_PCIE, FM10000_PCIE_RING_SERDES_SBUS_BASE_ADDR + 0x14,    40,         { 2 },    2    },
+    {  FM10000_SERDES_RING_PCIE, FM10000_PCIE_RING_SERDES_SBUS_BASE_ADDR + 0x16,    40,         { 2 },    3    },
+    {  FM10000_SERDES_RING_PCIE, FM10000_PCIE_RING_SERDES_SBUS_BASE_ADDR + 0x18,    42,         { 3 },    0    },
+    {  FM10000_SERDES_RING_PCIE, FM10000_PCIE_RING_SERDES_SBUS_BASE_ADDR + 0x1a,    42,         { 3 },    1    },
+    {  FM10000_SERDES_RING_PCIE, FM10000_PCIE_RING_SERDES_SBUS_BASE_ADDR + 0x1c,    42,         { 3 },    2    },
+    {  FM10000_SERDES_RING_PCIE, FM10000_PCIE_RING_SERDES_SBUS_BASE_ADDR + 0x1e,    42,         { 3 },    3    },
 
-    {  FM10000_SERDES_RING_PCIE, FM10000_PCIE_RING_SERDES_SBUS_BASE_ADDR + 0x40,    63,         { 8 },    0    },  
+    {  FM10000_SERDES_RING_PCIE, FM10000_PCIE_RING_SERDES_SBUS_BASE_ADDR + 0x20,    44,         { 4 },    0    },
+    {  FM10000_SERDES_RING_PCIE, FM10000_PCIE_RING_SERDES_SBUS_BASE_ADDR + 0x22,    44,         { 4 },    1    },
+    {  FM10000_SERDES_RING_PCIE, FM10000_PCIE_RING_SERDES_SBUS_BASE_ADDR + 0x24,    44,         { 4 },    2    },
+    {  FM10000_SERDES_RING_PCIE, FM10000_PCIE_RING_SERDES_SBUS_BASE_ADDR + 0x26,    44,         { 4 },    3    },
+    {  FM10000_SERDES_RING_PCIE, FM10000_PCIE_RING_SERDES_SBUS_BASE_ADDR + 0x28,    46,         { 5 },    0    },
+    {  FM10000_SERDES_RING_PCIE, FM10000_PCIE_RING_SERDES_SBUS_BASE_ADDR + 0x2a,    46,         { 5 },    1    },
+    {  FM10000_SERDES_RING_PCIE, FM10000_PCIE_RING_SERDES_SBUS_BASE_ADDR + 0x2c,    46,         { 5 },    2    },
+    {  FM10000_SERDES_RING_PCIE, FM10000_PCIE_RING_SERDES_SBUS_BASE_ADDR + 0x2e,    46,         { 5 },    3    },
+
+    {  FM10000_SERDES_RING_PCIE, FM10000_PCIE_RING_SERDES_SBUS_BASE_ADDR + 0x30,    48,         { 6 },    0    },
+    {  FM10000_SERDES_RING_PCIE, FM10000_PCIE_RING_SERDES_SBUS_BASE_ADDR + 0x32,    48,         { 6 },    1    },
+    {  FM10000_SERDES_RING_PCIE, FM10000_PCIE_RING_SERDES_SBUS_BASE_ADDR + 0x34,    48,         { 6 },    2    },
+    {  FM10000_SERDES_RING_PCIE, FM10000_PCIE_RING_SERDES_SBUS_BASE_ADDR + 0x36,    48,         { 6 },    3    },
+    {  FM10000_SERDES_RING_PCIE, FM10000_PCIE_RING_SERDES_SBUS_BASE_ADDR + 0x38,    50,         { 7 },    0    },
+    {  FM10000_SERDES_RING_PCIE, FM10000_PCIE_RING_SERDES_SBUS_BASE_ADDR + 0x3a,    50,         { 7 },    1    },
+    {  FM10000_SERDES_RING_PCIE, FM10000_PCIE_RING_SERDES_SBUS_BASE_ADDR + 0x3c,    50,         { 7 },    2    },
+    {  FM10000_SERDES_RING_PCIE, FM10000_PCIE_RING_SERDES_SBUS_BASE_ADDR + 0x3e,    50,         { 7 },    3    },
+
+    {  FM10000_SERDES_RING_PCIE, FM10000_PCIE_RING_SERDES_SBUS_BASE_ADDR + 0x40,    63,         { 8 },    0    },
 };
 
 /*****************************************************************************
@@ -221,13 +221,13 @@ static fm_text dfeCtleTypeStr[] =
 
 
 
- 
+
 static fm_int serdesSaiDebug = 0;
 
- 
+
 static fm_int serdesPcieDebug = 0;
 
- 
+
 static fm_bool eplUseSbusIntf  = FALSE;
 static fm_bool pcieUseSbusIntf = FALSE;
 
@@ -269,7 +269,7 @@ static fm_bool GetSerdesValidId(fm_int sw,
 
     return validIdCode;
 
-}   /* end GetSerdesValidId */
+}
 
 
 
@@ -373,9 +373,9 @@ fm_status fm10000SerdesSpicoSaiInt(fm_int     sw,
         FM_LOG_ERROR(FM_LOG_CAT_SERDES,
                      "Serdes Interrupt still busy in %u msec %u interations, "
                      "serdes %d. LANE_SAI_STATUS = 0x%8.8x (int=0x%2.2x, param=0x%4.4x)\n",
-                     delTime, 
-                     loopCnt, 
-                     serDes, 
+                     delTime,
+                     loopCnt,
+                     serDes,
                      laneSaiStatus,
                      intNum,
                      param);
@@ -474,7 +474,7 @@ fm_status fm10000SerdesSpicoSaiInt(fm_int     sw,
 
     FM_LOG_EXIT_VERBOSE(FM_LOG_CAT_SWITCH, err);
 
-}   /* end fm10000SerdesSpicoSaiInt */
+}
 
 
 
@@ -533,21 +533,23 @@ fm_status fm10000SerdesPcieSpicoInt(fm_int     sw,
     err = fm10000MapSerdesToPepLane( sw, serDes, &pep, &lane);
     FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_SERDES, err);
 
-     
+
     if (pep & 1)
     {
         lane = lane + 4;
     }
 
-     
+
     val = 0;
     addr = FM10000_PCIE_PF_ADDR(FM10000_PCIE_SERDES_CTRL(lane, 0), pep);
     FM_SET_FIELD64(val, FM10000_PCIE_SERDES_CTRL, DataWrite, param);
+
+
     err = switchPtr->WriteUINT64(sw, addr, val);
     FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_SERDES, err);
 
 
-     
+
     FM_SET_FIELD64(val, FM10000_PCIE_SERDES_CTRL, InterruptCode, intNum);
     FM_SET_BIT(val, FM10000_PCIE_SERDES_CTRL, Interrupt, 1);
     err = switchPtr->WriteUINT64(sw, addr, val);
@@ -620,6 +622,7 @@ fm_status fm10000SerdesPcieSpicoInt(fm_int     sw,
 
         if (serdesPcieDebug)
         {
+
             FM_LOG_PRINT("sw=%d addr=0x%2.2x PCIE_SERDES_CTRL DataRead=0x%4.4x t=%u\n",
                          sw, sbusAddr,
                          (fm_uint16)((FM_GET_FIELD64(val, FM10000_PCIE_SERDES_CTRL, DataRead) & 0xFFFF)),
@@ -629,7 +632,7 @@ fm_status fm10000SerdesPcieSpicoInt(fm_int     sw,
 
     FM_LOG_EXIT_VERBOSE(FM_LOG_CAT_SERDES, err);
 
-}   /* end fm10000SerdesPcieSpicoInt */
+}
 
 
 
@@ -681,7 +684,7 @@ static fm_status fm10000SerdesInitXServices(fm_int sw)
 
     FM_LOG_EXIT(FM_LOG_CAT_SWITCH, err);
 
-}   /* end fm10000SerdesInitXServices */
+}
 
 
 
@@ -712,7 +715,8 @@ static fm_status fm10000SerdesInitGenericOptions(fm_int sw)
 
     FM_LOG_EXIT(FM_LOG_CAT_SWITCH, err);
 
-}   /* end fm10000SerdesInitGenericOptions */
+}
+
 
 
 
@@ -720,7 +724,7 @@ static fm_status fm10000SerdesInitGenericOptions(fm_int sw)
 /**  fm10000SerdesGetPepId
  * \ingroup intSerdes
  *
- * \desc            Return the pepId given the serdes number. 
+ * \desc            Return the pepId given the serdes number.
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -734,18 +738,18 @@ static fm_int fm10000SerdesGetPepId(fm_int sw, fm_int serdes)
     fm_switch   *switchPtr;
     fm_laneAttr *laneAttr;
 
-     
+
     if ((fm10000SerdesMap[serdes].endpoint.pep & 1) == 0)
     {
         return (fm10000SerdesMap[serdes].endpoint.pep);
     }
 
-     
+
 
     switchPtr = GET_SWITCH_PTR(sw);
     if (switchPtr->laneTableSize == 0)
     {
-         
+
         FM_LOG_FATAL(FM_LOG_CAT_SERDES,
                     "Switch %d lane table has not been initialized\n",
                     sw);
@@ -755,7 +759,7 @@ static fm_int fm10000SerdesGetPepId(fm_int sw, fm_int serdes)
     laneAttr = GET_LANE_ATTR(sw, serdes);
     if (laneAttr->pepOffset == 0)
     {
-         
+
         fm10000SerdesInitMappingTable(sw);
     }
 
@@ -764,12 +768,12 @@ static fm_int fm10000SerdesGetPepId(fm_int sw, fm_int serdes)
         case PEP_OFFSET_X8:
             if (fm10000SerdesMap[serdes].endpoint.pep & 1)
             {
-                 
-                return (fm10000SerdesMap[serdes].endpoint.pep - 1); 
+
+                return (fm10000SerdesMap[serdes].endpoint.pep - 1);
             }
-            return (fm10000SerdesMap[serdes].endpoint.pep); 
+            return (fm10000SerdesMap[serdes].endpoint.pep);
         case PEP_OFFSET_X4:
-           return (fm10000SerdesMap[serdes].endpoint.pep); 
+           return (fm10000SerdesMap[serdes].endpoint.pep);
         default:
             FM_LOG_FATAL(FM_LOG_CAT_SERDES,
                         "Switch %d Serdes %d PEP offset has not been initialized\n",
@@ -777,7 +781,10 @@ static fm_int fm10000SerdesGetPepId(fm_int sw, fm_int serdes)
             return (fm10000SerdesMap[serdes].endpoint.pep);
     }
 
-} /* fm10000SerdesGetPepId */
+}
+
+
+
 
 /*****************************************************************************/
 /**  fm10000SerdesGetPepFromMap
@@ -792,9 +799,10 @@ static fm_int fm10000SerdesGetPepId(fm_int sw, fm_int serdes)
  *****************************************************************************/
 fm_int fm10000SerdesGetPepFromMap(fm_int serDes)
 {
-        return (fm10000SerdesMap[serDes].endpoint.pep);
+    return (fm10000SerdesMap[serDes].endpoint.pep);
 
-} /* fm10000SerdesGetPepFromMap */
+}
+
 
 
 
@@ -847,12 +855,12 @@ fm_status fm10000SerdesInitMappingTable(fm_int sw)
         startSerdes = 40 + (pep - 1)*4;
         if ( ( pcieMode & ( 1 << (pep/2) ) ) != 0 )
         {
-             
+
             x8 = FALSE;
         }
         else
         {
-             
+
             x8 = TRUE;
         }
 
@@ -865,7 +873,7 @@ fm_status fm10000SerdesInitMappingTable(fm_int sw)
 
     FM_LOG_EXIT(FM_LOG_CAT_SWITCH, err);
 
-}   /* end fm10000SerdesInitMappingTable */
+}
 
 
 
@@ -922,7 +930,7 @@ fm_bool fm10000SerdesCheckIfIsActive(fm_int sw,
 
     return validIdCode;
 
-} /* end fm10000SerdesCheckIfIsActive */
+}
 
 
 
@@ -956,11 +964,11 @@ void fm10000SerDesSaiSetDebug(fm_int debug)
     }
 
     serdesSaiDebug = debug;
-    
+
 
     fm10000SbusSetDebug(debug);
 
-}   /* end fm10000SerDesSaiSetDebug */
+}
 
 
 
@@ -982,24 +990,24 @@ void fm10000SerDesPcieSetDebug(fm_int debug)
     if (debug == 0xFF)
     {
         FM_LOG_PRINT("Force PCIE to use Parallel interface. Previous = %s.\n",
-                     pcieUseSbusIntf?"SBUS":"BIT_4");
+                     pcieUseSbusIntf?"SBUS":"PARALLEL");
         pcieUseSbusIntf = FALSE;
         return;
     }
     if (debug == 0xFE)
     {
         FM_LOG_PRINT("Force PCIE to use SBUS. Previous = %s.\n",
-                      pcieUseSbusIntf?"SBUS":"BIT_4");
+                      pcieUseSbusIntf?"SBUS":"PARALLEL");
         pcieUseSbusIntf = TRUE;
         return;
     }
 
     serdesPcieDebug = debug;
-    
+
 
     fm10000SbusSetDebug(debug);
 
-}   /* end fm10000SerDesPcieSetDebug */
+}
 
 
 
@@ -1049,7 +1057,7 @@ fm_status fm10000LoadSpicoCode(fm_int sw)
     err = fm10000SerdesGetOpMode(sw, 0, &serdesOpMode, NULL, NULL);
 
     useProductionSpicoCodeVersions = (serdesOpMode == FM_SERDES_OPMODE_TEST_BOARD) ? 1 : 0;
-    
+
 
 
     imageOption = 0;
@@ -1064,7 +1072,7 @@ fm_status fm10000LoadSpicoCode(fm_int sw)
     pSerdesCodeImage = NULL;
     sbmCodeVersionBuildId = 0;
 
-    switch(serdesImageSelector)
+    switch (serdesImageSelector)
     {
         case 0:
             pSbmCodeImage            = (fm_uint16 *) fm10000_sbus_master_code_prd;
@@ -1100,13 +1108,13 @@ fm_status fm10000LoadSpicoCode(fm_int sw)
             pSbmCodeImage            = (fm_uint16 *) fm10000_sbus_master_code_dev;
             sbmCodeSize              = fm10000_sbus_master_code_size_dev;
             sbmCodeVersionBuildId    = fm10000_sbus_master_code_versionBuildId_dev;
-    
+
             pSerdesCodeImage         = (fm_uint16 *) fm10000_serdes_spico_code_dev1;
             serdesCodeSize           = fm10000_serdes_spico_code_size_dev1;
             serdesCodeVersionBuildId = fm10000_serdes_spico_code_versionBuildId_dev1;
             firstSerdes              = 0;
             lastSerdes               = FM10000_EPL_RING_SERDES_NUM-1;
-    
+
             pSwapCodeImage           = (fm_uint16 *) fm10000_serdes_swap_code_dev1;
             swapCodeSize             = fm10000_serdes_swap_code_size_dev1;
             swapCodeVersionBuildId   = fm10000_serdes_swap_code_versionBuildId_dev1;
@@ -1115,13 +1123,13 @@ fm_status fm10000LoadSpicoCode(fm_int sw)
             pSbmCodeImage            = (fm_uint16 *) fm10000_sbus_master_code_dev;
             sbmCodeSize              = fm10000_sbus_master_code_size_dev;
             sbmCodeVersionBuildId    = fm10000_sbus_master_code_versionBuildId_dev;
-    
+
             pSerdesCodeImage         = (fm_uint16 *) fm10000_serdes_spico_code_dev2;
             serdesCodeSize           = fm10000_serdes_spico_code_size_dev2;
             serdesCodeVersionBuildId = fm10000_serdes_spico_code_versionBuildId_dev2;
             firstSerdes              = 0;
             lastSerdes               = FM10000_EPL_RING_SERDES_NUM-1;
-    
+
             pSwapCodeImage           = (fm_uint16 *) fm10000_serdes_swap_code_dev2;
             swapCodeSize             = fm10000_serdes_swap_code_size_dev2;
             swapCodeVersionBuildId   = fm10000_serdes_swap_code_versionBuildId_dev2;
@@ -1134,15 +1142,15 @@ fm_status fm10000LoadSpicoCode(fm_int sw)
 
     if (err == FM_OK)
     {
-    
+
         switchExt->serdesSupportsKR = (serdesCodeVersionBuildId & 0x04) ? TRUE : FALSE;
-        
+
         if (fmGetIntApiProperty(FM_AAK_API_FM10000_SERDES_DBG_LVL,
                                 FM_AAD_API_FM10000_SERDES_DBG_LVL) > 0)
         {
             FM_LOG_PRINT("Support for KR: %s\n", switchExt->serdesSupportsKR? "YES" : "NO");
         }
-    
+
 
         err = fm10000SbmSpicoUploadImage(sw,
                                          FM10000_SERDES_RING_EPL,
@@ -1161,8 +1169,6 @@ fm_status fm10000LoadSpicoCode(fm_int sw)
 
     if (err == FM_OK && swapCodeSize > 0)
     {
-
-
         if ((sbmCodeVersionBuildId & 0x00008000) == 0)
         {
 
@@ -1217,7 +1223,7 @@ fm_status fm10000LoadSpicoCode(fm_int sw)
 
     FM_LOG_EXIT(FM_LOG_CAT_SERDES, err);
 
-}   /* end fm10000LoadSpicoCode */
+}
 
 
 
@@ -1246,6 +1252,8 @@ fm_status fm10000InitSwSerdes(fm_int sw)
     switchExt = GET_SWITCH_EXT(sw);
 
     err = fm10000SerdesInitXServices(sw);
+
+
 
     if (err == FM_OK && switchExt->serdesBypassSbus == FALSE)
     {
@@ -1277,16 +1285,16 @@ fm_status fm10000InitSwSerdes(fm_int sw)
                     err = fm10000SerdesInitGenericOptions(sw);
                 }
 
-            }   /* end if (serdesOpMode != FM_SERDES_OPMODE_STUB_SM) */
+            }
         }
-    }   /* end if (switchExt->serdesBypassSbus == FALSE) */
+    }
 
 
     switchExt->serdesIntAccssCtrlEna = TRUE;
 
     FM_LOG_EXIT(FM_LOG_CAT_SWITCH, err);
 
-}   /* end fm10000InitSwSerdes */
+}
 
 
 
@@ -1327,7 +1335,7 @@ fm_status fm10000SerdesWrite(fm_int     sw,
 
     return err;
 
-}   /* end fm10000SerdesWrite */
+}
 
 
 
@@ -1370,7 +1378,7 @@ fm_status fm10000SerdesRead(fm_int     sw,
 
     return err;
 
-}   /* end fm10000SerdesRead */
+}
 
 
 
@@ -1443,7 +1451,7 @@ fm_status fm10000SerdesReadModifyWrite(fm_int     sw,
 
     FM_LOG_EXIT_V2(FM_LOG_CAT_SWITCH, serDes, err);
 
-}   /* end fm10000SerdesReadModifyWrite */
+}
 
 
 
@@ -1498,7 +1506,7 @@ fm_status fm10000SerdesSpicoWrOnlyInt(fm_int      sw,
 
     FM_LOG_EXIT_VERBOSE_V2(FM_LOG_CAT_SWITCH, serDes, err);
 
-}   /* end fm10000SerdesSpicoWrOnlyInt */
+}
 
 
 
@@ -1593,7 +1601,7 @@ fm_status fm10000SerdesSpicoInt(fm_int      sw,
 
     FM_LOG_EXIT_VERBOSE_V2(FM_LOG_CAT_SWITCH, serDes, err);
 
-}   /* end fm10000SerdesSpicoInt */
+}
 
 
 
@@ -1658,7 +1666,7 @@ fm_status fm10000SbmSpicoInt(fm_int         sw,
 
     FM_LOG_EXIT_VERBOSE(FM_LOG_CAT_SERDES, err);
 
-}   /* end fm10000SbmSpicoInt */
+}
 
 
 
@@ -1699,7 +1707,7 @@ fm_status fm10000SerdesInitLaneControlStructures(fm_int sw,
         err = FM_ERR_INVALID_ARGUMENT;
         FM_LOG_ERROR_V2( FM_LOG_CAT_SERDES,
                          serDes,
-                         "Invalid serDes FIELD_1 number: %d\n",
+                         "Invalid serDes ID number: %d\n",
                          serDes );
     }
     else
@@ -1710,6 +1718,7 @@ fm_status fm10000SerdesInitLaneControlStructures(fm_int sw,
         pLaneAttr = GET_LANE_ATTR( sw, serDes );
         pLaneDfe  = &pLaneExt->dfeExt;
         pLaneKr   = &pLaneExt->krExt;
+
 
 
 
@@ -1727,6 +1736,18 @@ fm_status fm10000SerdesInitLaneControlStructures(fm_int sw,
         pLaneExt->pllCalibrationMode    = FM10000_SERDES_PLL_CALIBRATION_ENABLED;
 
         pLaneExt->pllCalibrationCycleCnt = (((fm_uint32)rand()) % FM10000_SERDES_PLL_CAL_CNT_THRESHOLD) / 10;
+
+
+
+        pLaneAttr->preCursor            = 0;
+        pLaneAttr->cursor               = 0;
+        pLaneAttr->postCursor           = 0;
+        pLaneAttr->initializePreCursor  = 4;
+        pLaneAttr->initializeCursor     = 2;
+        pLaneAttr->initializePostCursor = 18;
+        pLaneAttr->preCursorDecOnPreset = 0;
+        pLaneAttr->postCursorDecOnPreset= 0;
+        pLaneAttr->txLaneEnableConfigKrInit = FM_DISABLED;
 
 
 
@@ -1783,7 +1804,8 @@ fm_status fm10000SerdesInitLaneControlStructures(fm_int sw,
 
     FM_LOG_EXIT(FM_LOG_CAT_SERDES, err);
 
-}   /* end fm10000SerdesInitLaneControlStructures */
+}
+
 
 
 
@@ -1834,7 +1856,7 @@ fm_status fm10000SerdesClearAllSerDesInterrupts(fm_int sw)
 
    FM_LOG_EXIT(FM_LOG_CAT_SERDES, err);
 
-}   /* end fm10000SerdesClearAllSerDesInterrupts */
+}
 
 
 
@@ -1895,7 +1917,7 @@ fm_status fm10000SerdesInitOpMode(fm_int sw)
 
 
         serdesOpModeTmp = fmGetIntApiProperty(FM_AAK_API_FM10000_SERDES_OP_MODE,
-                                              FM_AAT_API_FM10000_SERDES_OP_MODE);
+                                              FM_AAD_API_FM10000_SERDES_OP_MODE);
 
         serdesDbgLvl = fmGetIntApiProperty(FM_AAK_API_FM10000_SERDES_DBG_LVL,
                                            FM_AAD_API_FM10000_SERDES_DBG_LVL);
@@ -1922,7 +1944,7 @@ fm_status fm10000SerdesInitOpMode(fm_int sw)
 
         switchExt->serdesOpMode  = serdesOpModeTmp;
 
-        switch(serdesOpModeTmp)
+        switch (serdesOpModeTmp)
         {
             case FM_SERDES_OPMODE_CHIP_VIA_SAI:
             {
@@ -1996,7 +2018,7 @@ fm_status fm10000SerdesInitOpMode(fm_int sw)
                 break;
             }
 
-        }   /* end switch(serdesOpModeTmp) */
+        }
 
         if (err == FM_OK)
         {
@@ -2009,7 +2031,7 @@ fm_status fm10000SerdesInitOpMode(fm_int sw)
 
     FM_LOG_EXIT(FM_LOG_CAT_SERDES, err);
 
-}   /* end fm10000SerdesInitOpMode */
+}
 
 
 
@@ -2118,7 +2140,7 @@ fm_status fm10000SerdesGetOpMode(fm_int                 sw,
 
     FM_LOG_EXIT(FM_LOG_CAT_SERDES, err);
 
-}   /* end fm10000SerdesGetOpMode */
+}
 
 
 
@@ -2210,7 +2232,7 @@ fm_status fm10000SetPcslCfgWidthMode(fm_int             sw,
 
     FM_LOG_EXIT_V2(FM_LOG_CAT_SWITCH, serDes, err);
 
-}   /* end fm10000SetPcslCfgWidthMode */
+}
 
 
 
@@ -2253,19 +2275,19 @@ fm_status fm10000SerdesSaveKrTrainingDelayInfo(fm_int       sw,
 
         if (err == FM_OK)
         {
-        
+
             pLaneKr->krTrainingDelayLastMs = timeDiff;
-        
+
 
             if (pLaneKr->krTrainingDelayMaxMs < timeDiff)
             {
                 pLaneKr->krTrainingDelayMaxMs = timeDiff;
             }
-        
+
 
             if (pLaneKr->startKrCycleCnt < 32)
             {
-                pLaneKr->krTrainingDelayAvgMs = (pLaneKr->krTrainingDelayAvgMs * (pLaneKr->startKrCycleCnt - 1) 
+                pLaneKr->krTrainingDelayAvgMs = (pLaneKr->krTrainingDelayAvgMs * (pLaneKr->startKrCycleCnt - 1)
                                                  + 1000 * timeDiff) / pLaneKr->startKrCycleCnt;
             }
             else
@@ -2288,7 +2310,106 @@ fm_status fm10000SerdesSaveKrTrainingDelayInfo(fm_int       sw,
 
     return err;
 
-}   /* end fm10000SerdesSaveKrTrainingDelayInfo */
+}
+
+
+
+
+/*****************************************************************************/
+/** fm10000SerdesSaveKrTrainingTimeoutInfo
+ * \ingroup intSerdes
+ *
+ * \desc            Saves statistical information about delays when performing
+ *                  KR training.
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \param[in]       serDes is the SerDes number on which to operate.
+ *
+ * \return          FM_OK if successful.
+ * \return          Other ''Status Codes'' as appropriate in case of failure.
+ *
+ *****************************************************************************/
+fm_status fm10000SerdesSaveKrTrainingTimeoutInfo(fm_int       sw,
+                                                 fm_int       serDes)
+{
+    fm_status           err;
+    fm10000_lane       *pLaneExt;
+    fm10000_laneKr     *pLaneKr;
+    fm_uint32           timeStamp;
+    fm_uint32           timeDiff;
+    fm_uint             linkTimeoutThreshold;
+    fm_int              port;
+    fm10000_portAttr   *portAttrExt;
+    fm_bool             signalOk;
+
+
+
+    pLaneExt = GET_LANE_EXT(sw, serDes);
+    pLaneKr  = &pLaneExt->krExt;
+    err = FM_OK;
+
+    if (pLaneKr->startKrCycleCnt)
+    {
+        timeStamp = fm10000SerdesGetTimestampMs();
+
+        err = fm10000SerdesGetTimestampDiffMs(pLaneKr->refTimeMs,timeStamp,&timeDiff);
+
+        if (err == FM_OK)
+        {
+            err = fm10000MapSerdesToLogicalPort(sw, serDes, &port);
+            if (err == FM_OK)
+            {
+                portAttrExt = GET_FM10000_PORT_ATTR(sw, port);
+
+                linkTimeoutThreshold = (portAttrExt->autoNegLinkInhbTimer - (portAttrExt->autoNegLinkInhbTimer >> 5)) / 1000;
+
+                err = fm10000SerdesGetSignalOk(sw,serDes, &signalOk);
+            }
+
+            if (err == FM_OK                            &&
+                timeDiff >= linkTimeoutThreshold        &&
+                timeDiff < (2 * linkTimeoutThreshold)   &&
+                signalOk == FALSE)
+            {
+                pLaneKr->krTrainingDelayLastMs = timeDiff;
+                if (pLaneKr->krTrainingDelayMaxMs < timeDiff)
+                {
+                    pLaneKr->krTrainingDelayMaxMs = timeDiff;
+                }
+
+
+                if (pLaneKr->startKrCycleCnt < 32)
+                {
+                    pLaneKr->krTrainingDelayAvgMs = (pLaneKr->krTrainingDelayAvgMs * (pLaneKr->startKrCycleCnt - 1)
+                                                     + 1000 * timeDiff) / pLaneKr->startKrCycleCnt;
+                }
+                else
+                {
+                    pLaneKr->krTrainingDelayAvgMs =   pLaneKr->krTrainingDelayAvgMs
+                                                    - (pLaneKr->krTrainingDelayAvgMs / 32)
+                                                    + (1000 * timeDiff) / 32;
+                }
+
+                err = fm10000SerdesIncrKrStatsCounter(sw,serDes,2);
+            }
+        }
+
+        if (err != FM_OK)
+        {
+            FM_LOG_ERROR_V2(FM_LOG_CAT_SERDES,
+                            serDes,
+                            "Serdes #%d KR delays: cannot compute timeout statistical value out of range\n", serDes);
+        }
+    }
+    else
+    {
+        err = FM_ERR_INVALID_STATE;
+    }
+
+    return err;
+
+}
 
 
 
@@ -2300,13 +2421,14 @@ fm_status fm10000SerdesSaveKrTrainingDelayInfo(fm_int       sw,
  * \desc            Function that increments one of the KR statistical counters:
  *                  the start KR training counter or the KR training failed.
  *                  These counters saturates at 0xffffffff.
- * 
+ *
  * \param[in]       sw is the switch on which to operate.
  *
  * \param[in]       serDes is the SerDes number on which to operate.
  *
- * \param[in]       counterSpec: 0 indicates increment start KR training counter,
- *                  1 indicates incr KR-error counter.
+ * \param[in]       counterSpec: 0 indicates increment KR-start-training
+ *                  counter, 1 indicates incr KR-error counter; 2 indicates
+ *                  incr KR-timeout counter.
  *
  * \return          FM_OK if successful.
  * \return          Other ''Status Codes'' as appropriate in case of failure.
@@ -2314,7 +2436,7 @@ fm_status fm10000SerdesSaveKrTrainingDelayInfo(fm_int       sw,
  *****************************************************************************/
 fm_status fm10000SerdesIncrKrStatsCounter(fm_int       sw,
                                           fm_int       serDes,
-                                          fm_int       counterSpec) 
+                                          fm_int       counterSpec)
 {
     fm_status           err;
     fm10000_lane       *pLaneExt;
@@ -2343,6 +2465,14 @@ fm_status fm10000SerdesIncrKrStatsCounter(fm_int       sw,
                 (pLaneKr->krErrorCnt)++;
             }
             break;
+         case 2:
+
+            if (pLaneKr->krTimeoutCnt < 0xffffffff)
+            {
+                (pLaneKr->krTimeoutCnt)++;
+            }
+            break;
+
         default:
             err = FM_ERR_INVALID_ARGUMENT;
 
@@ -2350,7 +2480,7 @@ fm_status fm10000SerdesIncrKrStatsCounter(fm_int       sw,
 
     return err;
 
-}   /* end fm10000SerdesIncrKrStatsCounter */
+}
 
 
 
@@ -2423,7 +2553,7 @@ fm_status fm10000SerdesSaveStopTuningStatsInfo(fm_int       sw,
 
     return FM_OK;
 
-}   /* end fm10000SerdesSaveStopTuningStatsInfo */
+}
 
 
 
@@ -2480,7 +2610,7 @@ fm_status fm10000SerdesSaveICalTuningStatsInfo(fm_int       sw,
 
     return FM_OK;
 
-}   /* end fm10000SerdesSaveICalTuningStatsInfo */
+}
 
 
 
@@ -2535,7 +2665,7 @@ fm_status fm10000SerdesSavePCalTuningStatsInfo(fm_int       sw,
 
     return FM_OK;
 
-}   /* end fm10000SerdesSavePCalTuningStatsInfo */
+}
 
 
 
@@ -2579,19 +2709,19 @@ fm_status fm10000SerdesSaveICalTuningDelayInfo(fm_int       sw,
 
         if (err == FM_OK)
         {
-        
+
             pLaneDfe->iCalDelayLastMs = timeDiff;
-        
+
 
             if (pLaneDfe->iCalDelayMaxMs < timeDiff)
             {
                 pLaneDfe->iCalDelayMaxMs = timeDiff;
             }
-        
+
 
             if (pLaneDfe->startCycleCnt < 32)
             {
-                pLaneDfe->iCalDelayAvgMs = (pLaneDfe->iCalDelayAvgMs * (pLaneDfe->startCycleCnt - 1) 
+                pLaneDfe->iCalDelayAvgMs = (pLaneDfe->iCalDelayAvgMs * (pLaneDfe->startCycleCnt - 1)
                                            + 1000 * timeDiff) / pLaneDfe->startCycleCnt;
             }
             else
@@ -2605,7 +2735,7 @@ fm_status fm10000SerdesSaveICalTuningDelayInfo(fm_int       sw,
         {
             FM_LOG_ERROR_V2(FM_LOG_CAT_SERDES, serDes,
                             "Serdes #%d DFE delays: "
-                            "statistical value out of range\n", 
+                            "statistical value out of range\n",
                             serDes);
         }
     }
@@ -2616,7 +2746,7 @@ fm_status fm10000SerdesSaveICalTuningDelayInfo(fm_int       sw,
 
     return err;
 
-}   /* end fm10000SerdesSaveICalTuningDelayInfo */
+}
 
 
 
@@ -2661,17 +2791,17 @@ fm_status fm10000SerdesSavePCalTuningDelayInfo(fm_int       sw,
         if (err == FM_OK)
         {
             pLaneDfe->pCalDelayLastMs = timeDiff;
-        
+
 
             if (pLaneDfe->pCalDelayMaxMs < timeDiff)
             {
                 pLaneDfe->pCalDelayMaxMs = timeDiff;
             }
-        
+
 
             if (pLaneDfe->startCycleCnt < 32)
             {
-                pLaneDfe->pCalDelayAvgMs = (pLaneDfe->pCalDelayAvgMs * (pLaneDfe->startCycleCnt - 1) 
+                pLaneDfe->pCalDelayAvgMs = (pLaneDfe->pCalDelayAvgMs * (pLaneDfe->startCycleCnt - 1)
                                            + 1000 * timeDiff) / pLaneDfe->startCycleCnt;
             }
             else
@@ -2694,7 +2824,7 @@ fm_status fm10000SerdesSavePCalTuningDelayInfo(fm_int       sw,
 
     return err;
 
-}   /* end fm10000SerdesSavePCalTuningDelayInfo */
+}
 
 
 
@@ -2739,19 +2869,19 @@ fm_status fm10000SerdesSaveStopTuningDelayInfo(fm_int       sw,
 
         if (err == FM_OK)
         {
-        
+
             pLaneDfe->stopTuningDelayLstMs = timeDiff;
-        
+
 
             if (pLaneDfe->stopTuningDelayMaxMs < timeDiff)
             {
                 pLaneDfe->stopTuningDelayMaxMs = timeDiff;
             }
-        
+
 
             if (pLaneDfe->startCycleCnt < 32)
             {
-                pLaneDfe->stopTuningDelayAvgMs = (pLaneDfe->stopTuningDelayAvgMs * (pLaneDfe->stopCycleCnt - 1) 
+                pLaneDfe->stopTuningDelayAvgMs = (pLaneDfe->stopTuningDelayAvgMs * (pLaneDfe->stopCycleCnt - 1)
                                                 + 1000 * timeDiff) / pLaneDfe->stopCycleCnt;
             }
             else
@@ -2774,7 +2904,7 @@ fm_status fm10000SerdesSaveStopTuningDelayInfo(fm_int       sw,
 
     return err;
 
-}   /* end fm10000SerdesSaveStopTuningDelayInfo */
+}
 
 
 
@@ -2790,7 +2920,7 @@ fm_status fm10000SerdesSaveStopTuningDelayInfo(fm_int       sw,
  * \return          the time stamp in Ms.
  *
  *****************************************************************************/
-fm_uint32 fm10000SerdesGetTimestampMs(void) 
+fm_uint32 fm10000SerdesGetTimestampMs(void)
 {
     fm_timestamp  timeStamp;
     fm_uint32     timeStampMs;
@@ -2802,7 +2932,7 @@ fm_uint32 fm10000SerdesGetTimestampMs(void)
 
     return timeStampMs;
 
-}   /* end fm10000SerdesGetTimestampMs */
+}
 
 
 
@@ -2816,7 +2946,7 @@ fm_uint32 fm10000SerdesGetTimestampMs(void)
  *                  used for delay calculations involving serdes operations.
  *                  Timestamps are expressed in Ms and the range is limited to
  *                  FM10000_SERDES_MSTIMESTAMP_MAX
- * 
+ *
  * \param[in]       start is the initial or reference timestamp, must be in
  *                  the range [0..FM10000_SERDES_MSTIMESTAMP_MAX].
  *
@@ -2824,7 +2954,7 @@ fm_uint32 fm10000SerdesGetTimestampMs(void)
  *                  the range [0..FM10000_SERDES_TIMESTAMPMS_MAX].
  *
  * \param[out]      pDiff points to the caller-allocated storage where this
- *                  function will place the result (stop-start). 
+ *                  function will place the result (stop-start).
  *
  * \return          FM_OK if successful.
  * \return          FM_ERR_INVALID_ARGUMENT if pDiff is a NULL pointer or if
@@ -2833,7 +2963,7 @@ fm_uint32 fm10000SerdesGetTimestampMs(void)
  *****************************************************************************/
 fm_bool fm10000SerdesGetTimestampDiffMs(fm_uint32  start,
                                         fm_uint32  stop,
-                                        fm_uint32 *pDiff) 
+                                        fm_uint32 *pDiff)
 {
     fm_status   err;
 
@@ -2858,7 +2988,7 @@ fm_bool fm10000SerdesGetTimestampDiffMs(fm_uint32  start,
 
     return err;
 
-}   /* end fm10000SerdesGetTimestampDiffMs */
+}
 
 
 
@@ -2870,7 +3000,7 @@ fm_bool fm10000SerdesGetTimestampDiffMs(fm_uint32  start,
  * \desc            Function that increments one of the statistical counters:
  *                  the start-dfe counter and and the stop-dfe cycle counter.
  *                  These counters saturates at 0xffffffff.
- * 
+ *
  * \param[in]       sw is the switch on which to operate.
  *
  * \param[in]       serDes is the SerDes number on which to operate.
@@ -2884,7 +3014,7 @@ fm_bool fm10000SerdesGetTimestampDiffMs(fm_uint32  start,
  *****************************************************************************/
 fm_status fm10000SerdesIncrStatsCounter(fm_int       sw,
                                         fm_int       serDes,
-                                        fm_int       counterSpec) 
+                                        fm_int       counterSpec)
 {
     fm_status           err;
     fm10000_lane       *pLaneExt;
@@ -2920,7 +3050,7 @@ fm_status fm10000SerdesIncrStatsCounter(fm_int       sw,
 
     return err;
 
-}   /* end fm10000SerdesIncrStatsCounter */
+}
 
 
 
@@ -2967,13 +3097,13 @@ fm_status fm10000SerdesGetTuningState(fm_int     sw,
     else
     {
         pLaneExt  = GET_LANE_EXT(sw, serDes);
-        
+
         *pDfeTuningState = pLaneExt->dfeExt.dfeTuningStat & 0x0f;
     }
-    
+
     FM_LOG_EXIT_V2(FM_LOG_CAT_SWITCH, serDes, err);
 
-}   /* end fm10000SerdesGetTuningState */
+}
 
 
 
@@ -3019,14 +3149,14 @@ fm_status fm10000SerdesIsDfeTuningActive(fm_int     sw,
     else
     {
         pLaneExt  = GET_LANE_EXT(sw, serDes);
-        
+
         *pDfeTuningIsActive = ((pLaneExt->dfeExt.dfeTuningStat & 0x0f) != 0) ||
                               (pLaneExt->dfeExt.retryCntr > 0);
     }
-    
+
     FM_LOG_EXIT_V2(FM_LOG_CAT_SWITCH, serDes, err);
 
-}   /* end fm10000SerdesIsDfeTuningActive */
+}
 
 
 
@@ -3085,7 +3215,7 @@ fm_status fm10000SerdesGetEyeScore(fm_int     sw,
 
         if (pLaneExt->dfeMode == FM_DFE_MODE_STATIC)
         {
-#if 0  
+#if 0
             err = fm10000SerdesGetSignalOk(sw, serDes, &signalOk);
 
             if (signalOk)
@@ -3122,7 +3252,7 @@ fm_status fm10000SerdesGetEyeScore(fm_int     sw,
 
     FM_LOG_EXIT_V2(FM_LOG_CAT_SWITCH, serDes, err);
 
-}   /* end fm10000SerdesGetEyeScore */
+}
 
 
 
@@ -3146,11 +3276,11 @@ fm_status fm10000SerdesGetEyeScore(fm_int     sw,
  * \param[out]      pSerDesBistUserPatternLow points to the caller-allocated
  *                  storage where this function will return the low part of
  *                  the bist user pattern. It may be NULL.
- * 
+ *
  * \param[out]      pSerDesBistUserPatternHigh points to the caller-allocated
  *                  storage where this function will return the high part of
  *                  the bist user pattern. It may be NULL.
- * 
+ *
  * \return          FM_OK if successful.
  * \return          Other ''Status Codes'' as appropriate in case of failure.
  *
@@ -3196,7 +3326,7 @@ fm_status fm10000SerdesGetBistUserPattern(fm_int     sw,
 
     FM_LOG_EXIT_V2(FM_LOG_CAT_SWITCH, serDes, err);
 
-}   /* end fm10000SerdesGetBistUserPattern */
+}
 
 
 
@@ -3214,7 +3344,7 @@ fm_status fm10000SerdesGetBistUserPattern(fm_int     sw,
  *                  pSerDesBistUserPatternLow is 0, then the whole user pattern
  *                  is set to its default value. If the value pointed by
  *                  pSerDesBistUserPatternHigh is 0, only the high part of the
- *                  then pattern is set to its default value. 
+ *                  then pattern is set to its default value.
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -3222,10 +3352,10 @@ fm_status fm10000SerdesGetBistUserPattern(fm_int     sw,
  *
  * \param[out]      pSerDesBistUserPatternLow points to low part of
  *                  the bist user pattern. It may be NULL.
- * 
+ *
  * \param[out]      pSerDesBistUserPatternHigh points to the high part of
  *                  the bist user pattern. It may be NULL.
- * 
+ *
  * \return          FM_OK if successful.
  * \return          Other ''Status Codes'' as appropriate in case of failure.
  *
@@ -3292,7 +3422,7 @@ fm_status fm10000SerdesSetBistUserPattern(fm_int     sw,
 
     FM_LOG_EXIT_V2(FM_LOG_CAT_SWITCH, serDes, err);
 
-}   /* end fm10000SerdesSetBistUserPattern */
+}
 
 
 
@@ -3322,7 +3452,7 @@ fm_status fm10000SerDesEventHandler( fm_int    sw,
     fm_status       err;
     fm_int          serDes;
     fm10000_lane *  pLaneExt;
-    fm_smEventInfo  eventInfo; 
+    fm_smEventInfo  eventInfo;
     fm_bool         signalOk;
     fm_switch *     switchPtr;
     fm_bool         txRdyFlag;
@@ -3349,7 +3479,7 @@ fm_status fm10000SerDesEventHandler( fm_int    sw,
     {
 
         pLaneExt = GET_LANE_EXT( sw, serDes );
-    
+
         if (pLaneExt != NULL)
         {
 
@@ -3358,7 +3488,7 @@ fm_status fm10000SerDesEventHandler( fm_int    sw,
             eventInfo.dontSaveRecord = FALSE;
 
             if (FM_GET_BIT( serDesIp, FM10000_SERDES_IP, TxRdy) ||
-                FM_GET_BIT( serDesIp, FM10000_SERDES_IP, RxRdy) ) 
+                FM_GET_BIT( serDesIp, FM10000_SERDES_IP, RxRdy) )
             {
 
                 err = fm10000SerdesGetTxRxReadyStatus(sw, serDes, &txRdyFlag, &rxRdyFlag);
@@ -3388,6 +3518,7 @@ fm_status fm10000SerDesEventHandler( fm_int    sw,
                     }
                 }
             }
+
 
             if ( FM_GET_BIT( serDesIp, FM10000_SERDES_IP, RxSignalOk ) )
             {
@@ -3420,12 +3551,12 @@ fm_status fm10000SerDesEventHandler( fm_int    sw,
                                           ~pLaneExt->serdesInterruptMask);
             DROP_REG_LOCK( sw );
 
-        }   /* end if (pLaneExt != NULL) */
+        }
     }
 
     FM_LOG_EXIT_VERBOSE(FM_LOG_CAT_SERDES, err);
 
-}   /* end fm10000SerDesEventHandler */
+}
 
 
 
@@ -3470,7 +3601,9 @@ fm_status fm10000MapPhysicalPortToPepSerDes( fm_int  sw,
 
     return status;
 
-}   /* end fm10000MapFabricPortToPepSerDes */
+}
+
+
 
 
 /*****************************************************************************/
@@ -3525,7 +3658,8 @@ fm_status fm10000MapFabricPortToPepSerDes( fm_int  sw,
 
     return status;
 
-}   /* end fm10000MapFabricPortToPepSerDes */
+}
+
 
 
 
@@ -3569,12 +3703,12 @@ fm_status fm10000SerdesSendDfeEventReq(fm_int    sw,
                                      &pLaneExt->serDes );
     return err;
 
-}   /* end fm10000SerdesSendDfeEventReq */
+}
 
 
 
 
- 
+
 /*****************************************************************************/
 /** fm10000MapEplChannelToLane
  * \ingroup intSerdes
@@ -3616,7 +3750,7 @@ fm_status fm10000MapEplChannelToLane(fm_int  sw,
 
     FM_LOG_EXIT_VERBOSE(FM_LOG_CAT_SERDES, FM_OK);
 
-}   /* end fm10000MapEplChannelToLane */
+}
 
 
 
@@ -3661,7 +3795,7 @@ fm_status fm10000MapEplLaneToChannel(fm_int  sw,
 
     FM_LOG_EXIT_VERBOSE(FM_LOG_CAT_SERDES, FM_OK);
 
-}   /* end fm10000MapEplLaneToChannel */
+}
 
 
 
@@ -3708,7 +3842,7 @@ fm_status fm10000MapEplLaneToSerdes(fm_int  sw,
 
     return FM_ERR_INVALID_ARGUMENT;
 
-}   /* end fm10000MapEplLaneToSerdes */
+}
 
 
 
@@ -3760,7 +3894,8 @@ fm_status fm10000MapSerdesToSbus(fm_int         sw,
 
     return FM_OK;
 
-}   /* end fm10000MapSerdesToSbus */
+}
+
 
 
 
@@ -3816,7 +3951,7 @@ fm_status fm10000MapSerdesToEplLane(fm_int  sw,
 
     return err;
 
-}   /* end fm10000MapSerdesToEplLane */
+}
 
 
 
@@ -3879,8 +4014,7 @@ fm_status fm10000MapSerdesToPepLane(fm_int  sw,
 
     return err;
 
-}   /* end fm10000MapSerdesToPepLane */
-
+}
 
 
 
@@ -3923,7 +4057,7 @@ fm_status fm10000MapSerdesToLogicalPort(fm_int  sw,
 
     return err;
 
-}   /* end fm10000MapSerdesToLogicalPort */
+}
 
 
 
@@ -3993,8 +4127,8 @@ fm_status fm10000MapPortLaneToSerdes( fm_int  sw,
                                                      &eplLane);
             FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_SERDES, port, err );
 
-            err = fmPlatformMapPortLaneToEplLane( sw, 
-                                                  port, 
+            err = fmPlatformMapPortLaneToEplLane( sw,
+                                                  port,
                                                   laneNum,
                                                   &eplLane );
             FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_SERDES, port, err );
@@ -4014,13 +4148,14 @@ fm_status fm10000MapPortLaneToSerdes( fm_int  sw,
         {
             *serdes += laneNum;
         }
-    }   /* end else-if ( serdes == NULL ) */
+    }
 
 ABORT:
 
     return err;
 
-}   /* end fm10000MapPortLaneToSerdes */
+}
+
 
 
 
@@ -4073,7 +4208,8 @@ fm_status fm10000MapFabricPortToSerdes( fm_int         sw,
 
     return status;
 
-}   /* end fm10000MapFabricPortToSerdes */
+}
+
 
 
 
@@ -4134,7 +4270,7 @@ fm_status fm10000MapPhysicalPortToSerdes( fm_int        sw,
 
     return status;
 
-}   /* end fm10000MapPhysicalPortToSerdes */
+}
 
 
 
@@ -4164,7 +4300,7 @@ fm_status fm10000MapLogicalPortToSerdes(fm_int  sw,
 
     return fm10000MapPortLaneToSerdes(sw, port, 0, serdes);
 
-}   /* end fm10000MapLogicalPortToSerdes */
+}
 
 
 
@@ -4210,8 +4346,8 @@ fm_status fm10000MapPepToLogicalPort(fm_int  sw,
     switchPtr = GET_SWITCH_PTR( sw );
 
 
-    
-     
+
+
     status = FM_ERR_NOT_FOUND;
     for (i = 0 ; i < FM10000_NUM_SERDES ; i++)
     {
@@ -4226,7 +4362,7 @@ fm_status fm10000MapPepToLogicalPort(fm_int  sw,
 
     return status;
 
-}   /* end fm10000MapPepToLogicalPort */
+}
 
 
 
@@ -4235,7 +4371,7 @@ fm_status fm10000MapPepToLogicalPort(fm_int  sw,
 /** fm10000MapLogicalPortToPep
  * \ingroup intSwitch
  *
- * \desc            maps logical port to the associated PCIE Express 
+ * \desc            maps logical port to the associated PCIE Express
  *                  endpoint ID.
  *
  * \param[in]       sw is the ID of the switch on which to operate
@@ -4247,7 +4383,7 @@ fm_status fm10000MapPepToLogicalPort(fm_int  sw,
  *
  * \return          FM_OK if request succeeded.
  *
- * \return          FM_ERR_NOT_FOUND if this port was not found in the 
+ * \return          FM_ERR_NOT_FOUND if this port was not found in the
  *                  PCIE Express map.
  *
  * \return          FM_ERR_INVALID_ARGUMENT if the pep pointer is invalid
@@ -4301,7 +4437,7 @@ fm_status fm10000MapLogicalPortToPep( fm_int sw, fm_int port, fm_int *pep )
     }
     return status;
 
-}   /* end fm10000MapLogicalPortToPep */
+}
 
 
 

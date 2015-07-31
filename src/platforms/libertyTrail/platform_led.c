@@ -252,7 +252,9 @@ void *fmPlatformLedThread(void *args)
         {
             portCfg = FM_PLAT_GET_PORT_CFG(sw, portIdx);
 
-            if ( !FM_PLAT_PORT_IS_SW_LED(portCfg) )
+            /* Don't add PCIE ports since traffic notification isn't required */
+            if ( !FM_PLAT_PORT_IS_SW_LED(portCfg) ||
+                 portCfg->intfType == FM_PLAT_INTF_TYPE_PCIE )
             {
                 continue;
             }
@@ -591,7 +593,14 @@ fm_status fmPlatformLedSetPortState(fm_int  sw,
         return FM_OK;
     }
 
-    if ( isConfig || state != FM_PORT_STATE_UP )
+    if ( isConfig && portCfg->intfType == FM_PLAT_INTF_TYPE_PCIE )
+    {
+        /* Ignore port state change from the application for PCIE ports, as
+           the port PCIE state machine provides real port state prior the
+           application set port state. */
+        return FM_OK;
+    }
+    else if ( isConfig || state != FM_PORT_STATE_UP )
     {
         /**************************************************
          * Turn OFF the LED if 

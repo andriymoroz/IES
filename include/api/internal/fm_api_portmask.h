@@ -5,7 +5,7 @@
  * Creation Date:   June 22, 2009.
  * Description:     Port mask data type.
  *
- * Copyright (c) 2009 - 2014, Intel Corporation
+ * Copyright (c) 2009 - 2015, Intel Corporation
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -29,7 +29,7 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
+ *****************************************************************************/
 
 #ifndef __FM_FM_API_PORTMASK_H
 #define __FM_FM_API_PORTMASK_H
@@ -62,8 +62,8 @@
  * to use an fm_bitArray or possibly a portset. 
  *  
  * The whole point of fm_portmask is to allow us to use the same data 
- * structure to represent device-level port masks on Bali and Alta, with 
- * as little storage and run-time overhead as possible. 
+ * structure to represent device-level port masks on FM4000 and FM6000 
+ * devices, with as little storage and run-time overhead as possible.
  */
 typedef struct _fm_portmask
 {

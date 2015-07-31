@@ -6,7 +6,7 @@
  * Description:     Structures and functions for dealing with VLAN
  *                  configuration
  *
- * Copyright (c) 2005 - 2014, Intel Corporation
+ * Copyright (c) 2005 - 2015, Intel Corporation
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -30,7 +30,7 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
+ *****************************************************************************/
 
 #include <fm_sdk_int.h>
 
@@ -1194,6 +1194,21 @@ ABORT:
  *                  VLAN with a call to ''fmAddVlanPort'' the tagging behavior
  *                  for the port will be set as specified by the arguments to
  *                  that function.
+ * 
+ *                  On FM10000, if the specified port has the
+ *                  FM_PORT_ISL_TAG_FORMAT attribute configured to a value
+ *                  other than FM_ISL_TAG_NONE, then all frames egressing this
+ *                  port will contain an FTAG header. Thus, having a 802.1Q tag
+ *                  in the frame will be redundant since all VLAN information
+ *                  will be contained in the FTAG header. As such, if the port
+ *                  is already FTAG enabled, it will not be permitted to
+ *                  configure this port's VLAN tagging option to TRUE.
+ *                  Otherwise, the forwarded frame will contain double VLAN
+ *                  tags as an end result. In addition, if the port was
+ *                  initially configured to VLAN tag and the
+ *                  FM_PORT_ISL_TAG_FORMAT attribute was configured afterwards
+ *                  to a vlue other than FM_ISL_TAG_NONE, the port will be
+ *                  configured automatically to VLAN untag.
  *
  * \param[in]       sw is the switch on which to operate.
  * 
@@ -1317,6 +1332,21 @@ ABORT:
  *                  for the port will be set as specified by the arguments to
  *                  that function.
  *
+ *                  On FM10000, if the specified port has the
+ *                  FM_PORT_ISL_TAG_FORMAT attribute configured to a value
+ *                  other than FM_ISL_TAG_NONE, then all frames egressing this
+ *                  port will contain an FTAG header. Thus, having a 802.1Q tag
+ *                  in the frame will be redundant since all VLAN information
+ *                  will be contained in the FTAG header. As such, if the port
+ *                  is already FTAG enabled, it will not be permitted to
+ *                  configure this port's VLAN tagging option to TRUE.
+ *                  Otherwise, the forwarded frame will contain double VLAN
+ *                  tags as an end result. In addition, if the port was
+ *                  initially configured to VLAN tag and the
+ *                  FM_PORT_ISL_TAG_FORMAT attribute was configured afterwards
+ *                  to a vlue other than FM_ISL_TAG_NONE, the port will be
+ *                  configured automatically to VLAN untag.
+ *
  * \param[in]       sw is the switch on which to operate.
  *
  * \param[in]       vlanID is the VLAN number on which to operate.
@@ -1377,6 +1407,21 @@ fm_status fmChangeVlanPort(fm_int    sw,
  *                  VLAN with a call to ''fmAddVlanPort'' the tagging behavior
  *                  for the port will be set as specified by the arguments to
  *                  that function.
+ * 
+ *                  On FM10000, if the specified port has the
+ *                  FM_PORT_ISL_TAG_FORMAT attribute configured to a value
+ *                  other than FM_ISL_TAG_NONE, then all frames egressing this
+ *                  port will contain an FTAG header. Thus, having a 802.1Q tag
+ *                  in the frame will be redundant since all VLAN information
+ *                  will be contained in the FTAG header. As such, if the port
+ *                  is already FTAG enabled, it will not be permitted to
+ *                  configure this port's VLAN tagging option to TRUE.
+ *                  Otherwise, the forwarded frame will contain double VLAN
+ *                  tags as an end result. In addition, if the port was
+ *                  initially configured to VLAN tag and the
+ *                  FM_PORT_ISL_TAG_FORMAT attribute was configured afterwards
+ *                  to a vlue other than FM_ISL_TAG_NONE, the port will be
+ *                  configured automatically to VLAN untag.
  *
  * \param[in]       sw is the switch on which to operate.
  * 
@@ -1624,8 +1669,8 @@ fm_status fmGetVlanFirst(fm_int sw, fm_int *firstID)
     switchPtr = GET_SWITCH_PTR(sw);
 
     /* No lock required. */
-    /* For Tahoe even if vlan 0 is created internally we will not return it here.
-     * For Bali Vlan 0 is not used */
+    /* For FM2000, even if vlan 0 is created internally we will not return it here.
+     * For FM6000, Vlan 0 is not used */
     for (*firstID = 1 ; (*firstID < switchPtr->vlanTableSize) ; (*firstID)++)
     {
         if ( ( switchPtr->vidTable[*firstID].valid ) &&

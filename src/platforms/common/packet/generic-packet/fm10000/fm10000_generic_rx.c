@@ -5,7 +5,7 @@
  * Creation Date:   May 8th, 2013
  * Description:     Generic receive for the FM10000 series
  *
- * Copyright (c) 2006 - 2014, Intel Corporation
+ * Copyright (c) 2006 - 2015, Intel Corporation
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -29,7 +29,7 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
+ *****************************************************************************/
 
 #include <fm_sdk_fm10000_int.h>
 
@@ -245,13 +245,13 @@ fm_status fm10000PacketReceiveProcess(fm_int              sw,
     fm_macaddr                  macAddr;
     fm_int                      switchNum;
     fm_int                      srcPort;
-    fm_int                      trapCodeLogArpRedirect;
-    fm_bool                     logArpRedirect;
     fm_bool                     dropPacketUnknownPort;
 #ifndef FM_SUPPORT_SWAG
     fm_uint64                   dmac;
     fm_int                      stpInstance;
     fm_int                      portState;
+    fm_int                      trapCodeLogArpRedirect;
+    fm_bool                     logArpRedirect;
 #endif
 
     FM_LOG_ENTRY(FM_LOG_CAT_EVENT_PKT_RX, 
@@ -527,6 +527,9 @@ fm_status fm10000PacketReceiveProcess(fm_int              sw,
             }   /* end switch (svInfo->trapAction) */
 
         }   /* end if (err == FM_OK && svInfo.trapType != ...) */
+#ifndef FM_SUPPORT_SWAG
+        /* ARP Redirect will be processed at the event handler level
+         * on SWAG enabled platform. */
         else if (err == FM_OK)
         {
             err = fm10000GetSwitchTrapCode(sw,
@@ -543,6 +546,7 @@ fm_status fm10000PacketReceiveProcess(fm_int              sw,
                 }
             }
         }
+#endif
 
     }   /* end if (IS_TRAP_GLORT(dstGlort)) */
     

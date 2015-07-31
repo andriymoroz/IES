@@ -30,7 +30,7 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
+ *****************************************************************************/
 
 #include <fm_sdk_fm10000_int.h>
 
@@ -106,6 +106,86 @@ typedef fm_status (*fm_writeReg32Seq)(fm_int     sw,
 /*****************************************************************************
  * Local Functions
  *****************************************************************************/
+
+
+#if (FM10000_USE_FFU_SLICE_MONITOR)
+
+/*****************************************************************************/
+/** SuspendTcamMonitor
+ * \ingroup intLowlevFFU10k
+ *
+ * \desc            Suspends background checking of the FFU TCAMs while
+ *                  they are being updated.
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \param[in]       slice points to a structure that specifies the slice
+ *                  or chain of slices on which to operate.
+ *
+ *****************************************************************************/
+static fm_status SuspendTcamMonitor(fm_int sw, const fm_ffuSliceInfo *slice)
+{
+    fm_status   err;
+    fm_int      crmId;
+    fm_int      i;
+
+    FM_LOG_DEBUG(FM_LOG_CAT_CRM,
+                 "keyStart=%d keyEnd=%d\n",
+                 slice->keyStart,
+                 slice->keyEnd);
+
+    for (i = slice->keyStart ; i <= slice->keyEnd ; ++i)
+    {
+        crmId =  FM10000_FFU_SLICE_CRM_ID(i);
+        err = NotifyCRMEvent(sw, crmId, FM10000_CRM_EVENT_SUSPEND_REQ);
+        FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_CRM, err);
+    }
+
+    return FM_OK;
+
+}   /* end SuspendTcamMonitor */
+
+
+
+
+/*****************************************************************************/
+/** ResumeTcamMonitor
+ * \ingroup intLowlevFFU10k
+ *
+ * \desc            Resumes background checking of the FFU TCAMs after
+ *                  they have been updated.
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \param[in]       slice points to a structure that specifies the slice
+ *                  or chain of slices on which to operate.
+ *
+ *****************************************************************************/
+static fm_status ResumeTcamMonitor(fm_int sw, const fm_ffuSliceInfo *slice)
+{
+    fm_int      crmId;
+    fm_status   err;
+    fm_int      i;
+
+    FM_LOG_DEBUG(FM_LOG_CAT_CRM,
+                 "keyStart=%d keyEnd=%d\n",
+                 slice->keyStart,
+                 slice->keyEnd);
+
+    for (i = slice->keyStart ; i <= slice->keyEnd ; ++i)
+    {
+        crmId = FM10000_FFU_SLICE_CRM_ID(i);
+        err = NotifyCRMEvent(sw, crmId, FM10000_CRM_EVENT_RESUME_REQ);
+        FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_CRM, err);
+    }
+
+    return FM_OK;
+
+}   /* end ResumeTcamMonitor */
+
+#endif  /* FM10000_USE_FFU_SLICE_MONITOR */
+
+
 
 
 /*****************************************************************************/
@@ -293,8 +373,8 @@ static void InitScenarioSelectMaps(void)
         return;
     }
 
-    FM_MEMSET_S(GenericToMuxMap, sizeof(GenericToMuxMap), -1, sizeof(GenericToMuxMap));
-    FM_MEMSET_S(MuxToGenericMap, sizeof(MuxToGenericMap), -1, sizeof(MuxToGenericMap));
+    FM_MEMSET_S( GenericToMuxMap, sizeof( GenericToMuxMap ), -1, sizeof( GenericToMuxMap ) );
+    FM_MEMSET_S( MuxToGenericMap, sizeof( MuxToGenericMap ), -1, sizeof( MuxToGenericMap ) );
 
     for ( index = 0 ; (selectVal = rawMapTable[index][0]) != -1 ; index++ )
     {
@@ -988,7 +1068,7 @@ fm_status fm10000SetFFUSliceOwnership(fm_int          sw,
 
     VALIDATE_AND_PROTECT_SWITCH(sw);
 
-    if (!fmSupportsFfu(sw))
+    if ( !fmSupportsFfu(sw) )
     {
         err = FM_ERR_INVALID_SWITCH_TYPE;
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_FFU, err);
@@ -1073,7 +1153,7 @@ fm_status fm10000GetFFUSliceOwnership(fm_int          sw,
 
     VALIDATE_AND_PROTECT_SWITCH(sw);
 
-    if (!fmSupportsFfu(sw))
+    if ( !fmSupportsFfu(sw) )
     {
         err = FM_ERR_INVALID_SWITCH_TYPE;
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_FFU, err);
@@ -1150,7 +1230,7 @@ fm_status fm10000GetFFUSliceOwner(fm_int           sw,
 
     VALIDATE_AND_PROTECT_SWITCH(sw);
 
-    if (!fmSupportsFfu(sw))
+    if ( !fmSupportsFfu(sw) )
     {
         err = FM_ERR_INVALID_SWITCH_TYPE;
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_FFU, err);
@@ -1222,7 +1302,7 @@ fm_status fm10000FFUInit(fm_int sw)
 
 #if (!defined(FV_CODE) && !defined(FAST_API_BOOT))
     /* Invalidate all the rules of every slice first. */
-    for (slice = 0 ; slice < FM10000_FFU_SLICE_VALID_ENTRIES; slice++)
+    for (slice = 0 ; slice < FM10000_FFU_SLICE_VALID_ENTRIES ; slice++)
     {
         sliceInfo.keyStart = slice;
         sliceInfo.keyEnd = slice;
@@ -1337,25 +1417,24 @@ fm_status fm10000MoveFFURules(fm_int                 sw,
     fm_uint32     valueArray[(FM10000_FFU_SLICE_TCAM_ENTRIES_1 + 1) * FM10000_FFU_SLICE_TCAM_WIDTH * 2];
     fm_int        addrCount;
     fm_writeReg32Seq WriteReg32Seq;
+    fm_bool       regLockTaken;
 
     /* declare all what you need and log the arguments */
     FM_LOG_ENTRY(FM_LOG_CAT_FFU,
                  "sw = %d, slice = %p, fromIndex = %d, "
                  "nRules = %d, toIndex=%d\n",
                  sw,
-                 (void*) slice,
+                 (void *) slice,
                  fromIndex,
                  nRules,
                  toIndex);
 
     VALIDATE_AND_PROTECT_SWITCH(sw);
 
-    switchPtr = GET_SWITCH_PTR(sw);
+    regLockTaken = FALSE;
+    switchPtr    = GET_SWITCH_PTR(sw);
 
-    TAKE_REG_LOCK(sw);   /* make access atomic */
-    TAKE_PLAT_LOCK(sw, FM_MEM_TYPE_CSR);
-
-    if (!fmSupportsFfu(sw))
+    if ( !fmSupportsFfu(sw) )
     {
         err = FM_ERR_INVALID_SWITCH_TYPE;
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_FFU, err);
@@ -1365,12 +1444,12 @@ fm_status fm10000MoveFFURules(fm_int                 sw,
     FM_API_REQUIRE(slice != NULL, FM_ERR_INVALID_ARGUMENT);
 
     /* from index range must be valid */
-    FM_API_REQUIRE((fromIndex + nRules) <= FM10000_FFU_SLICE_TCAM_ENTRIES_0,
-                   FM_ERR_INVALID_ARGUMENT);
+    FM_API_REQUIRE( ( fromIndex + nRules ) <= FM10000_FFU_SLICE_TCAM_ENTRIES_0,
+                   FM_ERR_INVALID_ARGUMENT );
 
     /* to index range must be valid */
-    FM_API_REQUIRE((toIndex + nRules) <= FM10000_FFU_SLICE_TCAM_ENTRIES_0,
-                   FM_ERR_INVALID_ARGUMENT);
+    FM_API_REQUIRE( ( toIndex + nRules ) <= FM10000_FFU_SLICE_TCAM_ENTRIES_0,
+                   FM_ERR_INVALID_ARGUMENT );
 
     /* Retrieve array that holds cached value */
     camCachePtr = fm10000CacheFfuSliceTcam.getCache.data(sw);
@@ -1448,6 +1527,15 @@ fm_status fm10000MoveFFURules(fm_int                 sw,
                         FM10000_FFU_SLICE_SRAM_WIDTH;
     ramSwitchRegOffset = ramCacheRegOffset * 4;
 
+#if (FM10000_USE_FFU_SLICE_MONITOR)
+    /* Suspend TCAM checking during update. */
+    err = SuspendTcamMonitor(sw, slice);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_FFU, err);
+#endif
+
+    TAKE_REG_LOCK(sw);   /* make access atomic */
+    TAKE_PLAT_LOCK(sw, FM_MEM_TYPE_CSR);
+    regLockTaken = TRUE;
     /* Process each rule and update all slice (condition + action) */
     for (i = 0 ; i < nRules ; i++)
     {
@@ -1504,13 +1592,13 @@ fm_status fm10000MoveFFURules(fm_int                 sw,
             *(camCachePtrTmp + camOffset + 3) = *(camCachePtrTmp + 3);
 
             /* Update valid bits related to the moved rule. */
-            bitArrayDataPtrDst = bitArrayDataPtr + ((bitOffset + (camOffset / 2)) / 32);
-            bitMaskDst = 3 << ((bitOffset + (camOffset / 2)) % 32);
+            bitArrayDataPtrDst = bitArrayDataPtr + ( ( bitOffset + ( camOffset / 2 ) ) / 32 );
+            bitMaskDst = 3 << ( ( bitOffset + ( camOffset / 2 ) ) % 32 );
 
             /* Swap the BitArray value of source and destination to keep the
              * total number of bitArray bit in sync. */
             bitArrayBitDst = *bitArrayDataPtrDst & bitMaskDst;
-            bitArrayBitDst >>= ((bitOffset + (camOffset / 2)) % 32);
+            bitArrayBitDst >>= ( ( bitOffset + ( camOffset / 2 ) ) % 32 );
             bitArrayBitDst <<= (bitOffset % 32);
             *bitArrayDataPtrSrc &= ~bitMaskSrc;
             *bitArrayDataPtrSrc |= bitArrayBitDst;
@@ -1518,7 +1606,7 @@ fm_status fm10000MoveFFURules(fm_int                 sw,
             /* Now set the BitArray dest value to the one captured from the
              * source */
             bitArrayBitDst = bitArrayBitSrc >> (bitOffset % 32);
-            bitArrayBitDst <<= ((bitOffset + (camOffset / 2)) % 32);
+            bitArrayBitDst <<= ( ( bitOffset + ( camOffset / 2 ) ) % 32 );
 
             *bitArrayDataPtrDst &= ~bitMaskDst;
             *bitArrayDataPtrDst |= bitArrayBitDst;
@@ -1543,18 +1631,18 @@ fm_status fm10000MoveFFURules(fm_int                 sw,
             /* Invalidate switch register and update cache.
              * Invalidating entries with (Key == KeyInvert == 1) */
             addrArray[addrCount] = camSwitchRegPos;
-            valueArray[addrCount++] = 0x1;               //Key
+            valueArray[addrCount++] = 0x1;               /* Key */
             addrArray[addrCount] = camSwitchRegPos + 1;
-            valueArray[addrCount++] = 0x0;               //KeyTop
+            valueArray[addrCount++] = 0x0;               /* KeyTop */
             addrArray[addrCount] = camSwitchRegPos + 2;
-            valueArray[addrCount++] = 0x1;               //KeyInvert
+            valueArray[addrCount++] = 0x1;               /* KeyInvert */
             addrArray[addrCount] = camSwitchRegPos + 3;
-            valueArray[addrCount++] = 0x0;               //KeyTopInvert
+            valueArray[addrCount++] = 0x0;               /* KeyTopInvert */
 
-            *(camCachePtrTmp)     = 0x1;         //Key
-            *(camCachePtrTmp + 1) = 0x0;         //KeyTop
-            *(camCachePtrTmp + 2) = 0x1;         //KeyInvert
-            *(camCachePtrTmp + 3) = 0x0;         //KeyTopInvert
+            *(camCachePtrTmp)     = 0x1;         /* Key */
+            *(camCachePtrTmp + 1) = 0x0;         /* KeyTop */
+            *(camCachePtrTmp + 2) = 0x1;         /* KeyInvert */
+            *(camCachePtrTmp + 3) = 0x0;         /* KeyTopInvert */
 
             /* Next condition slice */
             camCachePtrTmp += FM10000_FFU_SLICE_TCAM_ENTRIES_0 *
@@ -1574,10 +1662,23 @@ fm_status fm10000MoveFFURules(fm_int                 sw,
 
     }   /* end for (i = 0 ; i < nRules ; i++) */
 
-ABORT:
+#if (FM10000_USE_FFU_SLICE_MONITOR)
+    /* Resume checking of FFU TCAMs. */
 
     DROP_PLAT_LOCK(sw, FM_MEM_TYPE_CSR);
     DROP_REG_LOCK(sw);
+    regLockTaken = FALSE;
+    err = ResumeTcamMonitor(sw, slice);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_FFU, err);
+#endif
+
+ABORT:
+
+    if ( regLockTaken )
+    {
+        DROP_PLAT_LOCK(sw, FM_MEM_TYPE_CSR);
+        DROP_REG_LOCK(sw);
+    }
     UNPROTECT_SWITCH(sw);
 
     FM_LOG_EXIT(FM_LOG_CAT_FFU, err);
@@ -1633,7 +1734,7 @@ fm_status fm10000SetFFUMasterValid(fm_int    sw,
 
     VALIDATE_AND_PROTECT_SWITCH(sw);
 
-    if (!fmSupportsFfu(sw))
+    if ( !fmSupportsFfu(sw) )
     {
         err = FM_ERR_INVALID_SWITCH_TYPE;
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_FFU, err);
@@ -1701,7 +1802,7 @@ fm_status fm10000GetFFUMasterValid(fm_int     sw,
 
     VALIDATE_AND_PROTECT_SWITCH(sw);
 
-    if (!fmSupportsFfu(sw))
+    if ( !fmSupportsFfu(sw) )
     {
         err = FM_ERR_INVALID_SWITCH_TYPE;
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_FFU, err);
@@ -1801,7 +1902,7 @@ fm_status fm10000ConfigureFFUSlice(fm_int                 sw,
 
     VALIDATE_AND_PROTECT_SWITCH(sw);
 
-    if (!fmSupportsFfu(sw))
+    if ( !fmSupportsFfu(sw) )
     {
         err = FM_ERR_INVALID_SWITCH_TYPE;
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_FFU, err);
@@ -1817,8 +1918,8 @@ fm_status fm10000ConfigureFFUSlice(fm_int                 sw,
                    FM_ERR_INVALID_SLICE);
     /* This special case enables the possibility to update only the Key part
      * of the scenario by setting actionEnd == keyEnd - 1 */
-    FM_API_REQUIRE((slice->actionEnd + 1) >= slice->keyEnd,
-                   FM_ERR_INVALID_SLICE);
+    FM_API_REQUIRE( ( slice->actionEnd + 1 ) >= slice->keyEnd,
+                   FM_ERR_INVALID_SLICE );
     FM_API_REQUIRE(slice->kase <= FM_FIELD_UNSIGNED_MAX(FM10000_FFU_SLICE_CFG, Case_XXX),
                    FM_ERR_INVALID_ARGUMENT);
     FM_API_REQUIRE(slice->validLow <= 1, FM_ERR_INVALID_ARGUMENT);
@@ -1828,10 +1929,10 @@ fm_status fm10000ConfigureFFUSlice(fm_int                 sw,
     nActionSlices = 1 + slice->actionEnd - slice->keyEnd;
 
     /* Cover the worst case (validScenarios == 0xffffffff) */
-    nEntries = ((FM10000_FFU_SLICE_CFG_ENTRIES_0 * nKeySlices) + nActionSlices);
+    nEntries = ( ( FM10000_FFU_SLICE_CFG_ENTRIES_0 * nKeySlices ) + nActionSlices );
     FM_ALLOC_TEMP_ARRAY(sgList, fm_registerSGListEntry, nEntries);
 
-    dataSize = ( ((FM10000_FFU_SLICE_CFG_WIDTH * FM10000_FFU_SLICE_CFG_ENTRIES_0) * nKeySlices) +
+    dataSize = ( ( (FM10000_FFU_SLICE_CFG_WIDTH * FM10000_FFU_SLICE_CFG_ENTRIES_0) * nKeySlices ) +
                  (FM10000_FFU_SLICE_CASCADE_ACTION_WIDTH * nActionSlices) );
     FM_ALLOC_TEMP_ARRAY(data, fm_uint32, dataSize);
     dataPtr = data;
@@ -1863,7 +1964,7 @@ fm_status fm10000ConfigureFFUSlice(fm_int                 sw,
     {
         for (j = 0 ; j < FM10000_FFU_SLICE_CFG_ENTRIES_0 ; j++)
         {
-            if (slice->validScenarios & (1 << j))
+            if ( slice->validScenarios & (1 << j) )
             {
                 FM_REGS_CACHE_FILL_SGLIST(&sgList[sgIndex],
                                           &fm10000CacheFfuSliceCfg,
@@ -1903,7 +2004,7 @@ fm_status fm10000ConfigureFFUSlice(fm_int                 sw,
     {
         for (j = 0 ; j < FM10000_FFU_SLICE_CFG_ENTRIES_0 ; j++)
         {
-            if (slice->validScenarios & (1 << j))
+            if ( slice->validScenarios & (1 << j) )
             {
                 dataPtr = sgList[sgIndex++].data; /* FFU_SLICE_CFG */
 
@@ -1920,15 +2021,15 @@ fm_status fm10000ConfigureFFUSlice(fm_int                 sw,
                     *dataPtr |= muxValue << (k * selectWidth);
                 }
 
-                FM_ARRAY_SET_BIT(dataPtr,
+                FM_ARRAY_SET_BIT( dataPtr,
                                  FM10000_FFU_SLICE_CFG,
                                  StartCompare,
-                                 (i == 0));
+                                 (i == 0) );
 
-                FM_ARRAY_SET_BIT(dataPtr,
+                FM_ARRAY_SET_BIT( dataPtr,
                                  FM10000_FFU_SLICE_CFG,
                                  StartAction,
-                                 ((i == nKeySlices - 1) && nActionSlices));
+                                 ( (i == nKeySlices - 1) && nActionSlices ) );
 
                 FM_ARRAY_SET_BIT(dataPtr,
                                  FM10000_FFU_SLICE_CFG,
@@ -2038,7 +2139,7 @@ fm_status fm10000UnconfigureFFUSlice(fm_int                 sw,
 
     VALIDATE_AND_PROTECT_SWITCH(sw);
 
-    if (!fmSupportsFfu(sw))
+    if ( !fmSupportsFfu(sw) )
     {
         err = FM_ERR_INVALID_SWITCH_TYPE;
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_FFU, err);
@@ -2059,11 +2160,11 @@ fm_status fm10000UnconfigureFFUSlice(fm_int                 sw,
     nActionSlices = 1 + slice->actionEnd - slice->keyEnd;
 
     /* Cover the worst case (validScenarios == 0xffffffff) */
-    nEntries = ((FM10000_FFU_SLICE_CFG_ENTRIES_0 * nKeySlices) + nActionSlices);
+    nEntries = ( (FM10000_FFU_SLICE_CFG_ENTRIES_0 * nKeySlices) + nActionSlices );
     FM_ALLOC_TEMP_ARRAY(sgList, fm_registerSGListEntry, nEntries);
 
-    dataSize = ( ((FM10000_FFU_SLICE_CFG_WIDTH * FM10000_FFU_SLICE_CFG_ENTRIES_0) * nKeySlices) +
-                 (FM10000_FFU_SLICE_CASCADE_ACTION_WIDTH * nActionSlices) );
+    dataSize = ( ( (FM10000_FFU_SLICE_CFG_WIDTH * FM10000_FFU_SLICE_CFG_ENTRIES_0) * nKeySlices) +
+                 (FM10000_FFU_SLICE_CASCADE_ACTION_WIDTH * nActionSlices ) );
     FM_ALLOC_TEMP_ARRAY(data, fm_uint32, dataSize);
     dataPtr = data;
 
@@ -2094,7 +2195,7 @@ fm_status fm10000UnconfigureFFUSlice(fm_int                 sw,
     {
         for (j = 0 ; j < FM10000_FFU_SLICE_CFG_ENTRIES_0 ; j++)
         {
-            if (slice->validScenarios & (1 << j))
+            if ( slice->validScenarios & (1 << j) )
             {
                 FM_REGS_CACHE_FILL_SGLIST(&sgList[sgIndex],
                                           &fm10000CacheFfuSliceCfg,
@@ -2250,7 +2351,7 @@ fm_status fm10000SetFFURule(fm_int                       sw,
 
     VALIDATE_AND_PROTECT_SWITCH(sw);
 
-    if (!fmSupportsFfu(sw))
+    if ( !fmSupportsFfu(sw) )
     {
         err = FM_ERR_INVALID_SWITCH_TYPE;
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_FFU, err);
@@ -2271,6 +2372,12 @@ fm_status fm10000SetFFURule(fm_int                       sw,
 
     nKeySlices    = 1 + slice->keyEnd - slice->keyStart;
     nActionSlices = 1 + slice->actionEnd - slice->keyEnd;
+
+#if (FM10000_USE_FFU_SLICE_MONITOR)
+    /* Suspend TCAM checking during update. */
+    err = SuspendTcamMonitor(sw, slice);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_FFU, err);
+#endif
 
     /* Translate the key part of the rule for all the condition slices */
     FM_CLEAR(data);
@@ -2306,17 +2413,17 @@ fm_status fm10000SetFFURule(fm_int                       sw,
 
             case FM_FFU_CASE_TOP_LOW_NIBBLE:
                 value[1] = (ruleKey[i].kase.value & 0xf) |
-                           ((ruleKey[i].key >> 32) & 0xf0);
+                           ( (ruleKey[i].key >> 32) & 0xf0 );
                 mask[1]  = (ruleKey[i].kase.mask & 0xf) |
-                           ((ruleKey[i].keyMask >> 32) & 0xf0);
+                           ( (ruleKey[i].keyMask >> 32) & 0xf0 );
 
                 break;
 
             case FM_FFU_CASE_TOP_HIGH_NIBBLE:
-                value[1] = ((ruleKey[i].kase.value & 0xf) << 4) |
-                           ((ruleKey[i].key >> 32) & 0xf);
-                mask[1]  = ((ruleKey[i].kase.mask & 0xf) << 4) |
-                           ((ruleKey[i].keyMask >> 32) & 0xf);
+                value[1] = ( (ruleKey[i].kase.value & 0xf) << 4 ) |
+                           ( (ruleKey[i].key >> 32) & 0xf );
+                mask[1]  = ( (ruleKey[i].kase.mask & 0xf) << 4 ) |
+                           ( (ruleKey[i].keyMask >> 32) & 0xf );
 
                 break;
 
@@ -2440,6 +2547,11 @@ fm_status fm10000SetFFURule(fm_int                       sw,
 
     }   /* end if ( live == TRUE ) */
 
+#if (FM10000_USE_FFU_SLICE_MONITOR)
+    /* Resume checking of FFU TCAMs. */
+    err = ResumeTcamMonitor(sw, slice);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_FFU, err);
+#endif
 
 ABORT:
     UNPROTECT_SWITCH(sw);
@@ -2562,7 +2674,7 @@ fm_status fm10000SetFFURules(fm_int                        sw,
 
     VALIDATE_AND_PROTECT_SWITCH(sw);
 
-    if (!fmSupportsFfu(sw))
+    if ( !fmSupportsFfu(sw) )
     {
         err = FM_ERR_INVALID_SWITCH_TYPE;
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_FFU, err);
@@ -2589,11 +2701,17 @@ fm_status fm10000SetFFURules(fm_int                        sw,
                         fm_registerSGListEntry,
                         nKeySlices + nActionSlices);
 
-    FM_ALLOC_TEMP_ARRAY(data,
+    FM_ALLOC_TEMP_ARRAY( data,
                         fm_uint32,
                         nRules *
                         (nKeySlices * FM10000_FFU_SLICE_TCAM_WIDTH +
-                         nActionSlices * FM10000_FFU_SLICE_SRAM_WIDTH));
+                        nActionSlices * FM10000_FFU_SLICE_SRAM_WIDTH) );
+
+#if (FM10000_USE_FFU_SLICE_MONITOR)
+    /* Suspend TCAM checking during update. */
+    err = SuspendTcamMonitor(sw, slice);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_FFU, err);
+#endif
 
     /* Translate the key part of the rule for all the condition slices */
     dataPtr = data;
@@ -2630,17 +2748,17 @@ fm_status fm10000SetFFURules(fm_int                        sw,
 
                 case FM_FFU_CASE_TOP_LOW_NIBBLE:
                     value[1] = (ruleKeys[j][i].kase.value & 0xf) |
-                               ((ruleKeys[j][i].key >> 32) & 0xf0);
+                               ( (ruleKeys[j][i].key >> 32) & 0xf0 );
                     mask[1]  = (ruleKeys[j][i].kase.mask & 0xf) |
-                               ((ruleKeys[j][i].keyMask >> 32) & 0xf0);
+                               ( (ruleKeys[j][i].keyMask >> 32) & 0xf0 );
 
                     break;
 
                 case FM_FFU_CASE_TOP_HIGH_NIBBLE:
-                    value[1] = ((ruleKeys[j][i].kase.value & 0xf) << 4) |
-                               ((ruleKeys[j][i].key >> 32) & 0xf);
-                    mask[1]  = ((ruleKeys[j][i].kase.mask & 0xf) << 4) |
-                               ((ruleKeys[j][i].keyMask >> 32) & 0xf);
+                    value[1] = ( (ruleKeys[j][i].kase.value & 0xf) << 4 ) |
+                               ( (ruleKeys[j][i].key >> 32) & 0xf );
+                    mask[1]  = ( (ruleKeys[j][i].kase.mask & 0xf) << 4 ) |
+                               ( (ruleKeys[j][i].keyMask >> 32) & 0xf );
 
                     break;
 
@@ -2771,6 +2889,11 @@ fm_status fm10000SetFFURules(fm_int                        sw,
 
     }   /* end if ( live == TRUE ) */
 
+#if (FM10000_USE_FFU_SLICE_MONITOR)
+    /* Resume checking of FFU TCAMs. */
+    err = ResumeTcamMonitor(sw, slice);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_FFU, err);
+#endif
 
 ABORT:
     FM_FREE_TEMP_ARRAYS();
@@ -2832,14 +2955,24 @@ fm_status fm10000SetFFURuleValid(fm_int                 sw,
 
     FM_LOG_ENTRY(FM_LOG_CAT_FFU, "sw = %d\n", sw);
 
-    if (!fmSupportsFfu(sw))
+    if ( !fmSupportsFfu(sw) )
     {
         err = FM_ERR_INVALID_SWITCH_TYPE;
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_FFU, err);
     }
 
+#if (FM10000_USE_FFU_SLICE_MONITOR)
+    err = SuspendTcamMonitor(sw, slice);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_FFU, err);
+#endif
+
     err = SetFFURuleValid(sw, slice, ruleIndex, valid, useCache);
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_FFU, err);
+
+#if (FM10000_USE_FFU_SLICE_MONITOR)
+    err = ResumeTcamMonitor(sw, slice);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_FFU, err);
+#endif
 
 ABORT:
     UNPROTECT_SWITCH(sw);
@@ -3020,7 +3153,7 @@ fm_status fm10000GetFFURules(fm_int                  sw,
 
     VALIDATE_AND_PROTECT_SWITCH(sw);
 
-    if (!fmSupportsFfu(sw))
+    if ( !fmSupportsFfu(sw) )
     {
         err = FM_ERR_INVALID_SWITCH_TYPE;
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_FFU, err);
@@ -3050,8 +3183,8 @@ fm_status fm10000GetFFURules(fm_int                  sw,
     FM_ALLOC_TEMP_ARRAY(data,
                         fm_uint32,
                         nRules *
-                        (nKeySlices * FM10000_FFU_SLICE_TCAM_WIDTH +
-                         nActionSlices * FM10000_FFU_SLICE_SRAM_WIDTH));
+                        ( nKeySlices * FM10000_FFU_SLICE_TCAM_WIDTH +
+                         nActionSlices * FM10000_FFU_SLICE_SRAM_WIDTH) );
 
     dataPtr = data;
 
@@ -3117,7 +3250,7 @@ fm_status fm10000GetFFURules(fm_int                  sw,
                                                 KeyTopInvert);
 
             /* is this CAM key valid? */
-            if (IsCamKeyValid2(key32, keyInvert32, 2) == FALSE) 
+            if ( !fmIsCamKeyValid2(key32, keyInvert32, 2) )
             {
                 /* rule isn't valid, mark it as such */
                 valid[j] = FALSE;
@@ -3514,7 +3647,7 @@ fm_status fm10000CopyFFURules(fm_int                 sw,
 
     VALIDATE_AND_PROTECT_SWITCH(sw);
 
-    if (!fmSupportsFfu(sw))
+    if ( !fmSupportsFfu(sw) )
     {
         err = FM_ERR_INVALID_SWITCH_TYPE;
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_FFU, err);
@@ -3545,11 +3678,11 @@ fm_status fm10000CopyFFURules(fm_int                 sw,
                         fm_registerSGListEntry,
                         nKeySlices + nActionSlices);
 
-    FM_ALLOC_TEMP_ARRAY(data,
-                        fm_uint32,
-                        nRules *
-                        (nKeySlices * FM10000_FFU_SLICE_TCAM_WIDTH +
-                         nActionSlices * FM10000_FFU_SLICE_SRAM_WIDTH));
+    FM_ALLOC_TEMP_ARRAY( data,
+                         fm_uint32,
+                         nRules *
+                         (nKeySlices * FM10000_FFU_SLICE_TCAM_WIDTH +
+                          nActionSlices * FM10000_FFU_SLICE_SRAM_WIDTH) );
 
     dataPtr = data;
 
@@ -3584,6 +3717,12 @@ fm_status fm10000CopyFFURules(fm_int                 sw,
     }
 
     sgIndex += nActionSlices;
+
+#if (FM10000_USE_FFU_SLICE_MONITOR)
+    /* Suspend TCAM checking during update. */
+    err = SuspendTcamMonitor(sw, slice);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_FFU, err);
+#endif
 
     /**************************************************
      * Acquire the regLock, so that the read-modify-write
@@ -3628,15 +3767,15 @@ fm_status fm10000CopyFFURules(fm_int                 sw,
 
             for (i = nKeySlices + nActionSlices - 1 ; i >= 0 ; i--)
             {
-                FM_REGS_CACHE_FILL_SGLIST(&sgList[sgIndex],
+                FM_REGS_CACHE_FILL_SGLIST( &sgList[sgIndex],
                                           oldSG[i].registerSet,
                                           1,
                                           oldSG[i].idx[0] + j,
                                           oldSG[i].idx[1],
                                           FM_REGS_CACHE_INDEX_UNUSED,
-                                          (oldSG[i].data +
-                                          (j * oldSG[i].registerSet->nWords)),
-                                          (i == 0));
+                                          ( oldSG[i].data +
+                                          ( j * oldSG[i].registerSet->nWords ) ),
+                                          ( i == 0 ) );
                 sgIndex++;
             }
         }
@@ -3668,6 +3807,13 @@ fm_status fm10000CopyFFURules(fm_int                 sw,
         }
     }
 
+#if (FM10000_USE_FFU_SLICE_MONITOR)
+    /* Resume checking of FFU TCAMs. */
+    DROP_REG_LOCK(sw);
+    regLockTaken = FALSE;
+    err = ResumeTcamMonitor(sw, slice);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_FFU, err);
+#endif
 
 ABORT:
     FM_FREE_TEMP_ARRAYS();
@@ -3748,7 +3894,7 @@ fm_status fm10000ConfigureFFUEaclChunk(fm_int     sw,
 
     VALIDATE_AND_PROTECT_SWITCH(sw);
 
-    if (!fmSupportsFfu(sw))
+    if ( !fmSupportsFfu(sw) )
     {
         err = FM_ERR_INVALID_SWITCH_TYPE;
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_FFU, err);
@@ -3784,7 +3930,7 @@ fm_status fm10000ConfigureFFUEaclChunk(fm_int     sw,
 
     for (i = 0 ; i < FM10000_FFU_EGRESS_PORT_CFG_ENTRIES ; i++)
     {
-        if (dstPhysicalPortMask & (fm_uint64)(1LL << i))
+        if ( dstPhysicalPortMask & (fm_uint64)( 1LL << i ) )
         {
             portCfg[i * FM10000_FFU_EGRESS_PORT_CFG_WIDTH] |= (1 << chunk);
         }
@@ -3887,7 +4033,7 @@ fm_status fm10000SetFFUEaclAction(fm_int    sw,
 
     VALIDATE_AND_PROTECT_SWITCH(sw);
 
-    if (!fmSupportsFfu(sw))
+    if ( !fmSupportsFfu(sw) )
     {
         err = FM_ERR_INVALID_SWITCH_TYPE;
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_FFU, err);
@@ -3983,7 +4129,7 @@ fm_status fm10000GetFFUEaclAction(fm_int     sw,
 
     VALIDATE_AND_PROTECT_SWITCH(sw);
 
-    if (!fmSupportsFfu(sw))
+    if ( !fmSupportsFfu(sw) )
     {
         err = FM_ERR_INVALID_SWITCH_TYPE;
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_FFU, err);
@@ -4051,7 +4197,7 @@ fm_status fm10000SetFFUEaclCounter(fm_int    sw,
 
     VALIDATE_AND_PROTECT_SWITCH(sw);
 
-    if (!fmSupportsFfu(sw))
+    if ( !fmSupportsFfu(sw) )
     {
         err = FM_ERR_INVALID_SWITCH_TYPE;
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_FFU, err);
@@ -4111,7 +4257,7 @@ fm_status fm10000GetFFUEaclCounter(fm_int     sw,
 
     VALIDATE_AND_PROTECT_SWITCH(sw);
 
-    if (!fmSupportsFfu(sw))
+    if ( !fmSupportsFfu(sw) )
     {
         err = FM_ERR_INVALID_SWITCH_TYPE;
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_FFU, err);

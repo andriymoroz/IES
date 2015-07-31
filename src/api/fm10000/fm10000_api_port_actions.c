@@ -29,7 +29,7 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
+ *****************************************************************************/
 
 #include <fm_sdk_fm10000_int.h>
 
@@ -784,6 +784,58 @@ static void HandleDeferralTimeout( void *arg )
 
 
 /*****************************************************************************/
+/** HandlePortStatusPollingTimerEvent
+ * \ingroup intPort
+ * 
+ * \desc            Handles a the expiration of the timer used to defer the
+ *                  completion of the PLL power up process
+ *
+ * \param[in]       arg is the pointer to the argument passed when the timer
+ *                  was started, in this case the pointer to the lane extension
+ *                  structure (type ''fm10000_lane'')
+ *
+ * \return          None
+ *
+ *****************************************************************************/
+static void HandlePortStatusPollingTimerEvent( void *arg )
+{
+    fm_smEventInfo           eventInfo; 
+    fm10000_portSmEventInfo *portEventInfo;
+    fm10000_port            *portExt;
+    fm_int                   sw;
+    fm_int                   port;
+
+    
+    portExt           = arg;
+    eventInfo.smType  = portExt->smType;
+    eventInfo.eventId = FM10000_PORT_EVENT_POLLING_TIMER_EXP_IND;
+    portEventInfo     = &portExt->eventInfo;
+    sw                = portEventInfo->switchPtr->switchNumber;
+    port              = portExt->base->portNumber;
+
+    FM_LOG_DEBUG_V2( FM_LOG_CAT_PORT,
+                     port,
+                     "Polling timer expired on port %d (switch %d, portPtr=%p)\n",
+                     port,
+                     sw,
+                     (void *)portExt->base );
+
+    PROTECT_SWITCH( sw );
+    eventInfo.lock = FM_GET_STATE_LOCK( sw );
+    eventInfo.dontSaveRecord = FALSE;
+    portExt->eventInfo.regLockTaken = FALSE;
+    fmNotifyStateMachineEvent( portExt->smHandle,
+                               &eventInfo,
+                               portEventInfo,
+                               &port );
+    UNPROTECT_SWITCH( sw );
+
+}   /* end HandlePortStatusPollingTimerEvent */
+
+
+
+
+/*****************************************************************************/
 /** SendAnEventReq
  * \ingroup intPort
  *
@@ -901,6 +953,8 @@ ABORT:
 }   /* end SetTxFaultModeInMacCfg */
 
 
+
+
 /*****************************************************************************/
 /** SetPepLoopback
  * \ingroup intPort
@@ -954,6 +1008,8 @@ ABORT:
     return status;
 
 }   /* end SetPepLoopback */
+
+
 
 
 /*****************************************************************************/
@@ -1104,6 +1160,279 @@ ABORT:
     return err;
 
 }   /* end ConfigureEeeLane */
+
+
+
+
+/*****************************************************************************/
+/** GetSchedPortMode
+ * \ingroup intPort
+ *
+ * \desc            Get the SchedPortMode we need for a given port.
+ *
+ * \param[in]       sw is the switch to operate on
+ * 
+ * \param[in]       physPort is the physical port to operate on.
+ * 
+ * \param[in]       ethMode ethernet mode to retrieve the SchedPortMode from.
+ *                  will be ignored for non EPL ports. 
+ * 
+ * \param[out]      schedPortMode is a pointer to the caller allocated storage
+ *                  where we should store the quad channel mode of physical port
+ * 
+ * \return          FM_OK if successful
+ *
+ *****************************************************************************/
+static fm_status GetSchedPortMode(fm_int                sw, 
+                                  fm_int                physPort, 
+                                  fm_int                ethMode, 
+                                  fm_schedulerPortMode *schedPortMode)
+{
+    fm_status  err;
+    fm_switch *switchPtr;
+    fm_int     fabricPort;
+    fm_int     numLanes;
+    fm_uint32  rv;
+    fm_int     pcieHost;
+
+    switchPtr = GET_SWITCH_PTR(sw);
+
+    *schedPortMode = FM_SCHED_PORT_MODE_NONE;
+
+    err = fm10000MapPhysicalPortToFabricPort(sw, physPort, &fabricPort);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
+
+    if ( (fabricPort >= FM10000_FIRST_EPL_FABRIC_PORT) && 
+         (fabricPort <= FM10000_LAST_EPL_FABRIC_PORT) )
+    {
+        /* the event id depends on whether or not the port is being disabled */
+        if ( ethMode != FM_ETH_MODE_DISABLED )
+        {
+            err = fm10000GetNumEthLanes( ethMode, &numLanes );
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
+
+            if ( numLanes == 1 )
+            {
+                /* single-lane ports */
+                *schedPortMode = FM_SCHED_PORT_MODE_SINGLE;
+            }
+            else
+            {
+                /* multi-lane port */
+                *schedPortMode = FM_SCHED_PORT_MODE_QUAD;
+            }
+        }
+    }
+    else if ( (fabricPort >= FM10000_FIRST_PCIE_FABRIC_PORT) && 
+              (fabricPort <= FM10000_LAST_PCIE_FABRIC_PORT) )
+    {
+        /* Get Bifurcation Mode */
+        err = switchPtr->ReadUINT32(sw, FM10000_DEVICE_CFG(), &rv);
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
+        
+        pcieHost = (fabricPort - FM10000_FIRST_PCIE_FABRIC_PORT) / 4;
+
+        /* If in x4, there is one channel, if in x8, there are 4 channels */
+        if (rv & (1 << pcieHost))
+        {
+            *schedPortMode = FM_SCHED_PORT_MODE_SINGLE;
+        }
+        else
+        {
+            *schedPortMode = FM_SCHED_PORT_MODE_QUAD;
+        }
+    }
+    else if ( (fabricPort >= FM10000_FIRST_TE_FABRIC_PORT) &&
+              (fabricPort <= FM10000_LAST_TE_FABRIC_PORT) )
+    {
+        *schedPortMode = FM_SCHED_PORT_MODE_QUAD;
+    } 
+    else
+    {
+        /* Default for Loopback, PCIE[8] and FIBM ports */
+        *schedPortMode = FM_SCHED_PORT_MODE_SINGLE;
+    }
+
+ABORT:
+    return err;
+
+}   /* end GetSchedPortMode */
+
+
+
+
+/*****************************************************************************/
+/** ReleaseRequestSchedBw
+ * \ingroup intPort
+ *
+ * \desc            Release/Request scheduler BW for a port.
+ *
+ * \param[in]       sw is the switch to operate on
+ * 
+ * \param[in]       physPort is the physical port to operate on.
+ * 
+ * \param[in]       speed is the speed to request BW for. Should be set
+ *                  to 0 to release BW .
+ * 
+ * \param[in]       schedPortMode is the quad channel mode of physical port.
+ * 
+ * \return          FM_OK if successful
+ *
+ *****************************************************************************/
+static fm_status ReleaseRequestSchedBw(fm_int               sw, 
+                                       fm_int               physPort, 
+                                       fm_int               speed, 
+                                       fm_schedulerPortMode schedPortMode)
+{
+    fm_status               err;
+    fm_status               err2;
+    fm10000_schedAttr       schedAttr;
+    fm10000_schedSpeedInfo  ssi;
+
+    err = fm10000GetSchedAttributes(sw, &schedAttr);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
+
+    if (schedAttr.mode == FM10000_SCHED_MODE_STATIC)
+    {
+        /* Do Nothing */
+    }
+    else if (schedAttr.mode == FM10000_SCHED_MODE_DYNAMIC)
+    {
+        /* For recovery, get current settings */
+        err = fm10000GetSchedPortSpeed(sw, physPort, &ssi);
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
+
+        err = fm10000ReserveSchedBw(sw, 
+                                    physPort, 
+                                    speed, 
+                                    schedPortMode);
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
+
+        if (speed != 0)
+        {
+            err = fm10000RegenerateSchedule(sw);
+
+            if (err != FM_OK)
+            {
+                /* Revert to the last known reservation to prevent
+                 * falling into a bad state */
+                err2 = fm10000ReserveSchedBw(sw, 
+                                             physPort, 
+                                             ssi.reservedSpeed, 
+                                             ssi.isQuad ? 
+                                                FM_SCHED_PORT_MODE_QUAD : 
+                                                FM_SCHED_PORT_MODE_SINGLE);
+            }
+        }
+    }
+    else
+    {
+        /* unexpected */
+        err = FM_FAIL;
+    }
+
+ABORT:
+    return err;
+
+}   /* end ReleaseRequestSchedBw */
+
+
+
+
+/*****************************************************************************/
+/** ReleaseSchedBw
+ * \ingroup intPort
+ *
+ * \desc            Release the associated scheduler BW from this port.
+ *
+ * \param[in]       eventInfo pointer to a caller-allocated area containing
+ *                  the generic event descriptor (unsed in this function)
+ * 
+ * \param[in]       userInfo pointer to a caller-allocated area containing the
+ *                  purpose specific event descriptor (cast to
+ *                  ''fm10000_portSmEventInfo'' in this function)
+ * 
+ * \return          FM_OK if successful
+ *
+ *****************************************************************************/
+static fm_status ReleaseSchedBw( fm_smEventInfo *eventInfo, void *userInfo )
+{
+    fm_status            err;
+    fm_int               sw;
+    fm_ethMode           ethMode;
+    fm_int               physPort;
+    fm_schedulerPortMode schedPortMode;
+    fm10000_port        *portExt;
+    
+    err     = FM_OK;
+    sw      = ((fm10000_portSmEventInfo *)userInfo)->switchPtr->switchNumber;
+    portExt = ((fm10000_portSmEventInfo *)userInfo)->portExt;
+    physPort = ((fm10000_portSmEventInfo *)userInfo)->portPtr->physicalPort;
+    ethMode  = portExt->ethMode;
+
+    err = GetSchedPortMode(sw, physPort, ethMode, &schedPortMode);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
+
+    err = ReleaseRequestSchedBw(sw, physPort, 0, schedPortMode);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
+    
+ABORT:
+    return err;    
+
+}   /* end ReleaseSchedBw */
+
+
+
+
+/*****************************************************************************/
+/** RequestSchedBw
+ * \ingroup intPort
+ *
+ * \desc            Request the associated scheduler BW from this port.
+ *
+ * \param[in]       eventInfo pointer to a caller-allocated area containing
+ *                  the generic event descriptor (unsed in this function)
+ * 
+ * \param[in]       userInfo pointer to a caller-allocated area containing the
+ *                  purpose specific event descriptor (cast to
+ *                  ''fm10000_portSmEventInfo'' in this function)
+ * 
+ * \return          FM_OK if successful
+ *
+ *****************************************************************************/
+static fm_status RequestSchedBw( fm_smEventInfo *eventInfo, void *userInfo )
+{
+    fm_status            err;
+    fm_int               sw;
+    fm_ethMode           ethMode;
+    fm_int               physPort;
+    fm_schedulerPortMode schedPortMode;
+    fm10000_port        *portExt;
+    fm_uint32            speed;
+    
+    err     = FM_OK;
+    sw      = ((fm10000_portSmEventInfo *)userInfo)->switchPtr->switchNumber;
+    portExt = ((fm10000_portSmEventInfo *)userInfo)->portExt;
+    physPort = ((fm10000_portSmEventInfo *)userInfo)->portPtr->physicalPort;
+    ethMode  = portExt->ethMode;
+
+    err = GetSchedPortMode(sw, physPort, ethMode, &schedPortMode);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
+
+    speed = FM10000_SCHED_SPEED_DEFAULT;
+
+    if ( ((fm10000_portSmEventInfo *)userInfo)->portExt->ring == FM10000_SERDES_RING_EPL )
+    {
+        speed = fm10000GetPortSpeed(ethMode);
+    }
+
+    err = ReleaseRequestSchedBw(sw, physPort, speed, schedPortMode);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
+    
+ABORT:
+    return err;    
+
+}   /* end RequestSchedBw */
 
 
 
@@ -1376,7 +1705,7 @@ fm_status fm10000ConfigureLaneForAn73( fm_smEventInfo *eventInfo, void *userInfo
 
 
 /*****************************************************************************/
-/** fm10000ReleaseSchedBw
+/** fm10000ReleaseSchedBwAdmDown
  * \ingroup intPort
  *
  * \desc            Release the associated scheduler BW from this port.
@@ -1391,80 +1720,78 @@ fm_status fm10000ConfigureLaneForAn73( fm_smEventInfo *eventInfo, void *userInfo
  * \return          FM_OK if successful
  *
  *****************************************************************************/
-fm_status fm10000ReleaseSchedBw( fm_smEventInfo *eventInfo, void *userInfo )
+fm_status fm10000ReleaseSchedBwAdmDown( fm_smEventInfo *eventInfo, void *userInfo )
 {
-    fm_status            err;
-    fm_int               sw;
-    fm_ethMode           ethMode;
-    fm_int               numLanes;
-    fm_int               physPort;
-    fm_schedulerPortMode portLaneConfig;
-    fm_int               schedMode;
-    fm10000_port        *portExt;
-    
+    fm_status         err;
+    fm_int            sw;
+    fm10000_schedAttr schedAttr;
+
     err     = FM_OK;
     sw      = ((fm10000_portSmEventInfo *)userInfo)->switchPtr->switchNumber;
-    portExt = ((fm10000_portSmEventInfo *)userInfo)->portExt;
 
-    portLaneConfig = FM_SCHED_PORT_MODE_NONE;
-    physPort = ((fm10000_portSmEventInfo *)userInfo)->portPtr->physicalPort;
+    err = fm10000GetSchedAttributes(sw, &schedAttr);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
 
-    /* Scheduler is reconfigured only for EPL ports */
-    if ( ((fm10000_portSmEventInfo *)userInfo)->portExt->ring == FM10000_SERDES_RING_EPL )
+    if ( (schedAttr.mode == FM10000_SCHED_MODE_DYNAMIC) &&
+         (schedAttr.updateLnkChange == FALSE) )
     {
-        ethMode  = portExt->ethMode;
-
-        /* the event id depends on whether or not the port is being disabled */
-        if ( ethMode != FM_ETH_MODE_DISABLED )
-        {
-            err = fm10000GetNumEthLanes( ethMode, &numLanes );
-
-            if (err == FM_OK)
-            {
-                if ( numLanes == 1 )
-                {
-                    /* single-lane ports */
-                    portLaneConfig = FM_SCHED_PORT_MODE_SINGLE;
-                }
-                else
-                {
-                    /* multi-lane port */
-                    portLaneConfig = FM_SCHED_PORT_MODE_QUAD;
-                }
-                
-            }
-        }
-    }
-
-    if (err == FM_OK)
-    {
-        err = fm10000GetSchedMode(sw, &schedMode);
-
-        if (err == FM_OK)
-        {
-            if (schedMode == FM10000_SCHED_MODE_STATIC)
-            {
-                /* Do Nothing */
-            }
-            else if (schedMode == FM10000_SCHED_MODE_DYNAMIC)
-            {
-                err = fm10000ReserveSchedBw(sw, 
-                                            physPort, 
-                                            0, 
-                                            portLaneConfig);
-            }
-        }
+        err = ReleaseSchedBw(eventInfo, userInfo);
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
     }
     
+ABORT:
     return err;    
 
-}   /* end fm10000ReleaseSchedBw */
+}   /* end fm10000ReleaseSchedBwAdmDown */
 
 
 
 
 /*****************************************************************************/
-/** fm10000UpdateSchedBw
+/** fm10000RequestSchedBwAdmUp
+ * \ingroup intPort
+ *
+ * \desc            Request the associated scheduler BW from this port.
+ *
+ * \param[in]       eventInfo pointer to a caller-allocated area containing
+ *                  the generic event descriptor (unsed in this function)
+ * 
+ * \param[in]       userInfo pointer to a caller-allocated area containing the
+ *                  purpose specific event descriptor (cast to
+ *                  ''fm10000_portSmEventInfo'' in this function)
+ * 
+ * \return          FM_OK if successful
+ *
+ *****************************************************************************/
+fm_status fm10000RequestSchedBwAdmUp( fm_smEventInfo *eventInfo, void *userInfo )
+{
+    fm_status         err;
+    fm_int            sw;
+    fm10000_schedAttr schedAttr;
+
+    err     = FM_OK;
+    sw      = ((fm10000_portSmEventInfo *)userInfo)->switchPtr->switchNumber;
+
+    err = fm10000GetSchedAttributes(sw, &schedAttr);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
+
+    if ( (schedAttr.mode == FM10000_SCHED_MODE_DYNAMIC) &&
+         (schedAttr.updateLnkChange == FALSE) )
+    {
+        err = RequestSchedBw(eventInfo, userInfo);
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
+    }
+    
+ABORT:
+    return err;    
+
+}   /* end fm10000RequestSchedBwAdmUp */
+
+
+
+
+/*****************************************************************************/
+/** fm10000ReleaseSchedBwLnkDown
  * \ingroup intPort
  *
  * \desc            Release the associated scheduler BW from this port.
@@ -1479,86 +1806,72 @@ fm_status fm10000ReleaseSchedBw( fm_smEventInfo *eventInfo, void *userInfo )
  * \return          FM_OK if successful
  *
  *****************************************************************************/
-fm_status fm10000UpdateSchedBw( fm_smEventInfo *eventInfo, void *userInfo )
+fm_status fm10000ReleaseSchedBwLnkDown( fm_smEventInfo *eventInfo, void *userInfo )
 {
-    fm_status            err;
-    fm_int               sw;
-    fm_ethMode           ethMode;
-    fm_uint32            speed;
-    fm_int               numLanes;
-    fm_int               physPort;
-    fm_schedulerPortMode portLaneConfig;
-    fm_int               schedMode;
-    fm10000_port        *portExt;
-    
+    fm_status         err;
+    fm_int            sw;
+    fm10000_schedAttr schedAttr;
+
     err     = FM_OK;
     sw      = ((fm10000_portSmEventInfo *)userInfo)->switchPtr->switchNumber;
-    portExt = ((fm10000_portSmEventInfo *)userInfo)->portExt;
 
-    speed = 0;
-    portLaneConfig = FM_SCHED_PORT_MODE_NONE;
-    physPort = ((fm10000_portSmEventInfo *)userInfo)->portPtr->physicalPort;
+    err = fm10000GetSchedAttributes(sw, &schedAttr);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
 
-    /* Scheduler is reconfigured only for EPL ports */
-    if ( ((fm10000_portSmEventInfo *)userInfo)->portExt->ring == FM10000_SERDES_RING_EPL )
+    if ( (schedAttr.mode == FM10000_SCHED_MODE_DYNAMIC) &&
+         (schedAttr.updateLnkChange == TRUE) )
     {
-        ethMode  = portExt->ethMode;
-
-        /* the event id depends on whether or not the port is being disabled */
-        if ( ethMode != FM_ETH_MODE_DISABLED )
-        {
-            err = fm10000GetNumEthLanes( ethMode, &numLanes );
-
-            if (err == FM_OK)
-            {
-                if ( numLanes == 1 )
-                {
-                    /* single-lane ports */
-                    portLaneConfig = FM_SCHED_PORT_MODE_SINGLE;
-                }
-                else
-                {
-                    /* multi-lane port */
-                    portLaneConfig = FM_SCHED_PORT_MODE_QUAD;
-                }
-            }
-
-
-            if (err == FM_OK)
-            {
-                speed = fm10000GetPortSpeed(ethMode);
-            }
-        }
-    }
-
-    if (err == FM_OK)
-    {
-        err = fm10000GetSchedMode(sw, &schedMode);
-
-        if (err == FM_OK)
-        {
-            if (schedMode == FM10000_SCHED_MODE_STATIC)
-            {
-                /* Do Nothing */
-            }
-            else if (schedMode == FM10000_SCHED_MODE_DYNAMIC)
-            {
-                err = fm10000ReserveSchedBw(sw, 
-                                            physPort, 
-                                            speed, 
-                                            portLaneConfig);
-
-                if (err == FM_OK && speed != 0)
-                {
-                    err = fm10000RegenerateSchedule(sw);
-                }
-            }
-        }
+        err = ReleaseSchedBw(eventInfo, userInfo);
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
     }
     
+ABORT:
     return err;    
 
-}   /* end fm10000UpdateSchedBw */
+}   /* end fm10000ReleaseSchedBwLnkDown */
+
+
+
+
+/*****************************************************************************/
+/** fm10000RequestSchedBwLnkUp
+ * \ingroup intPort
+ *
+ * \desc            Request the associated scheduler BW from this port.
+ *
+ * \param[in]       eventInfo pointer to a caller-allocated area containing
+ *                  the generic event descriptor (unsed in this function)
+ * 
+ * \param[in]       userInfo pointer to a caller-allocated area containing the
+ *                  purpose specific event descriptor (cast to
+ *                  ''fm10000_portSmEventInfo'' in this function)
+ * 
+ * \return          FM_OK if successful
+ *
+ *****************************************************************************/
+fm_status fm10000RequestSchedBwLnkUp( fm_smEventInfo *eventInfo, void *userInfo )
+{
+    fm_status         err;
+    fm_int            sw;
+    fm10000_schedAttr schedAttr;
+
+    err     = FM_OK;
+    sw      = ((fm10000_portSmEventInfo *)userInfo)->switchPtr->switchNumber;
+
+    err = fm10000GetSchedAttributes(sw, &schedAttr);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
+
+    if ( (schedAttr.mode == FM10000_SCHED_MODE_DYNAMIC) &&
+         (schedAttr.updateLnkChange == TRUE) )
+    {
+        err = RequestSchedBw(eventInfo, userInfo);
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
+    }
+    
+ABORT:
+    return err;    
+
+}   /* end fm10000RequestSchedBwLnkUp */
 
 
 
@@ -1591,97 +1904,101 @@ fm_status fm10000UpdateSchedBw( fm_smEventInfo *eventInfo, void *userInfo )
 fm_status fm10000ReconfigureScheduler( fm_smEventInfo *eventInfo, void *userInfo )
 {
     fm_status            err;
+    fm_status            err2;
     fm_int               sw;
-    fm_ethMode           ethMode;
     fm_uint32            speed;
-    fm_int               numLanes;
+    fm_int               ethMode;
     fm_int               physPort;
-    fm_schedulerPortMode portLaneConfig;
-    fm_int               schedMode;
+    fm_schedulerPortMode schedPortMode;
+    fm10000_schedAttr    schedAttr;
     fm_int               portMode;
+    fm_bool              linkUp;
+    fm10000_schedSpeedInfo ssi;
 
     err = FM_OK;
-    portLaneConfig = FM_SCHED_PORT_MODE_NONE;
+    schedPortMode = FM_SCHED_PORT_MODE_NONE;
 
     sw = ((fm10000_portSmEventInfo *)userInfo)->switchPtr->switchNumber;
-
+    physPort = ((fm10000_portSmEventInfo *)userInfo)->portPtr->physicalPort;
     portMode = ((fm10000_portSmEventInfo *)userInfo)->portPtr->mode;
+    linkUp   = ((fm10000_portSmEventInfo *)userInfo)->portPtr->linkUp;
+    ethMode  = ((fm10000_portSmEventInfo *)userInfo)->info.config.ethMode;
+    speed    = ((fm10000_portSmEventInfo *)userInfo)->info.config.speed;
 
-    /* Scheduler is reconfigured only for EPL ports */
-    if ( ((fm10000_portSmEventInfo *)userInfo)->portExt->ring == FM10000_SERDES_RING_EPL )
+    err = GetSchedPortMode(sw, physPort, ethMode, &schedPortMode);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
+
+    FM_LOG_DEBUG_V2(FM_LOG_CAT_PORT, ((fm10000_portSmEventInfo *)userInfo)->portExt->base->portNumber,
+                    "Reconfiguring scheduler for port %d, physPort=%d, ethernetMode=%d for speed=%d, schedPortMode=%d\n",
+                    ((fm10000_portSmEventInfo *)userInfo)->portExt->base->portNumber,
+                    physPort,
+                    ethMode,
+                    speed,
+                    schedPortMode);   
+
+    err = fm10000GetSchedAttributes(sw, &schedAttr);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
+
+    if (schedAttr.mode == FM10000_SCHED_MODE_STATIC)
     {
-        /* ethernet port */
-        physPort = ((fm10000_portSmEventInfo *)userInfo)->portPtr->physicalPort ;
-        ethMode  = ((fm10000_portSmEventInfo *)userInfo)->info.config.ethMode;
-        speed    = ((fm10000_portSmEventInfo *)userInfo)->info.config.speed;
-
-        /* the event id depends on whether or not the port is being disabled */
-        if ( ethMode != FM_ETH_MODE_DISABLED )
+        err = fm10000UpdateSchedPort(sw,
+                                     physPort,
+                                     speed,
+                                     schedPortMode);
+    }
+    else if (schedAttr.mode == FM10000_SCHED_MODE_DYNAMIC )
+    {
+        /* Handle special cases first */
+        if ( (schedAttr.updateLnkChange == FALSE) &&
+             (portMode == FM_PORT_MODE_ADMIN_PWRDOWN) )
         {
-            err = fm10000GetNumEthLanes( ethMode, &numLanes );
-
-            if (err == FM_OK)
-            {
-                if ( numLanes == 1 )
-                {
-                    /* single-lane ports */
-                    portLaneConfig = FM_SCHED_PORT_MODE_SINGLE;
-                }
-                else
-                {
-                    /* multi-lane port */
-                    portLaneConfig = FM_SCHED_PORT_MODE_QUAD;
-                }
-                
-            }
+            /* Nothing to do */
         }
-        if (err == FM_OK )
+        else if ( (schedAttr.updateLnkChange == TRUE) &&
+                  (linkUp == FALSE) )
         {
-            FM_LOG_DEBUG_V2(FM_LOG_CAT_PORT, ((fm10000_portSmEventInfo *)userInfo)->portExt->base->portNumber,
-                            "Reconfiguring scheduler for port %d, physPort=%d, ethernetMode=%d for speed=%d, laneConfig=%d\n",
-                            ((fm10000_portSmEventInfo *)userInfo)->portExt->base->portNumber,
-                            physPort,
-                            ethMode,
-                            speed,
-                            portLaneConfig);   
+            /* Nothing to do */
+        }
+        else
+        {
+            /* For recovery, get current settings */
+            err = fm10000GetSchedPortSpeed(sw, physPort, &ssi);
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
 
-            err = fm10000GetSchedMode(sw, &schedMode);
+            err = fm10000ReserveSchedBw(sw, 
+                                        physPort, 
+                                        speed, 
+                                        schedPortMode);
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
 
-            if (err == FM_OK)
+            
+            if (speed == 0)
             {
-                if (schedMode == FM10000_SCHED_MODE_STATIC)
+                err = fm10000UpdateSchedPort(sw,
+                                            physPort,
+                                            speed,
+                                            schedPortMode);
+            }
+            else
+            {
+                err = fm10000RegenerateSchedule(sw);
+
+                if (err != FM_OK)
                 {
-                    err = fm10000UpdateSchedPort(sw,
-                                                 physPort,
-                                                 speed,
-                                                 portLaneConfig);
-                }
-                else if ( (schedMode == FM10000_SCHED_MODE_DYNAMIC) && 
-                          (portMode != FM_PORT_MODE_ADMIN_PWRDOWN) )
-                {
-                    err = fm10000ReserveSchedBw(sw, 
-                                                physPort, 
-                                                speed, 
-                                                portLaneConfig);
-                    if (err == FM_OK)
-                    {
-                        if (speed == 0)
-                        {
-                            err = fm10000UpdateSchedPort(sw,
-                                                        physPort,
-                                                        speed,
-                                                        portLaneConfig);
-                        }
-                        else
-                        {
-                            err = fm10000RegenerateSchedule(sw);
-                        }
-                    }
+                    /* Revert to the last known reservation to prevent
+                     * falling into a bad state */
+                    err2 = fm10000ReserveSchedBw(sw, 
+                                                 physPort, 
+                                                 ssi.reservedSpeed, 
+                                                 ssi.isQuad ? 
+                                                    FM_SCHED_PORT_MODE_QUAD : 
+                                                    FM_SCHED_PORT_MODE_SINGLE);
                 }
             }
         }
     }
 
+ABORT:
     return err;
 
 }   /* end fm10000ReconfigureScheduler */
@@ -1713,27 +2030,69 @@ fm_status fm10000NotifyApiPortUp( fm_smEventInfo *eventInfo, void *userInfo )
     fm_int            port;
     fm_int            physPort;
     fm_port          *portPtr;
+    fm_portAttr      *portAttr;
     fm10000_portAttr *portAttrExt;
 
 
     FM_NOT_USED(eventInfo);
 
     portPtr     = ((fm10000_portSmEventInfo *)userInfo)->portPtr;
+    portAttr    = ((fm10000_portSmEventInfo *)userInfo)->portAttr;
     portAttrExt = ((fm10000_portSmEventInfo *)userInfo)->portAttrExt;
 
     sw          = ((fm10000_portSmEventInfo *)userInfo)->switchPtr->switchNumber;
     port        = ((fm10000_portSmEventInfo *)userInfo)->portExt->base->portNumber;
     physPort    = portPtr->physicalPort;
 
+    status = FM_OK;
+
+    if (portAttr->serdesLoopback == FM_PORT_LOOPBACK_RX2TX)
+    {
+        /*
+         * For far loopback PORT_STATUS_LINK_UP event should not be sent.
+         */
+        FM_LOG_DEBUG_V2(FM_LOG_CAT_PORT,
+                        port,
+                        "Skip PORT UP port=%d LinkUp=%d farLoopback=%d\n",
+                        port,
+                        portPtr->linkUp,
+                        portAttr->serdesLoopback);
+
+        if ( (portPtr->portType == FM_PORT_TYPE_PHYSICAL)   ||
+             ( (portPtr->portType == FM_PORT_TYPE_CPU) && 
+               (portPtr->portNumber != 0) ))
+        {
+            /* check if PORT_STATUS_LINK_DOWN needs to be requested */
+            if (portPtr->linkUp == TRUE)
+            {
+                portPtr->linkUp = FALSE;
+                FM_LOG_DEBUG_V2(FM_LOG_CAT_PORT,
+                                port,
+                                "Request PORT DOWN port=%d LinkUp=%d\n",
+                                port,
+                                portPtr->linkUp);
+                status = fm10000SendLinkUpDownEvent(sw,
+                                                    port,
+                                                    0,
+                                                    FALSE,
+                                                    FM_EVENT_PRIORITY_LOW);
+            }
+        }
+        FM_LOG_EXIT(FM_LOG_CAT_PORT, status);
+    }
 
     portPtr->linkUp = TRUE;
-    status          = FM_OK;
     if ( (portPtr->portType == FM_PORT_TYPE_PHYSICAL)
          || ( (portPtr->portType == FM_PORT_TYPE_CPU) && (portPtr->portNumber != 0) ) )
     {
         if ( portAttrExt->negotiatedEeeModeEnabled == TRUE )
         {
             status = fm10000StartDeferredLpiTimer(eventInfo,userInfo);
+            FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+        }
+        else
+        {
+            status = fm10000StartPortStatusPollingTimer(eventInfo,userInfo);
             FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
         }
 
@@ -3968,8 +4327,7 @@ fm_status fm10000StopDeferralTimer( fm_smEventInfo *eventInfo, void *userInfo )
 /** fm10000StartAnWatchDogTimer
  * \ingroup intPort
  *
- * \desc            Action starting an 1 sec watchdog timer to monitor AN
- *                  operation.
+ * \desc            Action starting a watchdog timer to monitor AN operation.
  * 
  * \param[in]       eventInfo pointer to a caller-allocated area containing
  *                  the generic event descriptor (unsed in this function)
@@ -3989,7 +4347,7 @@ fm_status fm10000StartAnWatchDogTimer( fm_smEventInfo *eventInfo, void *userInfo
 
     FM_NOT_USED(eventInfo);
 
-    /* start an 1 sec port-level timer. The callback will generate
+    /* start an 2 sec port-level timer. The callback will generate
        a FM10000_PORT_EVENT_DEFTIMER_EXP_IND event */
     portExt = ((fm10000_portSmEventInfo *)userInfo)->portExt;
 
@@ -4032,6 +4390,95 @@ fm_status fm10000StopAnWatchDogTimer( fm_smEventInfo *eventInfo, void *userInfo 
     return  fmStopTimer( portExt->timerHandle );
 
 }   /* end fm10000StopAnWatchDogTimer */
+
+
+
+
+/*****************************************************************************/
+/** fm10000StartPortStatusPollingTimer
+ * \ingroup intPort
+ *
+ * \desc            Action starting the port status polling timer.
+ * 
+ * \param[in]       eventInfo pointer to a caller-allocated area containing
+ *                  the generic event descriptor (unsed in this function)
+ * 
+ * \param[in]       userInfo pointer to a caller-allocated area containing the
+ *                  purpose specific event descriptor (cast to
+ *                  ''fm10000_portSmEventInfo'' in this function)
+ * 
+ * \return          FM_OK if successful
+ * \return          Other ''Status Codes'' as appropriate in case of failure.
+ * 
+ *****************************************************************************/
+fm_status fm10000StartPortStatusPollingTimer( fm_smEventInfo *eventInfo,
+                                              void           *userInfo )
+{
+    fm_status     status;
+    fm10000_port *portExt;
+    fm_timestamp  timeout = { 2, 0 };
+
+    FM_NOT_USED(eventInfo);
+
+    status = FM_OK;
+
+    if (fmGetBoolApiProperty(FM_AAK_API_PORT_ENABLE_STATUS_POLLING,
+                             FM_AAD_API_PORT_ENABLE_STATUS_POLLING) == TRUE )
+    {
+        /* start an 2 sec port-level timer. The callback will generate
+           a FM10000_PORT_EVENT_POLLING_TIMER_EXP_IND event */
+        portExt = ((fm10000_portSmEventInfo *)userInfo)->portExt;
+    
+        status = fmStartTimer( portExt->timerHandle,
+                               &timeout,
+                               1, 
+                               HandlePortStatusPollingTimerEvent,
+                               portExt );
+    }
+    return status;
+
+}   /* end fm10000StartPortStatusPollingTimer */
+
+
+
+
+/*****************************************************************************/
+/** fm10000StopPortStatusPollingTimer
+ * \ingroup intPort
+ *
+ * \desc            Action stopping the port status polling timer 
+ * 
+ * \param[in]       eventInfo pointer to a caller-allocated area containing
+ *                  the generic event descriptor (unsed in this function)
+ * 
+ * \param[in]       userInfo pointer to a caller-allocated area containing the
+ *                  purpose specific event descriptor (cast to
+ *                  ''fm10000_portSmEventInfo'' in this function)
+ * 
+ * \return          FM_OK if successful
+ * \return          Other ''Status Codes'' as appropriate in case of failure.
+ * 
+ *****************************************************************************/
+fm_status fm10000StopPortStatusPollingTimer( fm_smEventInfo *eventInfo,
+                                             void           *userInfo )
+{
+    fm_status     status;
+    fm10000_port *portExt;
+
+    FM_NOT_USED(eventInfo);
+
+    status = FM_OK;
+
+    if (fmGetBoolApiProperty(FM_AAK_API_PORT_ENABLE_STATUS_POLLING,
+                             FM_AAD_API_PORT_ENABLE_STATUS_POLLING) == TRUE )
+    {
+        portExt = ((fm10000_portSmEventInfo *)userInfo)->portExt;
+    
+        status = fmStopTimer( portExt->timerHandle );
+    }
+    return status;
+
+}   /* end fm10000StopPortStatusPollingTimer */
 
 
 
@@ -4280,6 +4727,7 @@ fm_status fm10000RestoreDfe( fm_smEventInfo *eventInfo, void *userInfo )
     fm_status       status = FM_OK;
     fm10000_port   *portExt;
     fm10000_lane   *laneExt;
+    fm_laneAttr *   laneAttr;
     fm_int          sw;
     fm_int          port;
     fm_ethMode      ethMode;
@@ -4306,7 +4754,9 @@ fm_status fm10000RestoreDfe( fm_smEventInfo *eventInfo, void *userInfo )
     laneEventInfo.dontSaveRecord = FALSE;
 
     /* scan the list of lanes associated to this port */
-    laneExt = FM_DLL_GET_FIRST( portExt, firstLane );
+    laneExt  = FM_DLL_GET_FIRST( portExt, firstLane );
+    laneAttr = NULL;
+
     while ( laneExt != NULL )
     {
         /* prepare the event notification */
@@ -4318,6 +4768,16 @@ fm_status fm10000RestoreDfe( fm_smEventInfo *eventInfo, void *userInfo )
                                              ethMode,
                                              &dfeMode);
         FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+        
+        if (laneAttr == NULL)
+        {
+            laneAttr = GET_LANE_ATTR(sw, laneExt->serDes);
+        }
+
+        if (dfeMode == FM_DFE_MODE_KR && laneAttr != NULL)
+        {
+            dfeMode |= (laneAttr->dfeMode) << 8;
+        }
 
         laneExt->eventInfo.info.dfeMode = dfeMode;
 
@@ -4744,7 +5204,12 @@ fm_status fm10000ProcessDeferralTimer( fm_smEventInfo *eventInfo,
                 /* send port UP notification */
                 if (status == FM_OK)
                 {
-                    status = fm10000NotifyApiPortUp(eventInfo,userInfo);
+                    status = fm10000RequestSchedBwLnkUp(eventInfo, userInfo);
+
+                    if (status == FM_OK)
+                    {
+                        status = fm10000NotifyApiPortUp(eventInfo,userInfo);
+                    }
                 }
 
                 /* set next state */
@@ -4788,7 +5253,12 @@ fm_status fm10000ProcessDeferralTimer( fm_smEventInfo *eventInfo,
                 /* send port UP notification */
                 if (status == FM_OK)
                 {
-                    status = fm10000NotifyApiPortUp(eventInfo,userInfo);
+                    status = fm10000RequestSchedBwLnkUp(eventInfo, userInfo);
+
+                    if (status == FM_OK)
+                    {
+                        status = fm10000NotifyApiPortUp(eventInfo,userInfo);
+                    }
                 }
 
                 /* set next state */
@@ -5583,11 +6053,17 @@ fm_status fm10000ConfigureDeviceAndCheckState( fm_smEventInfo *eventInfo,
         status = fm10000UpdatePcieLaneReversal( eventInfo, userInfo );
         FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
 
+        status = fm10000RequestSchedBwLnkUp(eventInfo, userInfo);
+        FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
         status = fm10000NotifyApiPortUp( eventInfo, userInfo );
         FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
     }
     else
     {
+        status = fm10000ReleaseSchedBwLnkDown(eventInfo, userInfo);
+        FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
         /* no, go DOWN and wait for the DeviceStateChange interrupt */
         *nextState = FM10000_PORT_STATE_DOWN;
     }
@@ -5762,6 +6238,9 @@ fm_status fm10000AnRestart( fm_smEventInfo *eventInfo,
     eventId     = eventInfo->eventId;
 
     status = fm10000StopDeferredLpiTimer(eventInfo,userInfo);
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = fm10000ReleaseSchedBwLnkDown( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
 
     /* notify that the port is down */
@@ -6292,8 +6771,12 @@ fm_status fm10000SetupAdminModeUp ( fm_smEventInfo *eventInfo,
                               LinkFaultDebounced );
     if ( linkFault == 0 )
     {
+        status = fm10000RequestSchedBwLnkUp(eventInfo, userInfo);
+        FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
         /* no fault */
         *nextState = FM10000_PORT_STATE_UP;
+
         status     = fm10000NotifyApiPortUp( eventInfo, userInfo );
     }
     else if ( linkFault == 2 )
@@ -6306,6 +6789,8 @@ fm_status fm10000SetupAdminModeUp ( fm_smEventInfo *eventInfo,
         /* assume local fault for anything else */
         *nextState = FM10000_PORT_STATE_LOCAL_FAULT;
     }
+
+    fm10000StartPortStatusPollingTimer(eventInfo,userInfo);
 
 ABORT:
     return status;
@@ -6569,6 +7054,9 @@ fm_status fm10000ProcessDisableFabricLoopback ( fm_smEventInfo *eventInfo,
 
     if (*nextState != FM10000_PORT_STATE_UP)
     {
+        status = fm10000ReleaseSchedBwLnkDown( eventInfo, userInfo );
+        FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
         status = fm10000NotifyApiPortDown( eventInfo, userInfo );
         FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
     }
@@ -6585,10 +7073,16 @@ fm_status fm10000ProcessDisableFabricLoopback ( fm_smEventInfo *eventInfo,
     status = fm10000EnableLinkInterrupts(eventInfo,userInfo);
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
 
+    status = fm10000StartPortStatusPollingTimer(eventInfo,userInfo);
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
 ABORT:
     return status;
 
 }   /* end fm10000ProcessDisableFabricLoopback */
+
+
+
 
 /*****************************************************************************/
 /** fm10000InitPepMailbox
@@ -6625,7 +7119,7 @@ fm_status fm10000InitPepMailbox( fm_smEventInfo *eventInfo,
     sw          = switchPtr->switchNumber;
     pep         = portExt->endpoint.pep;
 
-    /* Enable interrupts in PCIE_IM/PCIE_GMBX registers */
+    /* Enable interrupts in PCIE_IM register */
     regAddr = FM10000_PCIE_IM();
 
     status = fm10000SetMailboxGlobalInterrupts(sw, pep, TRUE);
@@ -6825,5 +7319,165 @@ fm_status fm10000Restart100gSyncDetection( fm_smEventInfo *eventInfo,
 
 }   /* end fm10000Restart100gSyncDetection */
 
+
+
+
+/*****************************************************************************/
+/** fm10000ProcessPortStatus
+ * \ingroup intPort
+ *
+ * \desc            Conditional transition that checks the port status and
+ *                  transitions to the Up, Local Fault or Remote Fault states 
+ *                  when the admin mode is up. It only determines the next
+ *                  state and does not perforn any other action.
+ *
+ * \param[in]       eventInfo pointer to a caller-allocated area containing
+ *                  the generic event descriptor (unsed in this function)
+ * 
+ * \param[in]       userInfo pointer to a caller-allocated area containing the
+ *                  purpose specific event descriptor (cast to
+ *                  ''fm10000_portSmEventInfo'' in this function)
+ * 
+ * \param[out]      nextState is a pointer to caller-allocated storage where
+ *                  this function will place the next state.
+ * 
+ * \return          FM_OK if successful
+ *
+ *****************************************************************************/
+fm_status fm10000ProcessPortStatus ( fm_smEventInfo *eventInfo, 
+                                    void           *userInfo,
+                                    fm_int         *nextState )
+{
+    fm_status     status;
+    fm_uint32     addr;
+    fm_uint32     portStatus;
+    fm_int        sw;
+    fm_int        port;
+    fm_int        epl;
+    fm_int        physLane;
+    fm_switch    *switchPtr;
+    fm10000_port *portExt;
+    fm_int        linkFault;
+
+    switchPtr = ((fm10000_portSmEventInfo *)userInfo)->switchPtr;
+    sw        = switchPtr->switchNumber;
+    portExt   = ((fm10000_portSmEventInfo *)userInfo)->portExt;
+    port      = portExt->base->portNumber;
+    epl       = portExt->endpoint.epl;
+    physLane  = portExt->nativeLaneExt->physLane;
+
+
+    /* read the port status register */
+    addr = FM10000_PORT_STATUS( epl, physLane );
+
+    status = switchPtr->ReadUINT32( sw, addr, &portStatus );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    FM_LOG_DEBUG_V2( FM_LOG_CAT_PORT,
+                     port,
+                     "Port %d: PORT_STATUS=0x%08x\n",
+                     port,
+                     portStatus );
+
+    /* set the next state depending on the link fault value */
+    linkFault = FM_GET_FIELD( portStatus, 
+                              FM10000_PORT_STATUS, 
+                              LinkFaultDebounced );
+    if ( linkFault == 0 )
+    {
+        /* no fault */
+        *nextState = FM10000_PORT_STATE_UP;
+    }
+    else if ( linkFault == 2 )
+    {
+        /* remote fault */
+        *nextState = FM10000_PORT_STATE_REMOTE_FAULT;
+    }
+    else
+    {
+        /* assume local fault for anything else */
+        *nextState = FM10000_PORT_STATE_LOCAL_FAULT;
+    }
+
+ABORT:
+    return status;
+
+}   /* end fm10000ProcessPortStatus */
+
+
+
+
+
+/*****************************************************************************/
+/** fm10000ProcessPortStatusPollingTimer
+ * \ingroup intPort
+ *
+ * \desc            Conditional transition that perform performs a periodic
+ *                  polling of the port status and trigger the required
+ *                  transitions when necessary. The polling period is rather
+ *                  long, because transitions are driven mostly by interrupts
+ *                  and polling is used as a recovery mechanism.
+ *
+ * \param[in]       eventInfo pointer to a caller-allocated area containing
+ *                  the generic event descriptor (unsed in this function)
+ * 
+ * \param[in]       userInfo pointer to a caller-allocated area containing the
+ *                  purpose specific event descriptor (cast to
+ *                  ''fm10000_portSmEventInfo'' in this function)
+ *
+ * \param[out]      nextState is a poniter to caller-allocated storage where
+ *                  this function will place the next state.
+ * 
+ * \return          FM_OK if successful
+ * \return          Other ''Status Codes'' as appropriate in case of failure.
+ *
+ *****************************************************************************/
+fm_status fm10000ProcessPortStatusPollingTimer( fm_smEventInfo *eventInfo, 
+                                                void           *userInfo, 
+                                                fm_int         *nextState )
+{
+    fm_status status;
+    fm_int    port;
+    fm_int    currentState;
+
+    status = FM_OK;
+
+    if (fmGetBoolApiProperty(FM_AAK_API_PORT_ENABLE_STATUS_POLLING,
+                             FM_AAD_API_PORT_ENABLE_STATUS_POLLING) )
+    {
+        currentState = *nextState;
+    
+        status = fm10000ProcessPortStatus( eventInfo, userInfo, nextState );
+    
+        port = ((fm10000_portSmEventInfo *)userInfo)->portExt->base->portNumber;
+
+        if (currentState == *nextState)
+        {
+            eventInfo->dontSaveRecord = TRUE;
+            fm10000StartPortStatusPollingTimer(eventInfo, userInfo);
+        }
+        else
+        {
+            if (*nextState == FM10000_PORT_STATE_UP)
+            {
+                status = fm10000NotifyApiPortUp(eventInfo,userInfo);
+            }
+            else
+            {
+                status = fm10000ReleaseSchedBwLnkDown(eventInfo,userInfo);
+
+                if (status == FM_OK)
+                {
+                    status = fm10000NotifyApiPortDown(eventInfo,userInfo);
+                }
+
+                fm10000StartPortStatusPollingTimer(eventInfo, userInfo);
+            }
+        }
+    }
+
+    return status;
+
+}   /* end fm10000ProcessPortStatusPollingTimer */
 
 

@@ -79,7 +79,8 @@ static fm_status AllocEcmpGroupInt(fm_int                sw,
                                    fm_int               *groupId);
 /* End of local functions with fmAlloc inside. */
 
-static fm_status CleanupNextHopTreeInt(fm_int sw);
+static void CleanupNextHopTreeInt(fm_int sw);
+static void CleanupArpPointersTree(fm_int sw);
 static fm_status CleanupEcmpGroupsInt(fm_int sw);
 static fm_status CleanupSingleEcmpGroupInt(fm_int           sw,
                                            fm_intEcmpGroup *pEcmpGroup);
@@ -125,49 +126,28 @@ static fm_status UpdateNextHopArpEntryRemovedInt(fm_int           sw,
  *
  * \param[in]       sw is the switch number.
  *
- * \return          error code; FM_OK if successful.
+ * \return          None.
  *                  
  *****************************************************************************/
-static fm_status CleanupNextHopTreeInt(fm_int sw)
+static void CleanupNextHopTreeInt(fm_int sw)
 {
-    fm_switch              *switchPtr;
-    fm_status               err;
-    fm_customTreeIterator   iter;
-    fm_intNextHop          *nextHopKey;
-    fm_intNextHop          *nextHop;
+    fm_switch      *switchPtr;
 
     FM_LOG_ENTRY_API(FM_LOG_CAT_ROUTING,
                      "sw=%d\n",
                      sw);
 
     switchPtr = GET_SWITCH_PTR(sw);
-    err = FM_OK;
 
-    if (switchPtr->ecmpGroups != NULL)
+    if (switchPtr != NULL)
     {
         if ( fmCustomTreeIsInitialized(&switchPtr->noArpNextHops) )
         {
-            while (err == FM_OK)
-            {
-                fmCustomTreeIterInit(&iter,
-                                     &switchPtr->noArpNextHops);
-
-                err = fmCustomTreeIterNext( &iter,
-                                           (void **) &nextHopKey,
-                                           (void **) &nextHop);
-                if (err == FM_OK)
-                {
-                    err = fmCustomTreeRemoveCertain(&switchPtr->noArpNextHops,
-                                                    nextHopKey,
-                                                    NULL);
-                }
-            }
-            /* clear the error if == FM_ERR_NO_MORE, it is a normal loop ending condition */
-            err = (err == FM_ERR_NO_MORE) ? FM_OK : err;
+            fmCustomTreeDestroy(&switchPtr->noArpNextHops, NULL);
         }
     }
 
-    FM_LOG_EXIT(FM_LOG_CAT_ROUTING, err);
+    FM_LOG_EXIT_VOID(FM_LOG_CAT_ROUTING);
 
 }   /* end CleanupNextHopTreeInt */
 
@@ -182,7 +162,7 @@ static fm_status CleanupNextHopTreeInt(fm_int sw)
  *
  * \param[in]       sw is the switch number.
  *
- * \return          Void.
+ * \return          None.
  *                  
  *****************************************************************************/
 static void CleanupArpPointersTree(fm_int sw)
@@ -195,7 +175,7 @@ static void CleanupArpPointersTree(fm_int sw)
 
     switchPtr = GET_SWITCH_PTR(sw);
 
-    if (switchPtr->ecmpGroups != NULL)
+    if (switchPtr != NULL)
     {
         if ( fmTreeIsInitialized(&switchPtr->arpPointersTree) )
         {
@@ -298,7 +278,10 @@ static fm_status CleanupSingleEcmpGroupInt(fm_int           sw,
         }
 
         /* free the on-demand allocated memory */
-        fmFree(pEcmpGroup->nextHops);
+        if (pEcmpGroup->nextHops != NULL)
+        {
+            fmFree(pEcmpGroup->nextHops);
+        }
         fmFree(pEcmpGroup);
     }
 
@@ -1283,6 +1266,7 @@ static fm_status AllocNextHopInt(fm_int            sw,
             if (intNextHop == NULL)
             {
                 err = FM_ERR_NO_MEM;
+                break;
             }
             else
             {
@@ -1317,6 +1301,8 @@ static fm_status AllocNextHopInt(fm_int            sw,
             fmFree(pEcmpGroup->nextHops);
             pEcmpGroup->nextHops = NULL;
         }
+
+        pEcmpGroup->nextHopCount = 0;
     }
 
     FM_LOG_EXIT(FM_LOG_CAT_ROUTING, err);
@@ -2154,11 +2140,6 @@ fm_status fmNextHopFree(fm_int sw)
     switchPtr = GET_SWITCH_PTR(sw);
 
     /**************************************************
-     * Destroy ARP tables
-     **************************************************/
-    fmCustomTreeDestroy(&switchPtr->noArpNextHops, NULL);
-
-    /**************************************************
      * Deallocate ECMP Groups
      **************************************************/
     if (switchPtr->ecmpGroups != NULL)
@@ -2300,18 +2281,15 @@ fm_status fmNextHopCleanup(fm_int sw)
     }
 
     /**************************************************
-     * Delete all ECMP Groups and Next-Hops
+     * Destroy ARP tables
      **************************************************/
-    err = CleanupNextHopTreeInt(sw);
-    if (err != FM_OK)
-    {
-        FM_LOG_ERROR(FM_LOG_CAT_ROUTING, 
-                     "while cleaning up noArpNextHops\n");
-        errCnt++;
-    }
+    CleanupNextHopTreeInt(sw);
 
     CleanupArpPointersTree(sw);
     
+    /**************************************************
+     * Delete all ECMP Groups
+     **************************************************/
     err = CleanupEcmpGroupsInt(sw);
     if (err != FM_OK)
     {

@@ -30,7 +30,7 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
+ *****************************************************************************/
 
 #include <fm_sdk_fm10000_int.h>
 
@@ -50,6 +50,9 @@
 #define FM10000_MIN_TRUNC_LEN       64
 #define FM10000_MAX_TRUNC_LEN       192
 #define F56_NB_BYTES                8
+
+#define FM10000_PORT_EEE_TX_ACT_MAX_VAL         2550
+#define FM10000_PORT_EEE_TX_LPI_MAX_VAL         255
 
 /* attribute filters */
 #define EXCLUDE_PCIE_RD    (1U << 0)
@@ -220,6 +223,18 @@ static fm10000_portAttrEntryTable portAttributeTable =
         .attrType             = FM_PORT_ATTR_GENERIC,
         .offset               = offsetof(fm_portAttr, autoNegPartnerNextPages),
         .excludedPhyPortTypes = ( EXCLUDE_PCIE | EXCLUDE_TE | EXCLUDE_LPBK ),
+    },
+
+    .bcastFlooding =
+    {
+        .attr                 = FM_PORT_BCAST_FLOODING,
+        .str                  = "FM_PORT_BCAST_FLOODING",
+        .type                 = FM_TYPE_BOOL,
+        .perLag               = TRUE,
+        .attrType             = FM_PORT_ATTR_GENERIC,
+        .offset               = offsetof(fm_portAttr, bcastFlooding),
+        .excludedPhyPortTypes = 0,
+        .defValue             = FM_DISABLED,
     },
 
     .bcastPruning =
@@ -572,6 +587,17 @@ static fm10000_portAttrEntryTable portAttributeTable =
         .perLag               = TRUE,
         .attrType             = FM_PORT_ATTR_GENERIC,
         .offset               = offsetof(fm_portAttr, rxClassPause),
+        .excludedPhyPortTypes = 0,
+    },
+
+    .txClassPause  =
+    {
+        .attr                 = FM_PORT_TX_CLASS_PAUSE,
+        .str                  = "FM_PORT_TX_CLASS_PAUSE",
+        .type                 = FM_TYPE_UINT32,
+        .perLag               = TRUE,
+        .attrType             = FM_PORT_ATTR_GENERIC,
+        .offset               = offsetof(fm_portAttr, txClassPause),
         .excludedPhyPortTypes = 0,
     },
 
@@ -1032,6 +1058,17 @@ static fm10000_portAttrEntryTable portAttributeTable =
         .excludedPhyPortTypes = ( EXCLUDE_PCIE | EXCLUDE_TE | EXCLUDE_LPBK ),
     },
 
+    .rxTermination  =
+    {
+        .attr                 = FM_PORT_RX_TERMINATION,
+        .str                  = "FM_PORT_RX_TERMINATION",
+        .type                 = FM_TYPE_INT,
+        .perLag               = FALSE,
+        .attrType             = FM_PORT_ATTR_EXTENSION,
+        .offset               = 0,
+        .excludedPhyPortTypes = ( EXCLUDE_PCIE_WR | EXCLUDE_TE | EXCLUDE_LPBK ),
+    },
+
     .dfeMode  =
     {
         .attr                 = FM_PORT_DFE_MODE,
@@ -1096,6 +1133,78 @@ static fm10000_portAttrEntryTable portAttributeTable =
         .attrType             = FM_PORT_ATTR_EXTENSION,
         .offset               = 0,
         .excludedPhyPortTypes = ( EXCLUDE_PCIE | EXCLUDE_TE | EXCLUDE_LPBK ),
+    },
+
+    .txLaneKrInitCursor  =
+    {
+        .attr                 = FM_PORT_TX_LANE_KR_INIT_CURSOR,
+        .str                  = "FM_PORT_TX_LANE_KR_INIT_CURSOR",
+        .type                 = FM_TYPE_INT,
+        .perLag               = FALSE,
+        .attrType             = FM_PORT_ATTR_EXTENSION,
+        .offset               = 0,
+        .excludedPhyPortTypes = ( EXCLUDE_PCIE | EXCLUDE_TE | EXCLUDE_LPBK ),
+        .defValue             = 2,
+    },
+
+    .txLaneKrInitPreCursor  =
+    {
+        .attr                 = FM_PORT_TX_LANE_KR_INIT_PRECURSOR,
+        .str                  = "FM_PORT_TX_LANE_KR_INIT_PRECURSOR",
+        .type                 = FM_TYPE_INT,
+        .perLag               = FALSE,
+        .attrType             = FM_PORT_ATTR_EXTENSION,
+        .offset               = 0,
+        .excludedPhyPortTypes = ( EXCLUDE_PCIE | EXCLUDE_TE | EXCLUDE_LPBK ),
+        .defValue             = 4,
+    },
+
+    .txLaneKrInitPostCursor  =
+    {
+        .attr                 = FM_PORT_TX_LANE_KR_INIT_POSTCURSOR,
+        .str                  = "FM_PORT_TX_LANE_KR_INIT_POSTCURSOR",
+        .type                 = FM_TYPE_INT,
+        .perLag               = FALSE,
+        .attrType             = FM_PORT_ATTR_EXTENSION,
+        .offset               = 0,
+        .excludedPhyPortTypes = ( EXCLUDE_PCIE | EXCLUDE_TE | EXCLUDE_LPBK ),
+        .defValue             = 18,
+    },
+
+    .txLaneEnableConfigKrInit =
+    {
+        .attr                 = FM_PORT_TX_LANE_ENA_KR_INIT_CFG,
+        .str                  = "FM_PORT_TX_LANE_ENA_KR_INIT_CFG",
+        .type                 = FM_TYPE_BOOL,
+        .perLag               = FALSE,
+        .attrType             = FM_PORT_ATTR_EXTENSION,
+        .offset               = 0,
+        .excludedPhyPortTypes = 0,
+        .defValue             = FM_DISABLED,
+    },
+
+    .txLaneKrInitialPreDec  =
+    {
+        .attr                 = FM_PORT_TX_LANE_KR_INITIAL_PRE_DEC,
+        .str                  = "FM_PORT_TX_LANE_KR_INITIAL_PRE_DEC",
+        .type                 = FM_TYPE_INT,
+        .perLag               = FALSE,
+        .attrType             = FM_PORT_ATTR_EXTENSION,
+        .offset               = 0,
+        .excludedPhyPortTypes = ( EXCLUDE_PCIE | EXCLUDE_TE | EXCLUDE_LPBK ),
+        .defValue             = 0,
+    },
+
+    .txLaneKrInitialPostDec   =
+    {
+        .attr                 = FM_PORT_TX_LANE_KR_INITIAL_POST_DEC,
+        .str                  = "FM_PORT_TX_LANE_KR_INITIAL_POST_DEC",
+        .type                 = FM_TYPE_INT,
+        .perLag               = FALSE,
+        .attrType             = FM_PORT_ATTR_EXTENSION,
+        .offset               = 0,
+        .excludedPhyPortTypes = ( EXCLUDE_PCIE | EXCLUDE_TE | EXCLUDE_LPBK ),
+        .defValue             = 0,
     },
 
     .generateTimestamps  =
@@ -1262,6 +1371,18 @@ static fm10000_portAttrEntryTable portAttributeTable =
         .excludedPhyPortTypes =    ( EXCLUDE_PCIE | EXCLUDE_TE | EXCLUDE_LPBK ),                    
     },
 
+    .autoDetectModule =
+    {
+        .attr                 = FM_PORT_AUTODETECT_MODULE,
+        .str                  = "FM_PORT_AUTODETECT_MODULE",
+        .type                 = FM_TYPE_BOOL,
+        .perLag               = FALSE,
+        .attrType             = FM_PORT_ATTR_GENERIC,
+        .offset               = offsetof(fm_portAttr, autoDetectModule),
+        .excludedPhyPortTypes = ( EXCLUDE_PCIE | EXCLUDE_TE | EXCLUDE_LPBK ),
+    },
+
+
 };  /* end portAttributeTable */
 
 
@@ -1296,6 +1417,10 @@ static fm_status updateAnMode( fm_int     sw,
                                fm_ethMode prevEthMode,
                                fm_ethMode newEthMode,
                                fm_bool *  restoreAdminMode);
+static fm_status ConfigureRxTermination(fm_int     sw, 
+                                        fm_int     port,
+                                        fm_int     lane, 
+                                        fm_rxTermination rxTermination);
 static fm_status ConfigureDfeMode(fm_int     sw, 
                                   fm_int     port,
                                   fm_int     lane, 
@@ -1323,6 +1448,7 @@ static fm_uint16 ConvertPpmToTxClkCompensationTimeout( fm_uint32  pcsType,
                                                        fm_uint32  speed,
                                                        fm_uint32  num_ppm );
 
+static fm_int CountOnes( fm_uint64 value );
 
 /*****************************************************************************
  * Local Functions
@@ -1390,7 +1516,7 @@ static fm_text fm10000SmTypeStr(fm_int type)
 
     return "UNKN";
 
-} /* fm10000SmTypeStr */
+} /* end fm10000SmTypeStr */
 
 
 
@@ -1659,7 +1785,7 @@ static fm_status WriteParserPortCfg3(fm_int sw, fm_int index, fm_uint64 value)
     return switchPtr->WriteUINT64(sw, FM10000_PARSER_PORT_CFG_3(index, 0), value);
 #endif
 
-}   /* end WriteParserPortCfg2 */
+}   /* end WriteParserPortCfg3 */
 
 #endif
 
@@ -1686,8 +1812,8 @@ static fm_portAttrEntry *GetPortAttrEntry( fm_uint attr )
 
     entry = (fm_portAttrEntry *) &portAttributeTable;
 
-    for (i = 0;
-         i < sizeof(portAttributeTable)/sizeof(fm_portAttrEntry);
+    for (i = 0 ;
+         i < sizeof(portAttributeTable)/sizeof(fm_portAttrEntry) ;
          i++)
     {
         if (entry->attr == (fm_int) attr)
@@ -2001,8 +2127,11 @@ static fm_status SetLAGPortAttribute(fm_int sw,
     fm_int            memberPort;
     fm_int            i;
     fm_bool           isPciePort;
+    fm_bitArray       tmpMaskBitArray;
+    fm10000_switch   *switchExt;
 
-    FM_LOG_ENTRY_V2(FM_LOG_CAT_PORT, port,
+    FM_LOG_ENTRY_V2(FM_LOG_CAT_PORT,
+                 port,
                  "sw=%d port=%d attribute=%d value=%p\n",
                  sw,
                  port,
@@ -2010,6 +2139,7 @@ static fm_status SetLAGPortAttribute(fm_int sw,
                  value);
 
     switchPtr = GET_SWITCH_PTR(sw);
+    switchExt = GET_SWITCH_EXT(sw);
     portPtr   = GET_PORT_PTR(sw, port);
     portAttr  = GET_PORT_ATTR(sw, port);
 
@@ -2027,6 +2157,8 @@ static fm_status SetLAGPortAttribute(fm_int sw,
                                       FM_MAX_NUM_LAG_MEMBERS);
     FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, status);
 
+    lagPtr = GET_LAG_PTR(sw, portPtr->lagIndex);
+
     /***************************************************
      * FM_PORT_INTERNAL may be applied to a lag only if
      * the lag doesn't have any member ports.
@@ -2039,14 +2171,34 @@ static fm_status SetLAGPortAttribute(fm_int sw,
             FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, status);
         }
 
-        lagPtr = GET_LAG_PTR(sw, portPtr->lagIndex);
-
         lagPtr->isInternalPort = *( (fm_bool *) value );
         portAttr->internalPort = *( (fm_bool *) value );
 
         /* Exit immediately since there is no member port */
         goto ABORT;
     }
+    /* Pre-process port mask wide attribute to remove TE from internal port masks.
+     * All encapsulation and decapsulation occurs on the ingress switch. No
+     * frames that have been sent across internal links should ever be
+     * encapsulated or decapsulated. */
+    else if ( (attribute == FM_PORT_MASK_WIDE) &&
+              lagPtr->isInternalPort &&
+              fmGetBoolApiAttribute(FM_AAK_API_FM10000_VN_TUNNEL_ONLY_IN_INGRESS,
+                                    FM_AAD_API_FM10000_VN_TUNNEL_ONLY_IN_INGRESS) )
+    {
+        tmpMaskBitArray = *( (fm_bitArray *) value );
+
+        status = fmSetBitArrayBit(&tmpMaskBitArray,
+                                  switchExt->tunnelCfg->tunnelPort[0],
+                                  0);
+        FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, status);
+        
+        status = fmSetBitArrayBit(&tmpMaskBitArray,
+                                  switchExt->tunnelCfg->tunnelPort[1],
+                                  0);
+        FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, status);
+    }
+
 
     /* Just cache attribute for lag port */
     attrEntry = GetPortAttrEntry(attribute);
@@ -2773,7 +2925,7 @@ static fm_status ValidateEthMode( fm_int sw, fm_int port, fm_ethMode ethMode )
                 isAnotherPort4Lanes = TRUE;
             }
 
-        }   /* end if ( otherPortExt->ethMode & ... */
+        }   /* end if ( otherPortAttrExt->ethMode & FM_ETH_MODE_ENABLED_BIT_MASK ) */
 
     }   /* end for (i = 0 ; i < FM10000_PORTS_PER_EPL ; i++) */
 
@@ -3385,6 +3537,142 @@ ABORT:
 
 
 /*****************************************************************************/
+/** GetRxTermination
+ * \ingroup intPort
+ *
+ * \desc            Get the SERDES termination on the specified port.
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \param[in]       serdes is the SERDES on which to operate.
+ * 
+ * \param[in]       rxTermination is the desired termination, see ''fm_rxTermination''
+ * 
+ * \return          FM_OK if successful.
+ *
+ *****************************************************************************/
+static fm_status GetRxTermination(fm_int     sw, 
+                                  fm_int     serdes,
+                                  fm_rxTermination *rxTermination)
+{
+    fm_status         err;
+    fm10000SerdesRxTerm serdesRxTerm;
+
+    err = fm10000SerdesGetRxTerm(sw, serdes, &serdesRxTerm);
+
+    if (err == FM_OK)
+    {
+         switch (serdesRxTerm)
+         {
+            case FM10000_SERDES_RX_TERM_AVDD:
+                *rxTermination = FM_PORT_TERMINATION_HIGH;
+            break;
+            case FM10000_SERDES_RX_TERM_AGND:
+                *rxTermination = FM_PORT_TERMINATION_LOW;
+            break;
+            case FM10000_SERDES_RX_TERM_FLOAT:
+                *rxTermination = FM_PORT_TERMINATION_FLOAT;
+            break;
+        }
+    }
+
+    FM_LOG_EXIT_V2( FM_LOG_CAT_SERDES, serdes, err );
+
+}   /* end GetRxTermination */
+
+
+
+
+/*****************************************************************************/
+/** ConfigureRxTermination
+ * \ingroup intPort
+ *
+ * \desc            Configure the SERDES termination on the specified port.
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \param[in]       port is the logical port ID on which to operate.
+ * 
+ * \param[in]       lane is the port's zero-based lane number on which to
+ *                  operate.
+ * 
+ * \param[in]       rxTermination is the desired termination, see ''fm_rxTermination''
+ * 
+ * \return          FM_OK if successful.
+ *
+ *****************************************************************************/
+static fm_status ConfigureRxTermination(fm_int     sw, 
+                                        fm_int     port,
+                                        fm_int     lane, 
+                                        fm_rxTermination rxTermination)
+{
+    fm_status         err;
+    fm10000_port *    portExt;
+    fm_laneAttr *     laneAttr;
+    fm10000_lane       *pLaneExt;
+    fm10000SerdesRxTerm serdesRxTerm;
+    fm_int            serdes;
+
+    FM_LOG_ENTRY_V2( FM_LOG_CAT_PORT,
+                     port,
+                     "sw%d, port=%d, lane=%d,rxTermination =%d\n",
+                     sw, 
+                     port,
+                     lane, 
+                     rxTermination);
+
+    err         = FM_OK;
+    laneAttr    = NULL;
+    portExt     = GET_PORT_EXT( sw, port );
+
+    err = fm10000MapPortLaneToSerdes(sw, port, lane, &serdes);
+
+    if (err == FM_OK)
+    {
+        /* Index to lane attribute is serdes nuber */
+        laneAttr    = GET_LANE_ATTR(sw, serdes);
+    }
+
+    /* only if new DFE is different from the current one */
+    if (err == FM_OK &&
+        laneAttr != NULL &&
+        laneAttr->rxTermination != rxTermination)
+    {
+        pLaneExt = GET_LANE_EXT(sw, serdes);
+        switch (rxTermination)
+        {
+            case FM_PORT_TERMINATION_HIGH:
+                serdesRxTerm = FM10000_SERDES_RX_TERM_AVDD;
+            break;
+            case FM_PORT_TERMINATION_LOW:
+                serdesRxTerm = FM10000_SERDES_RX_TERM_AGND;
+            break;
+            case FM_PORT_TERMINATION_FLOAT:
+                serdesRxTerm = FM10000_SERDES_RX_TERM_FLOAT;
+            break;
+            default:
+                err = FM_ERR_INVALID_ARGUMENT;
+                FM_LOG_EXIT_ON_ERR( FM_LOG_CAT_PORT, err );
+            break;
+        }
+        err = fm10000SerdesSetRxTerm(sw, serdes, serdesRxTerm);
+
+        if (err == FM_OK)
+        {
+            pLaneExt->rxTermination  = serdesRxTerm;
+            laneAttr->rxTermination = rxTermination;
+        }
+    }
+
+    FM_LOG_EXIT_V2( FM_LOG_CAT_PORT, port, err );
+
+}   /* end ConfigureRxTermination */
+
+
+
+
+
+/*****************************************************************************/
 /** ConfigureDfeMode
  * \ingroup intPort
  *
@@ -3464,9 +3752,6 @@ static fm_status ConfigureDfeMode(fm_int     sw,
             if (err == FM_OK)
             {
                 laneAttr->dfeMode = dfeMode;
-
-                /* set the dfe mode to be used after KR training is complete */
-                err = fm10000SetKrPcalMode(sw, serdes, dfeMode);
             }
         }
     }
@@ -3741,16 +4026,20 @@ static fm_bool IsBistChanging(fm_int sw,
     fm_uint64    customData1;
     fm_bool      submodeChanging;
 
-    FM_LOG_ENTRY_V2(FM_LOG_CAT_PORT, port,
+    FM_LOG_ENTRY_V2(FM_LOG_CAT_PORT,
+                    port,
                     "sw=%d, port=%d, submode=%d\n",
-                    sw, port, submode);
+                    sw,
+                    port,
+                    submode);
 
     portPtr = GET_PORT_PTR(sw, port);
 
     /* Port mode/state check */
     if (portPtr->mode != FM_PORT_MODE_BIST)
     {
-        FM_LOG_EXIT_CUSTOM_V2(FM_LOG_CAT_PORT, port,
+        FM_LOG_EXIT_CUSTOM_V2(FM_LOG_CAT_PORT,
+                              port,
                               TRUE,
                               "Mode changing\n");
     }
@@ -3759,7 +4048,8 @@ static fm_bool IsBistChanging(fm_int sw,
     err = ConvertBistSubmode(submode, &txSubmode, &rxSubmode, &customData0, &customData1);
     if (err != FM_OK)
     {
-        FM_LOG_ERROR_V2(FM_LOG_CAT_PORT, port,
+        FM_LOG_ERROR_V2(FM_LOG_CAT_PORT,
+                        port,
                         "Unable to convert submode: %s\n",
                         fmErrorMsg(err) );
         return FALSE;
@@ -3769,7 +4059,8 @@ static fm_bool IsBistChanging(fm_int sw,
 
     if (err != FM_OK)
     {
-        FM_LOG_ERROR_V2(FM_LOG_CAT_PORT, port,
+        FM_LOG_ERROR_V2(FM_LOG_CAT_PORT,
+                        port,
                         "Unable to convert portPtr->submode: %s\n",
                         fmErrorMsg(err) );
         return FALSE;
@@ -3911,8 +4202,8 @@ static fm_status UpdateSAFValuesForCardinalPort(fm_int    sw,
     {
         rv = 0;
 
-        for (dstPortCpi = 0; 
-             dstPortCpi < switchPtr->numCardinalPorts; 
+        for (dstPortCpi = 0 ;
+             dstPortCpi < switchPtr->numCardinalPorts ;
              dstPortCpi++)
         {
             err = fmMapCardinalPortInternal(switchPtr, 
@@ -4045,9 +4336,9 @@ static fm_status SwapPortStateMachineType( fm_int sw,
             /* finally restart it and reconfigure it */
             portExt->smType   = newType;
 
-        }
+        } /* end if ( newType != curType ) */
 
-    }   /* end if ( newType != curType ) */
+    }   /* end if ( newType != FM_SMTYPE_UNSPECIFIED ) */
 
 ABORT:
     return status;
@@ -4256,7 +4547,7 @@ static fm_status HandleEeePcSilent(fm_int   sw,
             /* The port is Idle */
             eventInfo.smType = portExt->smType;
             eventInfo.lock   = FM_GET_STATE_LOCK( sw );
-            eventInfo.dontSaveRecord = TRUE;//FALSE;
+            eventInfo.dontSaveRecord = TRUE;
 
             eventInfo.eventId = FM10000_PORT_EVENT_EEE_SILENT_IND;
             portExt->eventInfo.regLockTaken = FALSE;
@@ -4433,8 +4724,8 @@ static fm_uint16 ConvertPpmToTxClkCompensationTimeout( fm_uint32  pcsType,
      *  10.312E9 baud/s for 10GBASE-R and 40GBASE-R
      *  25.78125 baud/s for 100GBASE-R
      *
-     * Select tick period in sec according to the RRC
-     * datasheet.
+     * Select tick period in sec according to the
+     * FM10000 datasheet.
      * See MAC_CFG.txClockCompensationTimeout:
      *
      * 100GBASER   count unit is 1.28 ns
@@ -4577,6 +4868,38 @@ static fm_uint16 ConvertPpmToTxClkCompensationTimeout( fm_uint32  pcsType,
 
 }   /* end ConvertPpmToTxClkCompensationTimeout */
 
+
+
+/*****************************************************************************/
+/** CountOnes
+ *
+ * \desc            Helper function to count the number of 1's
+ *                  in a given fm_uint64 variable.
+ *
+ * \param[in]       value is the variable whose bits are to be counted.
+ *
+ * \return          The number of 1's in the argument.
+ *
+ *****************************************************************************/
+static fm_int CountOnes(fm_uint64 value)
+{
+    fm_int      i;
+    fm_int      count;
+
+    count = 0;
+
+    for (i = 0 ; i < 64 ; i++)
+    {
+        if ( value & 0x1 )
+        {
+            count++;
+        }
+        value = value >> 1;
+    }
+
+    return count;
+
+}   /* end CountOnes */
 
 
 
@@ -4909,8 +5232,9 @@ fm_status fm10000InitLAGPortAttributes(fm_int sw, fm_int port)
                 break;
 
             default:
-                FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port,
-                                    FM_ERR_INVALID_ATTRIB);
+                FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT,
+                                       port,
+                                       FM_ERR_INVALID_ATTRIB);
                 break;
         }
     }
@@ -5585,8 +5909,15 @@ fm_status fm10000SetPortAttribute(fm_int sw,
             case FM_PORT_TX_LANE_CURSOR:
             case FM_PORT_TX_LANE_PRECURSOR:
             case FM_PORT_TX_LANE_POSTCURSOR:
+            case FM_PORT_TX_LANE_KR_INIT_CURSOR:
+            case FM_PORT_TX_LANE_KR_INIT_PRECURSOR:
+            case FM_PORT_TX_LANE_KR_INIT_POSTCURSOR:
+            case FM_PORT_TX_LANE_KR_INITIAL_PRE_DEC:
+            case FM_PORT_TX_LANE_KR_INITIAL_POST_DEC:
+            case FM_PORT_TX_LANE_ENA_KR_INIT_CFG:
             case FM_PORT_SIGNAL_THRESHOLD:
             case FM_PORT_DFE_MODE:
+            case FM_PORT_RX_TERMINATION:
 #if 0
             case FM_PORT_DFE_PARAMETERS:
 #endif
@@ -5716,6 +6047,7 @@ fm_status fm10000SetPortAttributeInt(fm_int sw,
     fm10000_portAttr       *portAttrExt;
     fm_bool                 regLockTaken;
     fm_bool                 portAttrLockTaken;
+    fm_bool                 lagLockTaken;
     fm_int                  physPort;
     fm_uint64               reg64;
     fm_uint32               reg32;
@@ -5723,6 +6055,10 @@ fm_status fm10000SetPortAttributeInt(fm_int sw,
     fm_int                  tmpInt;
     fm_int                  tmp2Int;
     fm_uint32               tmpUint32;
+    fm_uint64               tmpUint64;
+    fm_dot1xState           tmpDot1xState;
+    fm_islTagFormat         tmpIslTagFormat;
+    fm_bitArray             tmpMaskBitArray;
     fm_int                  intValue;
     fm_uint32               macCfg[FM10000_MAC_CFG_WIDTH];
     fm_int                  channel;
@@ -5736,6 +6072,7 @@ fm_status fm10000SetPortAttributeInt(fm_int sw,
     fm_bool                 restoreAdminMode = FALSE;
     fm_bool                 isEplPort;
     fm_bool                 isInternal;
+    fm_bool                 isLagAttr;
     fm_bitArray             portMaskBitArray;
     fm_bool                 allowTeAccess;
     fm_uint32               i;
@@ -5745,6 +6082,10 @@ fm_status fm10000SetPortAttributeInt(fm_int sw,
     fm_uint32               allValidMask;
     fm_uint32               oldSpeed;
     fm_anNextPages         *nextPages;
+    fm_int                  currentVlan;
+    fm_int                  nextVlan;
+    fm_vlanEntry           *ventry;
+    fm_bool                 isMember;
 
     FM_LOG_ENTRY_V2( FM_LOG_CAT_PORT, 
                      port,
@@ -5758,6 +6099,9 @@ fm_status fm10000SetPortAttributeInt(fm_int sw,
     err               = FM_OK;
     regLockTaken      = FALSE;
     portAttrLockTaken = FALSE;
+    portPtr           = NULL;
+    lagLockTaken      = FALSE;
+    isLagAttr         = FALSE;
     switchPtr         = GET_SWITCH_PTR(sw);
     switchExt         = GET_SWITCH_EXT(sw);
 
@@ -5821,13 +6165,16 @@ fm_status fm10000SetPortAttributeInt(fm_int sw,
     }
     else if (portPtr->portType == FM_PORT_TYPE_LAG)
     {
-        /* LAG lock must be taken before PORT_ATTR lock */
-        TAKE_LAG_LOCK(sw);
-        FM_TAKE_PORT_ATTR_LOCK(sw);
-        err = SetLAGPortAttribute(sw, port, lane, attr, value);
-        FM_DROP_PORT_ATTR_LOCK(sw);
-        DROP_LAG_LOCK(sw);
-        FM_LOG_EXIT_V2(FM_LOG_CAT_PORT, port, err);
+        if ( fm10000IsPerLagPortAttribute(sw, attr) )
+        {
+            /* will be TRUE if port type is LAG AND the attribute is per-lag */
+            isLagAttr = TRUE;
+        }
+        else
+        {
+            err = FM_ERR_NOT_PER_LAG_ATTRIBUTE;
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+        }
     }
     else if ( (portPtr->portType == FM_PORT_TYPE_VIRTUAL) &&
               (attr == FM_PORT_DEF_VLAN) )
@@ -5855,6 +6202,11 @@ fm_status fm10000SetPortAttributeInt(fm_int sw,
         laneAttr = NULL;
     }
 
+    /* LAG lock must be taken before PORT_ATTR lock */
+    if (isLagAttr)
+    {
+        FM_FLAG_TAKE_LAG_LOCK(sw);
+    }
     FM_FLAG_TAKE_PORT_ATTR_LOCK(sw);
 
     if (attr == FM_PORT_TYPE)
@@ -5876,15 +6228,23 @@ fm_status fm10000SetPortAttributeInt(fm_int sw,
         {
             err = FM_ERR_INVALID_VALUE;
             FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
-        } 
+        }
 
         /* round down to the closest multiple of 4 */
         tmpUint32 = (tmpUint32 >> 2) << 2;
 
-        portAttr->minFrameSize = tmpUint32;
+        if (isLagAttr)
+        {
+            err = SetLAGPortAttribute(sw, port, lane, attr, &tmpUint32);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+        }
+        else
+        {
+            portAttr->minFrameSize = tmpUint32;
 
-        err = UpdateMinMaxFrameSize(sw, port);
-        FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+            err = UpdateMinMaxFrameSize(sw, port);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+        }
     }
     else if (attr == FM_PORT_MAX_FRAME_SIZE)
     {
@@ -5897,23 +6257,32 @@ fm_status fm10000SetPortAttributeInt(fm_int sw,
          * can't cut max frame size off at 64) */
         tmpInt = (fm_uint32) ((tmpInt + 3) >> 2) << 2;
 
-        if (tmpInt > (FM10000_MAX_FRAME_SIZE - F56_NB_BYTES))
+        if ( (tmpInt < 0) ||
+             (tmpInt > (FM10000_MAX_FRAME_SIZE - F56_NB_BYTES) ) )
         {
-            FM_LOG_DEBUG_V2(FM_LOG_CAT_PORT, port, 
+            FM_LOG_DEBUG_V2(FM_LOG_CAT_PORT,
+                            port,
                             "Switch %d Port %d Requested max frame size (%d) "
-                            "exceeds maximum value supported (%d)\n",
+                            "is out of the valid range (from 0 to 15360)\n",
                             sw,
                             port,
-                            tmpInt,
-                            (FM10000_MAX_FRAME_SIZE - F56_NB_BYTES) );
+                            tmpInt);
             err = FM_ERR_INVALID_VALUE;
             FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
         }
 
-        portAttr->maxFrameSize = tmpInt;
+        if (isLagAttr)
+        {
+            err = SetLAGPortAttribute(sw, port, lane, attr, &tmpInt);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+        }
+        else
+        {
+            portAttr->maxFrameSize = tmpInt;
 
-        err = UpdateMinMaxFrameSize(sw, port);
-        FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+            err = UpdateMinMaxFrameSize(sw, port);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+        }
     }
     else if (attr == FM_PORT_SECURITY_ACTION)
     {
@@ -5928,10 +6297,18 @@ fm_status fm10000SetPortAttributeInt(fm_int sw,
             goto ABORT;
         }
 
-        portAttrExt->securityAction = tmpUint32;
+        if (isLagAttr)
+        {
+            err = SetLAGPortAttribute(sw, port, lane, attr, &tmpUint32);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+        }
+        else
+        {
+            portAttrExt->securityAction = tmpUint32;
 
-        err = fm10000SetPortSecurityAction(sw, port, tmpUint32);
-        FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+            err = fm10000SetPortSecurityAction(sw, port, tmpUint32);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+        }
     }
     else if (attr == FM_PORT_LEARNING)
     {
@@ -5942,19 +6319,27 @@ fm_status fm10000SetPortAttributeInt(fm_int sw,
 
         tmpBool = *( (fm_bool *) value);
 
-        FM_FLAG_TAKE_REG_LOCK(sw);
+        if (isLagAttr)
+        {
+            err = SetLAGPortAttribute(sw, port, lane, attr, &tmpBool);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+        }
+        else
+        {
+            FM_FLAG_TAKE_REG_LOCK(sw);
 
-        err = switchPtr->ReadUINT32(sw, FM10000_PORT_CFG_3(physPort), &reg32);
-        FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+            err = switchPtr->ReadUINT32(sw, FM10000_PORT_CFG_3(physPort), &reg32);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
 
-        FM_SET_BIT(reg32, FM10000_PORT_CFG_3, LearningEnable, (tmpBool) ? 1 : 0);
+            FM_SET_BIT(reg32, FM10000_PORT_CFG_3, LearningEnable, (tmpBool) ? 1 : 0);
 
-        err = switchPtr->WriteUINT32(sw, FM10000_PORT_CFG_3(physPort), reg32);
-        FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+            err = switchPtr->WriteUINT32(sw, FM10000_PORT_CFG_3(physPort), reg32);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
 
-        FM_FLAG_DROP_REG_LOCK(sw);
+            FM_FLAG_DROP_REG_LOCK(sw);
 
-        portAttr->learning = tmpBool;
+            portAttr->learning = tmpBool;
+        }
     }
     else if (attr == FM_PORT_TAGGING_MODE)
     {
@@ -5993,17 +6378,25 @@ fm_status fm10000SetPortAttributeInt(fm_int sw,
                 break;
         }
 
-        FM_FLAG_TAKE_REG_LOCK(sw);
+        if (isLagAttr)
+        {
+            err = SetLAGPortAttribute(sw, port, lane, attr, &tagMode);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+        }
+        else
+        {
+            FM_FLAG_TAKE_REG_LOCK(sw);
 
-        err = ReadModPerPortCfg2(sw, physPort, &reg64);
-        FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+            err = ReadModPerPortCfg2(sw, physPort, &reg64);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
 
-        FM_SET_FIELD64(reg64, FM10000_MOD_PER_PORT_CFG_2, VlanTagging, ptag);
+            FM_SET_FIELD64(reg64, FM10000_MOD_PER_PORT_CFG_2, VlanTagging, ptag);
 
-        err = WriteModPerPortCfg2(sw, physPort, reg64);
-        FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+            err = WriteModPerPortCfg2(sw, physPort, reg64);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
 
-        portAttrExt->taggingMode = tagMode;
+            portAttrExt->taggingMode = tagMode;
+        }
     }
     else if (attr == FM_PORT_TAGGING)
     {
@@ -6030,27 +6423,35 @@ fm_status fm10000SetPortAttributeInt(fm_int sw,
             FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
         }   
 
-        /* for virtual ports we just update the defVlan field */
-        if (portPtr->portType != FM_PORT_TYPE_VIRTUAL)
+        if (isLagAttr)
         {
-            FM_FLAG_TAKE_REG_LOCK(sw);
-            err = switchPtr->ReadUINT64(sw,
-                                        FM10000_PARSER_PORT_CFG_1(physPort, 0),
-                                        &reg64);
-            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
-
-            FM_SET_FIELD64(reg64,
-                           FM10000_PARSER_PORT_CFG_1,
-                           defaultVID,
-                           tmpUint32);
-
-            err = switchPtr->WriteUINT64(sw,
-                                         FM10000_PARSER_PORT_CFG_1(physPort, 0),
-                                         reg64);
+            err = SetLAGPortAttribute(sw, port, lane, attr, &tmpUint32);
             FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
         }
+        else
+        {
+            /* for virtual ports we just update the defVlan field */
+            if (portPtr->portType != FM_PORT_TYPE_VIRTUAL)
+            {
+                FM_FLAG_TAKE_REG_LOCK(sw);
+                err = switchPtr->ReadUINT64(sw,
+                                            FM10000_PARSER_PORT_CFG_1(physPort, 0),
+                                            &reg64);
+                FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
 
-        portAttr->defVlan = tmpUint32;
+                FM_SET_FIELD64(reg64,
+                               FM10000_PARSER_PORT_CFG_1,
+                               defaultVID,
+                               tmpUint32);
+
+                err = switchPtr->WriteUINT64(sw,
+                                             FM10000_PARSER_PORT_CFG_1(physPort, 0),
+                                             reg64);
+                FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+            }
+
+            portAttr->defVlan = tmpUint32;
+        }
 
         if (portPtr->portType == FM_PORT_TYPE_VIRTUAL)
         {
@@ -6064,6 +6465,10 @@ fm_status fm10000SetPortAttributeInt(fm_int sw,
                                      port,
                                      portAttr->defVlan);
             FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
+        }
+        else if (portPtr->portType == FM_PORT_TYPE_LAG)
+        {
+            /* Do nothing */
         }
         else
         {
@@ -6086,23 +6491,31 @@ fm_status fm10000SetPortAttributeInt(fm_int sw,
             FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
         }
 
-        FM_FLAG_TAKE_REG_LOCK(sw);
-        err = switchPtr->ReadUINT64(sw,
-                                    FM10000_PARSER_PORT_CFG_1(physPort, 0),
-                                    &reg64);
-        FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+        if (isLagAttr)
+        {
+            err = SetLAGPortAttribute(sw, port, lane, attr, &tmpUint32);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+        }
+        else
+        {
+            FM_FLAG_TAKE_REG_LOCK(sw);
+            err = switchPtr->ReadUINT64(sw,
+                                        FM10000_PARSER_PORT_CFG_1(physPort, 0),
+                                        &reg64);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
 
-        FM_SET_FIELD64(reg64,
-                       FM10000_PARSER_PORT_CFG_1,
-                       defaultVID2,
-                       tmpUint32);
+            FM_SET_FIELD64(reg64,
+                           FM10000_PARSER_PORT_CFG_1,
+                           defaultVID2,
+                           tmpUint32);
 
-        err = switchPtr->WriteUINT64(sw,
-                                     FM10000_PARSER_PORT_CFG_1(physPort, 0),
-                                     reg64);
-        FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+            err = switchPtr->WriteUINT64(sw,
+                                         FM10000_PARSER_PORT_CFG_1(physPort, 0),
+                                         reg64);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
 
-        portAttr->defVlan2 = tmpUint32;
+            portAttr->defVlan2 = tmpUint32;
+        }
     }
     else if (attr == FM_PORT_DEF_PRI)
     {
@@ -6117,24 +6530,32 @@ fm_status fm10000SetPortAttributeInt(fm_int sw,
             FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
         }
 
-        FM_FLAG_TAKE_REG_LOCK(sw);
-        err = switchPtr->ReadUINT64(sw,
-                                    FM10000_PARSER_PORT_CFG_1(physPort, 0),
-                                    &reg64);
-        FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+        if (isLagAttr)
+        {
+            err = SetLAGPortAttribute(sw, port, lane, attr, &tmpUint32);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+        }
+        else
+        {
+            FM_FLAG_TAKE_REG_LOCK(sw);
+            err = switchPtr->ReadUINT64(sw,
+                                        FM10000_PARSER_PORT_CFG_1(physPort, 0),
+                                        &reg64);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
 
-        /* Higher 3 bits of defaultVPRI field is the actual vpri.*/
-        FM_SET_UNNAMED_FIELD64(reg64,
-                               FM10000_PARSER_PORT_CFG_1_l_defaultVPRI + 1, 
-                               3,
-                               tmpUint32);
+            /* Higher 3 bits of defaultVPRI field is the actual vpri.*/
+            FM_SET_UNNAMED_FIELD64(reg64,
+                                   FM10000_PARSER_PORT_CFG_1_l_defaultVPRI + 1,
+                                   3,
+                                   tmpUint32);
 
-        err = switchPtr->WriteUINT64(sw,
-                                     FM10000_PARSER_PORT_CFG_1(physPort, 0),
-                                     reg64);
-        FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+            err = switchPtr->WriteUINT64(sw,
+                                         FM10000_PARSER_PORT_CFG_1(physPort, 0),
+                                         reg64);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
 
-        portAttr->defVlanPri = tmpUint32;
+            portAttr->defVlanPri = tmpUint32;
+        }
     }
     else if (attr == FM_PORT_DEF_PRI2)
     {
@@ -6149,24 +6570,32 @@ fm_status fm10000SetPortAttributeInt(fm_int sw,
             FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
         }
 
-        FM_FLAG_TAKE_REG_LOCK(sw);
-        err = switchPtr->ReadUINT64(sw,
-                                    FM10000_PARSER_PORT_CFG_1(physPort, 0),
-                                    &reg64);
-        FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+        if (isLagAttr)
+        {
+            err = SetLAGPortAttribute(sw, port, lane, attr, &tmpUint32);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+        }
+        else
+        {
+            FM_FLAG_TAKE_REG_LOCK(sw);
+            err = switchPtr->ReadUINT64(sw,
+                                        FM10000_PARSER_PORT_CFG_1(physPort, 0),
+                                        &reg64);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
 
-        /* Higher 3 bits of defaultVPRI field is the actual vpri.*/
-        FM_SET_UNNAMED_FIELD64(reg64,
-                               FM10000_PARSER_PORT_CFG_1_l_defaultVPRI2 + 1, 
-                               3,
-                               tmpUint32);
+            /* Higher 3 bits of defaultVPRI field is the actual vpri.*/
+            FM_SET_UNNAMED_FIELD64(reg64,
+                                   FM10000_PARSER_PORT_CFG_1_l_defaultVPRI2 + 1,
+                                   3,
+                                   tmpUint32);
 
-        err = switchPtr->WriteUINT64(sw,
-                                     FM10000_PARSER_PORT_CFG_1(physPort, 0),
-                                     reg64);
-        FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+            err = switchPtr->WriteUINT64(sw,
+                                         FM10000_PARSER_PORT_CFG_1(physPort, 0),
+                                         reg64);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
 
-        portAttr->defVlanPri2 = tmpUint32;
+            portAttr->defVlanPri2 = tmpUint32;
+        }
     }
     else if (attr == FM_PORT_DEF_DSCP)
     {
@@ -6180,21 +6609,29 @@ fm_status fm10000SetPortAttributeInt(fm_int sw,
         {
             err = FM_ERR_INVALID_VALUE;
             FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
-        } 
+        }
 
-        FM_FLAG_TAKE_REG_LOCK(sw);
-        err = ReadParserPortCfg2(sw, physPort, &reg64);
-        FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+        if (isLagAttr)
+        {
+            err = SetLAGPortAttribute(sw, port, lane, attr, &tmpUint32);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+        }
+        else
+        {
+            FM_FLAG_TAKE_REG_LOCK(sw);
+            err = ReadParserPortCfg2(sw, physPort, &reg64);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
 
-        FM_SET_FIELD64(reg64,
-                       FM10000_PARSER_PORT_CFG_2,
-                       defaultDSCP,
-                       tmpUint32);
+            FM_SET_FIELD64(reg64,
+                           FM10000_PARSER_PORT_CFG_2,
+                           defaultDSCP,
+                           tmpUint32);
 
-        err = WriteParserPortCfg2(sw, physPort, reg64);
-        FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+            err = WriteParserPortCfg2(sw, physPort, reg64);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
 
-        portAttr->defDscp = tmpUint32;
+            portAttr->defDscp = tmpUint32;
+        }
     }
     else if (attr == FM_PORT_DEF_SWPRI)
     {
@@ -6210,19 +6647,27 @@ fm_status fm10000SetPortAttributeInt(fm_int sw,
             FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
         }
 
-        FM_FLAG_TAKE_REG_LOCK(sw);
-        err = switchPtr->ReadUINT32(sw, FM10000_PORT_CFG_ISL(physPort), &reg32);
-        FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+        if (isLagAttr)
+        {
+            err = SetLAGPortAttribute(sw, port, lane, attr, &tmpUint32);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+        }
+        else
+        {
+            FM_FLAG_TAKE_REG_LOCK(sw);
+            err = switchPtr->ReadUINT32(sw, FM10000_PORT_CFG_ISL(physPort), &reg32);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
 
-        FM_SET_FIELD(reg32,
-                     FM10000_PORT_CFG_ISL,
-                     defaultPriority,
-                     tmpUint32);    
+            FM_SET_FIELD(reg32,
+                         FM10000_PORT_CFG_ISL,
+                         defaultPriority,
+                         tmpUint32);
 
-        err = switchPtr->WriteUINT32(sw, FM10000_PORT_CFG_ISL(physPort), reg32);
-        FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+            err = switchPtr->WriteUINT32(sw, FM10000_PORT_CFG_ISL(physPort), reg32);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
 
-        portAttr->defSwpri = tmpUint32;
+            portAttr->defSwpri = tmpUint32;
+        }
     }
     else if (attr == FM_PORT_DEF_ISL_USER)
     {
@@ -6238,46 +6683,54 @@ fm_status fm10000SetPortAttributeInt(fm_int sw,
             FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
         }
 
-        /* Retrieve the EPL and channel numbers. */
-        isEplPort = FALSE;
-        err = fm10000MapPhysicalPortToEplChannel(sw, physPort, &epl, &channel);
-        if (err == FM_OK)
+        if ( isLagAttr )
         {
-            isEplPort = TRUE;
-        }
-
-        FM_FLAG_TAKE_REG_LOCK(sw);
-        err = switchPtr->ReadUINT32(sw, FM10000_PORT_CFG_ISL(physPort), &reg32);
-        FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
-
-        FM_SET_FIELD(reg32,
-                     FM10000_PORT_CFG_ISL,
-                     USR,
-                     tmpUint32);    
-
-        err = switchPtr->WriteUINT32(sw, FM10000_PORT_CFG_ISL(physPort), reg32);
-        FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
-
-        if ( isEplPort )
-        {
-            /* The physical port has EPL associated to it, we must
-             * set the passthrough mode of the EPL. */
-            err = switchPtr->ReadUINT32Mult(sw, 
-                                            FM10000_MAC_CFG(epl, channel, 0), 
-                                            FM10000_MAC_CFG_WIDTH,
-                                             macCfg);
-            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
-
-            FM_ARRAY_SET_FIELD(macCfg, FM10000_MAC_CFG, StartCharD, tmpUint32);
-        
-            err = switchPtr->WriteUINT32Mult(sw, 
-                                             FM10000_MAC_CFG(epl, channel, 0), 
-                                             FM10000_MAC_CFG_WIDTH,
-                                             macCfg);
+            err = SetLAGPortAttribute(sw, port, lane, attr, &tmpUint32);
             FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
         }
+        else
+        {
+            /* Retrieve the EPL and channel numbers. */
+            isEplPort = FALSE;
+            err = fm10000MapPhysicalPortToEplChannel(sw, physPort, &epl, &channel);
+            if (err == FM_OK)
+            {
+                isEplPort = TRUE;
+            }
 
-        portAttr->defIslUser = tmpUint32;
+            FM_FLAG_TAKE_REG_LOCK(sw);
+            err = switchPtr->ReadUINT32(sw, FM10000_PORT_CFG_ISL(physPort), &reg32);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+
+            FM_SET_FIELD(reg32,
+                         FM10000_PORT_CFG_ISL,
+                         USR,
+                         tmpUint32);
+
+            err = switchPtr->WriteUINT32(sw, FM10000_PORT_CFG_ISL(physPort), reg32);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+
+            if ( isEplPort )
+            {
+                /* The physical port has EPL associated to it, we must
+                 * set the passthrough mode of the EPL. */
+                err = switchPtr->ReadUINT32Mult(sw,
+                                                FM10000_MAC_CFG(epl, channel, 0),
+                                                FM10000_MAC_CFG_WIDTH,
+                                                 macCfg);
+                FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+
+                FM_ARRAY_SET_FIELD(macCfg, FM10000_MAC_CFG, StartCharD, tmpUint32);
+
+                err = switchPtr->WriteUINT32Mult(sw,
+                                                 FM10000_MAC_CFG(epl, channel, 0),
+                                                 FM10000_MAC_CFG_WIDTH,
+                                                 macCfg);
+                FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+            }
+
+            portAttr->defIslUser = tmpUint32;
+        }
     }
     else if (attr == FM_PORT_DROP_BV)
     {
@@ -6286,21 +6739,29 @@ fm_status fm10000SetPortAttributeInt(fm_int sw,
 
         VALIDATE_VALUE_IS_BOOL(value);
 
-        FM_FLAG_TAKE_REG_LOCK(sw);
-        err = switchPtr->ReadUINT32(sw, FM10000_PORT_CFG_3(physPort), &reg32);
-        FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
-
         tmpBool = *( (fm_bool *) value );
 
-        FM_SET_BIT(reg32,
-                   FM10000_PORT_CFG_3,
-                   filterVLANIngress,
-                   (tmpBool) ? 1 : 0);
+        if (isLagAttr)
+        {
+            err = SetLAGPortAttribute(sw, port, lane, attr, &tmpBool);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+        }
+        else
+        {
+            FM_FLAG_TAKE_REG_LOCK(sw);
+            err = switchPtr->ReadUINT32(sw, FM10000_PORT_CFG_3(physPort), &reg32);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
 
-        err = switchPtr->WriteUINT32(sw, FM10000_PORT_CFG_3(physPort), reg32);
-        FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+            FM_SET_BIT(reg32,
+                       FM10000_PORT_CFG_3,
+                       filterVLANIngress,
+                       (tmpBool) ? 1 : 0);
 
-        portAttr->dropBv = tmpBool;
+            err = switchPtr->WriteUINT32(sw, FM10000_PORT_CFG_3(physPort), reg32);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+
+            portAttr->dropBv = tmpBool;
+        }
     }
     else if (attr == FM_PORT_DROP_UNTAGGED)
     {
@@ -6309,21 +6770,29 @@ fm_status fm10000SetPortAttributeInt(fm_int sw,
 
         VALIDATE_VALUE_IS_BOOL(value);
 
-        FM_FLAG_TAKE_REG_LOCK(sw);
-        err = ReadParserPortCfg2(sw, physPort, &reg64);
-        FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
-
         tmpBool = *( (fm_bool *) value );
 
-        FM_SET_BIT64(reg64,
-                     FM10000_PARSER_PORT_CFG_2,
-                     dropUntagged,
-                     (tmpBool) ? 1 : 0);
+        if (isLagAttr)
+        {
+            err = SetLAGPortAttribute(sw, port, lane, attr, &tmpBool);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+        }
+        else
+        {
+            FM_FLAG_TAKE_REG_LOCK(sw);
+            err = ReadParserPortCfg2(sw, physPort, &reg64);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
 
-        err = WriteParserPortCfg2(sw, physPort, reg64);
-        FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+            FM_SET_BIT64(reg64,
+                         FM10000_PARSER_PORT_CFG_2,
+                         dropUntagged,
+                         (tmpBool) ? 1 : 0);
 
-        portAttr->dropUntagged = tmpBool;
+            err = WriteParserPortCfg2(sw, physPort, reg64);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+
+            portAttr->dropUntagged = tmpBool;
+        }
     }
     else if (attr == FM_PORT_DROP_TAGGED)
     {
@@ -6332,21 +6801,29 @@ fm_status fm10000SetPortAttributeInt(fm_int sw,
 
         VALIDATE_VALUE_IS_BOOL(value);
 
-        FM_FLAG_TAKE_REG_LOCK(sw);
-        err = ReadParserPortCfg2(sw, physPort, &reg64);
-        FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
-
         tmpBool = *( (fm_bool *) value );
 
-        FM_SET_BIT64(reg64,
-                     FM10000_PARSER_PORT_CFG_2,
-                     dropTagged,
-                     (tmpBool) ? 1 : 0);
+        if (isLagAttr)
+        {
+            err = SetLAGPortAttribute(sw, port, lane, attr, &tmpBool);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+        }
+        else
+        {
+            FM_FLAG_TAKE_REG_LOCK(sw);
+            err = ReadParserPortCfg2(sw, physPort, &reg64);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
 
-        err = WriteParserPortCfg2(sw, physPort, reg64);
-        FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+            FM_SET_BIT64(reg64,
+                         FM10000_PARSER_PORT_CFG_2,
+                         dropTagged,
+                         (tmpBool) ? 1 : 0);
 
-        portAttr->dropTagged = tmpBool;
+            err = WriteParserPortCfg2(sw, physPort, reg64);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+
+            portAttr->dropTagged = tmpBool;
+        }
     }
     else if (attr == FM_PORT_SPEED)
     {
@@ -6358,16 +6835,26 @@ fm_status fm10000SetPortAttributeInt(fm_int sw,
         VALIDATE_ATTRIBUTE_WRITE_ACCESS(&portAttributeTable.maskWide);
         VALIDATE_PORT_ATTRIBUTE(&portAttributeTable.maskWide);
 
-        FM_FLAG_TAKE_REG_LOCK(sw);
+        tmpMaskBitArray = *( (fm_bitArray *) value );
 
-        /* Save bitarray as a portmask. */
-        err = fmBitArrayToPortMask( (fm_bitArray *) value,
-                                    &portAttr->portMask,
-                                    switchPtr->numCardinalPorts );
-        if (err == FM_OK)
+        if (isLagAttr)
         {
-            /* Apply the updated configuration. */
-            err = fm10000UpdatePortMask(sw, port);
+            err = SetLAGPortAttribute(sw, port, lane, attr, &tmpMaskBitArray);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+        }
+        else
+        {
+            FM_FLAG_TAKE_REG_LOCK(sw);
+
+            /* Save bitarray as a portmask. */
+            err = fmBitArrayToPortMask( (fm_bitArray *) value,
+                                        &portAttr->portMask,
+                                        switchPtr->numCardinalPorts );
+            if (err == FM_OK)
+            {
+                /* Apply the updated configuration. */
+                err = fm10000UpdatePortMask(sw, port);
+            }
         }
     }
     else if (attr == FM_PORT_DOT1X_STATE)
@@ -6387,13 +6874,22 @@ fm_status fm10000SetPortAttributeInt(fm_int sw,
                 FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
         }
 
+        tmpDot1xState = *( (fm_dot1xState *) value );
 
-        FM_FLAG_TAKE_REG_LOCK(sw);
+        if (isLagAttr)
+        {
+            err = SetLAGPortAttribute(sw, port, lane, attr, &tmpDot1xState);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+        }
+        else
+        {
+            FM_FLAG_TAKE_REG_LOCK(sw);
 
-        portAttr->dot1xState = *( (fm_dot1xState *) value );
+            portAttr->dot1xState = tmpDot1xState;
 
-        /* Apply the updated configuration. */
-        err = fm10000UpdatePortMask(sw, port);
+            /* Apply the updated configuration. */
+            err = fm10000UpdatePortMask(sw, port);
+        }
     }
     else if (attr == FM_PORT_TX_PAUSE)
     {
@@ -6409,16 +6905,24 @@ fm_status fm10000SetPortAttributeInt(fm_int sw,
             FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
         }
 
-        FM_FLAG_TAKE_REG_LOCK(sw);
-        err = ReadModPerPortCfg2(sw, physPort, &reg64);
-        FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+        if (isLagAttr)
+        {
+            err = SetLAGPortAttribute(sw, port, lane, attr, &tmpUint32);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+        }
+        else
+        {
+            FM_FLAG_TAKE_REG_LOCK(sw);
+            err = ReadModPerPortCfg2(sw, physPort, &reg64);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
 
-        FM_SET_FIELD64(reg64, FM10000_MOD_PER_PORT_CFG_2, TxPauseValue, tmpUint32);
+            FM_SET_FIELD64(reg64, FM10000_MOD_PER_PORT_CFG_2, TxPauseValue, tmpUint32);
 
-        err = WriteModPerPortCfg2(sw, physPort, reg64);
-        FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+            err = WriteModPerPortCfg2(sw, physPort, reg64);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
 
-        portAttr->txPause = tmpUint32;
+            portAttr->txPause = tmpUint32;
+        }
     }
     else if (attr == FM_PORT_RX_PAUSE)
     {
@@ -6429,71 +6933,111 @@ fm_status fm10000SetPortAttributeInt(fm_int sw,
 
         tmpBool = *( (fm_bool *) value );
 
-        FM_FLAG_TAKE_REG_LOCK(sw);
-        err = switchPtr->ReadUINT32(sw, FM10000_CM_PAUSE_CFG(physPort), &reg32);
-        FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+        if (isLagAttr)
+        {
+            err = SetLAGPortAttribute(sw, port, lane, attr, &tmpBool);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+        }
+        else
+        {
+            FM_FLAG_TAKE_REG_LOCK(sw);
+            err = switchPtr->ReadUINT32(sw, FM10000_CM_PAUSE_CFG(physPort), &reg32);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
 
-        /*****************************************************
-         * Here we ensure that all traffic classes obey/ignore
-         * pause.  The per traffic class property is
-         * FM_PORT_RX_CLASS_PAUSE.
-         *****************************************************/
-        tmpUint32 = tmpBool ? 
-                    FM_FIELD_UNSIGNED_MAX(FM10000_CM_PAUSE_CFG, PauseMask) :
-                    0;
+            /*****************************************************
+             * Here we ensure that all traffic classes obey/ignore
+             * pause.  The per traffic class property is
+             * FM_PORT_RX_CLASS_PAUSE.
+             *****************************************************/
+            tmpUint32 = tmpBool ?
+                        FM_FIELD_UNSIGNED_MAX(FM10000_CM_PAUSE_CFG, PauseMask) :
+                        0;
 
-        FM_SET_FIELD(reg32, FM10000_CM_PAUSE_CFG, PauseMask, tmpUint32);
+            FM_SET_FIELD(reg32, FM10000_CM_PAUSE_CFG, PauseMask, tmpUint32);
 
-        err = switchPtr->WriteUINT32(sw, FM10000_CM_PAUSE_CFG(physPort), reg32);
-        FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+            err = switchPtr->WriteUINT32(sw, FM10000_CM_PAUSE_CFG(physPort), reg32);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
 
-        portAttr->rxPause = tmpBool;
+            portAttr->rxPause = tmpBool;
+        }
     }
     else if (attr == FM_PORT_ETHERNET_INTERFACE_MODE)
     {
         /* filter out PCIE ports */
         VALIDATE_ATTRIBUTE_WRITE_ACCESS(&portAttributeTable.ethMode);
 
-        /* proceed only if there was an actual change of interface mode */
-        if ( *(fm_ethMode *)value != portAttrExt->ethMode )
+        if (isLagAttr)
         {
-            prevEthMode = portAttrExt->ethMode;
-            ethMode = *( (fm_ethMode *) value );
-
-            /* Make sure this ethernet mode is compatible with the
-               current EPL arrangement */
-            err = ValidateEthMode( sw, port, ethMode );
-            FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, err );
-
-            /* Prior to change the Ethernet Mode, adjust the Autoneg mode */
-            /* accordingly if required */
-            err = updateAnMode(sw, port, prevEthMode, ethMode, &restoreAdminMode);
-            FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, err );
-
-            err = fm10000ConfigureEthMode( sw, 
-                                           port, 
-                                           ethMode, 
-                                           &restoreAdminMode ); 
-            FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, err );
-
-            portAttrExt->ethMode = ethMode;
-            portExt->ethMode     = ethMode;
-            portAttr->speed      = fm10000GetPortSpeed( ethMode );
-            oldSpeed             = portExt->speed;
-            portExt->speed       = portAttr->speed;
-
-            err = fm10000SetPauseQuantaCoefficients(sw, port);
-            FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, err );
-
-            if (oldSpeed != portExt->speed)
+            err = SetLAGPortAttribute(sw, port, lane, attr, value);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+        }
+        else
+        {
+            /* proceed only if there was an actual change of interface mode */
+            if ( *(fm_ethMode *)value != portAttrExt->ethMode )
             {
-                err = fm10000UpdateAllSAFValues(sw);
+                prevEthMode = portAttrExt->ethMode;
+                ethMode = *( (fm_ethMode *) value );
+
+                /* Make sure this ethernet mode is compatible with the
+                   current EPL arrangement */
+                err = ValidateEthMode( sw, port, ethMode );
                 FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, err );
+
+                /* Prior to change the Ethernet Mode, adjust the Autoneg mode */
+                /* accordingly if required */
+                err = updateAnMode(sw, port, prevEthMode, ethMode, &restoreAdminMode);
+                FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, err );
+
+                err = fm10000ConfigureEthMode( sw,
+                                               port,
+                                               ethMode,
+                                               &restoreAdminMode );
+                FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, err );
+
+                portAttrExt->ethMode = ethMode;
+                portExt->ethMode     = ethMode;
+                portAttr->speed      = fm10000GetPortSpeed( ethMode );
+                oldSpeed             = portExt->speed;
+                portExt->speed       = portAttr->speed;
+
+                err = fm10000SetPauseQuantaCoefficients(sw, port);
+                FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, err );
+
+                if (oldSpeed != portExt->speed)
+                {
+                    err = fm10000UpdateAllSAFValues(sw);
+                    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, err );
+                }
+            }
+
+            err = FM_OK;
+        }
+    }
+    else if (attr == FM_PORT_RX_TERMINATION)
+    {
+        /* add code to filter out PCIE ports */
+        VALIDATE_ATTRIBUTE_WRITE_ACCESS(&portAttributeTable.rxTermination);
+        VALIDATE_PORT_ATTRIBUTE(&portAttributeTable.rxTermination);
+
+        if (isLagAttr)
+        {
+            err = SetLAGPortAttribute(sw, port, lane, attr, value);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+        }
+        else
+        {
+            if ( lane == FM_PORT_LANE_NA ||
+                 laneAttr == NULL)
+            {
+                err = FM_ERR_INVALID_PORT_LANE;
+                FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
+            }
+            else
+            {
+                err = ConfigureRxTermination(sw,port,lane,*(fm_rxTermination *)value);
             }
         }
-
-        err = FM_OK;
-
     }
     else if (attr == FM_PORT_DFE_MODE)
     {
@@ -6501,15 +7045,23 @@ fm_status fm10000SetPortAttributeInt(fm_int sw,
         VALIDATE_ATTRIBUTE_WRITE_ACCESS(&portAttributeTable.dfeMode);
         VALIDATE_PORT_ATTRIBUTE(&portAttributeTable.dfeMode);
 
-        if ( lane == FM_PORT_LANE_NA ||
-             laneAttr == NULL)
+        if (isLagAttr)
         {
-            err = FM_ERR_INVALID_PORT_LANE;
-            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
+            err = SetLAGPortAttribute(sw, port, lane, attr, value);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
         }
         else
         {
-            err = ConfigureDfeMode(sw,port,lane,*(fm_dfeMode *)value);
+            if ( lane == FM_PORT_LANE_NA ||
+                 laneAttr == NULL)
+            {
+                err = FM_ERR_INVALID_PORT_LANE;
+                FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
+            }
+            else
+            {
+                err = ConfigureDfeMode(sw,port,lane,*(fm_dfeMode *)value);
+            }
         }
     }
     else if (attr == FM_PORT_LOOPBACK)
@@ -6517,43 +7069,67 @@ fm_status fm10000SetPortAttributeInt(fm_int sw,
         VALIDATE_ATTRIBUTE_WRITE_ACCESS(&portAttributeTable.serdesLoopback);
         VALIDATE_PORT_ATTRIBUTE(&portAttributeTable.serdesLoopback);
 
-        err = ConfigureLoopbackMode(sw, port, *(fm_bool *)value );
-
-        FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, err );
+        if (isLagAttr)
+        {
+            err = SetLAGPortAttribute(sw, port, lane, attr, value);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
         }
+        else
+        {
+            err = ConfigureLoopbackMode(sw, port, *(fm_bool *)value );
+
+            FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, err );
+        }
+    }
     else if (attr == FM_PORT_FABRIC_LOOPBACK)
     {
         VALIDATE_ATTRIBUTE_WRITE_ACCESS(&portAttributeTable.fabricLoopback);
         VALIDATE_PORT_ATTRIBUTE(&portAttributeTable.fabricLoopback);
 
-        err = ConfigureFabricLoopback(sw, port, *(fm_bool *)value);
-        FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, err );
+        if (isLagAttr)
+        {
+            err = SetLAGPortAttribute(sw, port, lane, attr, value);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+        }
+        else
+        {
+            err = ConfigureFabricLoopback(sw, port, *(fm_bool *)value);
+            FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, err );
+        }
     }
     else if (attr == FM_PORT_RX_LANE_POLARITY)
     {
         VALIDATE_ATTRIBUTE_WRITE_ACCESS(&portAttributeTable.rxLanePolarity);
         VALIDATE_PORT_ATTRIBUTE(&portAttributeTable.rxLanePolarity);
 
-        if (lane == FM_PORT_LANE_NA)
+        if (isLagAttr)
         {
-            err = FM_ERR_INVALID_PORT_LANE;
+            err = SetLAGPortAttribute(sw, port, lane, attr, value);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
         }
         else
         {
-            tmpUint32 = *( (fm_uint32 *) value );
-
-            if (portAttr->serdesLoopback != FM_PORT_LOOPBACK_TX2RX &&
-                portAttrExt->ethMode != FM_ETH_MODE_DISABLED)
+            if (lane == FM_PORT_LANE_NA)
             {
-                /* only set the lane polarity if near loopback is not enabled */
-                err = fm10000SetSerdesLanePolarity(sw,
-                                                   serdes,
-                                                   (laneAttr->txPolarity!=0),
-                                                   (tmpUint32 != 0));
-                FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+                err = FM_ERR_INVALID_PORT_LANE;
             }
+            else
+            {
+                tmpUint32 = *( (fm_uint32 *) value );
 
-            laneAttr->rxPolarity = tmpUint32;
+                if (portAttr->serdesLoopback != FM_PORT_LOOPBACK_TX2RX &&
+                    portAttrExt->ethMode != FM_ETH_MODE_DISABLED)
+                {
+                    /* only set the lane polarity if near loopback is not enabled */
+                    err = fm10000SetSerdesLanePolarity(sw,
+                                                       serdes,
+                                                       (laneAttr->txPolarity!=0),
+                                                       (tmpUint32 != 0));
+                    FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+                }
+
+                laneAttr->rxPolarity = tmpUint32;
+            }
         }
     }
     else if (attr == FM_PORT_TX_FCS_MODE)
@@ -6561,55 +7137,63 @@ fm_status fm10000SetPortAttributeInt(fm_int sw,
         VALIDATE_ATTRIBUTE_WRITE_ACCESS(&portAttributeTable.txFcsMode);
         VALIDATE_PORT_ATTRIBUTE(&portAttributeTable.txFcsMode);
 
-        /* Retrieve the EPL and channel numbers. */
-        isEplPort = FALSE;
-        err = fm10000MapPhysicalPortToEplChannel(sw, physPort, &epl, &channel);
-        if (err == FM_OK)
+        tmpUint32 = *( (fm_uint32 *) value );
+
+        /* convert from generic values to FM10000 values */
+        for (i = 0; i < FM_NENTRIES(txFcsModeMap); i++)
         {
-            isEplPort = TRUE;
+            if (txFcsModeMap[i].a == tmpUint32)
+            {
+                tmpUint32 = txFcsModeMap[i].b;
+                break;
+            }
         }
 
-        if (isEplPort)
+        /* If we reached end of iteration loop, we did not find
+         * a match */
+        if (i == FM_NENTRIES(txFcsModeMap))
         {
-            tmpUint32 = *( (fm_uint32 *) value );
+            err = FM_ERR_INVALID_VALUE;
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
+        }
 
-            /* convert from generic values to FM10000 values */
-            for (i = 0; i < FM_NENTRIES(txFcsModeMap); i++)
+        if (isLagAttr)
+        {
+            err = SetLAGPortAttribute(sw, port, lane, attr, &tmpUint32);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+        }
+        else
+        {
+            /* Retrieve the EPL and channel numbers. */
+            isEplPort = FALSE;
+            err = fm10000MapPhysicalPortToEplChannel(sw, physPort, &epl, &channel);
+            if (err == FM_OK)
             {
-                if (txFcsModeMap[i].a == tmpUint32)
-                {
-                    tmpUint32 = txFcsModeMap[i].b;
-                    break;
-                }
+                isEplPort = TRUE;
             }
 
-            /* If we reached end of iteration loop, we did not find
-             * a match */
-            if (i == FM_NENTRIES(txFcsModeMap))
+            if (isEplPort)
             {
-                err = FM_ERR_INVALID_VALUE;
-                FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
+                FM_FLAG_TAKE_REG_LOCK(sw);
+
+                /* The physical port has EPL associated to it, we must
+                 * set the passthrough mode of the EPL. */
+                err = switchPtr->ReadUINT32Mult(sw,
+                                                FM10000_MAC_CFG(epl, channel, 0),
+                                                FM10000_MAC_CFG_WIDTH,
+                                                 macCfg);
+                FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+
+                FM_ARRAY_SET_FIELD(macCfg, FM10000_MAC_CFG, TxFcsMode, tmpUint32);
+
+                err = switchPtr->WriteUINT32Mult(sw,
+                                                 FM10000_MAC_CFG(epl, channel, 0),
+                                                 FM10000_MAC_CFG_WIDTH,
+                                                 macCfg);
+                FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+
+                portAttrExt->txFcsMode = *((fm_int *) value);
             }
-
-            FM_FLAG_TAKE_REG_LOCK(sw);
-
-            /* The physical port has EPL associated to it, we must
-             * set the passthrough mode of the EPL. */
-            err = switchPtr->ReadUINT32Mult(sw, 
-                                            FM10000_MAC_CFG(epl, channel, 0), 
-                                            FM10000_MAC_CFG_WIDTH,
-                                             macCfg);
-            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
-
-            FM_ARRAY_SET_FIELD(macCfg, FM10000_MAC_CFG, TxFcsMode, tmpUint32);
-        
-            err = switchPtr->WriteUINT32Mult(sw, 
-                                             FM10000_MAC_CFG(epl, channel, 0), 
-                                             FM10000_MAC_CFG_WIDTH,
-                                             macCfg);
-            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
-
-            portAttrExt->txFcsMode = *((fm_int *) value);
         }
     }
     else if (attr == FM_PORT_TX_LANE_POLARITY)
@@ -6617,26 +7201,34 @@ fm_status fm10000SetPortAttributeInt(fm_int sw,
         VALIDATE_ATTRIBUTE_WRITE_ACCESS(&portAttributeTable.txLanePolarity);
         VALIDATE_PORT_ATTRIBUTE(&portAttributeTable.txLanePolarity);
 
-        if (lane == FM_PORT_LANE_NA)
+        if (isLagAttr)
         {
-            err = FM_ERR_INVALID_PORT_LANE;
+            err = SetLAGPortAttribute(sw, port, lane, attr, value);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
         }
         else
         {
-            tmpUint32 = *( (fm_uint32 *) value );
-
-            if (portAttr->serdesLoopback != FM_PORT_LOOPBACK_TX2RX &&
-                portAttrExt->ethMode != FM_ETH_MODE_DISABLED)
+            if (lane == FM_PORT_LANE_NA)
             {
-                /* only set the lane polarity if near loopback is not enabled */
-                err = fm10000SetSerdesLanePolarity(sw,
-                                                   serdes,
-                                                   (tmpUint32 != 0),
-                                                   (laneAttr->rxPolarity != 0));
-                FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+                err = FM_ERR_INVALID_PORT_LANE;
             }
+            else
+            {
+                tmpUint32 = *( (fm_uint32 *) value );
 
-            laneAttr->txPolarity = tmpUint32;
+                if (portAttr->serdesLoopback != FM_PORT_LOOPBACK_TX2RX &&
+                    portAttrExt->ethMode != FM_ETH_MODE_DISABLED)
+                {
+                    /* only set the lane polarity if near loopback is not enabled */
+                    err = fm10000SetSerdesLanePolarity(sw,
+                                                       serdes,
+                                                       (tmpUint32 != 0),
+                                                       (laneAttr->rxPolarity != 0));
+                    FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+                }
+
+                laneAttr->txPolarity = tmpUint32;
+            }
         }
     }
     else if (attr == FM_PORT_BIST_USER_PATTERN_LOW40)
@@ -6644,18 +7236,52 @@ fm_status fm10000SetPortAttributeInt(fm_int sw,
         VALIDATE_ATTRIBUTE_WRITE_ACCESS(&portAttributeTable.bistUserPatterLow40);
         VALIDATE_PORT_ATTRIBUTE(&portAttributeTable.bistUserPatterLow40);
 
-        /* set the low part of the bist user pattern */
-        err = fm10000SetBistUserPattern(sw,port,lane, (fm_uint64 *) value,NULL);
-        FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+        tmpUint64 = *( (fm_uint64 *) value );
+
+        /* count the number of 1's in the given value.*/
+        tmpInt = CountOnes(tmpUint64);
+
+        FM_LOG_DEBUG(FM_LOG_CAT_PORT,
+                        "The number of 1's in the given value is %d\n",
+                        tmpInt);
+
+        if (isLagAttr)
+        {
+            err = SetLAGPortAttribute(sw, port, lane, attr, value);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+        }
+        else
+        {
+            /* set the low part of the bist user pattern */
+            err = fm10000SetBistUserPattern(sw, port, lane, (fm_uint64 *) value, NULL);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+        }
     }
     else if (attr == FM_PORT_BIST_USER_PATTERN_UPP40)
     {
         VALIDATE_ATTRIBUTE_WRITE_ACCESS(&portAttributeTable.bistUserPatterUpp40);
         VALIDATE_PORT_ATTRIBUTE(&portAttributeTable.bistUserPatterUpp40);
 
-        /* set the high part of the bist user pattern */
-        err = fm10000SetBistUserPattern(sw,port,lane, NULL, (fm_uint64 *) value);
-        FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+        tmpUint64 = *( (fm_uint64 *) value );
+
+        /* count the number of 1's in the given value.*/
+        tmpInt = CountOnes(tmpUint64);
+
+        FM_LOG_DEBUG(FM_LOG_CAT_PORT,
+                        "The number of 1's in the given value is %d\n",
+                        tmpInt);
+
+        if (isLagAttr)
+        {
+            err = SetLAGPortAttribute(sw, port, lane, attr, value);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+        }
+        else
+        {
+            /* set the high part of the bist user pattern */
+            err = fm10000SetBistUserPattern(sw, port, lane, NULL, (fm_uint64 *) value);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+        }
     }
     else if (attr == FM_PORT_TX_PAUSE_MODE)
     {
@@ -6664,28 +7290,55 @@ fm_status fm10000SetPortAttributeInt(fm_int sw,
 
         tmpUint32 = *( (fm_uint32 *) value);
 
-        FM_FLAG_TAKE_REG_LOCK(sw);
-        err = ReadModPerPortCfg2(sw, physPort, &reg64);
-        FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+        switch ( tmpUint32 )
+        {
+            case FM_PORT_TX_PAUSE_NORMAL:
+            case FM_PORT_TX_PAUSE_CLASS_BASED:
+                /* Valid values */
+                break;
+            default:
+                err = FM_ERR_INVALID_VALUE;
+                FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+                break;
 
-        if (tmpUint32 == FM_PORT_TX_PAUSE_CLASS_BASED)
+        }   /* end switch ( tmpUint32 ) */
+
+        if (isLagAttr)
         {
-            FM_SET_BIT64(reg64, FM10000_MOD_PER_PORT_CFG_2, TxPauseType, 1); 
-        }
-        else if (tmpUint32 == FM_PORT_TX_PAUSE_NORMAL)
-        {
-            FM_SET_BIT64(reg64, FM10000_MOD_PER_PORT_CFG_2, TxPauseType, 0); 
+            err = SetLAGPortAttribute(sw, port, lane, attr, &tmpUint32);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
         }
         else
         {
-            err = FM_ERR_INVALID_VALUE;
-            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
+            FM_FLAG_TAKE_REG_LOCK(sw);
+            err = ReadModPerPortCfg2(sw, physPort, &reg64);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+
+            if (tmpUint32 == FM_PORT_TX_PAUSE_CLASS_BASED)
+            {
+                FM_SET_BIT64(reg64, FM10000_MOD_PER_PORT_CFG_2, TxPauseType, 1);
+
+                /* Make sure the PriEnVec is set as FM_PORT_TX_CLASS_PAUSE */
+                FM_SET_FIELD64(reg64,
+                               FM10000_MOD_PER_PORT_CFG_2,
+                               TxPausePriEnVec,
+                               portAttr->txClassPause);
+            }
+            else if (tmpUint32 == FM_PORT_TX_PAUSE_NORMAL)
+            {
+                FM_SET_BIT64(reg64, FM10000_MOD_PER_PORT_CFG_2, TxPauseType, 0);
+            }
+            else
+            {
+                err = FM_ERR_INVALID_VALUE;
+                FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
+            }
+
+            err = WriteModPerPortCfg2(sw, physPort, reg64);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+
+            portAttr->txPauseMode = tmpUint32;
         }
-
-        err = WriteModPerPortCfg2(sw, physPort, reg64);
-        FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
-
-        portAttr->txPauseMode = tmpUint32;
     }
     else if (attr == FM_PORT_TX_PAUSE_RESEND_TIME)
     {
@@ -6693,10 +7346,19 @@ fm_status fm10000SetPortAttributeInt(fm_int sw,
         VALIDATE_PORT_ATTRIBUTE(&portAttributeTable.txPauseResendTime);
 
         tmpUint32 = *( (fm_uint32 *) value);
-        err = fm10000SetPauseResendInterval(sw, port, tmpUint32);
-        FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
 
-        portAttr->txPauseResendTime = tmpUint32;
+        if (isLagAttr)
+        {
+            err = SetLAGPortAttribute(sw, port, lane, attr, &tmpUint32);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+        }
+        else
+        {
+            err = fm10000SetPauseResendInterval(sw, port, tmpUint32);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+
+            portAttr->txPauseResendTime = tmpUint32;
+        }
     }
     else if (attr == FM_PORT_RX_CLASS_PAUSE)
     {
@@ -6711,17 +7373,61 @@ fm_status fm10000SetPortAttributeInt(fm_int sw,
             FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
         }
 
-        FM_FLAG_TAKE_REG_LOCK(sw);
-        err = switchPtr->ReadUINT32(sw, FM10000_CM_PAUSE_CFG(physPort), &reg32);
-        FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+        if (isLagAttr)
+        {
+            err = SetLAGPortAttribute(sw, port, lane, attr, &tmpUint32);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+        }
+        else
+        {
+            FM_FLAG_TAKE_REG_LOCK(sw);
+            err = switchPtr->ReadUINT32(sw, FM10000_CM_PAUSE_CFG(physPort), &reg32);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
 
-        FM_SET_FIELD(reg32, FM10000_CM_PAUSE_CFG, PauseMask, tmpUint32);        
+            FM_SET_FIELD(reg32, FM10000_CM_PAUSE_CFG, PauseMask, tmpUint32);
 
-        err = switchPtr->WriteUINT32(sw, FM10000_CM_PAUSE_CFG(physPort), tmpUint32);
-        FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+            err = switchPtr->WriteUINT32(sw, FM10000_CM_PAUSE_CFG(physPort), reg32);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
 
-        portAttr->rxClassPause = tmpUint32;
+            portAttr->rxClassPause = tmpUint32;
+        }
     }
+    else if (attr == FM_PORT_TX_CLASS_PAUSE)
+    {
+        VALIDATE_ATTRIBUTE_WRITE_ACCESS(&portAttributeTable.txClassPause);
+        VALIDATE_PORT_ATTRIBUTE(&portAttributeTable.txClassPause);
+
+        tmpUint32 = *( (fm_uint32 *) value);
+        if (tmpUint32 > FM_FIELD_UNSIGNED_MAX(FM10000_MOD_PER_PORT_CFG_2,
+                                              TxPausePriEnVec) )
+        {
+            err = FM_ERR_INVALID_VALUE;
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
+        }
+
+        if (isLagAttr)
+        {
+            err = SetLAGPortAttribute(sw, port, lane, attr, &tmpUint32);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+        }
+        else
+        {
+            FM_FLAG_TAKE_REG_LOCK(sw);
+            err = ReadModPerPortCfg2(sw, physPort, &reg64);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+
+            FM_SET_FIELD64(reg64,
+                           FM10000_MOD_PER_PORT_CFG_2,
+                           TxPausePriEnVec,
+                           tmpUint32);
+
+            err = WriteModPerPortCfg2(sw, physPort, reg64);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+
+            portAttr->txClassPause = tmpUint32;
+        }
+    }
+
     else if (attr == FM_PORT_TXCFI)
     {
         VALIDATE_ATTRIBUTE_WRITE_ACCESS(&portAttributeTable.txCfi);
@@ -6744,19 +7450,27 @@ fm_status fm10000SetPortAttributeInt(fm_int sw,
                 goto ABORT;
         }
 
-        FM_FLAG_TAKE_REG_LOCK(sw);
-        err = ReadModPerPortCfg2(sw, physPort, &reg64);
-        FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+        if (isLagAttr)
+        {
+            err = SetLAGPortAttribute(sw, port, lane, attr, &tmpUint32);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+        }
+        else
+        {
+            FM_FLAG_TAKE_REG_LOCK(sw);
+            err = ReadModPerPortCfg2(sw, physPort, &reg64);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
 
-        FM_SET_BIT64(reg64,
-                     FM10000_MOD_PER_PORT_CFG_2,
-                     EnableDei1Update,
-                     (tmpBool) ? 1 : 0);
+            FM_SET_BIT64(reg64,
+                         FM10000_MOD_PER_PORT_CFG_2,
+                         EnableDei1Update,
+                         (tmpBool) ? 1 : 0);
 
-        err = WriteModPerPortCfg2(sw, physPort, reg64);
-        FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+            err = WriteModPerPortCfg2(sw, physPort, reg64);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
 
-        portAttr->txCfi = tmpUint32;
+            portAttr->txCfi = tmpUint32;
+        }
     }
     else if (attr == FM_PORT_TXCFI2)
     {
@@ -6780,19 +7494,27 @@ fm_status fm10000SetPortAttributeInt(fm_int sw,
                 goto ABORT;
         }
 
-        FM_FLAG_TAKE_REG_LOCK(sw);
-        err = ReadModPerPortCfg2(sw, physPort, &reg64);
-        FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+        if (isLagAttr)
+        {
+            err = SetLAGPortAttribute(sw, port, lane, attr, &tmpUint32);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+        }
+        else
+        {
+            FM_FLAG_TAKE_REG_LOCK(sw);
+            err = ReadModPerPortCfg2(sw, physPort, &reg64);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
 
-        FM_SET_BIT64(reg64,
-                     FM10000_MOD_PER_PORT_CFG_2,
-                     EnableDei2Update,
-                     (tmpBool) ? 1 : 0);
+            FM_SET_BIT64(reg64,
+                         FM10000_MOD_PER_PORT_CFG_2,
+                         EnableDei2Update,
+                         (tmpBool) ? 1 : 0);
 
-        err = WriteModPerPortCfg2(sw, physPort, reg64);
-        FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+            err = WriteModPerPortCfg2(sw, physPort, reg64);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
 
-        portAttr->txCfi2 = tmpUint32;
+            portAttr->txCfi2 = tmpUint32;
+        }
     }
     else if (attr == FM_PORT_SWPRI_SOURCE)
     {
@@ -6812,29 +7534,37 @@ fm_status fm10000SetPortAttributeInt(fm_int sw,
             FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
         }
 
-        FM_FLAG_TAKE_REG_LOCK(sw);
-        err = ReadParserPortCfg2(sw, physPort, &reg64);
-        FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+        if (isLagAttr)
+        {
+            err = SetLAGPortAttribute(sw, port, lane, attr, &tmpUint32);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+        }
+        else
+        {
+            FM_FLAG_TAKE_REG_LOCK(sw);
+            err = ReadParserPortCfg2(sw, physPort, &reg64);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
 
-        FM_SET_BIT64(reg64,
-                     FM10000_PARSER_PORT_CFG_2,
-                     SwitchPriorityFromVLAN,
-                     ( (tmpUint32 & FM_PORT_SWPRI_VPRI) != 0) ? 1 : 0);
+            FM_SET_BIT64(reg64,
+                         FM10000_PARSER_PORT_CFG_2,
+                         SwitchPriorityFromVLAN,
+                         ( (tmpUint32 & FM_PORT_SWPRI_VPRI) != 0) ? 1 : 0);
 
-        FM_SET_BIT64(reg64,
-                     FM10000_PARSER_PORT_CFG_2,
-                     SwitchPriorityFromDSCP,
-                     ( (tmpUint32 & FM_PORT_SWPRI_DSCP) != 0) ? 1 : 0);
+            FM_SET_BIT64(reg64,
+                         FM10000_PARSER_PORT_CFG_2,
+                         SwitchPriorityFromDSCP,
+                         ( (tmpUint32 & FM_PORT_SWPRI_DSCP) != 0) ? 1 : 0);
 
-        FM_SET_BIT64(reg64,
-                     FM10000_PARSER_PORT_CFG_2,
-                     SwitchPriorityFromISL,
-                     ( (tmpUint32 & FM_PORT_SWPRI_ISL_TAG) != 0) ? 1 : 0);
-        
-        err = WriteParserPortCfg2(sw, physPort, reg64);
-        FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+            FM_SET_BIT64(reg64,
+                         FM10000_PARSER_PORT_CFG_2,
+                         SwitchPriorityFromISL,
+                         ( (tmpUint32 & FM_PORT_SWPRI_ISL_TAG) != 0) ? 1 : 0);
 
-        portAttr->swpriSource = tmpUint32;
+            err = WriteParserPortCfg2(sw, physPort, reg64);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+
+            portAttr->swpriSource = tmpUint32;
+        }
     }
     else if (attr == FM_PORT_SWPRI_DSCP_PREF)
     {
@@ -6844,20 +7574,29 @@ fm_status fm10000SetPortAttributeInt(fm_int sw,
         VALIDATE_VALUE_IS_BOOL(value);
 
         tmpBool = *((fm_bool *) value);
-        FM_FLAG_TAKE_REG_LOCK(sw);
-        err = ReadParserPortCfg2(sw, physPort, &reg64);
 
-        FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+        if (isLagAttr)
+        {
+            err = SetLAGPortAttribute(sw, port, lane, attr, &tmpBool);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+        }
+        else
+        {
+            FM_FLAG_TAKE_REG_LOCK(sw);
+            err = ReadParserPortCfg2(sw, physPort, &reg64);
 
-        FM_SET_BIT64(reg64,
-                     FM10000_PARSER_PORT_CFG_2,
-                     SwitchPriorityPrefersDSCP,
-                     (tmpBool) ? 1 : 0);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
 
-        err = WriteParserPortCfg2(sw, physPort, reg64);
-        FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+            FM_SET_BIT64(reg64,
+                         FM10000_PARSER_PORT_CFG_2,
+                         SwitchPriorityPrefersDSCP,
+                         (tmpBool) ? 1 : 0);
 
-        portAttr->swpriDscpPref = tmpBool;
+            err = WriteParserPortCfg2(sw, physPort, reg64);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+
+            portAttr->swpriDscpPref = tmpBool;
+        }
     }
     else if (attr == FM_PORT_PARSER)
     {
@@ -6866,56 +7605,78 @@ fm_status fm10000SetPortAttributeInt(fm_int sw,
 
         tmpUint32 = *( (fm_uint32 *) value );
 
-        FM_FLAG_TAKE_REG_LOCK(sw);
-        err = ReadParserPortCfg2(sw, physPort, &reg64);
-
-        FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
-
         switch ( tmpUint32 )
         {
             case FM_PORT_PARSER_STOP_AFTER_L2:
-                FM_SET_BIT64(reg64,
-                             FM10000_PARSER_PORT_CFG_2,
-                             ParseL3,
-                             0);
-                FM_SET_BIT64(reg64,
-                             FM10000_PARSER_PORT_CFG_2,
-                             ParseL4,
-                             0);
-                break;
-
             case FM_PORT_PARSER_STOP_AFTER_L3:
-                FM_SET_BIT64(reg64,
-                             FM10000_PARSER_PORT_CFG_2,
-                             ParseL3,
-                             1);
-                FM_SET_BIT64(reg64,
-                             FM10000_PARSER_PORT_CFG_2,
-                             ParseL4,
-                             0);
-                break;
-
             case FM_PORT_PARSER_STOP_AFTER_L4:
-                FM_SET_BIT64(reg64,
-                             FM10000_PARSER_PORT_CFG_2,
-                             ParseL3,
-                             1);
-                FM_SET_BIT64(reg64,
-                             FM10000_PARSER_PORT_CFG_2,
-                             ParseL4,
-                             1);
+                /* Valid values */
                 break;
-
             default:
                 err = FM_ERR_INVALID_VALUE;
-                FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
+                FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+                break;
 
         }   /* end switch ( tmpUint32 ) */
 
-        err = WriteParserPortCfg2(sw, physPort, reg64);
-        FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+        if (isLagAttr)
+        {
+            err = SetLAGPortAttribute(sw, port, lane, attr, &tmpUint32);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+        }
+        else
+        {
+            FM_FLAG_TAKE_REG_LOCK(sw);
+            err = ReadParserPortCfg2(sw, physPort, &reg64);
 
-        portAttr->parser = tmpUint32;
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+
+            switch ( tmpUint32 )
+            {
+                case FM_PORT_PARSER_STOP_AFTER_L2:
+                    FM_SET_BIT64(reg64,
+                                 FM10000_PARSER_PORT_CFG_2,
+                                 ParseL3,
+                                 0);
+                    FM_SET_BIT64(reg64,
+                                 FM10000_PARSER_PORT_CFG_2,
+                                 ParseL4,
+                                 0);
+                    break;
+
+                case FM_PORT_PARSER_STOP_AFTER_L3:
+                    FM_SET_BIT64(reg64,
+                                 FM10000_PARSER_PORT_CFG_2,
+                                 ParseL3,
+                                 1);
+                    FM_SET_BIT64(reg64,
+                                 FM10000_PARSER_PORT_CFG_2,
+                                 ParseL4,
+                                 0);
+                    break;
+
+                case FM_PORT_PARSER_STOP_AFTER_L4:
+                    FM_SET_BIT64(reg64,
+                                 FM10000_PARSER_PORT_CFG_2,
+                                 ParseL3,
+                                 1);
+                    FM_SET_BIT64(reg64,
+                                 FM10000_PARSER_PORT_CFG_2,
+                                 ParseL4,
+                                 1);
+                    break;
+
+                default:
+                    err = FM_ERR_INVALID_VALUE;
+                    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
+
+            }   /* end switch ( tmpUint32 ) */
+
+            err = WriteParserPortCfg2(sw, physPort, reg64);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+
+            portAttr->parser = tmpUint32;
+        }
     }
     else if (attr == FM_PORT_PARSER_FLAG_OPTIONS)
     {
@@ -6937,54 +7698,71 @@ fm_status fm10000SetPortAttributeInt(fm_int sw,
             FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
         }
 
-        FM_FLAG_TAKE_REG_LOCK(sw);
-        err = ReadParserPortCfg2(sw, physPort, &reg64);
-        FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+        if (isLagAttr)
+        {
+            err = SetLAGPortAttribute(sw, port, lane, attr, &tmpUint32);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+        }
+        else
+        {
+            FM_FLAG_TAKE_REG_LOCK(sw);
+            err = ReadParserPortCfg2(sw, physPort, &reg64);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
 
-        FM_SET_BIT64(reg64,
-                     FM10000_PARSER_PORT_CFG_2,
-                     FlagIPv4Options,
-                     ( (tmpUint32 & FM_PORT_PARSER_FLAG_IPV4_OPTIONS) != 0) ? 1 : 0);
+            FM_SET_BIT64(reg64,
+                         FM10000_PARSER_PORT_CFG_2,
+                         FlagIPv4Options,
+                         ( (tmpUint32 & FM_PORT_PARSER_FLAG_IPV4_OPTIONS) != 0) ? 1 : 0);
 
-        FM_SET_BIT64(reg64,
-                     FM10000_PARSER_PORT_CFG_2,
-                     FlagIPv6HopByHop,
-                     ( (tmpUint32 & FM_PORT_PARSER_FLAG_IPV6_HOPBYHOP) != 0) ? 1 : 0);
+            FM_SET_BIT64(reg64,
+                         FM10000_PARSER_PORT_CFG_2,
+                         FlagIPv6HopByHop,
+                         ( (tmpUint32 & FM_PORT_PARSER_FLAG_IPV6_HOPBYHOP) != 0) ? 1 : 0);
 
-        FM_SET_BIT64(reg64,
-                     FM10000_PARSER_PORT_CFG_2,
-                     FlagIPv6Routing,
-                     ( (tmpUint32 & FM_PORT_PARSER_FLAG_IPV6_ROUTING) != 0) ? 1 : 0);
-        
-        FM_SET_BIT64(reg64,
-                     FM10000_PARSER_PORT_CFG_2,
-                     FlagIPv6Frag,
-                     ( (tmpUint32 & FM_PORT_PARSER_FLAG_IPV6_FRAGMENT) != 0) ? 1 : 0);
+            FM_SET_BIT64(reg64,
+                         FM10000_PARSER_PORT_CFG_2,
+                         FlagIPv6Routing,
+                         ( (tmpUint32 & FM_PORT_PARSER_FLAG_IPV6_ROUTING) != 0) ? 1 : 0);
 
-        FM_SET_BIT64(reg64,
-                     FM10000_PARSER_PORT_CFG_2,
-                     FlagIPv6Dest,
-                     ( (tmpUint32 & FM_PORT_PARSER_FLAG_IPV6_DEST) != 0) ? 1 : 0);
+            FM_SET_BIT64(reg64,
+                         FM10000_PARSER_PORT_CFG_2,
+                         FlagIPv6Frag,
+                         ( (tmpUint32 & FM_PORT_PARSER_FLAG_IPV6_FRAGMENT) != 0) ? 1 : 0);
 
-        FM_SET_BIT64(reg64,
-                     FM10000_PARSER_PORT_CFG_2,
-                     FlagIPv6Auth,
-                     ( (tmpUint32 & FM_PORT_PARSER_FLAG_IPV6_AUTH) != 0) ? 1 : 0);
+            FM_SET_BIT64(reg64,
+                         FM10000_PARSER_PORT_CFG_2,
+                         FlagIPv6Dest,
+                         ( (tmpUint32 & FM_PORT_PARSER_FLAG_IPV6_DEST) != 0) ? 1 : 0);
 
-        err = WriteParserPortCfg2(sw, physPort, reg64);
-        FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+            FM_SET_BIT64(reg64,
+                         FM10000_PARSER_PORT_CFG_2,
+                         FlagIPv6Auth,
+                         ( (tmpUint32 & FM_PORT_PARSER_FLAG_IPV6_AUTH) != 0) ? 1 : 0);
 
-        portAttr->parserFlagOptions = tmpUint32;
+            err = WriteParserPortCfg2(sw, physPort, reg64);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+
+            portAttr->parserFlagOptions = tmpUint32;
+        }
     }
     else if (attr == FM_PORT_AUTONEG)
     {
         VALIDATE_ATTRIBUTE_WRITE_ACCESS(&portAttributeTable.autoNegMode);
         VALIDATE_PORT_ATTRIBUTE(&portAttributeTable.autoNegMode);
-        err = ConfigureAnMode(sw, port, *( (fm_uint32 *) value), &restoreAdminMode);
 
-        if ( err == FM_OK ) 
+        if (isLagAttr)
         {
-            portAttr->autoNegMode = *((fm_uint32 *) value);
+            err = SetLAGPortAttribute(sw, port, lane, attr, value);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+        }
+        else
+        {
+            err = ConfigureAnMode(sw, port, *( (fm_uint32 *) value), &restoreAdminMode);
+
+            if ( err == FM_OK )
+            {
+                portAttr->autoNegMode = *((fm_uint32 *) value);
+            }
         }
     }
     else if (attr == FM_PORT_AUTONEG_BASEPAGE)
@@ -6992,107 +7770,135 @@ fm_status fm10000SetPortAttributeInt(fm_int sw,
         VALIDATE_ATTRIBUTE_WRITE_ACCESS(&portAttributeTable.autoNegBasePage);
         VALIDATE_PORT_ATTRIBUTE(&portAttributeTable.autoNegBasePage);
 
-        /* validate the current autoneg mode against the new base page */
-        err = fm10000AnValidateBasePage( sw, 
-                                         port,
-                                         portAttr->autoNegMode,
-                                         *(fm_uint64 *)value,
-                                         (fm_uint64  *)value );
-        FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
-
-        /* if there is already an AN state machine notify of the config 
-            change */ 
-        if ( portExt->smType == FM10000_AN_PORT_STATE_MACHINE )
+        if (isLagAttr)
         {
-            err = fm10000AnSendConfigEvent( sw, 
-                                            port,
-                                            FM10000_PORT_EVENT_AN_CONFIG_REQ,
-                                            portAttr->autoNegMode,
-                                            *( (fm_uint64 *) value ),
-                                            portAttr->autoNegNextPages );
+            err = SetLAGPortAttribute(sw, port, lane, attr, value);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
         }
         else
         {
-            /* nothing to do if AN state machine wasn't started yet */
-            err = FM_OK;
-        }
+            /* validate the current autoneg mode against the new base page */
+            err = fm10000AnValidateBasePage( sw,
+                                             port,
+                                             portAttr->autoNegMode,
+                                             *(fm_uint64 *)value,
+                                             (fm_uint64  *)value );
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
 
-        /* update the attribute if successful */
-        if ( err == FM_OK )
-        {
-            portAttr->autoNegBasePage = *( (fm_uint64 *) value );
-        }
+            /* if there is already an AN state machine notify of the config
+                change */
+            if ( portExt->smType == FM10000_AN_PORT_STATE_MACHINE )
+            {
+                err = fm10000AnSendConfigEvent( sw,
+                                                port,
+                                                FM10000_PORT_EVENT_AN_CONFIG_REQ,
+                                                portAttr->autoNegMode,
+                                                *( (fm_uint64 *) value ),
+                                                portAttr->autoNegNextPages );
+            }
+            else
+            {
+                /* nothing to do if AN state machine wasn't started yet */
+                err = FM_OK;
+            }
 
+            /* update the attribute if successful */
+            if ( err == FM_OK )
+            {
+                portAttr->autoNegBasePage = *( (fm_uint64 *) value );
+            }
+        }
     }
     else if (attr == FM_PORT_AUTONEG_NEXTPAGES)
     {
         VALIDATE_ATTRIBUTE_WRITE_ACCESS(&portAttributeTable.autoNegNextPages);
         VALIDATE_PORT_ATTRIBUTE(&portAttributeTable.autoNegNextPages);
 
-        /* if there is already an AN state machine notify of the config 
-            change */ 
-        nextPages = (fm_anNextPages *) value;
-
-        if ( portExt->smType == FM10000_AN_PORT_STATE_MACHINE )
+        if (isLagAttr)
         {
-            err = fm10000AnSendConfigEvent( sw, 
-                                            port,
-                                            FM10000_PORT_EVENT_AN_CONFIG_REQ,
-                                            portAttr->autoNegMode,
-                                            portAttr->autoNegBasePage,
-                                            *(fm_anNextPages *)value );
+            err = SetLAGPortAttribute(sw, port, lane, attr, value);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
         }
         else
         {
-            /* nothing to do if AN state machine wasn't started yet */
-            err = FM_OK;
-        }
+            /* if there is already an AN state machine notify of the config
+                change */
+            nextPages = (fm_anNextPages *) value;
 
-        /* update the attribute if successful */
-        if ( err == FM_OK )
-        {
-            /* Reuse the old memory if new pages are smaller than previous */
-            if (portAttr->autoNegNextPages.numPages < nextPages->numPages)
+            if ( portExt->smType == FM10000_AN_PORT_STATE_MACHINE )
             {
-                if (portAttr->autoNegNextPages.nextPages)
+                err = fm10000AnSendConfigEvent( sw,
+                                                port,
+                                                FM10000_PORT_EVENT_AN_CONFIG_REQ,
+                                                portAttr->autoNegMode,
+                                                portAttr->autoNegBasePage,
+                                                *(fm_anNextPages *)value );
+            }
+            else
+            {
+                /* nothing to do if AN state machine wasn't started yet */
+                err = FM_OK;
+            }
+
+            /* update the attribute if successful */
+            if ( err == FM_OK )
+            {
+                /* Reuse the old memory if new pages are smaller than previous */
+                if (portAttr->autoNegNextPages.numPages < nextPages->numPages)
                 {
-                    fmFree(portAttr->autoNegNextPages.nextPages);
-                    portAttr->autoNegNextPages.nextPages = NULL;
+                    if (portAttr->autoNegNextPages.nextPages)
+                    {
+                        fmFree(portAttr->autoNegNextPages.nextPages);
+                        portAttr->autoNegNextPages.nextPages = NULL;
+                    }
+                    portAttr->autoNegNextPages.nextPages = fmAlloc( sizeof(fm_uint64) *
+                                                                    nextPages->numPages );
+                    if (!portAttr->autoNegNextPages.nextPages)
+                    {
+                        err = FM_ERR_NO_MEM;
+                        FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+                    }
                 }
-                portAttr->autoNegNextPages.nextPages = fmAlloc( sizeof(fm_uint64) * 
-                                                                nextPages->numPages );
-                if (!portAttr->autoNegNextPages.nextPages)
+                portAttr->autoNegNextPages.numPages = nextPages->numPages;
+                if (nextPages->numPages)
                 {
-                    err = FM_ERR_NO_MEM;
-                    FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+                    FM_MEMCPY_S( portAttr->autoNegNextPages.nextPages,
+                                 sizeof(fm_uint64) * nextPages->numPages,
+                                 nextPages->nextPages,
+                                 sizeof(fm_uint64) * nextPages->numPages );
                 }
             }
-            portAttr->autoNegNextPages.numPages = nextPages->numPages;
-            if (nextPages->numPages)
-            {
-                FM_MEMCPY_S( portAttr->autoNegNextPages.nextPages,
-                             sizeof(fm_uint64) * nextPages->numPages,
-                             nextPages->nextPages,
-                             sizeof(fm_uint64) * nextPages->numPages );
-            }
         }
-
     }
     else if ( attr == FM_PORT_AUTONEG_LINK_INHB_TIMER )
     {
         VALIDATE_ATTRIBUTE_WRITE_ACCESS(&portAttributeTable.autoNegLinkInhbTimer);
         VALIDATE_PORT_ATTRIBUTE(&portAttributeTable.autoNegLinkInhbTimer);
 
-        err = fm10000An73SetLinkInhibitTimer( sw, port, *(fm_uint *)value );
-        
+        if (isLagAttr)
+        {
+            err = SetLAGPortAttribute(sw, port, lane, attr, value);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+        }
+        else
+        {
+            err = fm10000An73SetLinkInhibitTimer( sw, port, *(fm_uint *)value );
+        }
     }
     else if ( attr == FM_PORT_AUTONEG_LINK_INHB_TIMER_KX )
     {
         VALIDATE_ATTRIBUTE_WRITE_ACCESS(&portAttributeTable.autoNegLinkInhbTimerKx);
         VALIDATE_PORT_ATTRIBUTE(&portAttributeTable.autoNegLinkInhbTimerKx);
 
-        err = fm10000An73SetLinkInhibitTimerKx( sw, port, *(fm_uint *)value );
-
+        if (isLagAttr)
+        {
+            err = SetLAGPortAttribute(sw, port, lane, attr, value);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+        }
+        else
+        {
+            err = fm10000An73SetLinkInhibitTimerKx( sw, port, *(fm_uint *)value );
+        }
     }
     else if ( attr == FM_PORT_AUTONEG_IGNORE_NONCE )
     {
@@ -7101,8 +7907,15 @@ fm_status fm10000SetPortAttributeInt(fm_int sw,
 
         VALIDATE_VALUE_IS_BOOL(value);
 
-        err = fm10000An73SetIgnoreNonce( sw, port, *(fm_uint *)value );
-
+        if (isLagAttr)
+        {
+            err = SetLAGPortAttribute(sw, port, lane, attr, value);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+        }
+        else
+        {
+            err = fm10000An73SetIgnoreNonce( sw, port, *(fm_uint *)value );
+        }
     }
     else if (attr == FM_PORT_AUTONEG_PARTNER_BASEPAGE   ||
              attr == FM_PORT_AUTONEG_PARTNER_NEXTPAGES )
@@ -7115,102 +7928,142 @@ fm_status fm10000SetPortAttributeInt(fm_int sw,
         VALIDATE_ATTRIBUTE_WRITE_ACCESS(&portAttributeTable.islTagFormat);
         VALIDATE_PORT_ATTRIBUTE(&portAttributeTable.islTagFormat);
         
-        if ( ( *((fm_islTagFormat *) value) != FM_ISL_TAG_NONE) &&
-             ( *((fm_islTagFormat *) value) != FM_ISL_TAG_F56) )
+        tmpIslTagFormat = *((fm_islTagFormat *) value);
+
+        if ( (tmpIslTagFormat != FM_ISL_TAG_NONE) &&
+             (tmpIslTagFormat != FM_ISL_TAG_F56) )
         {
             err = FM_ERR_INVALID_VALUE;
             FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
         }
 
-        /* Retrieve the EPL and channel numbers. */
-        isEplPort = FALSE;
-        err = fm10000MapPhysicalPortToEplChannel(sw, physPort, &epl, &channel);
-        if (err == FM_OK)
+        if (isLagAttr)
         {
-            isEplPort = TRUE;
-        }
-
-        /* Instead of non-Ethernet port check for Pcie and TE ports */
-        /* For non-Ethernet ports only FM_ISL_TAG_F56 tag is allowed. 
-         * Ideally one time initialization of non-Ethernet ports is enough,
-         * but SWAG architecture rely on setting these attributes. Hence 
-         * only FM_ISL_TAG_F56 is allowed for non-Ethernet ports.   */
-        if (!isEplPort && ( *((fm_islTagFormat *) value) != FM_ISL_TAG_F56))
-        {
-            err = FM_ERR_INVALID_VALUE;
+            err = SetLAGPortAttribute(sw, port, lane, attr, &tmpIslTagFormat);
             FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
         }
-        
-        
-        /* Keep old ISL tag format in case of error */
-        tmpUint32 = portAttr->islTagFormat;
-        portAttr->islTagFormat = *( (fm_uint32 *) value );
-        err = UpdateMinMaxFrameSize(sw, port);
-        
-        /* Non EPL ports do not have a minium/maximum frame size configuration */
-        if (err == FM_ERR_INVALID_ARGUMENT && !isEplPort)
+        else
         {
-            err = FM_OK;
-        }
-        else if (err != FM_OK)
-        {
-            /* Restore old ISL tag mode */
-            portAttr->islTagFormat = tmpUint32;
+            /* Retrieve the EPL and channel numbers. */
+            isEplPort = FALSE;
+            err = fm10000MapPhysicalPortToEplChannel(sw, physPort, &epl, &channel);
+            if (err == FM_OK)
+            {
+                isEplPort = TRUE;
+            }
+
+            /* Instead of non-Ethernet port check for Pcie and TE ports */
+            /* For non-Ethernet ports only FM_ISL_TAG_F56 tag is allowed.
+             * Ideally one time initialization of non-Ethernet ports is enough,
+             * but SWAG architecture rely on setting these attributes. Hence
+             * only FM_ISL_TAG_F56 is allowed for non-Ethernet ports.   */
+            if (!isEplPort && ( *((fm_islTagFormat *) value) != FM_ISL_TAG_F56))
+            {
+                err = FM_ERR_INVALID_VALUE;
+                FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+            }
+
+
+            /* Keep old ISL tag format in case of error */
+            tmpUint32 = portAttr->islTagFormat;
+            portAttr->islTagFormat = *( (fm_uint32 *) value );
+            err = UpdateMinMaxFrameSize(sw, port);
+
+            /* Non EPL ports do not have a minium/maximum frame size configuration */
+            if (err == FM_ERR_INVALID_ARGUMENT && !isEplPort)
+            {
+                err = FM_OK;
+            }
+            else if (err != FM_OK)
+            {
+                /* Restore old ISL tag mode */
+                portAttr->islTagFormat = tmpUint32;
+                FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+            }
+
+            /* Untag port for all VLAN Membership */
+            if (!fmGetBoolApiProperty(FM_AAK_API_PORT_ALLOW_FTAG_VLAN_TAGGING,
+                                      FM_AAD_API_PORT_ALLOW_FTAG_VLAN_TAGGING))
+            {
+                err = fmGetVlanFirst(sw, &currentVlan);
+                FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+
+                while (currentVlan != -1)
+                {
+                    ventry = GET_VLAN_PTR(sw, currentVlan);
+                    err = fmGetVlanMembership(sw,
+                                              ventry,
+                                              port,
+                                              &isMember);
+                    FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_VLAN, port, err);
+
+                    if (isMember)
+                    {
+                        err = fmSetVlanTag(sw,
+                                           FM_VLAN_SELECT_VLAN1,
+                                           ventry,
+                                           port,
+                                           FALSE);
+                        FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_VLAN, port, err);
+                    }
+
+                    fmGetVlanNext(sw, currentVlan, &nextVlan);
+                    currentVlan = nextVlan;
+                }
+            }
+
+            err = UpdateTruncFrameSize(sw, port);
             FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
-        }
 
-        err = UpdateTruncFrameSize(sw, port);
-        FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+            /* Update HW with the new mode */
+            tmpBool = (*((fm_islTagFormat *) value) == FM_ISL_TAG_F56) ? 1 : 0;
 
-        /* Update HW with the new mode */
-        tmpBool = (*((fm_islTagFormat *) value) == FM_ISL_TAG_F56) ? 1 : 0;
-
-        err = fm10000SetStatsFrameAdjustment(sw, 
-                                             physPort, 
-                                             tmpBool ? F56_NB_BYTES : 0);
-        FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
-
-        FM_FLAG_TAKE_REG_LOCK(sw);
-
-        err = ReadModPerPortCfg2(sw, physPort, &reg64);
-        FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
-
-        FM_SET_BIT64(reg64, FM10000_MOD_PER_PORT_CFG_2, FTAG,  tmpBool);
-
-        err = WriteModPerPortCfg2(sw, physPort, reg64);
-
-        err = switchPtr->ReadUINT64(sw, 
-                                    FM10000_PARSER_PORT_CFG_1(physPort, 0), 
-                                    &reg64);
-        FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
-
-        FM_SET_BIT64(reg64, FM10000_PARSER_PORT_CFG_1, FTAG,  tmpBool);
-
-        err = switchPtr->WriteUINT64(sw, 
-                                     FM10000_PARSER_PORT_CFG_1(physPort, 0), 
-                                     reg64);
-
-        if ( isEplPort )
-        {
-            /* The physical port has EPL associated to it, we must
-             * set the passthrough mode of the EPL. */
-            err = switchPtr->ReadUINT32Mult(sw, 
-                                            FM10000_MAC_CFG(epl, channel, 0), 
-                                            FM10000_MAC_CFG_WIDTH,
-                                             macCfg);
+            err = fm10000SetStatsFrameAdjustment(sw,
+                                                 physPort,
+                                                 tmpBool ? F56_NB_BYTES : 0);
             FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
 
-            FM_ARRAY_SET_BIT(macCfg, FM10000_MAC_CFG, PreambleMode, tmpBool);
-        
-            err = switchPtr->WriteUINT32Mult(sw, 
-                                             FM10000_MAC_CFG(epl, channel, 0), 
-                                             FM10000_MAC_CFG_WIDTH,
-                                             macCfg);
-            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
-        }
+            FM_FLAG_TAKE_REG_LOCK(sw);
 
-        FM_FLAG_DROP_REG_LOCK(sw);
-        
+            err = ReadModPerPortCfg2(sw, physPort, &reg64);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+
+            FM_SET_BIT64(reg64, FM10000_MOD_PER_PORT_CFG_2, FTAG,  tmpBool);
+
+            err = WriteModPerPortCfg2(sw, physPort, reg64);
+
+            err = switchPtr->ReadUINT64(sw,
+                                        FM10000_PARSER_PORT_CFG_1(physPort, 0),
+                                        &reg64);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+
+            FM_SET_BIT64(reg64, FM10000_PARSER_PORT_CFG_1, FTAG,  tmpBool);
+
+            err = switchPtr->WriteUINT64(sw,
+                                         FM10000_PARSER_PORT_CFG_1(physPort, 0),
+                                         reg64);
+
+            if ( isEplPort )
+            {
+                /* The physical port has EPL associated to it, we must
+                 * set the passthrough mode of the EPL. */
+                err = switchPtr->ReadUINT32Mult(sw,
+                                                FM10000_MAC_CFG(epl, channel, 0),
+                                                FM10000_MAC_CFG_WIDTH,
+                                                 macCfg);
+                FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+
+                FM_ARRAY_SET_BIT(macCfg, FM10000_MAC_CFG, PreambleMode, tmpBool);
+
+                err = switchPtr->WriteUINT32Mult(sw,
+                                                 FM10000_MAC_CFG(epl, channel, 0),
+                                                 FM10000_MAC_CFG_WIDTH,
+                                                 macCfg);
+                FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+            }
+
+            FM_FLAG_DROP_REG_LOCK(sw);
+        }
     }
     else if (attr == FM_PORT_ROUTABLE)
     {
@@ -7218,17 +8071,27 @@ fm_status fm10000SetPortAttributeInt(fm_int sw,
         VALIDATE_PORT_ATTRIBUTE(&portAttributeTable.routable);
 
         VALIDATE_VALUE_IS_BOOL(value);
-       
-        mapSrcPortCfg.routable = *( (fm_bool *) value);
 
-        err = fm10000SetMapSourcePort(sw,
-                                      physPort,
-                                      &mapSrcPortCfg,
-                                      FM_FM10000_MAP_SRC_ROUTABLE,
-                                      TRUE);
-        FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
-        
-        portAttr->routable = mapSrcPortCfg.routable;
+        tmpBool = *( (fm_bool *) value );
+
+        if (isLagAttr)
+        {
+            err = SetLAGPortAttribute(sw, port, lane, attr, &tmpBool);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+        }
+        else
+        {
+            mapSrcPortCfg.routable = tmpBool;
+
+            err = fm10000SetMapSourcePort(sw,
+                                          physPort,
+                                          &mapSrcPortCfg,
+                                          FM_FM10000_MAP_SRC_ROUTABLE,
+                                          TRUE);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+
+            portAttr->routable = mapSrcPortCfg.routable;
+        }
     }
     else if (attr == FM_PORT_UPDATE_TTL)
     {
@@ -7239,20 +8102,28 @@ fm_status fm10000SetPortAttributeInt(fm_int sw,
 
         tmpBool = *( (fm_bool *) value );
 
-        FM_FLAG_TAKE_REG_LOCK(sw);
+        if (isLagAttr)
+        {
+            err = SetLAGPortAttribute(sw, port, lane, attr, &tmpBool);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+        }
+        else
+        {
+            FM_FLAG_TAKE_REG_LOCK(sw);
 
-        err = ReadModPerPortCfg2(sw, physPort, &reg64);
-        FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+            err = ReadModPerPortCfg2(sw, physPort, &reg64);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
 
-        FM_SET_BIT64(reg64,
-                     FM10000_MOD_PER_PORT_CFG_2,
-                     EnableTTLDecrement,
-                     (tmpBool) ? 1 : 0);
+            FM_SET_BIT64(reg64,
+                         FM10000_MOD_PER_PORT_CFG_2,
+                         EnableTTLDecrement,
+                         (tmpBool) ? 1 : 0);
 
-        err = WriteModPerPortCfg2(sw, physPort, reg64);
-        FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+            err = WriteModPerPortCfg2(sw, physPort, reg64);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
 
-        portAttr->updateTtl = tmpBool;
+            portAttr->updateTtl = tmpBool;
+        }
     }
     else if (attr == FM_PORT_IGNORE_IFG_ERRORS)
     {
@@ -7263,26 +8134,34 @@ fm_status fm10000SetPortAttributeInt(fm_int sw,
 
         tmpBool = *( (fm_bool *) value );
 
-        err = fm10000MapPhysicalPortToEplChannel(sw, physPort, &epl, &channel);
-        FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+        if (isLagAttr)
+        {
+            err = SetLAGPortAttribute(sw, port, lane, attr, &tmpBool);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+        }
+        else
+        {
+            err = fm10000MapPhysicalPortToEplChannel(sw, physPort, &epl, &channel);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
 
-        FM_FLAG_TAKE_REG_LOCK(sw);
+            FM_FLAG_TAKE_REG_LOCK(sw);
 
-        err = switchPtr->ReadUINT32Mult(sw,
-                                        FM10000_MAC_CFG(epl, channel, 0),
-                                        FM10000_MAC_CFG_WIDTH,
-                                         macCfg);
-        FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+            err = switchPtr->ReadUINT32Mult(sw,
+                                            FM10000_MAC_CFG(epl, channel, 0),
+                                            FM10000_MAC_CFG_WIDTH,
+                                             macCfg);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
 
-        FM_ARRAY_SET_BIT(macCfg, FM10000_MAC_CFG, RxIgnoreIfgErrors, tmpBool);
+            FM_ARRAY_SET_BIT(macCfg, FM10000_MAC_CFG, RxIgnoreIfgErrors, tmpBool);
 
-        err = switchPtr->WriteUINT32Mult(sw,
-                                         FM10000_MAC_CFG(epl, channel, 0),
-                                         FM10000_MAC_CFG_WIDTH,
-                                         macCfg);
-        FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+            err = switchPtr->WriteUINT32Mult(sw,
+                                             FM10000_MAC_CFG(epl, channel, 0),
+                                             FM10000_MAC_CFG_WIDTH,
+                                             macCfg);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
 
-        portAttr->ignoreIfgErrors = tmpBool;
+            portAttr->ignoreIfgErrors = tmpBool;
+        }
     }
     else if (attr == FM_PORT_UPDATE_DSCP)
     {
@@ -7293,20 +8172,28 @@ fm_status fm10000SetPortAttributeInt(fm_int sw,
 
         tmpBool = *( (fm_bool *) value );
 
-        FM_FLAG_TAKE_REG_LOCK(sw);
+        if (isLagAttr)
+        {
+            err = SetLAGPortAttribute(sw, port, lane, attr, &tmpBool);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+        }
+        else
+        {
+            FM_FLAG_TAKE_REG_LOCK(sw);
 
-        err = ReadModPerPortCfg2(sw, physPort, &reg64);
-        FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+            err = ReadModPerPortCfg2(sw, physPort, &reg64);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
 
-        FM_SET_BIT64(reg64,
-                     FM10000_MOD_PER_PORT_CFG_2,
-                     EnableDSCPModification,
-                     (tmpBool) ? 1 : 0);
+            FM_SET_BIT64(reg64,
+                         FM10000_MOD_PER_PORT_CFG_2,
+                         EnableDSCPModification,
+                         (tmpBool) ? 1 : 0);
 
-        err = WriteModPerPortCfg2(sw, physPort, reg64);
-        FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+            err = WriteModPerPortCfg2(sw, physPort, reg64);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
 
-        portAttr->updateDscp = tmpBool;
+            portAttr->updateDscp = tmpBool;
+        }
     }
     else if (attr == FM_PORT_TXVPRI)
     {
@@ -7317,20 +8204,28 @@ fm_status fm10000SetPortAttributeInt(fm_int sw,
 
         tmpBool = *( (fm_bool *) value );
 
-        FM_FLAG_TAKE_REG_LOCK(sw);
+        if (isLagAttr)
+        {
+            err = SetLAGPortAttribute(sw, port, lane, attr, &tmpBool);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+        }
+        else
+        {
+            FM_FLAG_TAKE_REG_LOCK(sw);
 
-        err = ReadModPerPortCfg2(sw, physPort, &reg64);
-        FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+            err = ReadModPerPortCfg2(sw, physPort, &reg64);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
 
-        FM_SET_BIT64(reg64,
-                     FM10000_MOD_PER_PORT_CFG_2,
-                     EnablePcp1Update,
-                     (tmpBool) ? 1 : 0);
+            FM_SET_BIT64(reg64,
+                         FM10000_MOD_PER_PORT_CFG_2,
+                         EnablePcp1Update,
+                         (tmpBool) ? 1 : 0);
 
-        err = WriteModPerPortCfg2(sw, physPort, reg64);
-        FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+            err = WriteModPerPortCfg2(sw, physPort, reg64);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
 
-        portAttr->txVpri = tmpBool;
+            portAttr->txVpri = tmpBool;
+        }
     }
     else if (attr == FM_PORT_TXVPRI2)
     {
@@ -7341,20 +8236,28 @@ fm_status fm10000SetPortAttributeInt(fm_int sw,
 
         tmpBool = *( (fm_bool *) value );
 
-        FM_FLAG_TAKE_REG_LOCK(sw);
+        if (isLagAttr)
+        {
+            err = SetLAGPortAttribute(sw, port, lane, attr, &tmpBool);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+        }
+        else
+        {
+            FM_FLAG_TAKE_REG_LOCK(sw);
 
-        err = ReadModPerPortCfg2(sw, physPort, &reg64);
-        FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+            err = ReadModPerPortCfg2(sw, physPort, &reg64);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
 
-        FM_SET_BIT64(reg64,
-                     FM10000_MOD_PER_PORT_CFG_2,
-                     EnablePcp2Update,
-                     (tmpBool) ? 1 : 0);
+            FM_SET_BIT64(reg64,
+                         FM10000_MOD_PER_PORT_CFG_2,
+                         EnablePcp2Update,
+                         (tmpBool) ? 1 : 0);
 
-        err = WriteModPerPortCfg2(sw, physPort, reg64);
-        FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+            err = WriteModPerPortCfg2(sw, physPort, reg64);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
 
-        portAttr->txVpri2 = tmpBool;
+            portAttr->txVpri2 = tmpBool;
+        }
     }
     else if (attr == FM_PORT_DEF_CFI)
     {
@@ -7369,24 +8272,32 @@ fm_status fm10000SetPortAttributeInt(fm_int sw,
             FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
         }
 
-        FM_FLAG_TAKE_REG_LOCK(sw);
-        err = switchPtr->ReadUINT64(sw, 
-                                    FM10000_PARSER_PORT_CFG_1(physPort, 0),
-                                    &reg64);
-        FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+        if (isLagAttr)
+        {
+            err = SetLAGPortAttribute(sw, port, lane, attr, &tmpUint32);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+        }
+        else
+        {
+            FM_FLAG_TAKE_REG_LOCK(sw);
+            err = switchPtr->ReadUINT64(sw,
+                                        FM10000_PARSER_PORT_CFG_1(physPort, 0),
+                                        &reg64);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
 
-        /* Low bit of defaultVPRI corresponds to the CFI/DEI bit */
-        FM_SET_UNNAMED_FIELD64(reg64, 
-                               FM10000_PARSER_PORT_CFG_1_l_defaultVPRI,
-                               1,
-                               tmpUint32);
+            /* Low bit of defaultVPRI corresponds to the CFI/DEI bit */
+            FM_SET_UNNAMED_FIELD64(reg64,
+                                   FM10000_PARSER_PORT_CFG_1_l_defaultVPRI,
+                                   1,
+                                   tmpUint32);
 
-        err = switchPtr->WriteUINT64(sw, 
-                                     FM10000_PARSER_PORT_CFG_1(physPort, 0), 
-                                     reg64);
-        FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+            err = switchPtr->WriteUINT64(sw,
+                                         FM10000_PARSER_PORT_CFG_1(physPort, 0),
+                                         reg64);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
 
-        portAttr->defCfi = tmpUint32;
+            portAttr->defCfi = tmpUint32;
+        }
     }
     else if (attr == FM_PORT_REPLACE_DSCP)
     {
@@ -7397,19 +8308,27 @@ fm_status fm10000SetPortAttributeInt(fm_int sw,
 
         tmpBool = *( (fm_bool *) value );
 
-        FM_FLAG_TAKE_REG_LOCK(sw);
-        err = ReadParserPortCfg2(sw, physPort, &reg64);
-        FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+        if (isLagAttr)
+        {
+            err = SetLAGPortAttribute(sw, port, lane, attr, &tmpBool);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+        }
+        else
+        {
+            FM_FLAG_TAKE_REG_LOCK(sw);
+            err = ReadParserPortCfg2(sw, physPort, &reg64);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
 
-        FM_SET_BIT64(reg64,
-                     FM10000_PARSER_PORT_CFG_2,
-                     useDefaultDSCP,
-                     (tmpBool) ? 1 : 0);
+            FM_SET_BIT64(reg64,
+                         FM10000_PARSER_PORT_CFG_2,
+                         useDefaultDSCP,
+                         (tmpBool) ? 1 : 0);
 
-        err = WriteParserPortCfg2(sw, physPort, reg64);
-        FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+            err = WriteParserPortCfg2(sw, physPort, reg64);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
 
-        portAttr->replaceDscp = tmpBool;
+            portAttr->replaceDscp = tmpBool;
+        }
     }
     else if (attr == FM_PORT_UCAST_FLOODING)
     {
@@ -7418,13 +8337,36 @@ fm_status fm10000SetPortAttributeInt(fm_int sw,
 
         intValue = *( (fm_int *) value);
 
-        err = fm10000SetPortUcastFlooding(sw, port, intValue);
-        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
+        switch ( intValue )
+        {
+            case FM_PORT_UCAST_FWD_EXCPU:
+            case FM_PORT_UCAST_FWD:
+            case FM_PORT_UCAST_DISCARD:
+            case FM_PORT_UCAST_TRAP:
+                /* Valid values */
+                break;
+            default:
+                err = FM_ERR_INVALID_VALUE;
+                FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+                break;
 
-        portAttr->ucastFlooding = intValue;
+        }   /* end switch ( intValue ) */
 
-        /* fm10000SetSwitchAttribute will override this. */
-        switchExt->ucastFlooding = FM_UCAST_FLOODING_PER_PORT;
+        if (isLagAttr)
+        {
+            err = SetLAGPortAttribute(sw, port, lane, attr, &intValue);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+        }
+        else
+        {
+            err = fm10000SetPortUcastFlooding(sw, port, intValue);
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
+
+            portAttr->ucastFlooding = intValue;
+
+            /* fm10000SetSwitchAttribute will override this. */
+            switchExt->ucastFlooding = FM_UCAST_FLOODING_PER_PORT;
+        }
     }
     else if (attr == FM_PORT_MCAST_FLOODING)
     {
@@ -7433,13 +8375,74 @@ fm_status fm10000SetPortAttributeInt(fm_int sw,
 
         intValue = *( (fm_int *) value);
 
-        err = fm10000SetPortMcastFlooding(sw, port, intValue);
-        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
+        switch ( intValue )
+        {
+            case FM_PORT_MCAST_FWD_EXCPU:
+            case FM_PORT_MCAST_FWD:
+            case FM_PORT_MCAST_DISCARD:
+            case FM_PORT_MCAST_TRAP:
+                /* Valid values */
+                break;
+            default:
+                err = FM_ERR_INVALID_VALUE;
+                FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+                break;
 
-        portAttr->mcastFlooding = intValue;
+        }   /* end switch ( intValue ) */
 
-        /* fm10000SetSwitchAttribute will override this. */
-        switchExt->mcastFlooding = FM_MCAST_FLOODING_PER_PORT;
+        if (isLagAttr)
+        {
+            err = SetLAGPortAttribute(sw, port, lane, attr, &intValue);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+        }
+        else
+        {
+            err = fm10000SetPortMcastFlooding(sw, port, intValue);
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
+
+            portAttr->mcastFlooding = intValue;
+
+            /* fm10000SetSwitchAttribute will override this. */
+            switchExt->mcastFlooding = FM_MCAST_FLOODING_PER_PORT;
+        }
+    }
+    else if (attr == FM_PORT_BCAST_FLOODING)
+    {
+        VALIDATE_ATTRIBUTE_WRITE_ACCESS(&portAttributeTable.bcastFlooding);
+        VALIDATE_PORT_ATTRIBUTE(&portAttributeTable.bcastFlooding);
+
+        intValue = *( (fm_int *) value);
+
+        switch ( intValue )
+        {
+            case FM_PORT_BCAST_FWD:
+            case FM_PORT_BCAST_FWD_EXCPU:
+            case FM_PORT_BCAST_DISCARD:
+            case FM_PORT_BCAST_TRAP:
+                /* Valid values */
+                break;
+            default:
+                err = FM_ERR_INVALID_VALUE;
+                FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+                break;
+
+        }   /* end switch ( intValue ) */
+
+        if (isLagAttr)
+        {
+            err = SetLAGPortAttribute(sw, port, lane, attr, &intValue);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+        }
+        else
+        {
+            err = fm10000SetPortBcastFlooding(sw, port, intValue);
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
+
+            portAttr->bcastFlooding = intValue;
+
+            /* fm10000SetSwitchAttribute will override this. */
+            switchExt->bcastFlooding = FM_BCAST_FLOODING_PER_PORT;
+        }
     }
     else if (attr == FM_PORT_BCAST_PRUNING)
     {
@@ -7448,13 +8451,23 @@ fm_status fm10000SetPortAttributeInt(fm_int sw,
 
         VALIDATE_VALUE_IS_BOOL(value);
 
-        portAttr->bcastPruning = *( (fm_bool *) value );
+        tmpBool = *( (fm_bool *) value );
 
-        err = fm10000SetFloodDestPort(sw,
-                                      port,
-                                      !portAttr->bcastPruning,
-                                      FM_PORT_BCAST);
-        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
+        if (isLagAttr)
+        {
+            err = SetLAGPortAttribute(sw, port, lane, attr, &tmpBool);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+        }
+        else
+        {
+            portAttr->bcastPruning = tmpBool;
+
+            err = fm10000SetFloodDestPort(sw,
+                                          port,
+                                          !portAttr->bcastPruning,
+                                          FM_PORT_BCAST);
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
+        }
     }
     else if (attr == FM_PORT_MCAST_PRUNING)
     {
@@ -7463,13 +8476,23 @@ fm_status fm10000SetPortAttributeInt(fm_int sw,
 
         VALIDATE_VALUE_IS_BOOL(value);
 
-        portAttr->mcastPruning = *( (fm_bool *) value );
+        tmpBool = *( (fm_bool *) value );
 
-        err = fm10000SetFloodDestPort(sw,
-                                      port,
-                                      !portAttr->mcastPruning,
-                                      FM_PORT_MCAST);
-        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
+        if (isLagAttr)
+        {
+            err = SetLAGPortAttribute(sw, port, lane, attr, &tmpBool);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+        }
+        else
+        {
+            portAttr->mcastPruning = tmpBool;
+
+            err = fm10000SetFloodDestPort(sw,
+                                          port,
+                                          !portAttr->mcastPruning,
+                                          FM_PORT_MCAST);
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
+        }
     }
     else if (attr == FM_PORT_UCAST_PRUNING)
     {
@@ -7478,13 +8501,23 @@ fm_status fm10000SetPortAttributeInt(fm_int sw,
 
         VALIDATE_VALUE_IS_BOOL(value);
 
-        portAttr->ucastPruning = *( (fm_bool *) value );
+        tmpBool = *( (fm_bool *) value );
 
-        err = fm10000SetFloodDestPort(sw,
-                                      port,
-                                      !portAttr->ucastPruning,
-                                      FM_PORT_FLOOD);
-        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
+        if (isLagAttr)
+        {
+            err = SetLAGPortAttribute(sw, port, lane, attr, &tmpBool);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+        }
+        else
+        {
+            portAttr->ucastPruning = tmpBool;
+
+            err = fm10000SetFloodDestPort(sw,
+                                          port,
+                                          !portAttr->ucastPruning,
+                                          FM_PORT_FLOOD);
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
+        }
     }
     else if ( (attr == FM_PORT_CUT_THROUGH) ||
               (attr == FM_PORT_TX_CUT_THROUGH) )
@@ -7494,10 +8527,20 @@ fm_status fm10000SetPortAttributeInt(fm_int sw,
 
         VALIDATE_VALUE_IS_BOOL(value);
 
-        portAttr->enableTxCutThrough = *( (fm_bool *) value );
+        tmpBool = *( (fm_bool *) value );
 
-        err = fm10000UpdateAllSAFValues(sw);
-        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
+        if (isLagAttr)
+        {
+            err = SetLAGPortAttribute(sw, port, lane, attr, &tmpBool);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+        }
+        else
+        {
+            portAttr->enableTxCutThrough = tmpBool;
+
+            err = fm10000UpdateAllSAFValues(sw);
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
+        }
     }
     else if (attr == FM_PORT_RX_CUT_THROUGH)
     {
@@ -7506,11 +8549,20 @@ fm_status fm10000SetPortAttributeInt(fm_int sw,
 
         VALIDATE_VALUE_IS_BOOL(value);
 
-        portAttr->enableRxCutThrough = *( (fm_bool *) value );
+        tmpBool = *( (fm_bool *) value );
 
-        err = fm10000UpdateAllSAFValues(sw);
-        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
+        if (isLagAttr)
+        {
+            err = SetLAGPortAttribute(sw, port, lane, attr, &tmpBool);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+        }
+        else
+        {
+            portAttr->enableRxCutThrough = tmpBool;
 
+            err = fm10000UpdateAllSAFValues(sw);
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
+        }
     }
     else if (attr == FM_PORT_LOOPBACK_SUPPRESSION)
     {
@@ -7519,92 +8571,255 @@ fm_status fm10000SetPortAttributeInt(fm_int sw,
 
         VALIDATE_VALUE_IS_BOOL(value);
 
-        portAttr->loopbackSuppression = *( (fm_bool *) value );
+        tmpBool = *( (fm_bool *) value );
 
-        err = fm10000UpdateLoopbackSuppress(sw, port);
+        if (isLagAttr)
+        {
+            err = SetLAGPortAttribute(sw, port, lane, attr, &tmpBool);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+        }
+        else
+        {
+            portAttr->loopbackSuppression = tmpBool;
+
+            err = fm10000UpdateLoopbackSuppress(sw, port);
+        }
     }
     else if (attr == FM_PORT_TX_LANE_PRECURSOR)
     {
         VALIDATE_ATTRIBUTE_WRITE_ACCESS(&portAttributeTable.txLanePreCursor);
         VALIDATE_PORT_ATTRIBUTE(&portAttributeTable.txLanePreCursor);
-        if ( lane == FM_PORT_LANE_NA || laneAttr == NULL )
-        {
-            err = FM_ERR_INVALID_PORT_LANE;
-            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
-        }
 
-        tmp2Int = *( (fm_int *) value);
-
-        if ( tmp2Int  != laneAttr->preCursor)
+        if (isLagAttr)
         {
-            err = fm10000SetSerdesPreCursor(sw, serdes, tmp2Int );
+            err = SetLAGPortAttribute(sw, port, lane, attr, value);
             FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+        }
+        else
+        {
+            if ( lane == FM_PORT_LANE_NA || laneAttr == NULL )
+            {
+                err = FM_ERR_INVALID_PORT_LANE;
+                FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
+            }
 
-            laneAttr->preCursor = tmp2Int;
+            tmp2Int = *( (fm_int *) value);
 
-            /* Send the new attribute value to the platform layer. */
-            fmPlatformNotifyPortAttribute(sw,
-                                          port,
-                                          0,
-                                          lane,
-                                          attr,
-                                          value);
+            if ( tmp2Int  != laneAttr->preCursor)
+            {
+                err = fm10000SetSerdesPreCursor(sw, serdes, tmp2Int );
+                FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+
+                laneAttr->preCursor = tmp2Int;
+
+                /* Send the new attribute value to the platform layer. */
+                fmPlatformNotifyPortAttribute(sw,
+                                              port,
+                                              0,
+                                              lane,
+                                              attr,
+                                              value);
+            }
         }
     }
     else if (attr == FM_PORT_TX_LANE_POSTCURSOR)
     {
         VALIDATE_ATTRIBUTE_WRITE_ACCESS(&portAttributeTable.txLanePostCursor);
         VALIDATE_PORT_ATTRIBUTE(&portAttributeTable.txLanePostCursor);
-        if ( lane == FM_PORT_LANE_NA || laneAttr == NULL )
-        {
-            err = FM_ERR_INVALID_PORT_LANE;
-            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
-        }
 
-        tmp2Int = *( (fm_int *) value);
-
-        if ( tmp2Int  != laneAttr->postCursor)
+        if (isLagAttr)
         {
-            err = fm10000SetSerdesPostCursor(sw, serdes, tmp2Int );
+            err = SetLAGPortAttribute(sw, port, lane, attr, value);
             FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+        }
+        else
+        {
+            if ( lane == FM_PORT_LANE_NA || laneAttr == NULL )
+            {
+                err = FM_ERR_INVALID_PORT_LANE;
+                FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
+            }
 
-            laneAttr->postCursor = tmp2Int;
+            tmp2Int = *( (fm_int *) value);
 
-            /* Send the new attribute value to the platform layer. */
-            fmPlatformNotifyPortAttribute(sw,
-                                          port,
-                                          0,
-                                          lane,
-                                          attr,
-                                          value);
+            if ( tmp2Int  != laneAttr->postCursor)
+            {
+                err = fm10000SetSerdesPostCursor(sw, serdes, tmp2Int );
+                FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+
+                laneAttr->postCursor = tmp2Int;
+
+                /* Send the new attribute value to the platform layer. */
+                fmPlatformNotifyPortAttribute(sw,
+                                              port,
+                                              0,
+                                              lane,
+                                              attr,
+                                              value);
+            }
         }
     }
     else if (attr == FM_PORT_TX_LANE_CURSOR)
     {
         VALIDATE_ATTRIBUTE_WRITE_ACCESS(&portAttributeTable.txLaneCursor);
         VALIDATE_PORT_ATTRIBUTE(&portAttributeTable.txLaneCursor);
-        if ( lane == FM_PORT_LANE_NA  || laneAttr == NULL )
-        {
-            err = FM_ERR_INVALID_PORT_LANE;
-            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
-        }
 
-        tmp2Int = *( (fm_int *) value);
-
-        if (tmp2Int != laneAttr->cursor)
+        if (isLagAttr)
         {
-            err = fm10000SetSerdesCursor(sw, serdes, tmp2Int);
+            err = SetLAGPortAttribute(sw, port, lane, attr, value);
             FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+        }
+        else
+        {
+            if ( lane == FM_PORT_LANE_NA  || laneAttr == NULL )
+            {
+                err = FM_ERR_INVALID_PORT_LANE;
+                FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
+            }
 
-            laneAttr->cursor = tmp2Int;
+            tmp2Int = *( (fm_int *) value);
 
-            /* Send the new attribute value to the platform layer. */
-            fmPlatformNotifyPortAttribute(sw,
-                                          port,
-                                          0,
-                                          lane,
-                                          attr,
-                                          value);
+            if (tmp2Int != laneAttr->cursor)
+            {
+                err = fm10000SetSerdesCursor(sw, serdes, tmp2Int);
+                FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+
+                laneAttr->cursor = tmp2Int;
+
+                /* Send the new attribute value to the platform layer. */
+                fmPlatformNotifyPortAttribute(sw,
+                                              port,
+                                              0,
+                                              lane,
+                                              attr,
+                                              value);
+            }
+        }
+    }
+    else if (attr == FM_PORT_TX_LANE_KR_INIT_PRECURSOR)
+    {
+        VALIDATE_ATTRIBUTE_WRITE_ACCESS(&portAttributeTable.txLaneKrInitPreCursor);
+        VALIDATE_PORT_ATTRIBUTE(&portAttributeTable.txLaneKrInitPreCursor);
+
+        if (isLagAttr)
+        {
+            err = SetLAGPortAttribute(sw, port, lane, attr, value);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+        }
+        else
+        {
+            if ( lane == FM_PORT_LANE_NA || laneAttr == NULL )
+            {
+                err = FM_ERR_INVALID_PORT_LANE;
+                FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
+            }
+
+            laneAttr->initializePreCursor = *( (fm_int *) value);
+        }
+    }
+    else if (attr == FM_PORT_TX_LANE_KR_INIT_POSTCURSOR)
+    {
+        VALIDATE_ATTRIBUTE_WRITE_ACCESS(&portAttributeTable.txLaneKrInitPostCursor);
+        VALIDATE_PORT_ATTRIBUTE(&portAttributeTable.txLaneKrInitPostCursor);
+
+        if (isLagAttr)
+        {
+            err = SetLAGPortAttribute(sw, port, lane, attr, value);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+        }
+        else
+        {
+            if ( lane == FM_PORT_LANE_NA || laneAttr == NULL )
+            {
+                err = FM_ERR_INVALID_PORT_LANE;
+                FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
+            }
+
+            laneAttr->initializePostCursor = *( (fm_int *) value);
+        }
+    }
+    else if (attr == FM_PORT_TX_LANE_KR_INIT_CURSOR)
+    {
+        VALIDATE_ATTRIBUTE_WRITE_ACCESS(&portAttributeTable.txLaneKrInitCursor);
+        VALIDATE_PORT_ATTRIBUTE(&portAttributeTable.txLaneKrInitCursor);
+
+        if (isLagAttr)
+        {
+            err = SetLAGPortAttribute(sw, port, lane, attr, value);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+        }
+        else
+        {
+            if ( lane == FM_PORT_LANE_NA  || laneAttr == NULL )
+            {
+                err = FM_ERR_INVALID_PORT_LANE;
+                FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
+            }
+
+            laneAttr->initializeCursor = *( (fm_int *) value);
+        }
+    }
+    else if (attr == FM_PORT_TX_LANE_KR_INITIAL_PRE_DEC)
+    {
+        VALIDATE_ATTRIBUTE_WRITE_ACCESS(&portAttributeTable.txLaneKrInitialPreDec);
+        VALIDATE_PORT_ATTRIBUTE(&portAttributeTable.txLaneKrInitialPreDec);
+
+        if (isLagAttr)
+        {
+            err = SetLAGPortAttribute(sw, port, lane, attr, value);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+        }
+        else
+        {
+            if ( lane == FM_PORT_LANE_NA  || laneAttr == NULL )
+            {
+                err = FM_ERR_INVALID_PORT_LANE;
+                FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
+            }
+
+            laneAttr->preCursorDecOnPreset = *( (fm_int *) value);
+        }
+    }
+    else if (attr == FM_PORT_TX_LANE_KR_INITIAL_POST_DEC)
+    {
+        VALIDATE_ATTRIBUTE_WRITE_ACCESS(&portAttributeTable.txLaneKrInitialPostDec);
+        VALIDATE_PORT_ATTRIBUTE(&portAttributeTable.txLaneKrInitialPostDec);
+
+        if (isLagAttr)
+        {
+            err = SetLAGPortAttribute(sw, port, lane, attr, value);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+        }
+        else
+        {
+            if ( lane == FM_PORT_LANE_NA  || laneAttr == NULL )
+            {
+                err = FM_ERR_INVALID_PORT_LANE;
+                FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
+            }
+
+            laneAttr->postCursorDecOnPreset = *( (fm_int *) value);
+        }
+    }
+    else if (attr == FM_PORT_TX_LANE_ENA_KR_INIT_CFG)
+    {
+        VALIDATE_ATTRIBUTE_WRITE_ACCESS(&portAttributeTable.txLaneEnableConfigKrInit);
+        VALIDATE_PORT_ATTRIBUTE(&portAttributeTable.txLaneEnableConfigKrInit);
+
+        if (isLagAttr)
+        {
+            err = SetLAGPortAttribute(sw, port, lane, attr, value);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+        }
+        else
+        {
+            if ( lane == FM_PORT_LANE_NA || laneAttr == NULL )
+            {
+                err = FM_ERR_INVALID_PORT_LANE;
+                FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
+            }
+
+            laneAttr->txLaneEnableConfigKrInit = *( (fm_int *) value);
         }
     }
     else if (attr == FM_PORT_INTERNAL)
@@ -7614,24 +8829,34 @@ fm_status fm10000SetPortAttributeInt(fm_int sw,
 
         VALIDATE_VALUE_IS_BOOL(value);
 
-        err = fm10000IsPciePort( sw, port, &isPciePort );
-        FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+        tmpBool = *( (fm_bool *) value );
 
-        if (isPciePort && (*( (fm_bool *) value) != FM_DISABLED) )
+        if (isLagAttr)
         {
-            err = FM_ERR_INVALID_VALUE;
-            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
-        }
-
-        /* Check for TE port as well. For TE ports only it is always
-         * internal port. Only FM_ENABLED is valid for TE port. */
-        portAttr->internalPort = *( (fm_bool *) value );
-
-        if ( fmIsCardinalPort(sw, port) && portAttr->internalPort )
-        {
-            /* Change the STP state of the port to forwarding */
-            err = UpdateInternalPort(sw, port);
+            err = SetLAGPortAttribute(sw, port, lane, attr, &tmpBool);
             FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+        }
+        else
+        {
+            err = fm10000IsPciePort( sw, port, &isPciePort );
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+
+            if (isPciePort && (tmpBool != FM_DISABLED) )
+            {
+                err = FM_ERR_INVALID_VALUE;
+                FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
+            }
+
+            /* Check for TE port as well. For TE ports only it is always
+             * internal port. Only FM_ENABLED is valid for TE port. */
+            portAttr->internalPort = tmpBool;
+
+            if ( fmIsCardinalPort(sw, port) && portAttr->internalPort )
+            {
+                /* Change the STP state of the port to forwarding */
+                err = UpdateInternalPort(sw, port);
+                FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+            }
         }
     }
     else if (attr == FM_PORT_LINK_INTERRUPT)
@@ -7653,23 +8878,31 @@ fm_status fm10000SetPortAttributeInt(fm_int sw,
             FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
         }
 
-        FM_FLAG_TAKE_REG_LOCK(sw);
-        err = switchPtr->ReadUINT64(sw,
-                                    FM10000_PARSER_PORT_CFG_1(physPort, 0),
-                                    &reg64);
-        FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+        if (isLagAttr)
+        {
+            err = SetLAGPortAttribute(sw, port, lane, attr, &tmpInt);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+        }
+        else
+        {
+            FM_FLAG_TAKE_REG_LOCK(sw);
+            err = switchPtr->ReadUINT64(sw,
+                                        FM10000_PARSER_PORT_CFG_1(physPort, 0),
+                                        &reg64);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
 
-        FM_SET_FIELD64(reg64,
-                       FM10000_PARSER_PORT_CFG_1,
-                       Vlan1Tag,
-                       tmpInt);
+            FM_SET_FIELD64(reg64,
+                           FM10000_PARSER_PORT_CFG_1,
+                           Vlan1Tag,
+                           tmpInt);
 
-        err = switchPtr->WriteUINT64(sw,
-                                     FM10000_PARSER_PORT_CFG_1(physPort, 0),
-                                     reg64);
-        FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+            err = switchPtr->WriteUINT64(sw,
+                                         FM10000_PARSER_PORT_CFG_1(physPort, 0),
+                                         reg64);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
 
-        portAttrExt->parserVlan1Tag = tmpInt;
+            portAttrExt->parserVlan1Tag = tmpInt;
+        }
     }
     else if (attr == FM_PORT_PARSER_VLAN2_TAG)
     {
@@ -7685,23 +8918,31 @@ fm_status fm10000SetPortAttributeInt(fm_int sw,
             FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
         }
 
-        FM_FLAG_TAKE_REG_LOCK(sw);
-        err = switchPtr->ReadUINT64(sw,
-                                    FM10000_PARSER_PORT_CFG_1(physPort, 0),
-                                    &reg64);
-        FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+        if (isLagAttr)
+        {
+            err = SetLAGPortAttribute(sw, port, lane, attr, &tmpInt);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+        }
+        else
+        {
+            FM_FLAG_TAKE_REG_LOCK(sw);
+            err = switchPtr->ReadUINT64(sw,
+                                        FM10000_PARSER_PORT_CFG_1(physPort, 0),
+                                        &reg64);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
 
-        FM_SET_FIELD64(reg64,
-                       FM10000_PARSER_PORT_CFG_1,
-                       Vlan2Tag,
-                       tmpInt);
+            FM_SET_FIELD64(reg64,
+                           FM10000_PARSER_PORT_CFG_1,
+                           Vlan2Tag,
+                           tmpInt);
 
-        err = switchPtr->WriteUINT64(sw,
-                                     FM10000_PARSER_PORT_CFG_1(physPort, 0),
-                                     reg64);
-        FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+            err = switchPtr->WriteUINT64(sw,
+                                         FM10000_PARSER_PORT_CFG_1(physPort, 0),
+                                         reg64);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
 
-        portAttrExt->parserVlan2Tag = tmpInt;
+            portAttrExt->parserVlan2Tag = tmpInt;
+        }
     }
     else if (attr == FM_PORT_MODIFY_VLAN1_TAG)
     {
@@ -7716,19 +8957,27 @@ fm_status fm10000SetPortAttributeInt(fm_int sw,
             FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
         }
 
-        FM_FLAG_TAKE_REG_LOCK(sw);
-        err = ReadModPerPortCfg2(sw, physPort, &reg64);
-        FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+        if (isLagAttr)
+        {
+            err = SetLAGPortAttribute(sw, port, lane, attr, &tmpInt);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+        }
+        else
+        {
+            FM_FLAG_TAKE_REG_LOCK(sw);
+            err = ReadModPerPortCfg2(sw, physPort, &reg64);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
 
-        FM_SET_FIELD64(reg64,
-                       FM10000_MOD_PER_PORT_CFG_2,
-                       VLAN1_EType,
-                       tmpInt);
+            FM_SET_FIELD64(reg64,
+                           FM10000_MOD_PER_PORT_CFG_2,
+                           VLAN1_EType,
+                           tmpInt);
 
-        err = WriteModPerPortCfg2(sw, physPort, reg64);
-        FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+            err = WriteModPerPortCfg2(sw, physPort, reg64);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
 
-        portAttrExt->modifyVlan1Tag = tmpInt;
+            portAttrExt->modifyVlan1Tag = tmpInt;
+        }
     }
     else if (attr == FM_PORT_MODIFY_VLAN2_TAG)
     {
@@ -7743,19 +8992,27 @@ fm_status fm10000SetPortAttributeInt(fm_int sw,
             FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
         }
 
-        FM_FLAG_TAKE_REG_LOCK(sw);
-        err = ReadModPerPortCfg2(sw, physPort, &reg64);
-        FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+        if (isLagAttr)
+        {
+            err = SetLAGPortAttribute(sw, port, lane, attr, &tmpInt);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+        }
+        else
+        {
+            FM_FLAG_TAKE_REG_LOCK(sw);
+            err = ReadModPerPortCfg2(sw, physPort, &reg64);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
 
-        FM_SET_FIELD64(reg64,
-                       FM10000_MOD_PER_PORT_CFG_2,
-                       VLAN2_EType,
-                       tmpInt);
+            FM_SET_FIELD64(reg64,
+                           FM10000_MOD_PER_PORT_CFG_2,
+                           VLAN2_EType,
+                           tmpInt);
 
-        err = WriteModPerPortCfg2(sw, physPort, reg64);
-        FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+            err = WriteModPerPortCfg2(sw, physPort, reg64);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
 
-        portAttrExt->modifyVlan2Tag = tmpInt;
+            portAttrExt->modifyVlan2Tag = tmpInt;
+        }
     }
     else if (attr == FM_PORT_MIRROR_TRUNC_SIZE)
     {
@@ -7777,10 +9034,18 @@ fm_status fm10000SetPortAttributeInt(fm_int sw,
             FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
         }
 
-        portAttrExt->mirrorTruncSize = tmpUint32 & ~0x3;
+        if (isLagAttr)
+        {
+            err = SetLAGPortAttribute(sw, port, lane, attr, &tmpUint32);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+        }
+        else
+        {
+            portAttrExt->mirrorTruncSize = tmpUint32 & ~0x3;
 
-        err = UpdateTruncFrameSize(sw, port);
-        FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+            err = UpdateTruncFrameSize(sw, port);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+        }
     }
     else if (attr == FM_PORT_PARSER_FIRST_CUSTOM_TAG)
     {
@@ -7795,19 +9060,27 @@ fm_status fm10000SetPortAttributeInt(fm_int sw,
             FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
         }
 
-        FM_FLAG_TAKE_REG_LOCK(sw);
-        err = ReadParserPortCfg2(sw, physPort, &reg64);
-        FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+        if (isLagAttr)
+        {
+            err = SetLAGPortAttribute(sw, port, lane, attr, &tmpUint32);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+        }
+        else
+        {
+            FM_FLAG_TAKE_REG_LOCK(sw);
+            err = ReadParserPortCfg2(sw, physPort, &reg64);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
 
-        FM_SET_FIELD64(reg64,
-                       FM10000_PARSER_PORT_CFG_2,
-                       CustomTag1,
-                       tmpUint32);
+            FM_SET_FIELD64(reg64,
+                           FM10000_PARSER_PORT_CFG_2,
+                           CustomTag1,
+                           tmpUint32);
 
-        err = WriteParserPortCfg2(sw, physPort, reg64);
-        FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+            err = WriteParserPortCfg2(sw, physPort, reg64);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
 
-        portAttrExt->parserFirstCustomTag = tmpUint32;
+            portAttrExt->parserFirstCustomTag = tmpUint32;
+        }
     }
     else if (attr == FM_PORT_PARSER_SECOND_CUSTOM_TAG)
     {
@@ -7822,19 +9095,27 @@ fm_status fm10000SetPortAttributeInt(fm_int sw,
             FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
         }
 
-        FM_FLAG_TAKE_REG_LOCK(sw);
-        err = ReadParserPortCfg2(sw, physPort, &reg64);
-        FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+        if (isLagAttr)
+        {
+            err = SetLAGPortAttribute(sw, port, lane, attr, &tmpUint32);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+        }
+        else
+        {
+            FM_FLAG_TAKE_REG_LOCK(sw);
+            err = ReadParserPortCfg2(sw, physPort, &reg64);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
 
-        FM_SET_FIELD64(reg64,
-                       FM10000_PARSER_PORT_CFG_2,
-                       CustomTag2,
-                       tmpUint32);
+            FM_SET_FIELD64(reg64,
+                           FM10000_PARSER_PORT_CFG_2,
+                           CustomTag2,
+                           tmpUint32);
 
-        err = WriteParserPortCfg2(sw, physPort, reg64);
-        FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+            err = WriteParserPortCfg2(sw, physPort, reg64);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
 
-        portAttrExt->parserSecondCustomTag = tmpUint32;
+            portAttrExt->parserSecondCustomTag = tmpUint32;
+        }
     }
     else if (attr == FM_PORT_PARSE_MPLS)
     {
@@ -7845,19 +9126,27 @@ fm_status fm10000SetPortAttributeInt(fm_int sw,
 
         tmpBool = *( (fm_bool *) value);
 
-        FM_FLAG_TAKE_REG_LOCK(sw);
-        err = ReadParserPortCfg2(sw, physPort, &reg64);
-        FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+        if (isLagAttr)
+        {
+            err = SetLAGPortAttribute(sw, port, lane, attr, &tmpBool);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+        }
+        else
+        {
+            FM_FLAG_TAKE_REG_LOCK(sw);
+            err = ReadParserPortCfg2(sw, physPort, &reg64);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
 
-        FM_SET_BIT64(reg64,
-                     FM10000_PARSER_PORT_CFG_2,
-                     ParseMPLS,
-                     (tmpBool) ? 1 : 0);
+            FM_SET_BIT64(reg64,
+                         FM10000_PARSER_PORT_CFG_2,
+                         ParseMPLS,
+                         (tmpBool) ? 1 : 0);
 
-        err = WriteParserPortCfg2(sw, physPort, reg64);
-        FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+            err = WriteParserPortCfg2(sw, physPort, reg64);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
 
-        portAttrExt->parseMpls = tmpBool;
+            portAttrExt->parseMpls = tmpBool;
+        }
     }
     else if (attr == FM_PORT_PARSER_STORE_MPLS)
     {
@@ -7871,19 +9160,27 @@ fm_status fm10000SetPortAttributeInt(fm_int sw,
             goto ABORT;
         }
 
-        FM_FLAG_TAKE_REG_LOCK(sw);
-        err = ReadParserPortCfg2(sw, physPort, &reg64);
-        FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+        if (isLagAttr)
+        {
+            err = SetLAGPortAttribute(sw, port, lane, attr, &tmpInt);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+        }
+        else
+        {
+            FM_FLAG_TAKE_REG_LOCK(sw);
+            err = ReadParserPortCfg2(sw, physPort, &reg64);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
 
-        FM_SET_FIELD64(reg64,
-                       FM10000_PARSER_PORT_CFG_2,
-                       StoreMPLS,
-                       tmpInt);
+            FM_SET_FIELD64(reg64,
+                           FM10000_PARSER_PORT_CFG_2,
+                           StoreMPLS,
+                           tmpInt);
 
-        err = WriteParserPortCfg2(sw, physPort, reg64);
-        FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+            err = WriteParserPortCfg2(sw, physPort, reg64);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
 
-        portAttrExt->storeMpls = tmpInt;
+            portAttrExt->storeMpls = tmpInt;
+        }
     }
     else if (attr == FM_PORT_ROUTED_FRAME_UPDATE_FIELDS)
     {
@@ -7903,35 +9200,43 @@ fm_status fm10000SetPortAttributeInt(fm_int sw,
             FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
         }
 
-        FM_FLAG_TAKE_REG_LOCK(sw);
-        err = ReadModPerPortCfg2(sw, physPort, &reg64);
-        FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+        if (isLagAttr)
+        {
+            err = SetLAGPortAttribute(sw, port, lane, attr, &tmpUint32);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+        }
+        else
+        {
+            FM_FLAG_TAKE_REG_LOCK(sw);
+            err = ReadModPerPortCfg2(sw, physPort, &reg64);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
 
-        FM_SET_BIT64(reg64,
-                     FM10000_MOD_PER_PORT_CFG_2,
-                     EnableDMACRouting,
-                     ( (tmpUint32 & FM_PORT_ROUTED_FRAME_UPDATE_DMAC) != 0) ? 1 : 0);
+            FM_SET_BIT64(reg64,
+                         FM10000_MOD_PER_PORT_CFG_2,
+                         EnableDMACRouting,
+                         ( (tmpUint32 & FM_PORT_ROUTED_FRAME_UPDATE_DMAC) != 0) ? 1 : 0);
 
-        FM_SET_BIT64(reg64,
-                     FM10000_MOD_PER_PORT_CFG_2,
-                     EnableSMACRouting,
-                     ( (tmpUint32 & FM_PORT_ROUTED_FRAME_UPDATE_SMAC) != 0) ? 1 : 0);
+            FM_SET_BIT64(reg64,
+                         FM10000_MOD_PER_PORT_CFG_2,
+                         EnableSMACRouting,
+                         ( (tmpUint32 & FM_PORT_ROUTED_FRAME_UPDATE_SMAC) != 0) ? 1 : 0);
 
-        err = WriteModPerPortCfg2(sw, physPort, reg64);
-        FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+            err = WriteModPerPortCfg2(sw, physPort, reg64);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
 
-        err = ReadModPerPortCfg1(sw, physPort, &reg64);
-        FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+            err = ReadModPerPortCfg1(sw, physPort, &reg64);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
 
-        FM_SET_BIT64(reg64,
-                     FM10000_MOD_PER_PORT_CFG_1,
-                     EnableVLANUpdate,
-                     ( (tmpUint32 & FM_PORT_ROUTED_FRAME_UPDATE_VLAN) != 0) ? 1 : 0);
-        
-        err = WriteModPerPortCfg1(sw, physPort, reg64);
-        FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+            FM_SET_BIT64(reg64,
+                         FM10000_MOD_PER_PORT_CFG_1,
+                         EnableVLANUpdate,
+                         ( (tmpUint32 & FM_PORT_ROUTED_FRAME_UPDATE_VLAN) != 0) ? 1 : 0);
 
-        portAttrExt->routedFrameUpdateFields = tmpUint32;
+            err = WriteModPerPortCfg1(sw, physPort, reg64);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+
+            portAttrExt->routedFrameUpdateFields = tmpUint32;
+        }
     }
     else if (attr == FM_PORT_TCN_FIFO_WM)
     {
@@ -7946,15 +9251,23 @@ fm_status fm10000SetPortAttributeInt(fm_int sw,
             goto ABORT;
         }
 
-        reg32 = 0;
-        FM_SET_FIELD(reg32, FM10000_MA_TCN_WM, Wm, tmpUint32);
+        if (isLagAttr)
+        {
+            err = SetLAGPortAttribute(sw, port, lane, attr, &tmpUint32);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+        }
+        else
+        {
+            reg32 = 0;
+            FM_SET_FIELD(reg32, FM10000_MA_TCN_WM, Wm, tmpUint32);
 
-        FM_FLAG_TAKE_REG_LOCK(sw);
+            FM_FLAG_TAKE_REG_LOCK(sw);
 
-        err = switchPtr->WriteUINT32(sw, FM10000_MA_TCN_WM(physPort), reg32);
-        FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+            err = switchPtr->WriteUINT32(sw, FM10000_MA_TCN_WM(physPort), reg32);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
 
-        portAttrExt->tcnFifoWm = tmpUint32;
+            portAttrExt->tcnFifoWm = tmpUint32;
+        }
     }
     else if ( attr == FM_PORT_PCIE_MODE )
     {
@@ -7981,26 +9294,34 @@ fm_status fm10000SetPortAttributeInt(fm_int sw,
 
         tmpBool = *( (fm_bool *) value);
 
-        err = fm10000MapPhysicalPortToEplChannel(sw, physPort, &epl, &channel);
-        FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+        if (isLagAttr)
+        {
+            err = SetLAGPortAttribute(sw, port, lane, attr, &tmpBool);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+        }
+        else
+        {
+            err = fm10000MapPhysicalPortToEplChannel(sw, physPort, &epl, &channel);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
 
-        FM_FLAG_TAKE_REG_LOCK(sw);
+            FM_FLAG_TAKE_REG_LOCK(sw);
 
-        err = switchPtr->ReadUINT32Mult(sw,
-                                        FM10000_MAC_CFG(epl, channel, 0),
-                                        FM10000_MAC_CFG_WIDTH,
-                                         macCfg);
-        FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+            err = switchPtr->ReadUINT32Mult(sw,
+                                            FM10000_MAC_CFG(epl, channel, 0),
+                                            FM10000_MAC_CFG_WIDTH,
+                                             macCfg);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
 
-        FM_ARRAY_SET_BIT(macCfg, FM10000_MAC_CFG, Ieee1588Enable, tmpBool);
+            FM_ARRAY_SET_BIT(macCfg, FM10000_MAC_CFG, Ieee1588Enable, tmpBool);
 
-        err = switchPtr->WriteUINT32Mult(sw,
-                                         FM10000_MAC_CFG(epl, channel, 0),
-                                         FM10000_MAC_CFG_WIDTH,
-                                         macCfg);
-        FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+            err = switchPtr->WriteUINT32Mult(sw,
+                                             FM10000_MAC_CFG(epl, channel, 0),
+                                             FM10000_MAC_CFG_WIDTH,
+                                             macCfg);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
 
-        portAttrExt->generateTimestamps = tmpBool;
+            portAttrExt->generateTimestamps = tmpBool;
+        }
     }
     else if (attr == FM_PORT_EGRESS_TIMESTAMP_EVENTS)
     {
@@ -8011,21 +9332,29 @@ fm_status fm10000SetPortAttributeInt(fm_int sw,
 
         tmpBool = *( (fm_bool *) value);
 
-        err = fm10000MapPhysicalPortToEplChannel(sw, physPort, &epl, &channel);
-        FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+        if (isLagAttr)
+        {
+            err = SetLAGPortAttribute(sw, port, lane, attr, &tmpBool);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+        }
+        else
+        {
+            err = fm10000MapPhysicalPortToEplChannel(sw, physPort, &epl, &channel);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
 
-        FM_FLAG_TAKE_REG_LOCK(sw);
+            FM_FLAG_TAKE_REG_LOCK(sw);
 
-        err = switchPtr->MaskUINT32(sw,
-                                    FM10000_LINK_IM(epl, channel),
-                                    FM10000_TIMESTAMP_INT_MASK,
-                                    !tmpBool);
-        FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+            err = switchPtr->MaskUINT32(sw,
+                                        FM10000_LINK_IM(epl, channel),
+                                        FM10000_TIMESTAMP_INT_MASK,
+                                        !tmpBool);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
 
-        /* Update cached linkInterruptMask. */
-        FM_SET_BIT(portExt->linkInterruptMask, FM10000_LINK_IM, EgressTimeStamp, tmpBool);
+            /* Update cached linkInterruptMask. */
+            FM_SET_BIT(portExt->linkInterruptMask, FM10000_LINK_IM, EgressTimeStamp, tmpBool);
 
-        portAttrExt->egressTimestampEvents = tmpBool;
+            portAttrExt->egressTimestampEvents = tmpBool;
+        }
     }
     else if (attr == FM_PORT_EEE_MODE)
     {
@@ -8034,35 +9363,45 @@ fm_status fm10000SetPortAttributeInt(fm_int sw,
 
         VALIDATE_VALUE_IS_BOOL(value);
 
-        if ( portAttrExt->eeeEnable != *(fm_bool *) value )
+        tmpBool = *( (fm_bool *) value);
+
+        if (isLagAttr)
         {
-            /* Prepare the event notification for the port state machine */
-            eventInfo.smType = portExt->smType;
-            eventInfo.eventId = FM10000_PORT_EVENT_EEE_CONFIG_REQ;
-
-            eventInfo.lock = FM_GET_STATE_LOCK( sw );
-            eventInfo.dontSaveRecord = FALSE;
-
-            /* notify the event */
-            portExt->eventInfo.regLockTaken = FALSE;
-            err = fmNotifyStateMachineEvent( portExt->smHandle,
-                                             &eventInfo,
-                                             &portExt->eventInfo,
-                                             &port );
-            FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, err );
-
-            /* record the new value */
-            portAttrExt->eeeEnable = *(fm_bool *) value;
-
-            if (!portAttrExt->eeeEnable)
+            err = SetLAGPortAttribute(sw, port, lane, attr, &tmpBool);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+        }
+        else
+        {
+            if ( portAttrExt->eeeEnable != tmpBool )
             {
-                /* EEE is disabled; clear the related NextPage context */
-                FM_SET_BIT64(portAttr->autoNegBasePage, 
-                             FM10000_AN_73_BASE_PAGE_TX, NP, 0);
-                portAttrExt->eeeNextPageAdded = FALSE;
-                portAttrExt->negotiatedEeeModeEnabled = FALSE;
-                portAttr->autoNegNextPages.numPages = 0;      
-                portAttr->autoNegNextPages.nextPages = NULL;
+                /* Prepare the event notification for the port state machine */
+                eventInfo.smType = portExt->smType;
+                eventInfo.eventId = FM10000_PORT_EVENT_EEE_CONFIG_REQ;
+
+                eventInfo.lock = FM_GET_STATE_LOCK( sw );
+                eventInfo.dontSaveRecord = FALSE;
+
+                /* notify the event */
+                portExt->eventInfo.regLockTaken = FALSE;
+                err = fmNotifyStateMachineEvent( portExt->smHandle,
+                                                 &eventInfo,
+                                                 &portExt->eventInfo,
+                                                 &port );
+                FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, err );
+
+                /* record the new value */
+                portAttrExt->eeeEnable = *(fm_bool *) value;
+
+                if (!portAttrExt->eeeEnable)
+                {
+                    /* EEE is disabled; clear the related NextPage context */
+                    FM_SET_BIT64(portAttr->autoNegBasePage,
+                                 FM10000_AN_73_BASE_PAGE_TX, NP, 0);
+                    portAttrExt->eeeNextPageAdded = FALSE;
+                    portAttrExt->negotiatedEeeModeEnabled = FALSE;
+                    portAttr->autoNegNextPages.numPages = 0;
+                    portAttr->autoNegNextPages.nextPages = NULL;
+                }
             }
         }
     }
@@ -8071,66 +9410,96 @@ fm_status fm10000SetPortAttributeInt(fm_int sw,
         VALIDATE_ATTRIBUTE_WRITE_ACCESS(&portAttributeTable.txPcActTimeout);
         VALIDATE_PORT_ATTRIBUTE(&portAttributeTable.txPcActTimeout);
 
-        portAttrExt->txPcActTimescale = FM10000_PORT_EEE_TX_ACT_TIME_SCALE;
-        portAttrExt->txPcActTimeout = (*(fm_uint32 *) value) / 
-                                         FM10000_PORT_EEE_TX_ACT_TOUT_DIV;
+        tmpUint32 = *( (fm_uint32 *) value);
+        if ( tmpUint32 > FM10000_PORT_EEE_TX_ACT_MAX_VAL)
+        {
+            err = FM_ERR_INVALID_VALUE;
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
+        }
 
-        err = fm10000MapPhysicalPortToEplChannel(sw, physPort, &epl, &channel);
-        FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
-        FM_FLAG_TAKE_REG_LOCK(sw);
-        err = switchPtr->ReadUINT32Mult(sw, 
-                                        FM10000_MAC_CFG(epl, channel, 0), 
-                                        FM10000_MAC_CFG_WIDTH,
-                                        macCfg);
-        FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+        if (isLagAttr)
+        {
+            err = SetLAGPortAttribute(sw, port, lane, attr, &tmpUint32);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+        }
+        else
+        {
+            portAttrExt->txPcActTimescale = FM10000_PORT_EEE_TX_ACT_TIME_SCALE;
+            portAttrExt->txPcActTimeout = tmpUint32 /
+                                             FM10000_PORT_EEE_TX_ACT_TOUT_DIV;
 
-        FM_ARRAY_SET_FIELD( macCfg,
-                            FM10000_MAC_CFG,
-                            TxPcActTimeout,
-                            portAttrExt->txPcActTimeout );
-        FM_ARRAY_SET_FIELD( macCfg,
-                            FM10000_MAC_CFG,
-                            TxPcActTimeScale,
-                            portAttrExt->txPcActTimescale );
+            err = fm10000MapPhysicalPortToEplChannel(sw, physPort, &epl, &channel);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+            FM_FLAG_TAKE_REG_LOCK(sw);
+            err = switchPtr->ReadUINT32Mult(sw,
+                                            FM10000_MAC_CFG(epl, channel, 0),
+                                            FM10000_MAC_CFG_WIDTH,
+                                            macCfg);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
 
-        err = switchPtr->WriteUINT32Mult(sw, 
-                                         FM10000_MAC_CFG(epl, channel, 0), 
-                                         FM10000_MAC_CFG_WIDTH,
-                                         macCfg);
-        FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+            FM_ARRAY_SET_FIELD( macCfg,
+                                FM10000_MAC_CFG,
+                                TxPcActTimeout,
+                                portAttrExt->txPcActTimeout );
+            FM_ARRAY_SET_FIELD( macCfg,
+                                FM10000_MAC_CFG,
+                                TxPcActTimeScale,
+                                portAttrExt->txPcActTimescale );
+
+            err = switchPtr->WriteUINT32Mult(sw,
+                                             FM10000_MAC_CFG(epl, channel, 0),
+                                             FM10000_MAC_CFG_WIDTH,
+                                             macCfg);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+        }
     }
     else if (attr == FM_PORT_EEE_TX_LPI_TIMEOUT)
     {
         VALIDATE_ATTRIBUTE_WRITE_ACCESS(&portAttributeTable.txLpiTimeout);
         VALIDATE_PORT_ATTRIBUTE(&portAttributeTable.txLpiTimeout);
 
-        portAttrExt->txLpiTimescale = FM10000_PORT_EEE_TX_LPI_TIME_SCALE;
-        portAttrExt->txLpiTimeout = (*(fm_uint32 *) value) / 
-                                       FM10000_PORT_EEE_TX_LPI_TOUT_DIV;
+        tmpUint32 = *( (fm_uint32 *) value);
+        if ( tmpUint32 > FM10000_PORT_EEE_TX_LPI_MAX_VAL)
+        {
+            err = FM_ERR_INVALID_VALUE;
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
+        }
 
-        err = fm10000MapPhysicalPortToEplChannel(sw, physPort, &epl, &channel);
-        FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
-        FM_FLAG_TAKE_REG_LOCK(sw);
-        err = switchPtr->ReadUINT32Mult(sw, 
-                                        FM10000_MAC_CFG(epl, channel, 0), 
-                                        FM10000_MAC_CFG_WIDTH,
-                                        macCfg);
-        FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+        if (isLagAttr)
+        {
+            err = SetLAGPortAttribute(sw, port, lane, attr, &tmpUint32);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+        }
+        else
+        {
+            portAttrExt->txLpiTimescale = FM10000_PORT_EEE_TX_LPI_TIME_SCALE;
+            portAttrExt->txLpiTimeout = tmpUint32 /
+                                           FM10000_PORT_EEE_TX_LPI_TOUT_DIV;
 
-        FM_ARRAY_SET_FIELD( macCfg,
-                            FM10000_MAC_CFG,
-                            TxLpiTimeout,
-                            portAttrExt->txLpiTimeout );
-        FM_ARRAY_SET_FIELD( macCfg,
-                            FM10000_MAC_CFG,
-                            TxLpiTimescale,
-                            portAttrExt->txLpiTimescale );
+            err = fm10000MapPhysicalPortToEplChannel(sw, physPort, &epl, &channel);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+            FM_FLAG_TAKE_REG_LOCK(sw);
+            err = switchPtr->ReadUINT32Mult(sw,
+                                            FM10000_MAC_CFG(epl, channel, 0),
+                                            FM10000_MAC_CFG_WIDTH,
+                                            macCfg);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
 
-        err = switchPtr->WriteUINT32Mult(sw, 
-                                         FM10000_MAC_CFG(epl, channel, 0), 
-                                         FM10000_MAC_CFG_WIDTH,
-                                         macCfg);
-        FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+            FM_ARRAY_SET_FIELD( macCfg,
+                                FM10000_MAC_CFG,
+                                TxLpiTimeout,
+                                portAttrExt->txLpiTimeout );
+            FM_ARRAY_SET_FIELD( macCfg,
+                                FM10000_MAC_CFG,
+                                TxLpiTimescale,
+                                portAttrExt->txLpiTimescale );
+
+            err = switchPtr->WriteUINT32Mult(sw,
+                                             FM10000_MAC_CFG(epl, channel, 0),
+                                             FM10000_MAC_CFG_WIDTH,
+                                             macCfg);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+        }
     }
     else if ( attr == FM_PORT_IFG )
     {
@@ -8145,21 +9514,29 @@ fm_status fm10000SetPortAttributeInt(fm_int sw,
             goto ABORT;
         }
 
-        err = fm10000MapPhysicalPortToEplChannel( sw,
-                                                  physPort,
-                                                  &epl,
-                                                  &channel );
-        FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+        if (isLagAttr)
+        {
+            err = SetLAGPortAttribute(sw, port, lane, attr, &tmpUint32);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+        }
+        else
+        {
+            err = fm10000MapPhysicalPortToEplChannel( sw,
+                                                      physPort,
+                                                      &epl,
+                                                      &channel );
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
 
 
-        err = fm10000WriteMacIfg( sw,
-                                  epl,
-                                  channel,
-                                  NULL,
-                                  tmpUint32 );
-        FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+            err = fm10000WriteMacIfg( sw,
+                                      epl,
+                                      channel,
+                                      NULL,
+                                      tmpUint32 );
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
 
-        portAttr->ifg = tmpUint32;
+            portAttr->ifg = tmpUint32;
+        }
     }
     else if ( attr == FM_PORT_DIC_ENABLE )
     {
@@ -8168,49 +9545,59 @@ fm_status fm10000SetPortAttributeInt(fm_int sw,
 
         VALIDATE_VALUE_IS_BOOL(value);
 
-        err = FM_OK;
+        tmpBool = *( (fm_bool *) value);
 
-        if ( portAttr->dicEnable != *( ( fm_bool *)value ) )
+        if (isLagAttr)
         {
-            pcsType = fm10000GetPcsType( portAttrExt->ethMode, portAttr->speed );
-            switch (pcsType)
+            err = SetLAGPortAttribute(sw, port, lane, attr, &tmpBool);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+        }
+        else
+        {
+            err = FM_OK;
+
+            if ( portAttr->dicEnable != tmpBool )
             {
-                case FM10000_PCS_SEL_10GBASER:
-                case FM10000_PCS_SEL_40GBASER:
-                case FM10000_PCS_SEL_100GBASER:
-                    dicEnable = *( (fm_bool *)value );
-                    break;
+                pcsType = fm10000GetPcsType( portAttrExt->ethMode, portAttr->speed );
+                switch (pcsType)
+                {
+                    case FM10000_PCS_SEL_10GBASER:
+                    case FM10000_PCS_SEL_40GBASER:
+                    case FM10000_PCS_SEL_100GBASER:
+                        dicEnable = tmpBool;
+                        break;
 
-                default:
-                    dicEnable = FALSE;
-                    break;
+                    default:
+                        dicEnable = FALSE;
+                        break;
 
-            }   /* end switch (pcsType) */
+                }   /* end switch (pcsType) */
 
-            err = fm10000MapPhysicalPortToEplChannel( sw, 
-                                                      physPort, 
-                                                      &epl,
-                                                      &channel );
-            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+                err = fm10000MapPhysicalPortToEplChannel( sw,
+                                                          physPort,
+                                                          &epl,
+                                                          &channel );
+                FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
 
-            FM_LOG_DEBUG_V2( FM_LOG_CAT_PORT, 
-                             port, 
-                             "ethMode=0x%08x "
-                             "port=%d epl=%d, channel=%d, pcsType=%d dic=%d\n",
-                             portAttrExt->ethMode,
-                             port,
-                             epl,
-                             channel,
-                             pcsType,
-                             dicEnable );
-            err = fm10000WriteMacDicEnable( sw, 
-                                            epl, 
-                                            channel, 
-                                            NULL, 
-                                            dicEnable );
-            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+                FM_LOG_DEBUG_V2( FM_LOG_CAT_PORT,
+                                 port,
+                                 "ethMode=0x%08x "
+                                 "port=%d epl=%d, channel=%d, pcsType=%d dic=%d\n",
+                                 portAttrExt->ethMode,
+                                 port,
+                                 epl,
+                                 channel,
+                                 pcsType,
+                                 dicEnable );
+                err = fm10000WriteMacDicEnable( sw,
+                                                epl,
+                                                channel,
+                                                NULL,
+                                                dicEnable );
+                FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
 
-            portAttr->dicEnable = *((fm_bool *) value);
+                portAttr->dicEnable = tmpBool;
+            }
         }
     }
     else if ( attr == FM_PORT_TX_PAD_SIZE )
@@ -8218,10 +9605,22 @@ fm_status fm10000SetPortAttributeInt(fm_int sw,
         VALIDATE_ATTRIBUTE_WRITE_ACCESS(&portAttributeTable.txPadSize);
         VALIDATE_PORT_ATTRIBUTE(&portAttributeTable.txPadSize );
 
-        if ( *( ( fm_uint32 *)value ) < 40 ||
-             *( ( fm_uint32 *)value ) > 116 )
+        tmpUint32 = *( ( fm_uint32 *)value );
+
+        if ( tmpUint32 < 40 ||
+            tmpUint32 > 116 )
         {
             err = FM_ERR_INVALID_VALUE;
+            goto ABORT;
+        }
+
+        /* The value must be a multiple of 4. Truncation to the closest lower 4-byte boundary */
+        tmpUint32 = tmpUint32 & 0xFFFFFFFC;
+
+        if (isLagAttr)
+        {
+            err = SetLAGPortAttribute(sw, port, lane, attr, &tmpUint32);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
         }
         else
         {
@@ -8239,7 +9638,7 @@ fm_status fm10000SetPortAttributeInt(fm_int sw,
                                              *( ( fm_uint32 *) value ) );
             FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
 
-            portAttrExt->txPadSize = *((fm_uint32 *) value);
+            portAttrExt->txPadSize = tmpUint32;
             err = FM_OK;
         }
 
@@ -8253,24 +9652,31 @@ fm_status fm10000SetPortAttributeInt(fm_int sw,
 
         tmpBool = *( (fm_bool *) value);
 
-        FM_FLAG_TAKE_REG_LOCK(sw);
-        err = switchPtr->ReadUINT64(sw,
-                                    FM10000_PARSER_PORT_CFG_1(physPort, 0),
-                                    &reg64);
-        FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+        if (isLagAttr)
+        {
+            err = SetLAGPortAttribute(sw, port, lane, attr, &tmpBool);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+        }
+        else
+        {
+            FM_FLAG_TAKE_REG_LOCK(sw);
+            err = switchPtr->ReadUINT64(sw,
+                                        FM10000_PARSER_PORT_CFG_1(physPort, 0),
+                                        &reg64);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
 
-        FM_SET_BIT64(reg64,
-                     FM10000_PARSER_PORT_CFG_1,
-                     Vlan2First,
-                     (tmpBool) ? 1 : 0);
-
-        err = switchPtr->WriteUINT64(sw,
-                                     FM10000_PARSER_PORT_CFG_1(physPort, 0),
-                                     reg64);
-        FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+            FM_SET_BIT64(reg64,
+                         FM10000_PARSER_PORT_CFG_1,
+                         Vlan2First,
+                         (tmpBool) ? 1 : 0);
     
-        portAttrExt->parserVlan2First = tmpBool;
+            err = switchPtr->WriteUINT64(sw,
+                                         FM10000_PARSER_PORT_CFG_1(physPort, 0),
+                                         reg64);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
 
+            portAttrExt->parserVlan2First = tmpBool;
+        }
     }
     else if (attr == FM_PORT_MODIFY_VID2_FIRST)
     {
@@ -8281,20 +9687,28 @@ fm_status fm10000SetPortAttributeInt(fm_int sw,
 
         tmpBool = *( (fm_bool *) value);
 
-        FM_FLAG_TAKE_REG_LOCK(sw);
+        if (isLagAttr)
+        {
+            err = SetLAGPortAttribute(sw, port, lane, attr, &tmpBool);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+        }
+        else
+        {
+            FM_FLAG_TAKE_REG_LOCK(sw);
 
-        err = ReadModPerPortCfg2(sw, physPort, &reg64);
-        FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+            err = ReadModPerPortCfg2(sw, physPort, &reg64);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
 
-        FM_SET_BIT64(reg64,
-                     FM10000_MOD_PER_PORT_CFG_2,
-                     VID2First,
-                     (tmpBool) ? 1 : 0);
+            FM_SET_BIT64(reg64,
+                         FM10000_MOD_PER_PORT_CFG_2,
+                         VID2First,
+                         (tmpBool) ? 1 : 0);
 
-        err = WriteModPerPortCfg2(sw, physPort, reg64);
-        FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+            err = WriteModPerPortCfg2(sw, physPort, reg64);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
 
-        portAttrExt->modifyVid2First = tmpBool;
+            portAttrExt->modifyVid2First = tmpBool;
+        }
     }
     else if (attr == FM_PORT_REPLACE_VLAN_FIELDS)
     {
@@ -8305,72 +9719,136 @@ fm_status fm10000SetPortAttributeInt(fm_int sw,
 
         tmpBool = *( (fm_bool *) value);
 
-        FM_FLAG_TAKE_REG_LOCK(sw);
+        if (isLagAttr)
+        {
+            err = SetLAGPortAttribute(sw, port, lane, attr, &tmpBool);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+        }
+        else
+        {
+            FM_FLAG_TAKE_REG_LOCK(sw);
 
-        err = switchPtr->ReadUINT64(sw,
-                                    FM10000_PARSER_PORT_CFG_1(physPort, 0),
-                                    &reg64);
-        FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+            err = switchPtr->ReadUINT64(sw,
+                                        FM10000_PARSER_PORT_CFG_1(physPort, 0),
+                                        &reg64);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
 
-        FM_SET_BIT64(reg64,
-                     FM10000_PARSER_PORT_CFG_1,
-                     useDefaultVLAN,
-                     (tmpBool) ? 1 : 0);
+            FM_SET_BIT64(reg64,
+                         FM10000_PARSER_PORT_CFG_1,
+                         useDefaultVLAN,
+                         (tmpBool) ? 1 : 0);
 
-        err = switchPtr->WriteUINT64(sw,
-                                     FM10000_PARSER_PORT_CFG_1(physPort, 0),
-                                     reg64);
-        FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+            err = switchPtr->WriteUINT64(sw,
+                                         FM10000_PARSER_PORT_CFG_1(physPort, 0),
+                                         reg64);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
 
-        portAttrExt->replaceVlanFields = tmpBool;
+            portAttrExt->replaceVlanFields = tmpBool;
+        }
     }
     else if ( attr == FM_PORT_TX_CLOCK_COMPENSATION )
     {
         VALIDATE_ATTRIBUTE_WRITE_ACCESS(&portAttributeTable.txClkCompensation);
         VALIDATE_PORT_ATTRIBUTE(&portAttributeTable.txClkCompensation );
 
-        err = fm10000MapPhysicalPortToEplChannel( sw, 
-                                                  physPort, 
-                                                  &epl,
-                                                  &channel );
-        FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+        tmpUint32 = *( ( fm_uint32 *)value );
 
-        pcsType = fm10000GetPcsType( portExt->ethMode, portExt->speed );
-        err = fm10000WriteMacTxClockCompensation( sw, 
-                                                  epl, 
-                                                  channel, 
-                                                  NULL, 
-                                                  *( ( fm_uint32 *) value ),
-                                                  pcsType,
-                                                  portExt->speed );
-        FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+        if (isLagAttr)
+        {
+            err = SetLAGPortAttribute(sw, port, lane, attr, value);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+        }
+        else
+        {
+            err = fm10000MapPhysicalPortToEplChannel( sw,
+                                                      physPort,
+                                                      &epl,
+                                                      &channel );
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
 
-        portAttr->txClkCompensation = *((fm_uint32 *) value);
-        err = FM_OK;
+            pcsType = fm10000GetPcsType( portExt->ethMode, portExt->speed );
+            err = fm10000WriteMacTxClockCompensation( sw,
+                                                      epl,
+                                                      channel,
+                                                      NULL,
+                                                      tmpUint32,
+                                                      pcsType,
+                                                      portExt->speed );
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+
+            portAttr->txClkCompensation = *((fm_uint32 *) value);
+            err = FM_OK;
+        }
     }
     else if (attr == FM_PORT_SMP_LOSSLESS_PAUSE)
     {
         VALIDATE_ATTRIBUTE_WRITE_ACCESS(&portAttributeTable.smpLosslessPause);
         VALIDATE_PORT_ATTRIBUTE(&portAttributeTable.smpLosslessPause);
 
-        if ( portAttr->smpLosslessPause != *( (fm_uint32 *) value ) )
+        tmpUint32 = *( (fm_uint32 *) value );
+
+        if ( tmpUint32 > FM_PORT_SMP_ALL )
         {
-            portAttr->smpLosslessPause = *( (fm_uint32 *) value );
+            err = FM_ERR_INVALID_VALUE;
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+        }
 
-            err = fm10000GetSwitchQOS(sw,
-                                      FM_AUTO_PAUSE_MODE,
-                                      0,
-                                      &tmpBool);
-            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
-
-            if (tmpBool)
+        if (isLagAttr)
+        {
+            err = SetLAGPortAttribute(sw, port, lane, attr, &tmpUint32);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+        }
+        else
+        {
+            if ( portAttr->smpLosslessPause != tmpUint32 )
             {
-                /* recalculate the watermarks */
-                err = fm10000SetSwitchQOS(sw, 
-                                          FM_AUTO_PAUSE_MODE, 
-                                          0, 
+                portAttr->smpLosslessPause = tmpUint32;
+
+                err = fm10000GetSwitchQOS(sw,
+                                          FM_AUTO_PAUSE_MODE,
+                                          0,
                                           &tmpBool);
                 FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
+
+                if (tmpBool)
+                {
+                    /* recalculate the watermarks */
+                    err = fm10000SetSwitchQOS(sw,
+                                              FM_AUTO_PAUSE_MODE,
+                                              0,
+                                              &tmpBool);
+                    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
+                }
+            }
+        }
+    }
+    else if (attr == FM_PORT_AUTODETECT_MODULE)
+    {
+        VALIDATE_ATTRIBUTE_WRITE_ACCESS(&portAttributeTable.autoDetectModule);
+        VALIDATE_PORT_ATTRIBUTE(&portAttributeTable.autoDetectModule);
+
+        VALIDATE_VALUE_IS_BOOL(value);
+
+        tmpBool = *( (fm_bool *) value);
+
+        if (isLagAttr)
+        {
+            err = SetLAGPortAttribute(sw, port, lane, attr, &tmpBool);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+        }
+        else
+        {
+            if ( portAttr->autoDetectModule != tmpBool )
+            {
+                portAttr->autoDetectModule = *(fm_bool *) value;
+
+                /* Send the new attribute value to the platform layer. */
+                err = fmPlatformNotifyPortAttribute(sw,
+                                                    port,
+                                                    0,
+                                                    lane,
+                                                    attr,
+                                                    value);
             }
         }
     }
@@ -8389,6 +9867,11 @@ ABORT:
     if (portAttrLockTaken)
     {
         FM_DROP_PORT_ATTR_LOCK(sw);
+    }
+
+    if (lagLockTaken)
+    {
+        FM_FLAG_DROP_LAG_LOCK(sw);
     }
 
     if ( err == FM_OK && restoreAdminMode )
@@ -8473,7 +9956,8 @@ fm_status fm10000GetPortAttribute(fm_int sw,
 
     FM_NOT_USED(mac);
 
-    FM_LOG_ENTRY_V2(FM_LOG_CAT_PORT, port,
+    FM_LOG_ENTRY_V2(FM_LOG_CAT_PORT,
+                 port,
                  "sw=%d port=%d lane=%d attribute=%d value=%p\n",
                  sw,
                  port,
@@ -8542,7 +10026,8 @@ fm_status fm10000GetPortAttribute(fm_int sw,
         FM_LOG_EXIT_V2(FM_LOG_CAT_PORT, port, FM_ERR_INVALID_ARGUMENT);
     }
 
-    FM_LOG_ENTRY_V2(FM_LOG_CAT_PORT, port,
+    FM_LOG_ENTRY_V2(FM_LOG_CAT_PORT,
+                 port,
                  "sw=%d port=%d lane=%d attribute=%d value=%p\n",
                  sw,
                  port,
@@ -8755,6 +10240,11 @@ fm_status fm10000GetPortAttribute(fm_int sw,
             *( (fm_islTagFormat *) value ) = portAttr->islTagFormat;
             break;
 
+        case FM_PORT_BCAST_FLOODING:
+            VALIDATE_ATTRIBUTE_READ_ACCESS(&portAttributeTable.bcastFlooding);
+            *( (fm_int *) value) = portAttr->bcastFlooding;
+            break;
+
         case FM_PORT_BCAST_PRUNING:
             VALIDATE_ATTRIBUTE_READ_ACCESS(&portAttributeTable.bcastPruning);
             *( (fm_int *) value) = portAttr->bcastPruning;
@@ -8822,6 +10312,11 @@ fm_status fm10000GetPortAttribute(fm_int sw,
         case FM_PORT_RX_CLASS_PAUSE:
             VALIDATE_ATTRIBUTE_READ_ACCESS(&portAttributeTable.rxClassPause);
             *( (fm_uint32 *) value ) = portAttr->rxClassPause;
+            break;
+
+        case FM_PORT_TX_CLASS_PAUSE:
+            VALIDATE_ATTRIBUTE_READ_ACCESS(&portAttributeTable.txClassPause);
+            *( (fm_uint32 *) value ) = portAttr->txClassPause;
             break;
 
         case FM_PORT_LOOPBACK_SUPPRESSION:
@@ -8898,6 +10393,84 @@ fm_status fm10000GetPortAttribute(fm_int sw,
 
             break;
 
+        case FM_PORT_TX_LANE_KR_INIT_CURSOR:
+            VALIDATE_ATTRIBUTE_READ_ACCESS(&portAttributeTable.txLaneKrInitCursor);
+            if ( laneAttr )
+            {
+                *( (fm_int *) value ) = laneAttr->initializeCursor;
+            }
+            else
+            {
+                err = FM_ERR_INVALID_PORT_LANE;
+            }
+
+            break;
+
+        case FM_PORT_TX_LANE_KR_INIT_PRECURSOR:
+            VALIDATE_ATTRIBUTE_READ_ACCESS(&portAttributeTable.txLaneKrInitPreCursor);
+            if ( laneAttr )
+            {
+                *( (fm_int *) value ) = laneAttr->initializePreCursor;
+            }
+            else
+            {
+                err = FM_ERR_INVALID_PORT_LANE;
+            }
+
+            break;
+
+        case FM_PORT_TX_LANE_KR_INIT_POSTCURSOR:
+            VALIDATE_ATTRIBUTE_READ_ACCESS(&portAttributeTable.txLaneKrInitPostCursor);
+            if ( laneAttr )
+            {
+                *( (fm_int *) value ) = laneAttr->initializePostCursor;
+            }
+            else
+            {
+                err = FM_ERR_INVALID_PORT_LANE;
+            }
+
+            break;
+
+        case FM_PORT_TX_LANE_KR_INITIAL_PRE_DEC:
+            VALIDATE_ATTRIBUTE_READ_ACCESS(&portAttributeTable.txLaneKrInitialPreDec);
+            if ( laneAttr )
+            {
+                *( (fm_int *) value ) = laneAttr->preCursorDecOnPreset;
+            }
+            else
+            {
+                err = FM_ERR_INVALID_PORT_LANE;
+            }
+
+            break;
+
+        case FM_PORT_TX_LANE_KR_INITIAL_POST_DEC:
+            VALIDATE_ATTRIBUTE_READ_ACCESS(&portAttributeTable.txLaneKrInitialPostDec);
+            if ( laneAttr )
+            {
+                *( (fm_int *) value ) = laneAttr->postCursorDecOnPreset;
+            }
+            else
+            {
+                err = FM_ERR_INVALID_PORT_LANE;
+            }
+
+            break;
+
+        case FM_PORT_TX_LANE_ENA_KR_INIT_CFG:
+            VALIDATE_ATTRIBUTE_READ_ACCESS(&portAttributeTable.txLaneEnableConfigKrInit);
+            if ( laneAttr )
+            {
+                *( (fm_int *) value ) = laneAttr->txLaneEnableConfigKrInit;
+            }
+            else
+            {
+                err = FM_ERR_INVALID_PORT_LANE;
+            }
+
+            break;
+
         case FM_PORT_RX_LANE_POLARITY:
             VALIDATE_ATTRIBUTE_READ_ACCESS(&portAttributeTable.rxLanePolarity);
             if ( laneAttr )
@@ -8915,7 +10488,7 @@ fm_status fm10000GetPortAttribute(fm_int sw,
             VALIDATE_ATTRIBUTE_READ_ACCESS(&portAttributeTable.txFcsMode);
 
             /* convert from FM10000 values to generic values */
-            for (i = 0; i < FM_NENTRIES(txFcsModeMap); i++)
+            for (i = 0 ; i < FM_NENTRIES(txFcsModeMap) ; i++)
             {
                 if (portAttrExt->txFcsMode == txFcsModeMap[i].b)
                 {
@@ -8977,6 +10550,24 @@ fm_status fm10000GetPortAttribute(fm_int sw,
                                                 &speedInfo);
 
                 *( (fm_int *) value) = speedInfo.assignedSpeed;
+            }
+            break;
+
+        case FM_PORT_RX_TERMINATION:
+            VALIDATE_ATTRIBUTE_READ_ACCESS(&portAttributeTable.rxTermination);
+            if ( laneAttr )
+            {
+                if (isPciePort)
+                {
+                    /* Get directly from HW at request time */
+                    err = GetRxTermination(sw, serdes, &laneAttr->rxTermination);
+                    
+                }
+                *( (fm_int *) value) = laneAttr->rxTermination;
+            }
+            else
+            {
+                err = FM_ERR_INVALID_PORT_LANE;
             }
             break;
 
@@ -9277,6 +10868,11 @@ fm_status fm10000GetPortAttribute(fm_int sw,
             *( (fm_uint32  *) value ) = portAttr->smpLosslessPause;
             break;
 
+        case FM_PORT_AUTODETECT_MODULE:
+            VALIDATE_ATTRIBUTE_READ_ACCESS(&portAttributeTable.autoDetectModule);
+            *( (fm_bool *) value ) = portAttr->autoDetectModule;
+            break;
+
         default:
             err = fmIsValidPortAttribute(attribute) ? FM_ERR_UNSUPPORTED :
                                                       FM_ERR_INVALID_ATTRIB;
@@ -9562,9 +11158,13 @@ fm_status fm10000SetPortState( fm_int sw,
     fm_serdesRing    ring;
     fm_bool          sendUpdate;
 
-    FM_LOG_ENTRY_V2( FM_LOG_CAT_PORT, port,
+    FM_LOG_ENTRY_V2( FM_LOG_CAT_PORT,
+                     port,
                      "sw=%d, port=%d, mode=%d, submode=%d\n",
-                     sw, port, mode, submode);
+                     sw,
+                     port,
+                     mode,
+                     submode);
 
     FM_NOT_USED(mac);
 
@@ -9744,6 +11344,69 @@ ABORT:
 
 
 /*****************************************************************************/
+/** fm10000GetPortLowLevelState
+ * \ingroup intPort
+ * 
+ * \desc            Returns the low level port state.
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \param[in]       port is the port on which to operate.
+ * 
+ * \param[out]      portState returned low level port state.
+ *
+ * \return          FM_OK if successful.
+ * \return          FM_ERR_INVALID_ARGUMENT if portState pointer is NULL.
+ *
+ *****************************************************************************/
+fm_status fm10000GetPortLowLevelState(fm_int  sw,
+                                      fm_int  port,
+                                      fm_int *portState)
+{
+    fm_status     err;
+    fm_int        serDes;
+    fm10000_lane *pLaneExt;
+    fm_portAttr  *portAttr;
+
+    FM_LOG_ENTRY_V2(FM_LOG_CAT_PORT, port, "sw=%d port=%d\n", sw, port);
+
+    if (portState == NULL)
+    {
+        err = FM_ERR_INVALID_ARGUMENT;
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
+    }
+    
+    err = FM_OK;
+    
+    PROTECT_SWITCH(sw);
+    err = fm10000MapPortLaneToSerdes(sw, port, 0, &serDes);
+    UNPROTECT_SWITCH(sw);
+    
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
+    
+    pLaneExt = GET_LANE_EXT(sw, serDes);
+    portAttr = GET_PORT_ATTR(sw, port);
+                
+    err = fmGetStateMachineCurrentState(pLaneExt->smHandle, portState);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
+
+    FM_LOG_ENTRY_V2(FM_LOG_CAT_PORT, 
+                    port,
+                    "port=%d portState=%s farLoopback=%s\n",
+                    port,
+                    fm10000PortStatesMap[*portState],
+                    (portAttr->serdesLoopback == FM_PORT_LOOPBACK_RX2TX) ? 
+                    "On" : "Off");
+
+ABORT:
+    FM_LOG_EXIT_V2(FM_LOG_CAT_PORT, port, err);
+
+}   /* end fm10000GetPortLowLevelState */
+
+
+
+
+/*****************************************************************************/
 /** fm10000GetCpuPort
  * \ingroup intPort
  *
@@ -9794,7 +11457,8 @@ fm_status fm10000SetCpuPort(fm_int sw, fm_int cpuPort)
     fm_int          cpuPhysPort;
     fm_bool         regLockTaken;
 
-    FM_LOG_ENTRY_V2(FM_LOG_CAT_PORT, cpuPort,
+    FM_LOG_ENTRY_V2(FM_LOG_CAT_PORT,
+                    cpuPort,
                     "sw=%d cpuPort=%d\n",
                     sw,
                     cpuPort);
@@ -9813,6 +11477,7 @@ fm_status fm10000SetCpuPort(fm_int sw, fm_int cpuPort)
     FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, cpuPort, err);
 
     switchPtr->cpuPort = cpuPort;
+    switchPtr->defaultSourcePort = cpuPort;
 
 ABORT:
     if (regLockTaken)
@@ -9840,15 +11505,15 @@ fm_status fm10000GetNumEthLanes(fm_ethMode ethMode, fm_int *numLanes)
 {
     switch (ethMode)
     {
-        // 1G mode
+        /* 1G mode */
         case FM_ETH_MODE_SGMII:
         case FM_ETH_MODE_1000BASE_X:
         case FM_ETH_MODE_1000BASE_KX:
 
-        // 2.5G mode
+        /* 2.5G mode */
         case FM_ETH_MODE_2500BASE_X:
 
-        // 10G single channel
+        /* 10G single channel */
         case FM_ETH_MODE_6GBASE_KR:
         case FM_ETH_MODE_6GBASE_CR:
         case FM_ETH_MODE_10GBASE_KR:
@@ -9860,14 +11525,14 @@ fm_status fm10000GetNumEthLanes(fm_ethMode ethMode, fm_int *numLanes)
             *numLanes    =  1;
             break;
 
-        // 10G four lanes
+        /* 10G four lanes */
         case FM_ETH_MODE_10GBASE_KX4:
         case FM_ETH_MODE_10GBASE_CX4:
         case FM_ETH_MODE_XAUI:
             *numLanes    = 4;
             break;
 
-        // 24G or 40G four lanes
+        /* 24G or 40G four lanes */
         case FM_ETH_MODE_XLAUI:
         case FM_ETH_MODE_24GBASE_CR4:
         case FM_ETH_MODE_24GBASE_KR4:
@@ -10023,7 +11688,7 @@ fm_int fm10000GetPortSpeed(fm_ethMode ethMode)
         case FM_ETH_MODE_100GBASE_SR4:
             return 100000;
 
-        // Unsupported mode
+        /* Unsupported mode */
         default:
             return 0;
     }
@@ -10093,7 +11758,7 @@ fm_text fm10000GetEthModeStr(fm_ethMode ethMode)
         case FM_ETH_MODE_100GBASE_SR4:
             return "100GBASE_SR4";
 
-        // Unsupported mode
+        /* Unsupported mode */
         default:
             return "UNKNOWN";
     }
@@ -10235,7 +11900,8 @@ fm_status fm10000GetPortLaneEyeScore(fm_int      sw,
     fm_status err;
     fm_int    serDes;
 
-    FM_LOG_ENTRY_V2(FM_LOG_CAT_PORT, port,
+    FM_LOG_ENTRY_V2(FM_LOG_CAT_PORT,
+                    port,
                     "sw=%d, port=%d lane=%d pEyeScore=%p\n",
                     sw,
                     port,
@@ -10305,7 +11971,8 @@ fm_status fm10000GetBistUserPattern(fm_int      sw,
     fm_status err;
     fm_int    serDes;
 
-    FM_LOG_ENTRY_V2(FM_LOG_CAT_PORT, port,
+    FM_LOG_ENTRY_V2(FM_LOG_CAT_PORT,
+                    port,
                     "sw=%d, port=%d lane=%d pBistUserPatternLow=%p, pBistUserPatternHigh=%p\n",
                     sw,
                     port,
@@ -10370,7 +12037,8 @@ fm_status fm10000SetBistUserPattern(fm_int      sw,
     fm_status err;
     fm_int    serDes;
 
-    FM_LOG_ENTRY_V2(FM_LOG_CAT_PORT, port,
+    FM_LOG_ENTRY_V2(FM_LOG_CAT_PORT,
+                    port,
                     "sw=%d, port=%d lane=%d pBistUserPatternLow=%p, pBistUserPatternHigh=%p\n",
                     sw,
                     port,
@@ -10434,7 +12102,10 @@ fm_status fm10000MapPhysicalPortToEplChannel(fm_int  sw,
     
     FM_LOG_ENTRY(FM_LOG_CAT_PORT,
                  "sw=%d physPort=%d epl=%p channel=%p\n",
-                 sw, physPort, (void *) epl, (void *) channel);
+                 sw,
+                 physPort,
+                 (void *) epl,
+                 (void *) channel);
 
     err = fm10000MapPhysicalPortToFabricPort( sw, physPort, &fabricPort );
     if ( err == FM_OK )
@@ -10489,7 +12160,10 @@ fm_status fm10000MapEplChannelToPhysicalPort(fm_int  sw,
 
     FM_LOG_ENTRY(FM_LOG_CAT_PORT, 
                  "sw=%d epl=%d channel=%d physPort=%p\n",
-                 sw, epl, channel, (void *) physPort);
+                 sw,
+                 epl,
+                 channel,
+                 (void *) physPort);
 
     if ( epl > FM10000_MAX_EPL || channel >= FM10000_PORTS_PER_EPL ) 
     {
@@ -10546,6 +12220,7 @@ fm_status fm10000UpdatePortMask(fm_int sw, fm_int port)
     fm_int        cpi;
     fm_int        mp;
     fm_uint64     regVal64;
+    fm10000_port *txPortExt;
 
     FM_LOG_ENTRY_V2(FM_LOG_CAT_PORT, port, "sw=%d port=%d\n", sw, port);
 
@@ -10557,7 +12232,7 @@ fm_status fm10000UpdatePortMask(fm_int sw, fm_int port)
     /* convert the logical port to physical port */
     err = fmMapLogicalPortToPhysical(switchPtr, port, &physPort);
     FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
-
+ 
     /* if the port is not authorized, then the only output is the CPU */
     if (portAttr->dot1xState == FM_DOT1X_STATE_NOT_AUTH)
     {
@@ -10570,7 +12245,7 @@ fm_status fm10000UpdatePortMask(fm_int sw, fm_int port)
 
     /***************************************************
      * Ports that are up have their port masks filtered
-     * by link state. Ports that are down are explicitly
+     * by link state. Ports that are down are explicitly 
      * forced to have a port mask of 0.
      **************************************************/
     if (portPtr->linkUp)
@@ -10580,11 +12255,14 @@ fm_status fm10000UpdatePortMask(fm_int sw, fm_int port)
         {
             if ( FM_PORTMASK_IS_BIT_SET(&mask, cpi) )
             {
-                mp = GET_LOGICAL_PORT(sw, cpi);
+                mp          = GET_LOGICAL_PORT(sw, cpi);
+                txPortExt   = GET_PORT_EXT(sw, mp);
                 maskbit = 1;
-                if (switchPtr->portTable[mp]->mode == FM_PORT_STATE_ADMIN_DOWN)
+                if (switchPtr->portTable[mp]->mode == FM_PORT_STATE_ADMIN_DOWN || 
+                    txPortExt->isDraining)
                 {
-                    if (switchPtr->portTable[mp]->isPortForceUp)
+                    if (switchPtr->portTable[mp]->isPortForceUp || 
+                        txPortExt->isDraining)
                     {
                         maskbit = 0;
                     }
@@ -10614,6 +12292,7 @@ fm_status fm10000UpdatePortMask(fm_int sw, fm_int port)
     err = switchPtr->WriteUINT64(sw,
                                  FM10000_PORT_CFG_2(physPort, 0),
                                  regVal64);
+
 ABORT:
     FM_LOG_EXIT_V2(FM_LOG_CAT_PORT, port, err);
 
@@ -10649,7 +12328,8 @@ fm_status fm10000UpdateLoopbackSuppress(fm_int sw, fm_int port)
     fm_uint32    mask;
     fm10000_lag *lagExt;
     
-    FM_LOG_ENTRY_V2(FM_LOG_CAT_PORT, port,
+    FM_LOG_ENTRY_V2(FM_LOG_CAT_PORT,
+                 port,
                  "sw = %d, port = %d\n",
                  sw,
                  port);
@@ -10774,9 +12454,12 @@ fm_status fm10000StartPortLaneBistCounter(fm_int sw,
     fm_status         err;
     fm_int            serdes;
 
-    FM_LOG_ENTRY_V2(FM_LOG_CAT_PORT, port,
+    FM_LOG_ENTRY_V2(FM_LOG_CAT_PORT,
+                 port,
                  "sw=%d, port=%d laneNum=%d\n",
-                 sw, port, lane);
+                 sw,
+                 port,
+                 lane);
 
     /* Validate logical port ID */
     if ( !fmIsValidPort(sw, port, DISALLOW_CPU) )
@@ -10831,9 +12514,12 @@ fm_status fm10000DisablePortLaneBistMode( fm_int sw, fm_int port, fm_int lane )
     fm10000_lane     *laneExt;
 
 
-    FM_LOG_ENTRY_V2(FM_LOG_CAT_PORT, port,
-                 "sw=%d, port=%d, lane=%d",
-                 sw, port, lane);
+    FM_LOG_ENTRY_V2(FM_LOG_CAT_PORT,
+                    port,
+                    "sw=%d, port=%d, lane=%d",
+                    sw,
+                    port,
+                    lane);
 
     /* Validate logical port ID */
     if ( !fmIsValidPort(sw, port, DISALLOW_CPU) )
@@ -10982,22 +12668,12 @@ fm_status fm10000DrainPhysPort( fm_int  sw,
    
     FM_LOG_ENTRY(FM_LOG_CAT_PORT,
                  "sw=%d physPort=%d numPorts=%d drain=%d\n",
-                 sw, physPort, numPorts, drain);
+                 sw,
+                 physPort,
+                 numPorts,
+                 drain);
 
     switchPtr = GET_SWITCH_PTR(sw);
-
-    err = fm10000MapPhysicalPortToEplChannel(sw, physPort, &epl, &channel);
-    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
-
-    /* Is this check still valid in RRC? */
-    if ( (channel != 3) && ( channel != 0 ) && ( numPorts > 1 ) )
-    {
-        FM_LOG_FATAL( FM_LOG_CAT_PORT,
-                      "Draining multi-lane port, but physPort "
-                      "%d (np=%d) maps to epl=%d channel=%d\n",
-                      physPort, numPorts, epl, channel );
-        FM_LOG_EXIT(FM_LOG_CAT_PORT, FM_ERR_INVALID_ARGUMENT);
-    }
 
     err = fmMapPhysicalPortToLogical(switchPtr, physPort, &logPort);
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
@@ -11005,46 +12681,73 @@ fm_status fm10000DrainPhysPort( fm_int  sw,
     portExt     = GET_PORT_EXT(sw, logPort);
     portAttrExt = GET_FM10000_PORT_ATTR(sw, logPort);
 
+    if (portExt->ring == FM10000_SERDES_RING_EPL) 
+    {
+        err = fm10000MapPhysicalPortToEplChannel(sw, physPort, &epl, &channel);
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
+
+        /* Is this check still valid on FM10000? */
+        if ( (channel != 3) && ( channel != 0 ) && ( numPorts > 1 ) )
+        {
+            FM_LOG_FATAL( FM_LOG_CAT_PORT,
+                          "Draining multi-lane port, but physPort "
+                          "%d (np=%d) maps to epl=%d channel=%d\n",
+                          physPort,
+                          numPorts,
+                          epl,
+                          channel );
+            FM_LOG_EXIT(FM_LOG_CAT_PORT, FM_ERR_INVALID_ARGUMENT);
+        }
+    }
+
     portExt->isDraining = drain;
 
     err = fmUpdateSwitchPortMasks(sw);
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
 
-    for (i = 0 ; i < numPorts ; i++)
+    /* For Ethernet port Drain mode is configured in MAC. */
+    if (portExt->ring == FM10000_SERDES_RING_EPL) 
     {
-        if (channel + i > 3)
+        for (i = 0 ; i < numPorts ; i++)
         {
-            /* A sanity check */
-            FM_LOG_FATAL( FM_LOG_CAT_PORT,
-                          "Overflow: DrainPort physPort %d "
-                          "(np=%d) epl=%d channel=%d i=%d\n",
-                          physPort, numPorts, epl, channel, i );
-            continue;
-        }
+            if (channel + i > 3)
+            {
+                /* A sanity check */
+                FM_LOG_FATAL( FM_LOG_CAT_PORT,
+                              "Overflow: DrainPort physPort %d "
+                              "(np=%d) epl=%d channel=%d i=%d\n",
+                              physPort,
+                              numPorts,
+                              epl,
+                              channel,
+                              i );
+                continue;
+            }
 
-        /* read modify write the MAC_CFG register */
-        addr = FM10000_MAC_CFG( epl, channel + i, 0 );
+            /* read modify write the MAC_CFG register */
+            addr = FM10000_MAC_CFG( epl, channel + i, 0 );
 
-        err = switchPtr->ReadUINT32Mult(sw, addr, FM10000_MAC_CFG_WIDTH, value);
-        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
+            err = switchPtr->ReadUINT32Mult(sw, addr, FM10000_MAC_CFG_WIDTH, value);
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
 
-        FM_ARRAY_SET_FIELD( value,
-                            FM10000_MAC_CFG,
-                            TxDrainMode,
-                            (drain ?
-                             FM10000_PORT_TX_DRAIN_ALWAYS :
-                             FM10000_PORT_TX_DRAIN_ON_LINK_DOWN) );
-        FM_ARRAY_SET_BIT(value, FM10000_MAC_CFG, RxDrain, (drain ? 1 : 0));
+            FM_ARRAY_SET_FIELD( value,
+                                FM10000_MAC_CFG,
+                                TxDrainMode,
+                                (drain ?
+                                 FM10000_PORT_TX_DRAIN_ALWAYS :
+                                 FM10000_PORT_TX_DRAIN_ON_LINK_DOWN) );
+            FM_ARRAY_SET_BIT(value, FM10000_MAC_CFG, RxDrain, (drain ? 1 : 0));
 
-        err = switchPtr->WriteUINT32Mult(sw,
-                                         addr,
-                                         FM10000_MAC_CFG_WIDTH,
-                                         value);
-        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
+            err = switchPtr->WriteUINT32Mult(sw,
+                                             addr,
+                                             FM10000_MAC_CFG_WIDTH,
+                                             value);
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
 
-    }   /* end for ( i = 0 ; i < numPorts ; i++) */
+        }   /* end for ( i = 0 ; i < numPorts ; i++) */
+    }
 
-    /* If draining make sure there are no more in-flight frames */
+    /* If draining make sure there are no more in-flight frames.*/ 
     if (drain)
      {
         fmGetTime(&start);
@@ -11088,15 +12791,20 @@ fm_status fm10000DrainPhysPort( fm_int  sw,
             fmGetTime(&end);
             fmSubTimestamps(&end, &start, &delta);
 
-        } while ( ( totalUsage > 0 ) && ( delta.sec < FM10000_DRAIN_DELAY ) );
+        }
+        while ( ( totalUsage > 0 ) && ( delta.sec < FM10000_DRAIN_DELAY ) );
 
         if ( delta.sec >= FM10000_DRAIN_DELAY )
         {
             FM_LOG_FATAL(FM_LOG_CAT_PORT,
                          "Drain of ports %d..%d did not finish in %dsec. totalUsage=%d\n",
-                         physPort, physPort + numPorts - 1, FM10000_DRAIN_DELAY, totalUsage);
+                         physPort,
+                         physPort + numPorts - 1,
+                         FM10000_DRAIN_DELAY,
+                         totalUsage);
         }
     }
+
 
 ABORT:
     FM_LOG_EXIT(FM_LOG_CAT_PORT, err);
@@ -11318,7 +13026,7 @@ fm_status fm10000DbgDumpPortStateTransitionsV2( fm_int  sw,
     }
 
     numEntry = 0;
-    for (cnt = 0; cnt < portCnt; cnt++)
+    for (cnt = 0 ; cnt < portCnt ; cnt++)
     {
         port = portList[cnt];
         portExt = GET_PORT_EXT( sw, port );
@@ -11352,7 +13060,7 @@ fm_status fm10000DbgDumpPortStateTransitionsV2( fm_int  sw,
 
 
     numEntry = 0;
-    for (cnt = 0; cnt < portCnt; cnt++)
+    for (cnt = 0 ; cnt < portCnt ; cnt++)
     {
         port = portList[cnt];
         if (showPortST)
@@ -11623,7 +13331,7 @@ fm_status fm10000DbgDumpPortStateTransitionsV2( fm_int  sw,
             laneExt = FM_DLL_GET_NEXT( laneExt, nextLane );
 
         }   /* end while (laneExt != NULL ) */
-    } /* for (cnt = 0; cnt < portCnt; cnt++) */
+    } /* end for (cnt = 0; cnt < portCnt; cnt++) */
 
     if (numEntry)
     {
@@ -11635,7 +13343,7 @@ fm_status fm10000DbgDumpPortStateTransitionsV2( fm_int  sw,
             FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
         }
 
-        for (cnt = 0 ; cnt < numEntry; cnt++)
+        for (cnt = 0 ; cnt < numEntry ; cnt++)
         {
             sortPstd[cnt] = (fm10000_portStateTDump *)&pstd[cnt];
         }
@@ -11643,7 +13351,8 @@ fm_status fm10000DbgDumpPortStateTransitionsV2( fm_int  sw,
         qsort(sortPstd, numEntry, sizeof(fm10000_portStateTDump *), CmpTimestamp);
 
 
-        FM_LOG_PRINT(DUMP_FORMAT, "---------------",
+        FM_LOG_PRINT(DUMP_FORMAT,
+                                  "---------------",
                                   "-----",
                                   "-------",
                                   "-----------------------------",
@@ -11651,7 +13360,8 @@ fm_status fm10000DbgDumpPortStateTransitionsV2( fm_int  sw,
                                   "----------------------------",
                                   "------");
         FM_LOG_PRINT(DUMP_FORMAT, "TIME(sec)", "PORT", "TYPE", "INITIAL STATE", "EVENT", "FINAL STATE", "STATUS");
-        FM_LOG_PRINT(DUMP_FORMAT, "---------------",
+        FM_LOG_PRINT(DUMP_FORMAT,
+                                  "---------------",
                                   "-----",
                                   "-------",
                                   "-----------------------------",
@@ -11664,7 +13374,7 @@ fm_status fm10000DbgDumpPortStateTransitionsV2( fm_int  sw,
             numEntry = maxEntries;
         }
 
-        for (cnt = 0; cnt < numEntry; cnt++)
+        for (cnt = 0 ; cnt < numEntry ; cnt++)
         {
             if (showAbsTime)
             {
@@ -11674,11 +13384,17 @@ fm_status fm10000DbgDumpPortStateTransitionsV2( fm_int  sw,
             {
                 if (showUsecTime)
                 {
-                    FM_SNPRINTF_S(tempStr, 32, "%15.6f", ((sortPstd[cnt]->timestamp - sortPstd[0]->timestamp)/1000000.0));
+                    FM_SNPRINTF_S(tempStr,
+                                  32,
+                                  "%15.6f",
+                                  ((sortPstd[cnt]->timestamp - sortPstd[0]->timestamp)/1000000.0));
                 }
                 else
                 {
-                    FM_SNPRINTF_S(tempStr, 32, "%15.3f", ((sortPstd[cnt]->timestamp - sortPstd[0]->timestamp)/1000000.0));
+                    FM_SNPRINTF_S(tempStr,
+                                  32,
+                                  "%15.3f",
+                                  ((sortPstd[cnt]->timestamp - sortPstd[0]->timestamp)/1000000.0));
                 }
             }
             if (sortPstd[cnt]->serdes == 0xFF)
@@ -11714,7 +13430,7 @@ ABORT:
 
     FM_LOG_EXIT( FM_LOG_CAT_PORT, status );
 
-} /* fm10000DbgDumpPortStateTransitionsV2  */
+} /* end fm10000DbgDumpPortStateTransitionsV2  */
 
 
 /*****************************************************************************/
@@ -12630,7 +14346,7 @@ ABORT:
 
 
 /*****************************************************************************/
-/** fm10000PepEventInterruptHandler
+/** fm10000PepEventHandler
  * \ingroup intPort
  *
  * \desc            Process interrupt events for a given PEP
@@ -12642,9 +14358,16 @@ ABORT:
  * \param[in]       pepIp is a snapshot of the current Interrupt Pending
  *                  register for this PEP
  * 
+ * \param[in]       sendLinkDownEvent specifies if link down event has to be
+ *                  sent to pcie state machine because of a stuck interrupt
+ *                  detection
+ * 
  * \return          FM_OK if successful
  *****************************************************************************/
-fm_status fm10000PepEventHandler( fm_int sw, fm_int pep, fm_uint32 pepIp )
+fm_status fm10000PepEventHandler( fm_int sw, 
+                                  fm_int pep, 
+                                  fm_uint32 pepIp, 
+                                  fm_bool *sendLinkDownEvent )
 {
     fm_switch      *switchPtr;
     fm_status       status;
@@ -12655,14 +14378,21 @@ fm_status fm10000PepEventHandler( fm_int sw, fm_int pep, fm_uint32 pepIp )
     fm_int          port;
 
     status = FM_OK;
-    if ( FM_GET_BIT( pepIp, FM10000_PCIE_IP, DeviceStateChange ) )
+
+    if ( sendLinkDownEvent == NULL ) 
+    {
+        status = FM_ERR_INVALID_ARGUMENT;
+        FM_LOG_ABORT(FM_LOG_CAT_EVENT_INTR, status);
+    }
+
+    /* map the PEP to its logical port */
+    status = fm10000MapPepToLogicalPort( sw, pep, &port );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_EVENT_INTR, port, status );
+
+    if ( FM_GET_BIT( pepIp, FM10000_PCIE_IP, DeviceStateChange ) &&
+         *sendLinkDownEvent == FALSE )
     {
         switchPtr = GET_SWITCH_PTR( sw );
-
-        /* map the PEP to its logical port */        
-        status = fm10000MapPepToLogicalPort( sw, pep, &port );
-        FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-
 
         addr = FM10000_PCIE_FACTPS();
         status = fm10000ReadPep( sw, addr, pep, &reg );
@@ -12693,11 +14423,32 @@ fm_status fm10000PepEventHandler( fm_int sw, fm_int pep, fm_uint32 pepIp )
                                             &port );
         FM_DROP_MAILBOX_LOCK( sw );
     }
+    else if ( *sendLinkDownEvent == TRUE ) 
+    {
+        /* Start PEP status polling timer */
+        status = fm10000StartPepStatusPollingTimer(sw, port);
+        FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_EVENT_INTR, port, status );
 
+        portExt = GET_PORT_EXT(sw, port);
+        eventInfo.smType         = portExt->smType;
+        eventInfo.lock           = FM_GET_STATE_LOCK( sw );
+        eventInfo.dontSaveRecord = FALSE;
+        eventInfo.eventId        = FM10000_PORT_EVENT_LINK_DOWN_IND;
+
+        portExt->eventInfo.regLockTaken = FALSE;
+        FM_TAKE_MAILBOX_LOCK( sw );
+        status = fmNotifyStateMachineEvent( portExt->smHandle,
+                                            &eventInfo,
+                                            &portExt->eventInfo,
+                                            &port );
+        FM_DROP_MAILBOX_LOCK( sw );
+
+        *sendLinkDownEvent = FALSE;
+    }
 ABORT:
     return status;
 
-}   /* end fm10000PepEventInterruptHandler */
+}   /* end fm10000PepEventHandler */
 
 
 /*****************************************************************************/
@@ -12862,7 +14613,8 @@ fm_status fm10000LinkEventHandler( fm_int    sw,
                 status = HandleEeePcSilent(sw, port, epl, lane);
                 if ( status != FM_OK )
                 {
-                    FM_LOG_ERROR_V2(FM_LOG_CAT_PORT, port,
+                    FM_LOG_ERROR_V2(FM_LOG_CAT_PORT,
+                                    port,
                                     "HandleEeePcSilent invalid status (%d)\n",
                                     status);
                 }
@@ -12897,7 +14649,8 @@ fm_status fm10000LinkEventHandler( fm_int    sw,
                 status = HandleEgressTimeStamp(sw, port, epl, lane);
                 if ( status != FM_OK )
                 {
-                    FM_LOG_ERROR_V2(FM_LOG_CAT_PORT, port,
+                    FM_LOG_ERROR_V2(FM_LOG_CAT_PORT,
+                                    port,
                                     "HandleEgressTimeStamp invalid status (%d)\n",
                                     status);
                 }
@@ -13123,7 +14876,8 @@ fm_status fm10000GetPortEyeDiagram(fm_int               sw,
     fm_int           serDes;
 
 
-    FM_LOG_ENTRY_V2(FM_LOG_CAT_PORT, port,
+    FM_LOG_ENTRY_V2(FM_LOG_CAT_PORT,
+                    port,
                     "sw=%d port=%d lane=%d pSampleTable=%p\n",
                     sw,
                     port,
@@ -13162,7 +14916,8 @@ fm_status fm10000GetPortEyeDiagram(fm_int               sw,
         }
         else
         {
-            FM_LOG_ERROR_V2(FM_LOG_CAT_PORT, port,
+            FM_LOG_ERROR_V2(FM_LOG_CAT_PORT,
+                            port,
                             "Cannot determine the serDes for port=%d\n",
                             port);
         }
@@ -13238,7 +14993,8 @@ fm_status fm10000DbgMapLogicalPort(fm_int                 sw,
     fm_int          channel;
 
 
-    FM_LOG_ENTRY_V2(FM_LOG_CAT_PORT, logPort,
+    FM_LOG_ENTRY_V2(FM_LOG_CAT_PORT,
+                    logPort,
                     "sw=%d, logPort=%d, lane=%d, mappingType=%d, pSampleTable=%p\n",
                     sw,
                     logPort,
@@ -13492,15 +15248,33 @@ fm_status fm10000DbgDumpPortEeeStatus( fm_int sw, fm_int port, fm_bool clear )
                                        macCfg);
     FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, status);
 
-    txLpiAutomatic   = FM_ARRAY_GET_BIT( macCfg, FM10000_MAC_CFG, TxLpiAutomatic );
-    txLpIdleRequest  = FM_ARRAY_GET_BIT( macCfg, FM10000_MAC_CFG, TxLpIdleRequest );
-    txPcActTimeScale = FM_ARRAY_GET_FIELD( macCfg, FM10000_MAC_CFG, TxPcActTimeScale );
-    txPcActTimeout   = FM_ARRAY_GET_FIELD( macCfg, FM10000_MAC_CFG, TxPcActTimeout );
-    txLpiTimescale   = FM_ARRAY_GET_FIELD( macCfg, FM10000_MAC_CFG, TxLpiTimescale );
-    txLpiTimeout     = FM_ARRAY_GET_FIELD( macCfg, FM10000_MAC_CFG, TxLpiTimeout );
-    txLpiHoldTimescale = FM_ARRAY_GET_FIELD( macCfg, FM10000_MAC_CFG, TxLpiHoldTimescale );
-    txLpiHoldTimeout   = FM_ARRAY_GET_FIELD( macCfg, FM10000_MAC_CFG, TxLpiHoldTimeout );
-    txDrainMode      = FM_ARRAY_GET_FIELD( macCfg, FM10000_MAC_CFG, TxDrainMode );
+    txLpiAutomatic     = FM_ARRAY_GET_BIT( macCfg,
+                                           FM10000_MAC_CFG,
+                                           TxLpiAutomatic );
+    txLpIdleRequest    = FM_ARRAY_GET_BIT( macCfg,
+                                           FM10000_MAC_CFG,
+                                           TxLpIdleRequest );
+    txPcActTimeScale   = FM_ARRAY_GET_FIELD( macCfg,
+                                             FM10000_MAC_CFG,
+                                             TxPcActTimeScale );
+    txPcActTimeout     = FM_ARRAY_GET_FIELD( macCfg,
+                                             FM10000_MAC_CFG,
+                                             TxPcActTimeout );
+    txLpiTimescale     = FM_ARRAY_GET_FIELD( macCfg,
+                                             FM10000_MAC_CFG,
+                                             TxLpiTimescale );
+    txLpiTimeout       = FM_ARRAY_GET_FIELD( macCfg,
+                                             FM10000_MAC_CFG,
+                                             TxLpiTimeout );
+    txLpiHoldTimescale = FM_ARRAY_GET_FIELD( macCfg,
+                                             FM10000_MAC_CFG,
+                                             TxLpiHoldTimescale );
+    txLpiHoldTimeout   = FM_ARRAY_GET_FIELD( macCfg,
+                                             FM10000_MAC_CFG,
+                                             TxLpiHoldTimeout );
+    txDrainMode        = FM_ARRAY_GET_FIELD( macCfg,
+                                             FM10000_MAC_CFG,
+                                             TxDrainMode );
 
     FM_LOG_PRINT("\n");
     FM_LOG_PRINT("\nMAC_CFG");
@@ -14467,7 +16241,7 @@ fm_status fm10000ConfigureEthMode( fm_int      sw,
             }
         }
 
-    }   /* end if ( newSerdesSmType != curSerdesSmType ) */
+    }   /* end if ( newSerdesSmType != FM_SMTYPE_UNSPECIFIED ) */
 
 
     /**************************************************
@@ -14527,7 +16301,7 @@ fm_status fm10000ConfigureEthMode( fm_int      sw,
 ABORT:
     FM_LOG_EXIT_V2( FM_LOG_CAT_PORT, port, err );
 
-}   /* end ConfigureEthMode */
+}   /* end fm10000ConfigureEthMode */
 
 
 
@@ -14821,7 +16595,7 @@ fm_status fm10000DbgRead100GBipErrRegs(fm_int      sw,
             {
                 break;
             }
-        }   /* end while (selector < 20) */
+        }   /* end while (regSelector < 20) */
 
         DROP_REG_LOCK(sw);
     }

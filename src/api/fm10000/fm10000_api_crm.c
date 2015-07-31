@@ -1,11 +1,11 @@
 /* vim:ts=4:sw=4:expandtab
  * (No tabs, indent level is 4 spaces)  */
 /*****************************************************************************
- * File:            fm10000_api_crm.c            
+ * File:            fm10000_api_crm.c
  * Creation Date:   February 18, 2015
  * Description:     FM10000 Counter Rate Monitor (CRM) support.
  *
- * Copyright (c) 2009 - 2015, Intel Corporation.
+ * Copyright (c) 2009 - 2015, Intel Corporation
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -38,8 +38,6 @@
  * Macros, Constants & Types
  *****************************************************************************/
 
-#undef DUMP_CRM_CONFIG
-
 #define FFU_SLICE_TCAM_STRIDE0  \
         (FM10000_FFU_SLICE_TCAM(0, 1, 0) - FM10000_FFU_SLICE_TCAM(0, 0, 0))
 
@@ -49,55 +47,22 @@
 #define GLORT_CAM_STRIDE0   \
         (FM10000_GLORT_CAM(1) - FM10000_GLORT_CAM(0))
 
-#define CRM_INTERRUPT_MASK      ( (FM_LITERAL_U64(1) << 33) - 1 )
 
+#define FM10000_CRM_SM_HISTORY_SIZE      16
+#define FM10000_CRM_SM_RECORD_SIZE       sizeof(int)
 
 /**************************************************
  * CRM Command Codes.
  **************************************************/
-
 enum
 {
     /** Initialize a memory block. Interrupt is set upon completion of
      *  initialization. */
     CRM_CMD_SET = 0,
 
-    /** Copy a memory block from one location to another. Interrupt is set 
+    /** Copy a memory block from one location to another. Interrupt is set
      *  upon completion of copy. */
     CRM_CMD_COPY = 1,
-
-    /** Increment counter if a register changed by more than a certain
-     *  limit. If the register size is greater than 32 bits, then CRM reads
-     *  and uses only the least significant 32 bits for this operation.
-     *  Interrupt is set if at least one counter in the data set exceeded
-     *  the last value. */
-    CRM_CMD_COUNT_RATE_TOO_FAST = 2,
-
-    /** Check for change and save it. If the register size is greater than
-     *  32 bits, then CRM reads and uses only the least significant 32 bits
-     *  for this operation. Interrupt is set if at least one counter in
-     *  the data set changed. */
-    CRM_CMD_MONITOR_CHANGE = 3,
-
-    /** Compare value to last and save if max. If the register size is
-     *  greater than 32 bits, then CRM reads and uses only the least
-     *  significant 32 bits for this operation. Interrupt is set when a
-     *  new maximum has been found. */
-    CRM_CMD_SAVE_MAX = 4,
-
-    /** Monitor Rate Stagnant. Increment counter if register changes by
-     *  less than a certain limit. If the register size is greater than 32
-     *  bits, then CRM reads and uses only the least significant 32 bits for
-     *  this operation. Interrupt is set if at least one counter in the data
-     *  set isn't incrementing fast enough. */
-    CRM_CMD_COUNT_RATE_TOO_SLOW = 5,
-
-    /** Count if greater or equal. Increment counter if register is greater
-     *  than or equal to limit. If the register size is greater than 32
-     *  bits, then CRM reads and uses only the least significant 32 bits for
-     *  this operation. Interrupt is set if at least one counter in the data
-     *  set is increased. */
-    CRM_CMD_COUNT_GREATER_THAN = 6,
 
     /** Compute Checksum. Read table and compute a XOR over the entire
      *  table. If the register size is greater than 32 bits, then each
@@ -111,7 +76,6 @@ enum
 /**************************************************
  * CRM Entry Configuration.
  **************************************************/
-
 typedef struct
 {
     /* CRM_COMMAND */
@@ -134,7 +98,6 @@ typedef struct
 
 } fm_crmCfg;
 
-
 /*****************************************************************************
  * Global Variables
  *****************************************************************************/
@@ -143,6 +106,11 @@ typedef struct
 /*****************************************************************************
  * Local Variables
  *****************************************************************************/
+
+static fm_smHandle         crmSmHandles[FM10000_NUM_CRM_IDS];
+static fm10000_crmUserInfo crmUserInfo[FM10000_NUM_CRM_IDS];
+static fm_timerHandle      crmTimers[FM10000_NUM_CRM_IDS];
+static fm_uint64           logInfo[FM10000_NUM_CRM_IDS];
 
 
 /*****************************************************************************
@@ -158,97 +126,6 @@ static fm_status WriteCrmEntry(fm_int sw, fm_int crmId, fm_crmCfg * cfg);
  *****************************************************************************/
 
 
-#if defined(DUMP_CRM_CONFIG)
-
-/*****************************************************************************/
-/** CrmCmdToText
- * \ingroup intSwitch
- *
- * \desc            Returns a textual representation of a CRM command code.
- *
- * \param[in]       crmCmd is the CRM command code.
- *
- * \return          Pointer to a string representation of crmCmd.
- *
- *****************************************************************************/
-static const char * CrmCmdToText(fm_int crmCmd)
-{
-
-    switch (crmCmd)
-    {
-        case CRM_CMD_SET:
-            return "SET";
-
-        case CRM_CMD_COPY:
-            return "COPY";
-
-        case CRM_CMD_COUNT_RATE_TOO_FAST:
-            return "COUNT_RATE_TOO_FAST";
-
-        case CRM_CMD_MONITOR_CHANGE:
-            return "MONITOR_CHANGE";
-
-        case CRM_CMD_SAVE_MAX:
-            return "SAVE_MAX";
-
-        case CRM_CMD_COUNT_RATE_TOO_SLOW:
-            return "COUNT_RATE_TOO_SLOW";
-
-        case CRM_CMD_COUNT_GREATER_THAN:
-            return "COUNT_GREATER_THAN";
-
-        case CRM_CMD_CHECKSUM:
-            return "CHECKSUM";
-
-        default:
-            return "UNKNOWN";
-
-    }   /* end switch (crmCmd) */
-
-}   /* end CrmCmdToText */
-
-
-
-
-/*****************************************************************************/
-/** DumpCrmConfig
- * \ingroup intSwitch
- *
- * \desc            Dumps the CRM configuration structure.
- *
- * \param[in]       cfg points to the CRM configuration structure.
- *
- * \return          None.
- *
- *****************************************************************************/
-static void DumpCrmConfig(const fm_crmCfg * cfg)
-{
-    FM_LOG_PRINT("command       : %-2u (%s)\n",     cfg->command,
-                                                    CrmCmdToText(cfg->command));
-    FM_LOG_PRINT("regCount      : %u\n",            cfg->regCount);
-
-    FM_LOG_PRINT("baseAddr      : %08x\n",          cfg->baseAddr);
-    FM_LOG_PRINT("regSize       : %u\n",            cfg->regSize);
-    FM_LOG_PRINT("size1Shift    : %-2u (0x%04x)\n", cfg->size1Shift,
-                                                    1U << cfg->size1Shift);
-    FM_LOG_PRINT("stride1Shift  : %-2u (0x%04x)\n", cfg->stride1Shift,
-                                                    2U << cfg->stride1Shift);
-    FM_LOG_PRINT("size2Shift    : %-2u (0x%04x)\n", cfg->size2Shift,
-                                                    1U << cfg->size2Shift);
-    FM_LOG_PRINT("stride2Shift  : %-2u (0x%04x)\n", cfg->stride2Shift,
-                                                    2U << cfg->stride2Shift);
-
-    FM_LOG_PRINT("param         : %08x\n",          cfg->param);
-
-#if 0
-    FM_LOG_PRINT("entryCount    : %u\n",            cfg->entryCount);
-#endif
-
-}   /* end DumpCrmConfig */
-
-#endif  /* DUMP_CRM_CONFIG */
-
-
 
 
 /*****************************************************************************/
@@ -257,10 +134,12 @@ static void DumpCrmConfig(const fm_crmCfg * cfg)
  *
  * \desc            Computes the checksum for a CRM monitor.
  *
+ * \note            The caller has already taken the necessary locks.
+ *
  * \param[in]       sw is the switch on which to operate.
- * 
+ *
  * \param[in]       crmId is the CRM monitor to update.
- * 
+ *
  * \param[out]      checksum points to the location to receive the checksum.
  *
  * \return          FM_OK if successful.
@@ -340,10 +219,10 @@ static fm_uint32 GetShiftValue(fm_uint32 value)
  *
  * \desc            Initializes the CRM configuration for the specified
  *                  register set.
- * 
+ *
  * \param[out]      cfg points to the CRM configuration structure to be
  *                  initialized.
- * 
+ *
  * \param[in]       command is the CRM command to be performed.
  *
  * \param[in]       baseAddr is the start address. It cannot be NULL.
@@ -361,7 +240,7 @@ static fm_uint32 GetShiftValue(fm_uint32 value)
  * \param[in]       blockSize3 is the size of third dimension of the array. It
  *                  may be zero in the case of one- or two-dimensional
  *                  arrays.
- * 
+ *
  * \param[in]       blockStride0 is the stride in the first dimension of the
  *                  array. It cannot be zero.
  *
@@ -372,7 +251,7 @@ static fm_uint32 GetShiftValue(fm_uint32 value)
  * \param[in]       blockStride2 is the stride of third dimension of the
  *                  array. It may be zero in the case of one- or two-
  *                  dimensional arrays.
- * 
+ *
  * \return          FM_OK if successful.
  * \return          FM_ERR_INVALID_ARGUMENT on invalid arguments.
  *
@@ -380,7 +259,7 @@ static fm_uint32 GetShiftValue(fm_uint32 value)
 static fm_status InitConfig(fm_crmCfg * cfg,
                             fm_int      command,
                             fm_uint     baseAddr,
-                            fm_uint     wordCount, 
+                            fm_uint     wordCount,
                             fm_uint     blockSize1,
                             fm_uint     blockSize2,
                             fm_uint     blockSize3,
@@ -396,9 +275,14 @@ static fm_status InitConfig(fm_crmCfg * cfg,
                  "size1=%u size2=%u size3=%u "
                  "stride0=%u stride1=%u stride2=%u\n",
                  command,
-                 baseAddr, wordCount,
-                 blockSize1, blockSize2, blockSize3,
-                 blockStride0, blockStride1, blockStride2);
+                 baseAddr,
+                 wordCount,
+                 blockSize1,
+                 blockSize2,
+                 blockSize3,
+                 blockStride0,
+                 blockStride1,
+                 blockStride2);
 
     FM_CLEAR(*cfg);
     cfg->size1Shift = 0x0f;
@@ -411,7 +295,7 @@ static fm_status InitConfig(fm_crmCfg * cfg,
     }
 
     if (wordCount == 0 ||
-        blockSize1 == 0 || 
+        blockSize1 == 0 ||
         blockStride0 == 0 ||
         (blockSize2 == 0 && blockSize3 != 0) )
     {
@@ -423,7 +307,7 @@ static fm_status InitConfig(fm_crmCfg * cfg,
         /***************************************************
          * One-dimensional array.
          **************************************************/
-        
+
         if (wordCount == 3 && blockStride0 == 4)
         {
             /* Special case: if wordCount == 3 and blockStride0 == 4,
@@ -468,9 +352,9 @@ static fm_status InitConfig(fm_crmCfg * cfg,
         if (blockSize1 != (1U << cfg->size1Shift))
         {
             /* blockSize1 cannot be expressed as a power of 2.
-             * Check if it is safe to use a rounded up value for 
-             * cfg->size1Shift. In order to do so, verify that there are no 
-             * gaps using the rounded up shift value. Otherwise, another table 
+             * Check if it is safe to use a rounded up value for
+             * cfg->size1Shift. In order to do so, verify that there are no
+             * gaps using the rounded up shift value. Otherwise, another table
              * could be overwritten. */
             adjust = 1 << (cfg->size1Shift + 1);
 
@@ -505,8 +389,8 @@ static fm_status InitConfig(fm_crmCfg * cfg,
 
         /* Check if the shift value must be adjusted.
          * In the case of 3 dimensional tables, there
-         * are a few cases where the 1st dimension cannot 
-         * be expressed as a power of 2. It is safe to 
+         * are a few cases where the 1st dimension cannot
+         * be expressed as a power of 2. It is safe to
          * round up the exponent for these cases.
          * There are no problems with the 2nd and 3rd dimensions. */
         if (blockSize1 != (1U << cfg->size1Shift))
@@ -546,11 +430,11 @@ static fm_status InitConfig(fm_crmCfg * cfg,
  * \ingroup intCrm
  *
  * \desc            Initializes the CRM monitors.
- * 
- * \note            The caller has already taken the requisite locks.
+ *
+ * \note            The caller has already taken the necessary locks.
  *
  * \param[in]       sw is the switch on which to operate.
- * 
+ *
  * \param[in]       setChk is TRUE if the TCAM checksum should be computed,
  *                  or FALSE if it should be zeroed.
  *
@@ -559,14 +443,21 @@ static fm_status InitConfig(fm_crmCfg * cfg,
  *****************************************************************************/
 static fm_status InitMonitors(fm_int sw, fm_bool setChk)
 {
-    fm_crmCfg   cfg;
-    fm_int      crmId;
-    fm_status   err;
+    fm10000_crmInfo *crmInfo;
+    fm_crmCfg        cfg;
+    fm_int           crmId;
+    fm_status        err;
+    fm_bool          isValid;
+    fm_char          crmTimerName[16];
 
     FM_LOG_ENTRY(FM_LOG_CAT_CRM,
                  "sw=%d setChk=%s\n",
                  sw,
                  FM_BOOLSTRING(setChk));
+
+    crmInfo = GET_CRM_INFO(sw);
+
+    FM_CLEAR(*crmInfo);
 
     for (crmId = 0 ; crmId < FM10000_CRM_COMMAND_ENTRIES ; crmId++)
     {
@@ -596,6 +487,29 @@ static fm_status InitMonitors(fm_int sw, fm_bool setChk)
                 err = ComputeChecksum(sw, crmId, &cfg.param);
                 FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_CRM, err);
             }
+
+            isValid = TRUE;
+
+            err = fmCreateStateMachine( crmId,
+                                        FM10000_CRM_SM_HISTORY_SIZE,
+                                        FM10000_CRM_SM_RECORD_SIZE,
+                                        &crmSmHandles[crmId] );
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_CRM, err);
+
+            FM_SPRINTF_S( crmTimerName,
+                          sizeof(crmTimerName),
+                          "crm%02dTimer",
+                          crmId );
+            err = fmCreateTimer( crmTimerName,
+                                 fmApiTimerTask,
+                                 &crmTimers[crmId] );
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_CRM, err);
+
+            err = fmStartStateMachine(crmSmHandles[crmId],
+                                      FM10000_BASIC_CRM_STATE_MACHINE,
+                                      FM10000_CRM_STATE_ACTIVE);
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_CRM, err);
+
         }
         else if (crmId == FM10000_GLORT_CAM_CRM_ID)
         {
@@ -622,6 +536,28 @@ static fm_status InitMonitors(fm_int sw, fm_bool setChk)
                 err = ComputeChecksum(sw, crmId, &cfg.param);
                 FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_CRM, err);
             }
+
+            isValid = TRUE;
+
+            err = fmCreateStateMachine( crmId,
+                                        FM10000_CRM_SM_HISTORY_SIZE,
+                                        FM10000_CRM_SM_RECORD_SIZE,
+                                        &crmSmHandles[crmId] );
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_CRM, err);
+
+            FM_SPRINTF_S( crmTimerName,
+                          sizeof(crmTimerName),
+                          "crm%02dTimer",
+                          crmId );
+            err = fmCreateTimer( crmTimerName,
+                                 fmApiTimerTask,
+                                 &crmTimers[crmId] );
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_CRM, err);
+
+            err = fmStartStateMachine(crmSmHandles[crmId],
+                                      FM10000_BASIC_CRM_STATE_MACHINE,
+                                      FM10000_CRM_STATE_ACTIVE);
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_CRM, err);
         }
         else
         {
@@ -630,18 +566,119 @@ static fm_status InitMonitors(fm_int sw, fm_bool setChk)
              **************************************************/
 
             FM_CLEAR(cfg);
+
+            isValid = FALSE;
         }
 
         err = WriteCrmEntry(sw, crmId, &cfg);
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_CRM, err);
 
+        if (isValid)
+        {
+            crmInfo->validMask |= FM_LITERAL_U64(1) << crmId;
+        }
+
     }   /* end for (crmId = 0 ; crmId < FM10000_CRM_COMMAND_ENTRIES ; ...) */
 
+    crmInfo->firstIdx = FM10000_FFU_SLICE_CRM_ID(0);
+    crmInfo->lastIdx  = FM10000_GLORT_CAM_CRM_ID;
+
 ABORT:
-    
+
     FM_LOG_EXIT(FM_LOG_CAT_CRM, err);
 
 }   /* end InitMonitors */
+
+
+
+
+/*****************************************************************************/
+/** MaskInterrupts
+ * \ingroup intCrm
+ *
+ * \desc            Masks or unmasks interrupts for one or more CRM monitors.
+ *
+ * \note            The caller has already taken the necessary locks.
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \param[in]       crmMask is a bit mask specifying the CRM monitors
+ *                  to be enabled or disabled.
+ *
+ * \param[in]       on should be set to TRUE to turn bits on in the mask
+ *                  (disable interrupts) or FALSE to turn bits off in the
+ *                  mask (enable interrupts).
+ *
+ * \return          FM_OK if successful.
+ * \return          FM_ERR_INVALID_CRM if the CRM identifier is invalid.
+ *
+ *****************************************************************************/
+static fm_status MaskInterrupts(fm_int sw, fm_uint64 crmMask, fm_bool on)
+{
+    fm_switch * switchPtr;
+    fm_uint32   crmVal[FM10000_CRM_IP_WIDTH];
+    fm_uint64   intMask;
+    fm_status   err;
+
+    FM_LOG_ENTRY(FM_LOG_CAT_CRM,
+                 "sw=%d crmMask=0x%08llx on=%s\n",
+                 sw,
+                 crmMask,
+                 FM_BOOLSTRING(on));
+
+    switchPtr = GET_SWITCH_PTR(sw);
+    TAKE_REG_LOCK(sw);
+    /***************************************************
+     * Clear pending interrupts before unmasking them.
+     **************************************************/
+
+    if (!on)
+    {
+        FM_CLEAR(crmVal);
+
+        FM_ARRAY_SET_FIELD64(crmVal, FM10000_CRM_IP, InterruptPending, crmMask);
+
+        err = switchPtr->WriteUINT32Mult(sw,
+                                         FM10000_CRM_IP(0),
+                                         FM10000_CRM_IP_WIDTH,
+                                         crmVal);
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_CRM, err);
+    }
+
+    /***************************************************
+     * Update interrupt mask.
+     **************************************************/
+
+    err = switchPtr->ReadUINT32Mult(sw,
+                                    FM10000_CRM_IM(0),
+                                    FM10000_CRM_IM_WIDTH,
+                                    crmVal);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_CRM, err);
+
+    intMask = FM_ARRAY_GET_FIELD64(crmVal, FM10000_CRM_IM, InterruptMask);
+
+    if (on)
+    {
+        intMask |= crmMask;
+    }
+    else
+    {
+        intMask &= ~crmMask;
+    }
+
+    FM_ARRAY_SET_FIELD64(crmVal, FM10000_CRM_IM, InterruptMask, intMask);
+
+    err = switchPtr->WriteUINT32Mult(sw,
+                                     FM10000_CRM_IM(0),
+                                     FM10000_CRM_IM_WIDTH,
+                                     crmVal);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_CRM, err);
+
+ABORT:
+    DROP_REG_LOCK(sw);
+    FM_LOG_EXIT(FM_LOG_CAT_CRM, err);
+
+}   /* end MaskInterrupts */
 
 
 
@@ -651,8 +688,8 @@ ABORT:
  * \ingroup intCrm
  *
  * \desc            Resets the CRM hardware.
- * 
- * \note            The caller has already taken the requisite locks.
+ *
+ * \note            The caller has already taken the necessary locks.
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -727,15 +764,15 @@ ABORT:
  * \ingroup intCrm
  *
  * \desc            Starts the Counter Rate Monitor.
- * 
- * \note            The caller has already taken the requisite locks.
+ *
+ * \note            The caller has already taken the necessary locks.
  *
  * \param[in]       sw is the switch on which to operate.
- * 
+ *
  * \param[in]       firstIdx is the first monitor index.
- * 
+ *
  * \param[in]       lastIdx is the last monitor index.
- * 
+ *
  * \param[in]       continuous is FALSE for single-step operation,
  *                  TRUE for continuous execution.
  *
@@ -751,6 +788,7 @@ static fm_status StartCrm(fm_int  sw,
     fm_status   err;
     fm_uint32   rv;
     fm_int      i;
+    fm_bool     regLockTaken;
 
     FM_LOG_ENTRY(FM_LOG_CAT_CRM,
                  "sw=%d firstIdx=%d lastIdx=%d continuous=%d\n",
@@ -760,6 +798,8 @@ static fm_status StartCrm(fm_int  sw,
                  continuous);
 
     switchPtr = GET_SWITCH_PTR(sw);
+    TAKE_REG_LOCK(sw);
+    regLockTaken = TRUE;
 
     /**************************************************
      * Verify that CRM is stopped.
@@ -826,8 +866,20 @@ static fm_status StartCrm(fm_int  sw,
     FM_LOG_ERROR(FM_LOG_CAT_CRM, "Timeout waiting for CRM to start!\n");
     err = FM_FAIL;
 
+    DROP_REG_LOCK(sw);
+    regLockTaken = FALSE;
+
+    for (i = firstIdx ; i <= lastIdx ; i++)
+    {
+        err = NotifyCRMEvent(sw, i, FM10000_CRM_EVENT_RESUME_REQ);
+    }
+
 ABORT:
-    
+
+    if (regLockTaken)
+    {
+        DROP_REG_LOCK(sw);
+    }
     FM_LOG_EXIT(FM_LOG_CAT_CRM, err);
 
 }   /* end StartCrm */
@@ -840,8 +892,8 @@ ABORT:
  * \ingroup intCrm
  *
  * \desc            Stops the Counter Rate Monitor.
- * 
- * \note            The caller has already taken the requisite locks.
+ *
+ * \note            The caller has already taken the necessary locks.
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -884,6 +936,14 @@ static fm_status StopCrm(fm_int sw)
     err = switchPtr->WriteUINT32(sw, FM10000_CRM_CTRL(), rv);
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_CRM, err);
 
+
+    DROP_REG_LOCK(sw);
+    for (i = 0 ; i < FM10000_NUM_CRM_IDS ; i++)
+    {
+        err = NotifyCRMEvent(sw, i, FM10000_CRM_EVENT_SUSPEND_REQ);
+    }
+    TAKE_REG_LOCK(sw);
+
     /**************************************************
      * Wait for CRM to report that it is stopped.
      **************************************************/
@@ -912,10 +972,51 @@ static fm_status StopCrm(fm_int sw)
     err = FM_FAIL;
 
 ABORT:
-    
+
     FM_LOG_EXIT(FM_LOG_CAT_CRM, err);
 
 }   /* end StopCrm */
+
+
+
+
+/*****************************************************************************/
+/** UpdateChecksum
+ * \ingroup intCrm
+ *
+ * \desc            Updates the checksum for a CRM monitor.
+ *
+ * \note            The caller has already taken the necessary locks.
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \param[in]       crmId is the CRM monitor to update.
+ *
+ * \return          FM_OK if successful.
+ *
+ *****************************************************************************/
+static fm_status UpdateChecksum(fm_int sw, fm_int crmId)
+{
+    fm_switch * switchPtr;
+    fm_uint32   checksum;
+    fm_status   err;
+
+    FM_LOG_ENTRY(FM_LOG_CAT_CRM, "sw=%d crmId=%d\n", sw, crmId);
+
+    switchPtr = GET_SWITCH_PTR(sw);
+
+    err = ComputeChecksum(sw, crmId, &checksum);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_CRM, err);
+
+    FM_LOG_DEBUG(FM_LOG_CAT_CRM, "checksum=0x%08x\n", checksum);
+
+    err = switchPtr->WriteUINT32(sw, FM10000_CRM_PARAM(crmId), checksum);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_CRM, err);
+
+ABORT:
+    FM_LOG_EXIT(FM_LOG_CAT_CRM, err);
+
+}   /* end UpdateChecksum */
 
 
 
@@ -927,9 +1028,9 @@ ABORT:
  * \desc            Writes a CRM monitor configuration to the hardware.
  *
  * \param[in]       sw is the switch on which to operate.
- * 
+ *
  * \param[in]       crmId is the CRM monitor to configure.
- * 
+ *
  * \param[in]       cfg points to a structure containing the configuration
  *                  of the CRM entry.
  *
@@ -1045,12 +1146,12 @@ ABORT:
  * \ingroup intCrm
  *
  * \desc            Disables a CRM monitor.
- * 
+ *
  * \note            The caller is responsible for validating the switch
  *                  and taking the switch lock.
  *
  * \param[in]       sw is the switch on which to operate.
- * 
+ *
  * \param[in]       crmId is the CRM monitor to disable.
  *
  * \return          FM_OK if successful.
@@ -1063,12 +1164,14 @@ fm_status fm10000DisableCrmMonitor(fm_int sw, fm_int crmId)
     fm_uint32   crmVal[FM10000_CRM_IP_WIDTH];
     fm_uint64   intMask;
     fm_status   err;
+    fm_bool     regLockTaken;
 
     FM_LOG_ENTRY(FM_LOG_CAT_CRM, "sw=%d crmId=%d\n", sw, crmId);
 
     switchPtr = GET_SWITCH_PTR(sw);
 
     TAKE_REG_LOCK(sw);
+    regLockTaken = TRUE;
 
     if (crmId < 0 || crmId > FM10000_GLORT_CAM_CRM_ID)
     {
@@ -1094,8 +1197,17 @@ fm_status fm10000DisableCrmMonitor(fm_int sw, fm_int crmId)
                                      crmVal);
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_CRM, err);
 
-ABORT:
     DROP_REG_LOCK(sw);
+    regLockTaken = FALSE;
+
+    err = NotifyCRMEvent(sw, crmId, FM10000_CRM_EVENT_SUSPEND_REQ);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_CRM, err);
+
+ABORT:
+    if (regLockTaken)
+    {
+        DROP_REG_LOCK(sw);
+    }
 
     FM_LOG_EXIT(FM_LOG_CAT_CRM, err);
 
@@ -1109,12 +1221,12 @@ ABORT:
  * \ingroup intCrm
  *
  * \desc            Enables a CRM monitor.
- * 
+ *
  * \note            The caller is responsible for validating the switch
  *                  and taking the switch lock.
  *
  * \param[in]       sw is the switch on which to operate.
- * 
+ *
  * \param[in]       crmId is the CRM monitor to enable.
  *
  * \return          FM_OK if successful.
@@ -1128,12 +1240,14 @@ fm_status fm10000EnableCrmMonitor(fm_int sw, fm_int crmId)
     fm_uint64   intMask;
     fm_uint64   crmMask;
     fm_status   err;
+    fm_bool     regLockTaken;
 
     FM_LOG_ENTRY(FM_LOG_CAT_CRM, "sw=%d crmId=%d\n", sw, crmId);
 
     switchPtr = GET_SWITCH_PTR(sw);
 
     TAKE_REG_LOCK(sw);
+    regLockTaken = TRUE;
 
     if (crmId < 0 || crmId > FM10000_GLORT_CAM_CRM_ID)
     {
@@ -1179,8 +1293,17 @@ fm_status fm10000EnableCrmMonitor(fm_int sw, fm_int crmId)
                                      crmVal);
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_CRM, err);
 
-ABORT:
     DROP_REG_LOCK(sw);
+    regLockTaken = FALSE;
+
+    err = NotifyCRMEvent(sw, crmId, FM10000_CRM_EVENT_RESUME_REQ);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_CRM, err);
+
+ABORT:
+    if (regLockTaken)
+    {
+        DROP_REG_LOCK(sw);
+    }
 
     FM_LOG_EXIT(FM_LOG_CAT_CRM, err);
 
@@ -1194,7 +1317,7 @@ ABORT:
  * \ingroup intCrm
  *
  * \desc            Initializes the Counter Rate Monitor subsystem.
- * 
+ *
  * \note            The caller is responsible for validating the switch
  *                  and taking the switch lock.
  *
@@ -1227,7 +1350,7 @@ fm_status fm10000InitCrm(fm_int sw)
 
 ABORT:
     DROP_REG_LOCK(sw);
-    
+
     FM_LOG_EXIT(FM_LOG_CAT_CRM, err);
 
 }   /* end fm10000InitCrm */
@@ -1236,142 +1359,47 @@ ABORT:
 
 
 /*****************************************************************************/
-/** fm10000MaskCrmInterrupts
+/** fm10000StartCrmMonitors
  * \ingroup intCrm
  *
- * \desc            Masks or unmasks interrupts for one or more CRM monitors.
- * 
+ * \desc            Starts the Counter Rate Monitor subsystem.
+ *
  * \note            The caller is responsible for validating the switch
  *                  and taking the switch lock.
  *
  * \param[in]       sw is the switch on which to operate.
- * 
- * \param[in]       crmMask is a bit mask specifying the CRM monitors
- *                  to be enabled or disabled.
- * 
- * \param[in]       on should be set to TRUE to turn bits on in the mask
- *                  (disable interrupts) or FALSE to turn bits off in the
- *                  mask (enable interrupts).
- *
- * \return          FM_OK if successful.
- * \return          FM_ERR_INVALID_CRM if the CRM identifier is invalid.
- *
- *****************************************************************************/
-fm_status fm10000MaskCrmInterrupts(fm_int sw, fm_uint64 crmMask, fm_bool on)
-{
-    fm_switch * switchPtr;
-    fm_uint32   crmVal[FM10000_CRM_IP_WIDTH];
-    fm_uint64   intMask;
-    fm_status   err;
-
-    FM_LOG_ENTRY(FM_LOG_CAT_CRM,
-                 "sw=%d crmMask=0x%08llx on=%s\n",
-                 sw,
-                 crmMask,
-                 FM_BOOLSTRING(on));
-
-    switchPtr = GET_SWITCH_PTR(sw);
-
-    TAKE_REG_LOCK(sw);
-
-    /***************************************************
-     * Clear pending interrupts before unmasking them. 
-     **************************************************/
-
-    if (!on)
-    {
-        FM_CLEAR(crmVal);
-
-        FM_ARRAY_SET_FIELD64(crmVal, FM10000_CRM_IP, InterruptPending, crmMask);
-
-        err = switchPtr->WriteUINT32Mult(sw,
-                                         FM10000_CRM_IP(0),
-                                         FM10000_CRM_IP_WIDTH,
-                                         crmVal);
-        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_CRM, err);
-    }
-
-    /***************************************************
-     * Update interrupt mask.
-     **************************************************/
-
-    err = switchPtr->ReadUINT32Mult(sw,
-                                    FM10000_CRM_IM(0),
-                                    FM10000_CRM_IM_WIDTH,
-                                    crmVal);
-    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_CRM, err);
-
-    intMask = FM_ARRAY_GET_FIELD64(crmVal, FM10000_CRM_IM, InterruptMask);
-
-    if (on)
-    {
-        intMask |= crmMask;
-    }
-    else
-    {
-        intMask &= ~crmMask;
-    }
-
-    FM_ARRAY_SET_FIELD64(crmVal, FM10000_CRM_IM, InterruptMask, intMask);
-
-    err = switchPtr->WriteUINT32Mult(sw,
-                                     FM10000_CRM_IM(0),
-                                     FM10000_CRM_IM_WIDTH,
-                                     crmVal);
-    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_CRM, err);
-
-ABORT:
-    DROP_REG_LOCK(sw);
-
-    FM_LOG_EXIT(FM_LOG_CAT_CRM, err);
-
-}   /* end fm10000MaskCrmInterrupts */
-
-
-
-
-/*****************************************************************************/
-/** fm10000UpdateCrmChecksum
- * \ingroup intCrm
- *
- * \desc            Updates the checksum for a CRM monitor.
- * 
- * \note            The caller is responsible for validating the switch
- *                  and taking the switch lock.
- *
- * \param[in]       sw is the switch on which to operate.
- * 
- * \param[in]       crmId is the CRM monitor to update.
  *
  * \return          FM_OK if successful.
  *
  *****************************************************************************/
-fm_status fm10000UpdateCrmChecksum(fm_int sw, fm_int crmId)
+fm_status fm10000StartCrmMonitors(fm_int sw)
 {
-    fm_switch * switchPtr;
-    fm_uint32   checksum;
-    fm_status   err;
+    fm10000_crmInfo *crmInfo;
+    fm_status        err;
 
-    FM_LOG_ENTRY(FM_LOG_CAT_CRM, "sw=%d crmId=%d\n", sw, crmId);
+    FM_LOG_ENTRY(FM_LOG_CAT_CRM, "sw=%d\n", sw);
 
-    switchPtr = GET_SWITCH_PTR(sw);
+    crmInfo = GET_CRM_INFO(sw);
 
-    TAKE_REG_LOCK(sw);
+    /***************************************************
+     * Start the CRM.
+     **************************************************/
 
-    err = ComputeChecksum(sw, crmId, &checksum);
+    err = StartCrm(sw, crmInfo->firstIdx, crmInfo->lastIdx, TRUE);
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_CRM, err);
 
-    FM_LOG_DEBUG(FM_LOG_CAT_CRM, "checksum=0x%08x\n", checksum);
+    /***************************************************
+     * Unmask monitor interrupts.
+     **************************************************/
 
-    err = switchPtr->WriteUINT32(sw, FM10000_CRM_PARAM(crmId), checksum);
+    err = MaskInterrupts(sw, crmInfo->validMask, FALSE);
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_CRM, err);
 
 ABORT:
-    DROP_REG_LOCK(sw);
-    
+
     FM_LOG_EXIT(FM_LOG_CAT_CRM, err);
 
-}   /* end fm10000UpdateCrmChecksum */
+}   /* end fm10000StartCrmMonitors */
 
 
 
@@ -1389,16 +1417,18 @@ ABORT:
  *****************************************************************************/
 fm_status fmDbgDisableCrmInterrupts(fm_int sw)
 {
-    fm_switch * switchPtr;
-    fm_uint32   crmVal[FM10000_CRM_IP_WIDTH];
-    fm_uint64   intMask;
-    fm_status   err;
+    fm10000_crmInfo *crmInfo;
+    fm_switch       *switchPtr;
+    fm_uint32        crmVal[FM10000_CRM_IP_WIDTH];
+    fm_uint64        intMask;
+    fm_status        err;
 
     VALIDATE_AND_PROTECT_SWITCH(sw);
 
     FM_LOG_ENTRY(FM_LOG_CAT_CRM, "sw=%d\n", sw);
 
     switchPtr = GET_SWITCH_PTR(sw);
+    crmInfo   = GET_CRM_INFO(sw);
 
     TAKE_REG_LOCK(sw);
 
@@ -1410,7 +1440,7 @@ fm_status fmDbgDisableCrmInterrupts(fm_int sw)
 
     intMask  = FM_ARRAY_GET_FIELD64(crmVal, FM10000_CRM_IM, InterruptMask);
 
-    intMask |= CRM_INTERRUPT_MASK;
+    intMask |= crmInfo->validMask;
 
     FM_ARRAY_SET_FIELD64(crmVal, FM10000_CRM_IM, InterruptMask, intMask);
 
@@ -1445,16 +1475,18 @@ ABORT:
  *****************************************************************************/
 fm_status fmDbgEnableCrmInterrupts(fm_int sw)
 {
-    fm_switch * switchPtr;
-    fm_uint32   crmVal[FM10000_CRM_IP_WIDTH];
-    fm_uint64   intMask;
-    fm_status   err;
+    fm10000_crmInfo *crmInfo;
+    fm_switch       *switchPtr;
+    fm_uint32        crmVal[FM10000_CRM_IP_WIDTH];
+    fm_uint64        intMask;
+    fm_status        err;
 
     VALIDATE_AND_PROTECT_SWITCH(sw);
 
     FM_LOG_ENTRY(FM_LOG_CAT_CRM, "sw=%d\n", sw);
 
     switchPtr = GET_SWITCH_PTR(sw);
+    crmInfo   = GET_CRM_INFO(sw);
 
     TAKE_REG_LOCK(sw);
 
@@ -1466,7 +1498,7 @@ fm_status fmDbgEnableCrmInterrupts(fm_int sw)
 
     intMask = FM_ARRAY_GET_FIELD64(crmVal, FM10000_CRM_IM, InterruptMask);
 
-    intMask &= ~CRM_INTERRUPT_MASK;
+    intMask &= ~crmInfo->validMask;
 
     FM_ARRAY_SET_FIELD64(crmVal, FM10000_CRM_IM, InterruptMask, intMask);
 
@@ -1510,7 +1542,7 @@ fm_status fmDbgInitCrm(fm_int sw)
     err = fm10000InitCrm(sw);
 
     UNPROTECT_SWITCH(sw);
-    
+
     FM_LOG_EXIT(FM_LOG_CAT_CRM, err);
 
 }   /* end fmDbgInitCrm */
@@ -1531,18 +1563,21 @@ fm_status fmDbgInitCrm(fm_int sw)
  *****************************************************************************/
 fm_status fmDbgStartCrm(fm_int sw)
 {
-    fm_status   err;
+    fm10000_crmInfo *crmInfo;
+    fm_status        err;
 
     FM_LOG_ENTRY(FM_LOG_CAT_CRM, "sw=%d\n", sw);
 
     VALIDATE_AND_PROTECT_SWITCH(sw);
     TAKE_REG_LOCK(sw);
 
-    err = StartCrm(sw, 0, 32, TRUE);
+    crmInfo = GET_CRM_INFO(sw);
+
+    err = StartCrm(sw, crmInfo->firstIdx, crmInfo->lastIdx, TRUE);
 
     DROP_REG_LOCK(sw);
     UNPROTECT_SWITCH(sw);
-    
+
     FM_LOG_EXIT(FM_LOG_CAT_CRM, err);
 
 }   /* end fmDbgStartCrm */
@@ -1574,7 +1609,7 @@ fm_status fmDbgStopCrm(fm_int sw)
 
     DROP_REG_LOCK(sw);
     UNPROTECT_SWITCH(sw);
-    
+
     FM_LOG_EXIT(FM_LOG_CAT_CRM, err);
 
 }   /* end fmDbgStopCrm */
@@ -1589,7 +1624,7 @@ fm_status fmDbgStopCrm(fm_int sw)
  * \desc            Updates the checksum for a CRM monitor.
  *
  * \param[in]       sw is the switch on which to operate.
- * 
+ *
  * \param[in]       crmId is the CRM monitor to update.
  *
  * \return          FM_OK if successful.
@@ -1599,14 +1634,16 @@ fm_status fmDbgUpdateCrmChecksum(fm_int sw, fm_int crmId)
 {
     fm_status   err;
 
-    FM_LOG_ENTRY(FM_LOG_CAT_CRM, "sw=%d\n", sw);
+    FM_LOG_ENTRY(FM_LOG_CAT_CRM, "sw=%d crmId=%d\n", sw, crmId);
 
     VALIDATE_AND_PROTECT_SWITCH(sw);
+    TAKE_REG_LOCK(sw);
 
-    err = fm10000UpdateCrmChecksum(sw, crmId);
+    err = UpdateChecksum(sw, crmId);
 
+    DROP_REG_LOCK(sw);
     UNPROTECT_SWITCH(sw);
-    
+
     FM_LOG_EXIT(FM_LOG_CAT_CRM, err);
 
 }   /* end fmDbgUpdateCrmChecksum */
@@ -1627,8 +1664,6 @@ fm_status fmDbgUpdateCrmChecksum(fm_int sw, fm_int crmId)
  *****************************************************************************/
 fm_status fmDbgUpdateCrmMonitors(fm_int sw)
 {
-    fm_switch * switchPtr;
-    fm_uint32   checksum;
     fm_int      crmId;
     fm_status   err;
 
@@ -1637,20 +1672,13 @@ fm_status fmDbgUpdateCrmMonitors(fm_int sw)
     VALIDATE_AND_PROTECT_SWITCH(sw);
     TAKE_REG_LOCK(sw);
 
-    switchPtr = GET_SWITCH_PTR(sw);
-
     /**************************************************
      * Initialize FFU_SLICE_TCAM checksums.
      **************************************************/
 
     for (crmId = 0 ; crmId < FM10000_GLORT_CAM_CRM_ID ; crmId++)
     {
-        err = ComputeChecksum(sw, crmId, &checksum);
-        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_CRM, err);
-
-        FM_LOG_DEBUG(FM_LOG_CAT_CRM, "crmId=%d param=0x%08x\n", crmId, checksum);
-
-        err = switchPtr->WriteUINT32(sw, FM10000_CRM_PARAM(crmId), checksum);
+        err = UpdateChecksum(sw, crmId);
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_CRM, err);
     }
 
@@ -1658,19 +1686,469 @@ fm_status fmDbgUpdateCrmMonitors(fm_int sw)
      * Initialize GLORT_CAM checksum.
      **************************************************/
 
-    err = ComputeChecksum(sw, crmId, &checksum);
-    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_CRM, err);
-
-    FM_LOG_DEBUG(FM_LOG_CAT_CRM, "crmId=%d param=0x%08x\n", crmId, checksum);
-
-    err = switchPtr->WriteUINT32(sw, FM10000_CRM_PARAM(crmId), checksum);
+    err = UpdateChecksum(sw, crmId);
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_CRM, err);
 
 ABORT:
     DROP_REG_LOCK(sw);
     UNPROTECT_SWITCH(sw);
-    
+
     FM_LOG_EXIT(FM_LOG_CAT_CRM, err);
 
 }   /* end fmDbgUpdateCrmMonitors */
 
+
+
+
+/*****************************************************************************/
+/** fm10000CrmMaskInterrupts
+ * \ingroup intSwitch
+ *
+ * \desc            Masks interrupts for a CRM monitor.
+ *
+ * \param[in]       eventInfo is a pointer to a caller-allocated area
+ *                  containing the generic event descriptor.
+ *
+ * \param[in]       userInfo is a pointer to a caller-allocated area containing
+ *                  purpose-specific event info.
+ *
+ * \return          FM_OK if successful.
+ *
+ * \return          FM_ERR_INVALID_CRM if the CRM identifier is invalid.
+ *
+ * \return          Other ''Status Codes'' as appropriate in case of
+ *                  failure.
+ *
+ *****************************************************************************/
+fm_status fm10000CrmMaskInterrupts( fm_smEventInfo *eventInfo, void *userInfo )
+{
+    fm_status        err;
+    fm_uint64        crmMask;
+    fm_int           crmId;
+    fm_int           sw;
+    fm10000_crmInfo *crmInfo;
+
+    err = FM_OK;
+    crmId = ((fm10000_crmUserInfo *)userInfo)->crmId;
+    sw = ((fm10000_crmUserInfo *)userInfo)->sw;
+
+    TAKE_REG_LOCK(sw);
+
+    if (crmId < 0 || crmId >= FM10000_CRM_COMMAND_ENTRIES)
+    {
+        err = FM_ERR_INVALID_CRM;
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_CRM, err);
+    }
+
+    crmInfo = GET_CRM_INFO(sw);
+
+    crmMask = FM_LITERAL_U64(1) << crmId;
+    crmMask &= crmInfo->validMask;
+
+    if (crmMask == 0)
+    {
+        err = FM_ERR_INVALID_CRM;
+        goto ABORT;
+    }
+
+    if ((crmInfo->errorMask & crmMask) == 0)
+    {
+        err = MaskInterrupts(sw, crmMask, TRUE);
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_CRM, err);
+    }
+
+ABORT:
+
+    DROP_REG_LOCK(sw);
+    FM_LOG_EXIT(FM_LOG_CAT_CRM, err);
+
+}   /* end fm10000CrmMaskInterrupts */
+
+
+
+
+/*****************************************************************************/
+/** fm10000CrmUnmaskInterrupts
+ * \ingroup intSwitch
+ *
+ * \desc            Unmasks interrupts for a CRM monitor.
+ *
+ * \param[in]       eventInfo is a pointer to a caller-allocated area
+ *                  containing the generic event descriptor.
+ *
+ * \param[in]       userInfo is a pointer to a caller-allocated area containing
+ *                  purpose-specific event info.
+ *
+ * \return          FM_OK if successful.
+ *
+ * \return          FM_ERR_INVALID_CRM if the CRM identifier is invalid.
+ *
+ * \return          Other ''Status Codes'' as appropriate in case of
+ *                  failure.
+ *
+ *****************************************************************************/
+fm_status fm10000CrmUnmaskInterrupts( fm_smEventInfo *eventInfo, void *userInfo )
+{
+    fm_status        err;
+    fm_uint64        crmMask;
+    fm_int           crmId;
+    fm_int           sw;
+    fm10000_crmInfo *crmInfo;
+
+    crmId = ((fm10000_crmUserInfo *)userInfo)->crmId;
+    sw = ((fm10000_crmUserInfo *)userInfo)->sw;
+
+    err = FM_OK;
+    TAKE_REG_LOCK(sw);
+
+    if (crmId < 0 || crmId >= FM10000_CRM_COMMAND_ENTRIES)
+    {
+        err = FM_ERR_INVALID_CRM;
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_CRM, err);
+    }
+
+    crmInfo = GET_CRM_INFO(sw);
+
+    crmMask = FM_LITERAL_U64(1) << crmId;
+    crmMask &= crmInfo->validMask;
+
+    if (crmMask == 0)
+    {
+        err = FM_ERR_INVALID_CRM;
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_CRM, err);
+    }
+
+
+    if ((crmInfo->errorMask & crmMask) == 0)
+    {
+        err = MaskInterrupts(sw, crmMask, FALSE);
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_CRM, err);
+    }
+
+ABORT:
+    DROP_REG_LOCK(sw);
+    FM_LOG_EXIT(FM_LOG_CAT_CRM, err);
+
+}   /* end fm10000CrmUnmaskInterrupts */
+
+
+
+
+/*****************************************************************************/
+/** fm10000CrmUpdateChecksum
+ * \ingroup intSwitch
+ *
+ * \desc            Updates the checksum for a CRM monitor.
+ *
+ * \param[in]       eventInfo is a pointer to a caller-allocated area
+ *                  containing the generic event descriptor.
+ *
+ * \param[in]       userInfo is a pointer to a caller-allocated area containing
+ *                  purpose-specific event info.
+ *
+ * \return          FM_OK if successful.
+ *
+ * \return          FM_ERR_INVALID_CRM if the CRM identifier is invalid.
+ *
+ * \return          Other ''Status Codes'' as appropriate in case of
+ *                  failure.
+ *
+ *****************************************************************************/
+fm_status fm10000CrmUpdateChecksum( fm_smEventInfo *eventInfo, void *userInfo )
+{
+    fm_status err;
+    fm_int    crmId;
+    fm_int    sw;
+
+    crmId = ((fm10000_crmUserInfo *)userInfo)->crmId;
+    sw = ((fm10000_crmUserInfo *)userInfo)->sw;
+
+    FM_LOG_ENTRY(FM_LOG_CAT_CRM, "sw=%d crmId=%d\n", sw, crmId);
+
+    TAKE_REG_LOCK(sw);
+
+    err = UpdateChecksum(sw, crmId);
+
+    DROP_REG_LOCK(sw);
+
+    FM_LOG_EXIT(FM_LOG_CAT_CRM, err);
+
+}   /* end fm10000CrmUpdateChecksum */
+
+
+
+
+/*****************************************************************************/
+/** HandleCrmTimeout
+ * \ingroup intSwitch
+ *
+ * \desc            Handles a timeout simulating the time needed for the switch
+ *                  to update checksums properly.
+ *
+ * \param[in]       arg is the pointer to the argument passed when the timer
+ *                  was started, in this case the pointer to the crm user info
+ *                  structure (type ''fm10000_crmUserInfo'')
+ *
+ * \return          None
+ *
+ *****************************************************************************/
+static void HandleCrmTimeout( void *arg )
+{
+    fm_smEventInfo       eventInfo;
+    fm10000_crmUserInfo *userInfo;
+    fm_int               sw;
+    fm_int               crmId;
+    fm_bool              notifyTimeout;
+
+    userInfo          = arg;
+    sw                = userInfo->sw;
+    crmId             = userInfo->crmId;
+    notifyTimeout     = userInfo->notifyTimeout;
+
+    if (notifyTimeout)
+    {
+        FM_LOG_DEBUG_V2( FM_LOG_CAT_CRM,
+                         crmId,
+                         "Notifying timeout on crmId %d\n",
+                         crmId );
+
+        PROTECT_SWITCH( sw );
+
+        eventInfo.smType = FM10000_BASIC_CRM_STATE_MACHINE;
+        eventInfo.dontSaveRecord = FALSE;
+        eventInfo.lock   = FM_GET_STATE_LOCK( sw );
+        eventInfo.eventId = FM10000_CRM_EVENT_TIMEOUT_IND;
+        fmNotifyStateMachineEvent( crmSmHandles[crmId],
+                                       &eventInfo,
+                                       userInfo,
+                                       &sw );
+        UNPROTECT_SWITCH( sw );
+    }
+
+
+}    /* end HandleCrmTimeout */
+
+
+
+
+/*****************************************************************************/
+/** fm10000CrmStartTimer
+ * \ingroup intSwitch
+ *
+ * \desc            Starts 20 milisecond timer for specified CRM monitor.
+ *
+ * \param[in]       eventInfo is a pointer to a caller-allocated area
+ *                  containing the generic event descriptor.
+ *
+ * \param[in]       userInfo is a pointer to a caller-allocated area containing
+ *                  purpose-specific event info.
+ *
+ * \return          FM_OK if successful.
+ *
+ * \return          FM_ERR_INVALID_ARGUMENT if one of the function arguments
+ *                  was not valid (NULL pointer).
+ *
+ *****************************************************************************/
+fm_status fm10000CrmStartTimer( fm_smEventInfo *eventInfo, void *userInfo )
+{
+    fm_status    err;
+    fm_int       crmId;
+    fm_timestamp timeout = { 0, 20000 };
+
+    crmId       = ((fm10000_crmUserInfo *)userInfo)->crmId;
+    ((fm10000_crmUserInfo *)userInfo)->notifyTimeout = TRUE;
+
+    err = fmStartTimer(crmTimers[crmId], &timeout, 1, HandleCrmTimeout, userInfo);
+
+    FM_LOG_EXIT(FM_LOG_CAT_CRM, err);
+
+}    /* end fm10000CrmStartTimer */
+
+
+
+
+/*****************************************************************************/
+/** fm10000CrmCancelTimer
+ * \ingroup intSwitch
+ *
+ * \desc            Cancels timer for specified CRM monitor.
+ *
+ * \param[in]       eventInfo is a pointer to a caller-allocated area
+ *                  containing the generic event descriptor.
+ *
+ * \param[in]       userInfo is a pointer to a caller-allocated area containing
+ *                  purpose-specific event info.
+ *
+ * \return          FM_OK if successful.
+ *
+ * \return          FM_ERR_INVALID_ARGUMENT if one of the function arguments
+ *                  was not valid (NULL pointer).
+ *
+ *****************************************************************************/
+fm_status fm10000CrmCancelTimer( fm_smEventInfo *eventInfo, void *userInfo )
+{
+    fm_status err;
+    fm_int    sw;
+    fm_int    crmId;
+
+    err   = FM_OK;
+    crmId = ((fm10000_crmUserInfo *)userInfo)->crmId;
+    sw    = ((fm10000_crmUserInfo *)userInfo)->sw;
+    ((fm10000_crmUserInfo *)userInfo)->notifyTimeout = FALSE;
+
+    FM_LOG_DEBUG_V2( FM_LOG_CAT_CRM,
+                     crmId,
+                     "NO TIMEOUT NOTIFY ON crmId %d\n",
+                     crmId );
+
+    err = fmStopTimer(crmTimers[crmId]);
+    FM_LOG_EXIT(FM_LOG_CAT_CRM, err);
+
+}    /* end fm10000CrmCancelTimer */
+
+
+
+
+/*****************************************************************************/
+/** NotifyCRMEvent
+ * \ingroup intSwitch
+ *
+ * \desc            Notifies the CRM state machine about event occured.
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \param[in]       crmId is the CRM monitor to update.
+ *
+ * \param[in]       eventId is the ID of event.
+ *
+ * \return          FM_OK if successful.
+ *
+ * \return          FM_ERR_UNINITIALIZED if the state machine engine
+ *                  is uninitialized.
+ * \return          FM_ERR_INVALID_ARGUMENT if one of the arguments is invalid
+ *
+ * \return          FM_ERR_STATE_MACHINE_HANDLE if the specified handle does
+ *                  not correspond to a valid state machine
+ *
+ * \return          FM_ERR_STATE_MACHINE_TYPE  the state machine type
+ *                  indicated in the event info header does not match that of
+ *                  the referred state machine
+ *
+ *****************************************************************************/
+fm_status NotifyCRMEvent(fm_int sw, fm_int crmId, fm_int eventId)
+{
+
+    fm_smEventInfo  eventInfo;
+    fm_status       status;
+
+    crmUserInfo[crmId].sw = sw;
+    crmUserInfo[crmId].crmId = crmId;
+
+    if (crmId >= FM10000_NUM_CRM_IDS)
+    {
+        status = FM_ERR_INVALID_ARGUMENT;
+        FM_LOG_ERROR(FM_LOG_CAT_CRM, "Invalid crmId\n");
+    }
+
+    eventInfo.smType = FM10000_BASIC_CRM_STATE_MACHINE;
+    eventInfo.dontSaveRecord = FALSE;
+    eventInfo.lock   = FM_GET_STATE_LOCK( sw );
+    eventInfo.eventId = eventId;
+
+    status = fmNotifyStateMachineEvent( crmSmHandles[crmId],
+                                       &eventInfo,
+                                       &crmUserInfo[crmId],
+                                       &logInfo[crmId] );
+
+    FM_LOG_EXIT(FM_LOG_CAT_CRM, status);
+
+}    /* end NotifyCRMEvent */
+
+
+
+
+/*****************************************************************************/
+/** fm10000LogCrmTransition
+ * \ingroup intSwitch
+ *
+ * \desc            Logs CRM state machine transition.
+ *
+ * \note            The caller has already taken the necessary locks.
+ *
+ * \param[in]       record is the record to log.
+ *
+ * \return          FM_OK if successful.
+ *
+ *****************************************************************************/
+fm_status fm10000LogCrmTransition( fm_smTransitionRecord *record )
+{
+    fm_text currentState;
+    fm_text event;
+
+    if ( record->currentState != FM_STATE_UNSPECIFIED )
+    {
+        currentState = fm10000CrmStatesMap[record->currentState];
+    }
+    else
+    {
+        currentState = "N/A";
+    }
+    if ( record->eventInfo.eventId != FM_EVENT_UNSPECIFIED )
+    {
+        event = fm10000CrmEventsMap[record->eventInfo.eventId];
+    }
+    else
+    {
+        event = "N/A";
+    }
+
+    FM_LOG_DEBUG_V2( FM_LOG_CAT_PORT,
+                     record->smUserID,
+                     "Port %d Transition: "
+                     "'%s': '%s' ==> '%s'\n",
+                     record->smUserID,
+                     event,
+                     currentState,
+                     fm10000CrmEventsMap[record->nextState] );
+
+    return FM_OK;
+
+}   /* end fm10000LogCrmTransition */
+
+
+
+/*****************************************************************************/
+/** fm10000FreeCrmStructures
+ * \ingroup intSwitch
+ *
+ * \desc            Frees CRM allocated structures: timers and state machines.
+ *
+ * \return          FM_OK if successful.
+ *
+ * \return          FM_ERR_STATE_MACHINE_HANDLE if the specified handle does
+ *                  not correspond to a valid state machine
+ *
+ * \return          FM_ERR_INVALID_ARGUMENT if one of the function arguments
+ *                  was not valid (NULL pointer).
+ *
+ *****************************************************************************/
+fm_status fm10000FreeCrmStructures(void)
+{
+    int i;
+    fm_status status;
+
+    status = FM_OK;
+    for ( i = 0 ; i < FM10000_NUM_CRM_IDS; i++ )
+    {
+        status = fmDeleteTimer(crmTimers[i]);
+    }
+    for ( i = 0 ; i < FM10000_NUM_CRM_IDS; i++ )
+    {
+        status = fmStopStateMachine(crmSmHandles[i]);
+    }
+    for ( i = 0 ; i < FM10000_NUM_CRM_IDS; i++ )
+    {
+        status = fmDeleteStateMachine(crmSmHandles[i]);
+    }
+    return status;
+}   /* end fm10000FreeCrmStructures */

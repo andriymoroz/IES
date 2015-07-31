@@ -489,11 +489,9 @@ static fm_status RepairFfuSliceTcam(fm_int sw, fm10000_repairData * auxData)
 
             crmId = FM10000_FFU_SLICE_CRM_ID(sliceId);
 
-            err = fm10000UpdateCrmChecksum(sw, crmId);
+            err = NotifyCRMEvent(sw, crmId, FM10000_CRM_EVENT_REPAIR_IND);
             FM_ERR_COMBINE(retStatus, err);
 
-            err = fm10000EnableCrmMonitor(sw, crmId);
-            FM_ERR_COMBINE(retStatus, err);
         }
     }
 
@@ -563,11 +561,9 @@ static fm_status RepairGlortCam(fm_int sw)
                               0,
                               FM10000_GLORT_CAM_ENTRIES);
 
-    err = fm10000UpdateCrmChecksum(sw, FM10000_GLORT_CAM_CRM_ID);
+    err = NotifyCRMEvent(sw, FM10000_GLORT_CAM_CRM_ID, FM10000_CRM_EVENT_REPAIR_IND);
     FM_ERR_COMBINE(status, err);
 
-    err = fm10000EnableCrmMonitor(sw, FM10000_GLORT_CAM_CRM_ID);
-    FM_ERR_COMBINE(status, err);
 #else
     status = FM_ERR_UNSUPPORTED;
 #endif

@@ -4471,7 +4471,12 @@ fm_status fm10000MTableAddListener(fm_int               sw,
     err = fmMapLogicalPortToPhysical(switchPtr, listener.port, &physPort);
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MULTICAST, err);
 
-    if (listener.vlanUpdate == TRUE)
+    /* For flooding listeners set STP to FM_STP_STATE_FORWARDING */
+    if (listener.vlan == FM_MAILBOX_DEF_VLAN_FOR_FLOOD_MCAST_GROUPS)
+    {
+        stpState = FM_STP_STATE_FORWARDING;
+    }
+    else if (listener.vlanUpdate == TRUE)
     {
         /* get the current STP state for this listener */
         err = fmGetVlanPortStateInternal(sw,
@@ -4579,7 +4584,12 @@ fm_status fm10000MTableDeleteListener(fm_int               sw,
                                      &physPort);
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MULTICAST, err);
 
-    if (listener.vlanUpdate == TRUE)
+    /* For flooding listeners set STP to FM_STP_STATE_FORWARDING */
+    if (listener.vlan == FM_MAILBOX_DEF_VLAN_FOR_FLOOD_MCAST_GROUPS)
+    {
+        stpState = FM_STP_STATE_FORWARDING;
+    }
+    else if (listener.vlanUpdate == TRUE)
     {
         /* get the current STP state for this listener */
         err = fmGetVlanPortStateInternal(sw,

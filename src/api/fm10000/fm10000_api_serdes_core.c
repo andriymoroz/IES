@@ -3,7 +3,7 @@
 /*****************************************************************************
  * File:            fm10000_api_serdes_core.c
  * Creation Date:   October 22, 2014
- * Description:     File containing a low level functions to manage the 
+ * Description:     File containing a low level functions to manage the
  *                  FM10000 PCIe and Ethernet Serdes
  *
  * Copyright (c) 2007 - 2015, Intel Corporation
@@ -30,9 +30,10 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
+ *****************************************************************************/
 
 #include <fm_sdk_fm10000_int.h>
+
 
 /*****************************************************************************
  * Macros, Constants & Types
@@ -40,9 +41,9 @@
 
 #define STR_EQ(str1, str2) (strcasecmp(str1, str2) == 0)
 
- 
- 
- 
+
+
+
 static fm_int serDesWidthModeArray[FM10000_LANE_BITRATE_MAX] =
 {
 
@@ -67,9 +68,9 @@ static fm_int serDesWidthModeArray[FM10000_LANE_BITRATE_MAX] =
     FM10000_SERDES_WIDTH_10
 };
 
- 
- 
- 
+
+
+
 static fm_int serDesRateSelArray[FM10000_LANE_BITRATE_MAX] =
 {
     FM10000_SERDES_DIVIDER_ETHMODE_25G,
@@ -97,7 +98,7 @@ static fm_status DecodeRxPattern(fm_text                 pattern,
                                  fm10000SerdesRxCmpData *cmpData);
 
 static fm_status DbgSerdesDumpInt(fm_int  sw,
-                                  fm_int  serdes, 
+                                  fm_int  serdes,
                                   fm_bool detailed);
 static fm_status DbgSerdesDumpStatusInt(fm_int  sw,
                                         fm_int  serdes);
@@ -179,7 +180,9 @@ static fm_status SerDesGetEyeDiagram(fm_int                 sw,
 /*****************************************************************************
  * Global Variables
  *****************************************************************************/
+
 extern fm10000_serdesMap fm10000SerdesMap[FM10000_NUM_SERDES];
+
 
 /*****************************************************************************
  * Local Variables
@@ -251,7 +254,7 @@ static fm_text rxCmpDataStr[] =
     "SERDES_RX_CMP_DATA_PRBS23",
     "SERDES_RX_CMP_DATA_PRBS31",
     "SERDES_RX_CMP_DATA_SELF_SEED",
-   
+
 };
 
 
@@ -272,6 +275,13 @@ static fm_text dfeModeStr[] =
     "iCal-only"
 };
 
+static fm_text krPcalModeStr[] =
+{
+    "Disabled",
+    "One-Shot",
+    "Continuous"
+};
+
 static fm_text dfeTuneModeStr[] =
 {
     "SERDES_DFE_TUNE_COARSE",
@@ -288,8 +298,9 @@ static fm_int           curRerdesImageSize = 0;
  * Local Functions
  *****************************************************************************/
 
+
 /*****************************************************************************/
-/* ParseHex
+/** ParseHex
  * \ingroup intSerDes
  *
  * \desc            Parse the string into unsigned 64-bit integer
@@ -311,7 +322,7 @@ static fm_status ParseHex(fm_char *string, fm_uint64 *result)
 
     return strlen(err) ? FM_FAIL : FM_OK;
 
-}   /* end ParseHex */
+}
 
 
 
@@ -454,7 +465,7 @@ static fm_status DecodeTxPattern(fm_text                    pattern,
 
     return FM_OK;
 
-}   /* end DecodeTxPattern */
+}
 
 
 
@@ -536,7 +547,7 @@ static fm_status DecodeRxPattern(fm_text                 pattern,
 
     return FM_OK;
 
-}   /* end DecodeRxPattern */
+}
 
 
 
@@ -558,7 +569,7 @@ static fm_status DecodeRxPattern(fm_text                 pattern,
  *
  *****************************************************************************/
 static fm_status DbgSerdesDumpInt(fm_int  sw,
-                                  fm_int  serdes, 
+                                  fm_int  serdes,
                                   fm_bool detailed)
 {
     fm_status                   status;
@@ -651,12 +662,14 @@ static fm_status DbgSerdesDumpInt(fm_int  sw,
     FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_SERDES, status);
     FM_LOG_PRINT("RX Termination      : %s\n", rxTermStr[rxTerm]);
 
+
     pLaneExt = GET_LANE_EXT(sw, serdes);
     pLaneDfe = &pLaneExt->dfeExt;
     FM_LOG_PRINT("SW Eye Height        : %d (%d mV)\n", pLaneDfe->eyeScoreHeight/4, pLaneDfe->eyeScoreHeightmV);
 
     status = fm10000SerdesGetEyeHeight(sw, serdes, &eyeScore, &heightmV);
     FM_LOG_PRINT("Eye Height          : %d (%d mV)\n", eyeScore/4, heightmV);
+
 
     FM_LOG_PRINT("Stop Cycles Number  : %d\n", pLaneDfe->stopCycleCnt);
     FM_LOG_PRINT("Stop Coarse Avg Dly : %d\n", pLaneDfe->stopCoarseDelayAvg/1000);
@@ -678,7 +691,7 @@ static fm_status DbgSerdesDumpInt(fm_int  sw,
     FM_LOG_PRINT("\n");
     return status;
 
-}   /* end DbgSerdesDumpInt */
+}
 
 
 
@@ -875,7 +888,7 @@ static fm_status DbgSerdesDumpStatusInt(fm_int  sw,
     FM_LOG_PRINT("\n");
     return err;
 
-}   /* end DbgSerdesDumpStatusInt */
+}
 
 
 
@@ -909,8 +922,10 @@ static fm_status DbgSerdesDumpDfeStatusInt(fm_int   sw,
     FM_LOG_PRINT("## SERDES: %-2d ###################\n", serdes);
     FM_LOG_PRINT("##   DFE status #################\n");
 
+
     pLaneExt = GET_LANE_EXT(sw, serdes);
     pLaneDfe = &pLaneExt->dfeExt;
+
 
     if (pLaneDfe->eyeScoreHeight >= 0)
     {
@@ -920,6 +935,8 @@ static fm_status DbgSerdesDumpDfeStatusInt(fm_int   sw,
     {
         FM_LOG_PRINT("%30s: NA\n", "Eye Height");
     }
+
+
     if (pLaneExt->dfeMode <= 4)
     {
         FM_LOG_PRINT("          %33s : %s\n", "DFE Mode",dfeModeStr[pLaneExt->dfeMode]);
@@ -928,7 +945,7 @@ static fm_status DbgSerdesDumpDfeStatusInt(fm_int   sw,
     {
         FM_LOG_PRINT("          %33s : %s\n", "DFE Mode","Invalid DFE mode");
     }
-    
+
 
     FM_LOG_PRINT("          %33s : %d\n", "Number of Start Cycles",pLaneDfe->startCycleCnt);
     FM_LOG_PRINT("          %33s : %d\n", "iCal Avg Delay",pLaneDfe->iCalDelayAvg/1000);
@@ -942,6 +959,7 @@ static fm_status DbgSerdesDumpDfeStatusInt(fm_int   sw,
     FM_LOG_PRINT("          %33s : %-6d ms\n", "pCal Lst Delay",pLaneDfe->pCalDelayLastMs);
     FM_LOG_PRINT("          %33s : %-6d ms\n", "pCal Avg Delay",pLaneDfe->pCalDelayAvgMs/1000);
     FM_LOG_PRINT("          %33s : %-6d ms\n", "pCal Max Delay",pLaneDfe->pCalDelayMaxMs);
+
 
     FM_LOG_PRINT("          %33s : %d\n", "Number of Stop Cycles",pLaneDfe->stopCycleCnt);
     FM_LOG_PRINT("          %33s : %d\n", "Number of Forced Stop Cycles",pLaneDfe->forcedStopCycleCnt);
@@ -967,7 +985,7 @@ static fm_status DbgSerdesDumpDfeStatusInt(fm_int   sw,
     FM_LOG_PRINT("\n");
     return err;
 
-}   /* end DbgSerdesDumpDfeStatusInt */
+}
 
 
 
@@ -1011,9 +1029,15 @@ static fm_status DbgSerdesPrnKrInfo(fm_int   sw,
 
         FM_LOG_PRINT("\nSerdes #%d, KR Training Basic Debug Info\n", serdes);
         FM_LOG_PRINT("-------------------------------------------------------------------\n");
-    
+
+        if (pLaneKr->pCalMode <= 2)
+        {
+            FM_LOG_PRINT("  %41s : %s\n", "KR pCal Mode",krPcalModeStr[pLaneKr->pCalMode]);
+        }
+
         FM_LOG_PRINT("  %41s : %d\n", "Number of KR training cycles",pLaneKr->startKrCycleCnt);
         FM_LOG_PRINT("  %41s : %d\n", "KR training failures",pLaneKr->krErrorCnt);
+        FM_LOG_PRINT("  %41s : %d\n", "KR training timeouts",pLaneKr->krTimeoutCnt);
         FM_LOG_PRINT("  %41s : %-6d ms\n", "KR training Lst Delay",pLaneKr->krTrainingDelayLastMs);
         FM_LOG_PRINT("  %41s : %-6d ms\n", "KR training Avg Delay",pLaneKr->krTrainingDelayAvgMs/1000);
         FM_LOG_PRINT("  %41s : %-6d ms\n\n", "KR training Max Delay",pLaneKr->krTrainingDelayMaxMs);
@@ -1021,7 +1045,7 @@ static fm_status DbgSerdesPrnKrInfo(fm_int   sw,
 
     return err;
 
-}   /* end DbgSerdesDumpDfeStatusInt */
+}
 
 
 
@@ -1093,7 +1117,7 @@ static fm_status DbgSerdesDumpSpicoSbmVersionsInt(fm_int sw,
     FM_LOG_PRINT("\n");
     return err;
 
-}   /* end DbgSerdesDumpSpicoSbmVersionsInt */
+}
 
 
 
@@ -1157,7 +1181,7 @@ static fm_status DbgSerdesDumpRegistersInt(fm_int     sw,
 
     return err;
 
-}   /* end DbgSerdesDumpRegistersInt */
+}
 
 
 
@@ -1212,6 +1236,7 @@ static fm_status DbgSerdesResetStatsInt(fm_int     sw,
 
     pLaneKr->startKrCycleCnt       = 0;
     pLaneKr->krErrorCnt            = 0;
+    pLaneKr->krTimeoutCnt          = 0;
     pLaneKr->krTrainingDelayLastMs = 0;
     pLaneKr->krTrainingDelayAvgMs  = 0;
     pLaneKr->krTrainingDelayMaxMs  = 0;
@@ -1219,7 +1244,7 @@ static fm_status DbgSerdesResetStatsInt(fm_int     sw,
 
     return FM_OK;
 
-}   /* end DbgSerdesResetStatsInt */
+}
 
 
 
@@ -1256,6 +1281,8 @@ static fm_status DbgSerdesGetInt01Bits(fm_int   sw,
 
     if ( mask & 0x03 )
     {
+
+
         status = fm10000SerdesSpicoInt(sw, serDes, (1 << 14) | 0x026, 0x00, &val32);
         bits  |= (0x03 & val32);
     }
@@ -1278,13 +1305,14 @@ static fm_status DbgSerdesGetInt01Bits(fm_int   sw,
                             "Serdes=%d, Spico is not running\n",
                             serDes);
         }
-        
+
         bits |= (0x02 & val32) << 1;
     }
 
     *val = bits;
 
     return status;
+
 }
 
 
@@ -1302,9 +1330,9 @@ static fm_status DbgSerdesGetInt01Bits(fm_int   sw,
  * \param[in]       serDes is the SERDES number on which to operate.
  *
  * \param[in]       enTx specifies whether to enable Tx
- * 
+ *
  * \param[in]       enRx specifies whether to enable Rx
- * 
+ *
  * \param[in]       enOutput specifies whether to enable Tx output
  *
  * \return          FM_OK if successful.
@@ -1358,7 +1386,8 @@ static fm_status DbgSerdesSetTxRxEnableInt(fm_int  sw,
     }
     return FM_FAIL;
 
-}   /* end DbgSerdesSetTxRxEnableInt */
+}
+
 
 
 
@@ -1391,8 +1420,6 @@ static fm_status DbgSerdesInitInt(fm_int  sw,
     fm_int              serdesDbgLvl;
     fm_bool             isEplRing;
     fm_uint             sbusAddr;
-
-
 
     VALIDATE_SWITCH_INDEX(sw);
     VALIDATE_SERDES(serDes);
@@ -1460,8 +1487,7 @@ static fm_status DbgSerdesInitInt(fm_int  sw,
 
 
         val = 0x0;
-
-        FM_SET_BIT(val, FM10000_SPICO_SERDES_INTR_0X0B, BIT_0, 0); 
+        FM_SET_BIT(val, FM10000_SPICO_SERDES_INTR_0X0B, BIT_0, 0);
         status = fm10000SerdesSpicoInt(sw, serDes, FM10000_SPICO_SERDES_INTR_0X0B, val, NULL);
         FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_SERDES, status);
 
@@ -1469,14 +1495,14 @@ static fm_status DbgSerdesInitInt(fm_int  sw,
         val = 0;
         FM_SET_FIELD(val, FM10000_SPICO_SERDES_INTR_0X05, FIELD_1, (rateSel & 0xFF));
         FM_SET_FIELD(val, FM10000_SPICO_SERDES_INTR_0X05, FIELD_2, ((rateSel >> 8) & 0x7));
-        //FM_SET_BIT(val, FM10000_SPICO_SERDES_INTR_0X05, BIT_12, 1);
+
 
 
         FM_SET_BIT(val, FM10000_SPICO_SERDES_INTR_0X05, BIT_15, 1);
-    
+
         status = fm10000SerdesSpicoInt(sw, serDes, FM10000_SPICO_SERDES_INTR_0X05, val, &retVal);
         FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_SERDES, status);
-    
+
 
         val = 0;
         switch (dataWidth)
@@ -1507,17 +1533,17 @@ static fm_status DbgSerdesInitInt(fm_int  sw,
 
         status = fm10000SerdesInitSignalOk(sw, serDes, 0);
         FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_SERDES, status);
-    
+
 
         status = fm10000SerdesSetRxTerm(sw, serDes,
                    (isEplRing ?
                    FM10000_SERDES_RX_TERM_AVDD:FM10000_SERDES_RX_TERM_FLOAT));
         FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_SERDES, status);
-    
+
 
         status = fm10000SerdesSetLoopbackMode(sw, serDes, FM10000_SERDES_LB_OFF);
         FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_SERDES, status);
-    
+
 
         status = fm10000SerdesSetTxDataSelect(sw,
                                               serDes,
@@ -1542,7 +1568,7 @@ static fm_status DbgSerdesInitInt(fm_int  sw,
 
     return FM_OK;
 
-}   /* end DbgSerdesInitInt */
+}
 
 
 
@@ -1570,12 +1596,13 @@ static fm_status DbgSerdesResetSerDesInt(fm_int sw,
     status = fm10000MapLogicalPortToSerdes(sw, port, &serdes);
     if (status == FM_OK)
     {
+
         printf("Need support: port %d serdes %d\n", port, serdes);
     }
 
     return status;
 
-}   /* end DbgSerdesResetSerDesInt */
+}
 
 
 
@@ -1642,7 +1669,7 @@ static fm_status DbgSerdesReadSerDesRegisterInt(fm_int     sw,
 
     FM_LOG_EXIT_VERBOSE(FM_LOG_CAT_SERDES, err);
 
-}   /* end DbgSerdesReadSerDesRegisterInt */
+}
 
 
 
@@ -1698,7 +1725,7 @@ static fm_status DbgSerdesWriteSerDesRegisterInt(fm_int     sw,
 
     FM_LOG_EXIT_VERBOSE(FM_LOG_CAT_SERDES, err);
 
-}   /* end DbgSerdesWriteSerDesRegisterInt */
+}
 
 
 
@@ -1748,7 +1775,7 @@ static fm_status DbgSerdesSetSerDesTxPatternInt(fm_int  sw,
 
     return status;
 
-}   /* end DbgSerdesSetSerDesTxPatternInt */
+}
 
 
 
@@ -1794,7 +1821,7 @@ static fm_status DbgSerdesSetSerDesRxPatternInt(fm_int  sw,
 
     return status;
 
-}   /* end DbgSerdesSetSerDesRxPatternInt */
+}
 
 
 
@@ -1849,7 +1876,7 @@ static fm_status DbgSerdesSetSerdesPolarityInt(fm_int  sw,
 
     return FM_ERR_INVALID_ARGUMENT;
 
-}   /* end DbgSerdesSetSerdesPolarityInt */
+}
 
 
 
@@ -1898,7 +1925,7 @@ static fm_status DbgSerdesSetSerdesLoopbackInt(fm_int  sw,
 
     return FM_ERR_INVALID_ARGUMENT;
 
-}   /* end DbgSerdesSetSerdesLoopbackInt */
+}
 
 
 
@@ -1930,7 +1957,7 @@ static fm_status DbgSerdesInjectErrorsInt(fm_int              sw,
     return fm10000SerdesInjectErrors(sw, serdes, serdesSel, numErrors);
 
 
-}   /* end DbgSerdesInjectErrorsInt */
+}
 
 
 
@@ -1992,7 +2019,7 @@ static fm_status DbgSerdesReadSBusRegisterInt(fm_int     sw,
 
     return err;
 
-}   /* end fm10000DbgReadSBusRegister */
+}
 
 
 
@@ -2060,7 +2087,7 @@ static fm_status DbgSerdesWriteSBusRegisterInt(fm_int     sw,
 
     FM_LOG_EXIT_VERBOSE(FM_LOG_CAT_SERDES, err);
 
-}   /* end DbgSerdesWriteSBusRegisterInt */
+}
 
 
 
@@ -2144,7 +2171,7 @@ static fm_status DbgSerdesInterruptSpicoInt(fm_int      sw,
 
     FM_LOG_EXIT_VERBOSE(FM_LOG_CAT_SERDES, err);
 
-}   /* end DbgSerdesInterruptSpicoInt */
+}
 
 
 
@@ -2212,7 +2239,7 @@ static fm_bool SerdesValidateAttenuationCoefficients(fm_int  att,
 
     return valid;
 
-}   /* end SerdesValidateAttenuationCoefficients */
+}
 
 
 
@@ -2261,16 +2288,16 @@ static fm_status SerdesGetEyeSimpleMetric(fm_int  sw,
 
     for( index = 0; index < 8 && err == FM_OK; index += 2 )
     {
-        err = fm10000SerdesSpicoInt(sw, 
-                                    serDes, 
+        err = fm10000SerdesSpicoInt(sw,
+                                    serDes,
                                     FM10000_SPICO_SERDES_INTR_0X26_READ,
                                     (4 << 12) | ((index+0) << 8),
                                     &value1);
-        
+
         if (err == FM_OK)
         {
-            err = fm10000SerdesSpicoInt(sw, 
-                                        serDes, 
+            err = fm10000SerdesSpicoInt(sw,
+                                        serDes,
                                         FM10000_SPICO_SERDES_INTR_0X26_READ,
                                         (4 << 12) | ((index+1) << 8),
                                         &value2);
@@ -2317,7 +2344,7 @@ static fm_status SerdesGetEyeSimpleMetric(fm_int  sw,
 
     return err;
 
-}   /* end SerdesGetEyeSimpleMetric */
+}
 
 
 
@@ -2325,7 +2352,7 @@ static fm_status SerdesGetEyeSimpleMetric(fm_int  sw,
 /** SerDesGetEyeScore
  * \ingroup intSerdes
  *
- * \desc            Dummy  "GetEyeScore" function. This feature is 
+ * \desc            Dummy  "GetEyeScore" function. This feature is
  *                  not available.
  *
  * \param[in]       sw is the switch on which to operate.
@@ -2362,7 +2389,7 @@ static fm_status SerDesGetEyeScore(fm_int sw,
 /** SerDesGetEyeDiagram
  * \ingroup intSerdes
  *
- * \desc            Dummy  "GetEyeDiagram" function. This feature is 
+ * \desc            Dummy  "GetEyeDiagram" function. This feature is
  *                  not available.
  *
  * \param[in]       sw is the switch on which to operate.
@@ -2451,7 +2478,7 @@ fm_status fm10000SerdesInitXServicesInt(fm_int sw)
 
     FM_LOG_EXIT(FM_LOG_CAT_SWITCH, err);
 
-}   /* end fm10000SerdesInitXServicesInt */
+}
 
 
 
@@ -2502,7 +2529,7 @@ fm_status fm10000SerdesCheckId(fm_int   sw,
     }
     return err;
 
-}   /* end fm10000SerdesCheckId */
+}
 
 
 
@@ -2549,7 +2576,7 @@ fm_status fm10000SerdesEnableSerDesInterrupts(fm_int   sw,
 
     return err;
 
-}   /* end fm10000SerdesEnableSerDesInterrupts */
+}
 
 
 
@@ -2601,7 +2628,7 @@ fm_status fm10000SerdesDisableSerDesInterrupts(fm_int   sw,
 
     return err;
 
-}   /* end fm10000SerdesDisableSerDesInterrupts */
+}
 
 
 
@@ -2615,9 +2642,9 @@ fm_status fm10000SerdesDisableSerDesInterrupts(fm_int   sw,
  * \param[in]       sw is the switch on which to operate.
  *
  * \param[in]       serDes is the Id of the target serdes.
- * 
+ *
  * \param[in]       enaCtrl value and mask to be used to control Tx/Rx/output.
- * 
+ *
  * \return          FM_OK if successful.
  * \return          Other ''Status Codes'' as appropriate in case of failure.
  *
@@ -2651,7 +2678,7 @@ fm_status fm10000SerdesTxRxEnaCtrl(fm_int    sw,
 
     return err;
 
-}   /* end fm10000SerdesTxRxEnaCtrl */
+}
 
 
 
@@ -2665,7 +2692,7 @@ fm_status fm10000SerdesTxRxEnaCtrl(fm_int    sw,
  * \param[in]       sw is the switch on which to operate.
  *
  * \param[in]       serDes is the Id of the target serdes.
- * 
+ *
  * \return          FM_OK if successful.
  * \return          Other ''Status Codes'' as appropriate in case of failure.
  *
@@ -2711,7 +2738,7 @@ fm_status fm10000SerdesDisable(fm_int    sw,
 
     return err;
 
-}   /* end fm10000SerdesDisable */
+}
 
 
 
@@ -2725,9 +2752,9 @@ fm_status fm10000SerdesDisable(fm_int    sw,
  * \param[in]       sw is the switch on which to operate.
  *
  * \param[in]       serDes is the Id of the target serdes.
- * 
+ *
  * \param[in]       rateSel rate selector, see ''serDesRateSelArray''
- * 
+ *
  * \return          FM_OK if successful.
  * \return          Other ''Status Codes'' as appropriate in case of failure.
  *
@@ -2755,7 +2782,7 @@ fm_status fm10000SerdesSetBitRate(fm_int  sw,
 
     return err;
 
-}   /* end fm10000SerdesSetBitRate */
+}
 
 
 
@@ -2769,9 +2796,9 @@ fm_status fm10000SerdesSetBitRate(fm_int  sw,
  * \param[in]       sw is the switch on which to operate.
  *
  * \param[in]       serDes is the Id of the target serdes.
- * 
+ *
  * \param[in]       widthMode width mode, see ''fm_serdesWidthMode''
- * 
+ *
  * \return          FM_OK if successful.
  * \return          Other ''Status Codes'' as appropriate in case of failure.
  *
@@ -2784,17 +2811,39 @@ fm_status fm10000SerdesSetWidthMode(fm_int             sw,
     fm_uint32     intData;
 
     intData = 0;
-    FM_SET_FIELD(intData, FM10000_SPICO_SERDES_INTR_0X14, FIELD_1, widthMode);
-    FM_SET_FIELD(intData, FM10000_SPICO_SERDES_INTR_0X14, FIELD_2, widthMode);
+    FM_SET_FIELD(intData, FM10000_SPICO_SERDES_INTR_0X14, FIELD_1, FM10000_SERDES_WIDTH_20);
+    FM_SET_FIELD(intData, FM10000_SPICO_SERDES_INTR_0X14, FIELD_2, FM10000_SERDES_WIDTH_20);
 
+    fmDelay(0, FM10000_SERDES_RESET_DELAY);
     err = fm10000SerdesSpicoWrOnlyInt(sw,
                                       serDes,
                                       FM10000_SPICO_SERDES_INTR_0X14,
                                       intData);
+    if (err == FM_OK)
+    {
+        fmDelay(0, FM10000_SERDES_RESET_DELAY);
+        intData = 0;
+        FM_SET_FIELD(intData, FM10000_SPICO_SERDES_INTR_0X14, FIELD_1, widthMode);
+        FM_SET_FIELD(intData, FM10000_SPICO_SERDES_INTR_0X14, FIELD_2, widthMode);
+
+        err = fm10000SerdesSpicoWrOnlyInt(sw,
+                                          serDes,
+                                          FM10000_SPICO_SERDES_INTR_0X14,
+                                          intData);
+    }
+
+    if (err != FM_OK)
+    {
+        FM_LOG_ERROR_V2(FM_LOG_CAT_SERDES,serDes,
+                        "Serdes=0x%2.2x: Error setting width mode\n",
+                         serDes);
+    }
+
+    fmDelay(0, FM10000_SERDES_RESET_DELAY);
 
     return err;
 
-}   /* end fm10000SerdesSetWidthMode */
+}
 
 
 
@@ -2808,7 +2857,7 @@ fm_status fm10000SerdesSetWidthMode(fm_int             sw,
  * \param[in]       sw is the switch on which to operate.
  *
  * \param[in]       serDes is the Id of the target serdes.
- * 
+ *
  * \return          FM_OK if successful.
  * \return          Other ''Status Codes'' as appropriate in case of failure.
  *
@@ -2853,7 +2902,7 @@ fm_status fm10000SerdesSetPllCalibrationMode(fm_int    sw,
 
     return err;
 
-}   /* end fm10000SerdesSetPllCalibrationMode */
+}
 
 
 
@@ -2940,7 +2989,7 @@ fm_status fm10000SerdesSpicoIntSBusWrite(fm_int     sw,
 
     return err;
 
-}   /* end fm10000SerdesSpicoIntSBusWrite */
+}
 
 
 
@@ -2998,6 +3047,9 @@ fm_status fm10000SerdesSpicoIntSBusRead(fm_int      sw,
             if (FM_GET_BIT(val, FM10000_SERDES_REG_04, BIT_16) ||
                 FM_GET_BIT(val, FM10000_SERDES_REG_04, BIT_17))
             {
+
+
+
                 if (delTime > 5)
                 {
                     fmDelay(0, 5000);
@@ -3031,7 +3083,7 @@ fm_status fm10000SerdesSpicoIntSBusRead(fm_int      sw,
 
     return err;
 
-}   /* end fm10000SerdesSpicoIntSBusRead */
+}
 
 
 
@@ -3040,7 +3092,7 @@ fm_status fm10000SerdesSpicoIntSBusRead(fm_int      sw,
 /** fm10000SerdesSpicoIntSBusReadFast
  * \ingroup intSerdes
  *
- * \desc            Read SERDES SPICO interrupt result using a short timeout. 
+ * \desc            Read SERDES SPICO interrupt result using a short timeout.
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -3081,7 +3133,7 @@ fm_status fm10000SerdesSpicoIntSBusReadFast(fm_int      sw,
         if (err == FM_OK)
         {
             if (FM_GET_BIT(val, FM10000_SERDES_REG_04, BIT_16) ||
-                     FM_GET_BIT(val, FM10000_SERDES_REG_04, BIT_17))
+                FM_GET_BIT(val, FM10000_SERDES_REG_04, BIT_17))
             {
                 fmDelay(0, 100000);
                 continue;
@@ -3107,7 +3159,7 @@ fm_status fm10000SerdesSpicoIntSBusReadFast(fm_int      sw,
 
     return err;
 
-}   /* end fm10000SerdesSpicoIntSBusReadFast */
+}
 
 
 
@@ -3168,7 +3220,7 @@ fm_status fm10000SbmSpicoIntWrite(fm_int        sw,
 
     return err;
 
-}   /* end fm10000SbmSpicoIntWrite */
+}
 
 
 
@@ -3275,7 +3327,7 @@ fm_status fm10000SbmSpicoIntRead(fm_int         sw,
 
     return err;
 
-}   /* end fm10000SbmSpicoIntRead */
+}
 
 
 
@@ -3454,11 +3506,11 @@ fm_status fm10000SerdesSpicoUploadImage(fm_int           sw,
             }
         }
 
-    }   /* end if (numWords > 0) */
+    }
 
     FM_LOG_EXIT(FM_LOG_CAT_SERDES, err);
 
-}   /*end fm10000SerdesSpicoUploadImage */
+}
 
 
 
@@ -3550,7 +3602,7 @@ fm_status fm10000SerdesSwapUploadImage(fm_int           sw,
                                  addr);
 
 
-                    
+
                     FM_SET_BIT(reg05, FM10000_SPICO_REG_05, BIT_0, 1);
                     err = fm10000SbusWrite(sw, isEplRing, sbusAddr, FM10000_SPICO_REG_05, reg05);
                 }
@@ -3588,27 +3640,27 @@ fm_status fm10000SerdesSwapUploadImage(fm_int           sw,
 
                 for ( index = 0; index < swapNumWords-2 && err == FM_OK; index+=3)
                 {
-                    fm10000SbusWrite(sw, 
-                                     isEplRing, 
-                                     sbusAddr, 
-                                     0x14, 
+                    fm10000SbusWrite(sw,
+                                     isEplRing,
+                                     sbusAddr,
+                                     0x14,
                                      0xc0000000 | pSwapRomImg[index] | (pSwapRomImg[index+1] << 10 ) | (pSwapRomImg[index+2] << 20 ) );
                 }
 
                 if( swapNumWords - index == 2 )
                 {
-                    fm10000SbusWrite(sw, 
-                                     isEplRing, 
-                                     sbusAddr, 
-                                     0x14, 
+                    fm10000SbusWrite(sw,
+                                     isEplRing,
+                                     sbusAddr,
+                                     0x14,
                                      0x80000000 | pSwapRomImg[index] | (pSwapRomImg[index+1] << 10 ) );
                 }
                 else if( swapNumWords - index == 1 )
                 {
-                    fm10000SbusWrite(sw, 
-                                     isEplRing, 
-                                     sbusAddr, 
-                                     0x14, 
+                    fm10000SbusWrite(sw,
+                                     isEplRing,
+                                     sbusAddr,
+                                     0x14,
                                      0x40000000 | pSwapRomImg[index] );
                 }
 
@@ -3642,11 +3694,11 @@ fm_status fm10000SerdesSwapUploadImage(fm_int           sw,
             }
         }
 
-    }   /* end if (swapNumWords > 0) */
+    }
 
     FM_LOG_EXIT(FM_LOG_CAT_SERDES, err);
 
-}   /* end fm10000SerdesSwapUploadImage */
+}
 
 
 
@@ -3769,11 +3821,11 @@ fm_status fm10000SerdesSwapAltUploadImage(fm_int         sw,
             }
         }
 
-    }   /* end if (swapNumWords > 0) */
+    }
 
     FM_LOG_EXIT(FM_LOG_CAT_SERDES, err);
 
-}   /* end fm10000SerdesSwapAltUploadImage */
+}
 
 
 
@@ -3876,7 +3928,8 @@ fm_status fm10000SbmSpicoUploadImage(fm_int           sw,
                     fmSubTimestamps(&tEnd, &tStart, &tDelta);
                     FM_LOG_PRINT("SBM upload time:    %d,%d sec\n", (fm_uint)tDelta.sec, (fm_uint)tDelta.usec/1000);
                 }
-                
+
+
                 val = 0;
                 FM_SET_BIT(val, FM10000_SPICO_REG_01, BIT_6, 1);
                 FM_SET_BIT(val, FM10000_SPICO_REG_01, BIT_9, 0);
@@ -3901,13 +3954,13 @@ fm_status fm10000SbmSpicoUploadImage(fm_int           sw,
                 err = fm10000SbusWrite(sw, isEplRing, sbusAddr, FM10000_SPICO_REG_01, val);
             }
 
-        }   /* end if (pRomImg == NULL ||..) else */
+        }
 
-    }   /* end if (sbmNumWords > 0) */
+    }
 
     FM_LOG_EXIT(FM_LOG_CAT_SERDES, err);
 
-}   /* end fm10000SbmSpicoUploadImage */
+}
 
 
 
@@ -3940,27 +3993,29 @@ fm_status fm10000SerdesSpicoDoCrc(fm_int                       sw,
                  sw,
                  serDes);
 
-    err = fm10000SerdesSpicoInt(sw, serDes, FM10000_SPICO_SERDES_INTR_0X3C , 0, &crc);
+    err = fm10000SerdesSpicoInt(sw, serDes, FM10000_SPICO_SERDES_INTR_0X3C, 0, &crc);
 
     if (err == FM_OK)
     {
         if (crc == 00)
         {
-            FM_LOG_DEBUG(FM_LOG_CAT_SERDES, "SerDes CRC PASSED on serdes 0x%02x.\n",
-                         serDes);
+            FM_LOG_DEBUG_V2(FM_LOG_CAT_SERDES, serDes,
+                            "SerDes CRC PASSED on serdes 0x%02x.\n",
+                            serDes);
         }
         else
         {
             err = FM_FAIL;
-            FM_LOG_ERROR(FM_LOG_CAT_SERDES, "SerDes CRC FAILED on serdes 0x%02x. CRC interrupt returned 0x%4.4x\n",
-                         serDes,
-                         crc);
+            FM_LOG_DEBUG_V2(FM_LOG_CAT_SERDES, serDes,
+                            "SerDes CRC FAILED on serdes 0x%02x. CRC interrupt returned 0x%4.4x\n",
+                            serDes,
+                            crc);
         }
     }
 
     FM_LOG_EXIT(FM_LOG_CAT_SERDES, err);
 
-}   /* end fm10000SerdesSpicoDoCrc */
+}
 
 
 
@@ -4027,7 +4082,7 @@ fm_status fm10000SbmSpicoDoCrc(fm_int                       sw,
 
     FM_LOG_EXIT(FM_LOG_CAT_SERDES, err);
 
-}   /* end fm10000SbmSpicoDoCrc */
+}
 
 
 
@@ -4102,7 +4157,7 @@ fm_status fm10000SwapImageDoCrc(fm_int                       sw,
 
     FM_LOG_EXIT(FM_LOG_CAT_SERDES, err);
 
-}   /* end fm10000SwapImageDoCrc */
+}
 
 
 
@@ -4164,7 +4219,7 @@ fm_status fm10000SbmGetBuildRevisionId(fm_int        sw,
     }
     return err;
 
-}   /* end fm10000SbmGetBuildRevisionId */
+}
 
 
 
@@ -4225,7 +4280,7 @@ fm_status fm10000SerDesGetBuildRevisionId(fm_int    sw,
 
     return err;
 
-}   /* end fm10000SerdesDfeGetCtle */
+}
 
 
 
@@ -4345,7 +4400,7 @@ fm_status fm10000SerdesChckCrcVersionBuildId(fm_int     sw,
 
     FM_LOG_EXIT(FM_LOG_CAT_SERDES, err);
 
-}   /* end fm10000SerdesChckCrcVersionBuildId */
+}
 
 
 
@@ -4402,7 +4457,7 @@ fm_status fm10000SbmChckCrcVersionBuildId(fm_int     sw,
                          (ring == FM10000_SERDES_RING_EPL)? "EPL" : "PCIe");
 
             if (serdesDbgLvl > 0)
-            { 
+            {
                 FM_LOG_PRINT(" %s ring, cannot be verified CRC & SBM image\n",
                              (ring == FM10000_SERDES_RING_EPL)? "EPL" : "PCIe");
             }
@@ -4458,7 +4513,7 @@ fm_status fm10000SbmChckCrcVersionBuildId(fm_int     sw,
 
     FM_LOG_EXIT(FM_LOG_CAT_SERDES, err);
 
-}   /* end fm10000SbmChckCrcVersionBuildId */
+}
 
 
 
@@ -4514,7 +4569,7 @@ fm_status fm10000SwapImageCheckCrc(fm_int     sw,
 
     FM_LOG_EXIT(FM_LOG_CAT_SERDES, err);
 
-}   /* end fm10000SerdesSwapChckCrcVersionBuildId */
+}
 
 
 
@@ -4557,7 +4612,7 @@ fm_status fm10000SpicoRamBist(fm_int                        sw,
     {
         return FM_ERR_INVALID_ARGUMENT;
     }
-    else if (sbusAddr == FM10000_SBUS_SPICO_BCAST_ADDR)  
+    else if (sbusAddr == FM10000_SBUS_SPICO_BCAST_ADDR)
     {
         if (cmd & FM10000_SPICO_BIST_CMD_START)
         {
@@ -4645,7 +4700,7 @@ fm_status fm10000SpicoRamBist(fm_int                        sw,
 
                     if ((data & 0x3f0000) != 0x0)
                     {
-                        FM_LOG_ERROR(FM_LOG_CAT_SERDES, 
+                        FM_LOG_ERROR(FM_LOG_CAT_SERDES,
                             "RAM BIST on SBus addr 0x%02x failed. Returned value: 0x%02x.\n",
                              sbusAddr, data);
                         return FM_FAIL;
@@ -4664,7 +4719,7 @@ fm_status fm10000SpicoRamBist(fm_int                        sw,
 
     return FM_OK;
 
-}   /* end fm10000SpicoRamBist */
+}
 
 
 
@@ -4711,7 +4766,7 @@ static fm_status fm10000SerdesSpicoInt02Retry(fm_int sw, fm_int serDes, fm_uint3
     }
     return FM_FAIL;
 
-}   /* end fm10000SerdesSpicoInt02Retry */
+}
 
 
 
@@ -4750,6 +4805,9 @@ fm_bool fm10000SerdesSpicoIsRunning(fm_int sw,
 
     if (switchExt->serdesBypassSbus == TRUE)
     {
+
+
+
         isRunning = TRUE;
         err = FM_OK;
     }
@@ -4830,7 +4888,7 @@ fm_bool fm10000SerdesSpicoIsRunning(fm_int sw,
 
     return isRunning;
 
-}   /* end fm10000SerdesSpicoIsRunning */
+}
 
 
 
@@ -4882,7 +4940,7 @@ fm_bool fm10000SbmSpicoIsRunning(fm_int sw,
 
     return isRunning;
 
-}   /* end fm10000SbmSpicoIsRunning */
+}
 
 
 
@@ -5040,7 +5098,7 @@ fm_status fm10000SerdesDmaRead(fm_int               sw,
             err = FM_ERR_INVALID_ARGUMENT;
         }
 
-    }   /* end switch(type) */
+    }
 
     if (err != FM_OK)
     {
@@ -5051,7 +5109,7 @@ fm_status fm10000SerdesDmaRead(fm_int               sw,
 
     FM_LOG_EXIT_V2(FM_LOG_CAT_SWITCH, serDes, err);
 
-}   /* end fm10000SerdesDmaRead */
+}
 
 
 
@@ -5196,7 +5254,7 @@ fm_status fm10000SerdesDmaWrite(fm_int               sw,
             err = FM_ERR_INVALID_ARGUMENT;
         }
 
-    }   /* end switch(type) */
+    }
 
 
     if (err != FM_OK)
@@ -5208,7 +5266,7 @@ fm_status fm10000SerdesDmaWrite(fm_int               sw,
 
     FM_LOG_EXIT_V2(FM_LOG_CAT_SWITCH, serDes, err);
 
-}   /* end fm10000SerdesDmaWrite */
+}
 
 
 
@@ -5279,7 +5337,7 @@ fm_status fm10000SerdesDmaReadModifyWrite(fm_int                sw,
 
     FM_LOG_EXIT_V2(FM_LOG_CAT_SWITCH, serDes, err);
 
-}   /* end fm10000SerdesDmaReadModifyWrite */
+}
 
 
 
@@ -5322,6 +5380,7 @@ fm_status fm10000SerdesResetSpico(fm_int sw,
         {
             if (switchExt->serdesBypassSbus == FALSE)
             {
+
                 fmDelay(0, FM10000_SERDES_RESET_DELAY);
                 err = fm10000SerdesWrite(sw, serDes, 0, 0x00);
                 fmDelay(0, FM10000_SERDES_RESET_DELAY);
@@ -5372,7 +5431,7 @@ fm_status fm10000SerdesResetSpico(fm_int sw,
 
     FM_LOG_EXIT_V2(FM_LOG_CAT_SWITCH, serDes, err);
 
-}   /* end fm10000SerdesResetSpico */
+}
 
 
 
@@ -5422,8 +5481,8 @@ fm_status fm10000SerdesSpicoSetup(fm_int sw,
             {
                 fm10000MapSerdesToSbus(sw, serDes, &sbusAddr, &ring);
 
-                err = fm10000SerdesSpicoUploadImage(sw, 
-                                                    ring, 
+                err = fm10000SerdesSpicoUploadImage(sw,
+                                                    ring,
                                                     sbusAddr,
                                                     pCurSerdesImage,
                                                     curRerdesImageSize);
@@ -5431,7 +5490,7 @@ fm_status fm10000SerdesSpicoSetup(fm_int sw,
                 if (err == FM_OK)
                 {
                     err = fm10000SerdesSpicoDoCrc(sw, serDes);
-                    
+
                     if (err == FM_OK)
                     {
                         err = fm10000SerdesResetSpico(sw, serDes);
@@ -5440,16 +5499,23 @@ fm_status fm10000SerdesSpicoSetup(fm_int sw,
 
                         pLaneExt->serdesRestoredCnt++;
                     }
+                    else
+                    {
+
+                        FM_LOG_ERROR_V2(FM_LOG_CAT_SERDES, serDes,
+                                        "SerDes CRC FAILED on serdes 0x%02x. Recover Michanism Failed\n",
+                                        serDes);
+                    }
                 }
 
-            }   /* if (pLaneExt->pSerdesImage != NULL && pLaneExt->imageSize != 0) */
-            
-        }   /* if (localErr != FM_OK) */
+            }
+
+        }
     }
 
     FM_LOG_EXIT_V2(FM_LOG_CAT_SWITCH, serDes, err);
 
-}   /* end fm10000SerdesSpicoSetup */
+}
 
 
 
@@ -5475,7 +5541,8 @@ fm_status fm10000SerdesSpicoSaveImageParam(const fm_uint16 *pRomImg,
     curRerdesImageSize = numWords;
 
     return FM_OK;
-}   /* end fm10000SerdesSpicoSaveImageParam */
+
+}
 
 
 
@@ -5604,7 +5671,7 @@ fm_status fm10000SerdesGetTxRxReadyStatus(fm_int    sw,
 
     FM_LOG_EXIT_V2(FM_LOG_CAT_SWITCH, serDes, err);
 
-}   /* end fm10000SerdesGetTxRxReadyStatus */
+}
 
 
 
@@ -5652,7 +5719,7 @@ fm_status fm10000SerdesInitSignalOk(fm_int sw,
 
     return err;
 
-}   /* end fm10000SerdesInitSignalOk */
+}
 
 
 
@@ -5742,7 +5809,7 @@ fm_status fm10000SerdesGetSignalOk(fm_int   sw,
                                      laneSerdesStatus);
                         if (pSignalOk != NULL)
                         {
-                            serdesCoreStatus = FM_GET_FIELD(laneSerdesStatus, FM10000_LANE_SERDES_STATUS, CoreStatus); 
+                            serdesCoreStatus = FM_GET_FIELD(laneSerdesStatus, FM10000_LANE_SERDES_STATUS, CoreStatus);
                             *pSignalOk = serdesCoreStatus & (1<<4) ? TRUE : FALSE;
                         }
                     }
@@ -5765,7 +5832,7 @@ fm_status fm10000SerdesGetSignalOk(fm_int   sw,
                                                FM10000_SERDES_DMA_TYPE_LSB,
                                                FM10000_AVSD_LSB_ADDR_0X026,
                                                &val);
-                    
+
                     sigOk = (val & 0x0010) ? FALSE : TRUE;
                     if (!sigOk)
                     {
@@ -5778,7 +5845,7 @@ fm_status fm10000SerdesGetSignalOk(fm_int   sw,
                                                               0x0010,
                                                               NULL);
                     }
-    
+
                     if (pSignalOk)
                     {
                         *pSignalOk = sigOk;
@@ -5791,15 +5858,15 @@ fm_status fm10000SerdesGetSignalOk(fm_int   sw,
                     {
                         *pSignalOk = TRUE;
                     }
-                }   /* end else if (serdesOpMode != FM_SERDES_OPMODE_STUB_SM) */
-            }   /* end else if (switchExt->serdesIntUseLaneSai == TRUE) */
+                }
+            }
         }
 
-    }   /* end else if ( (serDes < 0) || (serDes >= FM10000_NUM_SERDES) ) */
+    }
 
     FM_LOG_EXIT_V2(FM_LOG_CAT_SERDES, serDes, err);
 
-}   /* end fm10000SerdesGetSignalOk */
+}
 
 
 
@@ -5887,7 +5954,7 @@ fm_status fm10000SerdesGetKrTrainingStatus(fm_int   sw,
 
     FM_LOG_EXIT_V2(FM_LOG_CAT_SWITCH, serDes, err);
 
-}   /* end fm10000SerdesGetSignalOk */
+}
 
 
 
@@ -5932,7 +5999,7 @@ fm_status fm10000SerdesSetLoopbackMode(fm_int              sw,
     switch (mode)
     {
         case FM10000_SERDES_LB_OFF:
-            err = fm10000SerdesSpicoWrOnlyInt(sw, serdes, FM10000_SPICO_SERDES_INTR_0X30 , int0x30Data);
+            err = fm10000SerdesSpicoWrOnlyInt(sw, serdes, FM10000_SPICO_SERDES_INTR_0X30, int0x30Data);
 
             FM_SET_BIT(intData, FM10000_SPICO_SERDES_INTR_0X08, BIT_8, 1);
             FM_SET_BIT(intData, FM10000_SPICO_SERDES_INTR_0X08, BIT_0, 0);
@@ -5948,8 +6015,8 @@ fm_status fm10000SerdesSetLoopbackMode(fm_int              sw,
             FM_SET_BIT(intData, FM10000_SPICO_SERDES_INTR_0X08, BIT_0, 0);
             break;
         case FM10000_SERDES_LB_PARALLEL_ON_RX_CLK:
-            FM_SET_FIELD(int0x30Data, FM10000_SPICO_SERDES_INTR_0X30 , FIELD_2, 0x01);
-            err = fm10000SerdesSpicoWrOnlyInt(sw, serdes, FM10000_SPICO_SERDES_INTR_0X30 , int0x30Data);
+            FM_SET_FIELD(int0x30Data, FM10000_SPICO_SERDES_INTR_0X30, FIELD_2, 0x01);
+            err = fm10000SerdesSpicoWrOnlyInt(sw, serdes, FM10000_SPICO_SERDES_INTR_0X30, int0x30Data);
         case FM10000_SERDES_LB_PARALLEL_ON_REFCLK:
             FM_SET_BIT(intData, FM10000_SPICO_SERDES_INTR_0X08, BIT_9, 1);
             FM_SET_BIT(intData, FM10000_SPICO_SERDES_INTR_0X08, BIT_4, 1);
@@ -5969,7 +6036,7 @@ fm_status fm10000SerdesSetLoopbackMode(fm_int              sw,
 
     FM_LOG_EXIT_V2(FM_LOG_CAT_SWITCH, serdes, err);
 
-}   /* end fm10000SerdesSetLoopbackMode */
+}
 
 
 
@@ -6017,7 +6084,7 @@ fm_status fm10000SerdesGetLoopbackMode(fm_int sw, fm_int serdes, fm10000SerdesLb
     *mode = FM10000_SERDES_LB_OFF;
     return status;
 
-}   /* end fm10000SerdesGetLoopbackMode */
+}
 
 
 
@@ -6065,7 +6132,7 @@ fm_status fm10000SerdesSetPolarity(fm_int sw, fm_int serdes, fm10000SerdesPolari
 
     return status;
 
-}   /* end fm10000SerdesSetPolarity */
+}
 
 
 
@@ -6155,14 +6222,14 @@ fm_status fm10000SerdesGetPolarity(fm_int                 sw,
                         }
                     }
                 }
-            }   /* end if else if (serdesSmMode == ...) */
+            }
 
-        }   /* end if (err == FM_OK) */
+        }
     }
 
     FM_LOG_EXIT_V2(FM_LOG_CAT_SWITCH, serdes, err);
 
-}   /* end fm10000SerdesGetPolarity */
+}
 
 
 
@@ -6203,7 +6270,7 @@ fm_status fm10000SerdesSetTxEq(fm_int                sw,
         switchExt->serdesBypassSbus == FALSE &&
         serdesOpMode != FM_SERDES_OPMODE_STUB_SM )
     {
-        
+
         val = 0;
         FM_SET_FIELD(val, FM10000_SPICO_SERDES_INTR_0X15, FIELD_1, (txEq & 0xff));
         FM_SET_FIELD(val, FM10000_SPICO_SERDES_INTR_0X15, FIELD_2, select);
@@ -6219,7 +6286,7 @@ fm_status fm10000SerdesSetTxEq(fm_int                sw,
 
     return err;
 
-}   /* end fm10000SerdesSetTxEq */
+}
 
 
 
@@ -6290,7 +6357,8 @@ fm_status fm10000SerdesGetTxEq(fm_int sw,
 
     return err;
 
-}   /* end fm10000SerdesGetTxEq*/
+}
+
 
 
 
@@ -6324,19 +6392,19 @@ fm_status fm10000SerdesSetRxTerm(fm_int              sw,
     {
         case FM10000_SERDES_RX_TERM_AGND:
         {
-            FM_SET_BIT(data, FM10000_SPICO_SERDES_INTR_0X2B , BIT_0, 0);
-            FM_SET_BIT(data, FM10000_SPICO_SERDES_INTR_0X2B , BIT_1, 0);
+            FM_SET_BIT(data, FM10000_SPICO_SERDES_INTR_0X2B, BIT_0, 0);
+            FM_SET_BIT(data, FM10000_SPICO_SERDES_INTR_0X2B, BIT_1, 0);
             break;
         }
         case FM10000_SERDES_RX_TERM_AVDD:
         {
-            FM_SET_BIT(data, FM10000_SPICO_SERDES_INTR_0X2B , BIT_0, 1);
-            FM_SET_BIT(data, FM10000_SPICO_SERDES_INTR_0X2B , BIT_1, 0);
+            FM_SET_BIT(data, FM10000_SPICO_SERDES_INTR_0X2B, BIT_0, 1);
+            FM_SET_BIT(data, FM10000_SPICO_SERDES_INTR_0X2B, BIT_1, 0);
             break;
         }
         case FM10000_SERDES_RX_TERM_FLOAT:
         {
-            FM_SET_BIT(data, FM10000_SPICO_SERDES_INTR_0X2B , BIT_1, 1);
+            FM_SET_BIT(data, FM10000_SPICO_SERDES_INTR_0X2B, BIT_1, 1);
             break;
         }
         default:
@@ -6346,14 +6414,14 @@ fm_status fm10000SerdesSetRxTerm(fm_int              sw,
     if (err == FM_OK)
     {
 
-        FM_SET_BIT(data, FM10000_SPICO_SERDES_INTR_0X2B , BIT_5, 0);
+        FM_SET_BIT(data, FM10000_SPICO_SERDES_INTR_0X2B, BIT_5, 0);
 
-        err = fm10000SerdesSpicoWrOnlyInt(sw, serDes, FM10000_SPICO_SERDES_INTR_0X2B , data);
+        err = fm10000SerdesSpicoWrOnlyInt(sw, serDes, FM10000_SPICO_SERDES_INTR_0X2B, data);
     }
 
     return err;
 
-}   /* end fm10000SerdesSetRxTerm */
+}
 
 
 
@@ -6393,7 +6461,7 @@ fm_status fm10000SerdesGetRxTerm(fm_int sw, fm_int serdes, fm10000SerdesRxTerm *
 
     return status;
 
-}   /* end fm10000SerdesGetRxTerm */
+}
 
 
 
@@ -6432,7 +6500,7 @@ fm_status fm10000SerdesSetBasicCmpMode(fm_int   sw,
 
     FM_LOG_EXIT_V2(FM_LOG_CAT_SWITCH, serdes, status);
 
-}   /* end fm10000SerdesSetCmpMode */
+}
 
 
 
@@ -6492,7 +6560,7 @@ fm_status fm10000SerdesSetDataCoreSource(fm_int                  sw,
 
     FM_LOG_EXIT_V2(FM_LOG_CAT_SWITCH, serdes, err);
 
-}   /* end fm10000SerdesSetDataCoreSource */
+}
 
 
 
@@ -6564,18 +6632,18 @@ fm_status fm10000SerdesSetTxDataSelect(fm_int                    sw,
         default:
                 err = FM_ERR_INVALID_ARGUMENT;
         }
-    
+
         FM_SET_FIELD(intData, FM10000_SPICO_SERDES_INTR_0X02, FIELD_1, prbs);
         FM_SET_BIT(intData, FM10000_SPICO_SERDES_INTR_0X02, BIT_8, 1);
         FM_SET_BIT(intData, FM10000_SPICO_SERDES_INTR_0X02, BIT_5, 1);
-    
+
         err = fm10000SerdesSpicoInt02Retry(sw, serdes, intData, FM10000_SERDES_INT02_TIMEOUT_MSEC);
-    
-    }   /* end else if (dataSel == FM10000_SERDES_SEL_CORE) */
+
+    }
 
     FM_LOG_EXIT_V2(FM_LOG_CAT_SWITCH, serdes, err);
 
-}   /* end fm10000SerdesSetTxDataSelect */
+}
 
 
 
@@ -6643,7 +6711,7 @@ fm_status fm10000SerdesSetRxCmpData(fm_int                    sw,
             default:
                 break;
         }
-        
+
         FM_SET_FIELD(intData, FM10000_SPICO_SERDES_INTR_0X02, FIELD_1, prbs);
         FM_SET_BIT(intData, FM10000_SPICO_SERDES_INTR_0X02, BIT_9, 1);
         FM_SET_BIT(intData, FM10000_SPICO_SERDES_INTR_0X02, BIT_5, 1);
@@ -6653,12 +6721,12 @@ fm_status fm10000SerdesSetRxCmpData(fm_int                    sw,
     {
         intData = 0x2FF;
     }
-    
+
     err = fm10000SerdesSpicoInt02Retry(sw, serdes, intData, FM10000_SERDES_INT02_TIMEOUT_MSEC);
 
     FM_LOG_EXIT_V2(FM_LOG_CAT_SWITCH, serdes, err);
 
-}   /* end fm10000SerdesSetRxCmpData */
+}
 
 
 
@@ -6716,7 +6784,7 @@ fm_status fm10000SerdesDisablePrbsGen(fm_int                  sw,
 
     FM_LOG_EXIT_V2(FM_LOG_CAT_SWITCH, serDes, err);
 
-}   /* end fm10000SerdesDisablePrbsGen */
+}
 
 
 
@@ -6758,7 +6826,7 @@ fm_status fm10000SerdesGetTxDataSelect(fm_int                   sw,
 
     err = fm10000SerdesDmaRead(sw, serdes, FM10000_SERDES_DMA_TYPE_LSB, FM10000_AVSD_LSB_ADDR_0X021, &val);
     FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_SERDES, err);
-    if (val & (1 << 5))  
+    if (val & (1 << 5))
     {
         *dataSel = FM10000_SERDES_TX_DATA_SEL_LOOPBACK;
     }
@@ -6766,7 +6834,7 @@ fm_status fm10000SerdesGetTxDataSelect(fm_int                   sw,
     {
         err = fm10000SerdesDmaRead(sw, serdes, FM10000_SERDES_DMA_TYPE_LSB, FM10000_AVSD_LSB_ADDR_0X029, &val);
         FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_SERDES, err);
-        
+
         switch (val & 0x07)
         {
             case 0:
@@ -6794,7 +6862,8 @@ fm_status fm10000SerdesGetTxDataSelect(fm_int                   sw,
     }
 
     FM_LOG_EXIT_V2(FM_LOG_CAT_SWITCH, serdes, err);
-}   /* end fm10000SerdesGetTxDataSelect */
+
+}
 
 
 
@@ -6831,7 +6900,7 @@ fm_status fm10000SerdesGetRxCmpData(fm_int                   sw,
 
     err = fm10000SerdesDmaRead(sw, serdes, FM10000_SERDES_DMA_TYPE_LSB, FM10000_AVSD_LSB_ADDR_0X02A, &val);
     FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_SERDES, err);
-        
+
     switch (val & 0x07)
     {
         case 0:
@@ -6862,7 +6931,7 @@ fm_status fm10000SerdesGetRxCmpData(fm_int                   sw,
 
     FM_LOG_EXIT_V2(FM_LOG_CAT_SWITCH, serdes, err);
 
-}   /* end fm10000SerdesGetRxCmpData */
+}
 
 
 
@@ -6950,7 +7019,7 @@ fm_status fm10000SerdesSetUserDataPattern(fm_int              sw,
 
     FM_LOG_EXIT_V2(FM_LOG_CAT_SWITCH, serDes, err);
 
-}   /* end fm10000SerdesSetUserDataPattern */
+}
 
 
 
@@ -7054,12 +7123,12 @@ fm_status fm10000SerdesGetErrors(fm_int                 sw,
             {
                 *pCounter = 0;
             }
-        }   /* end else if (serdesOpMode != FM_SERDES_OPMODE_STUB_SM) */
+        }
     }
 
     FM_LOG_EXIT_V2(FM_LOG_CAT_SWITCH, serDes, err);
 
-}   /* end fm10000SerdesGetErrors */
+}
 
 
 
@@ -7133,7 +7202,7 @@ fm_status fm10000SerdesInjectErrors(fm_int              sw,
 
     return status;
 
-}   /* end SerdesInjectErrors */
+}
 
 
 
@@ -7203,7 +7272,7 @@ fm_status fm10000GetSerdesWidthModeRateSel(fm_int              serDes,
 
     return err;
 
-}   /* end fm10000GetSerdesWidthModeRateSel */
+}
 
 
 
@@ -7290,11 +7359,11 @@ fm_status fm10000ConfigurePcslBitSlip(fm_int    sw,
 
             err = fm10000SerdesSpicoWrOnlyInt(sw, serDes, FM10000_SPICO_SERDES_INTR_0X0C, intParam);
         }
-    }   /* end else if (serDes < 0 ... ) */
+    }
 
     FM_LOG_EXIT_V2(FM_LOG_CAT_SWITCH, serDes, err);
 
-}   /* end fm10000ConfigurePcslBitSlip */
+}
 
 
 
@@ -7366,11 +7435,11 @@ fm_status fm10000SerdesConfigurePhaseSlip(fm_int    sw,
                 err = fm10000SerdesSpicoWrOnlyInt(sw, serDes, FM10000_SPICO_SERDES_INTR_0X0E, intParam);
             }
         }
-    }   /* end else if (serDes < 0 ... ) */
+    }
 
     FM_LOG_EXIT_V2(FM_LOG_CAT_SWITCH, serDes, err);
 
-}   /* end fm10000SerdesConfigurePhaseSlip */
+}
 
 
 
@@ -7424,9 +7493,7 @@ fm_status fm10000SetSerdesTxPattern(fm_int    sw,
                      customData0,
                      customData1);
 
-
     VALIDATE_SWITCH_INDEX(sw);
-
     VALIDATE_SERDES(serdes);
 
     err = FM_OK;
@@ -7559,7 +7626,7 @@ fm_status fm10000SetSerdesTxPattern(fm_int    sw,
                          submode );
             err = FM_ERR_INVALID_SUBMODE;
 
-    }   /* end switch ( submode ) */
+    }
 
     if (err == FM_OK)
     {
@@ -7601,7 +7668,7 @@ fm_status fm10000SetSerdesTxPattern(fm_int    sw,
 
     FM_LOG_EXIT_V2(FM_LOG_CAT_SWITCH, serdes, err);
 
-}   /* end fm10000SetSerdesTxPattern */
+}
 
 
 
@@ -7654,7 +7721,6 @@ fm_status fm10000SetSerdesRxPattern(fm_int    sw,
                      submode,
                      customData0,
                      customData1);
-
 
     VALIDATE_SWITCH_INDEX(sw);
     VALIDATE_SERDES(serdes);
@@ -7743,7 +7809,8 @@ fm_status fm10000SetSerdesRxPattern(fm_int    sw,
                          submode );
             err = FM_ERR_INVALID_SUBMODE;
 
-    }   /* end switch ( submode ) */
+    }
+
 
 
     if (err == FM_OK)
@@ -7768,7 +7835,7 @@ fm_status fm10000SetSerdesRxPattern(fm_int    sw,
 
     FM_LOG_EXIT_V2(FM_LOG_CAT_SWITCH, serdes, err);
 
-}   /* end fm10000SetSerdesRxPattern */
+}
 
 
 
@@ -7792,9 +7859,7 @@ fm_status fm10000ClearSerdesTxPattern(fm_int sw, fm_int serdes)
 {
     fm_status status;
 
-
     VALIDATE_SWITCH_INDEX(sw);
-
     VALIDATE_SERDES(serdes);
 
     status = fm10000SerdesSetTxDataSelect(sw,
@@ -7803,7 +7868,7 @@ fm_status fm10000ClearSerdesTxPattern(fm_int sw, fm_int serdes)
 
     return status;
 
-}   /* end fm10000ClearSerdesTxPattern */
+}
 
 
 
@@ -7827,9 +7892,7 @@ fm_status fm10000ClearSerdesRxPattern(fm_int sw, fm_int serdes)
 {
     fm_status status;
 
-
     VALIDATE_SWITCH_INDEX(sw);
-
     VALIDATE_SERDES(serdes);
 
     status = fm10000SerdesSetRxCmpData(sw,
@@ -7838,7 +7901,7 @@ fm_status fm10000ClearSerdesRxPattern(fm_int sw, fm_int serdes)
 
     return status;
 
-}   /* end fm10000ClearSerdesRxPattern */
+}
 
 
 
@@ -7883,7 +7946,7 @@ fm_status fm10000ResetSerdesErrorCounter(fm_int sw,
 
     FM_LOG_EXIT_V2(FM_LOG_CAT_SWITCH, serDes, err);
 
-}   /* end fm10000ResetSerdesErrorCounter */
+}
 
 
 
@@ -7937,7 +8000,7 @@ fm_status fm10000GetSerdesErrorCounter(fm_int     sw,
 
     FM_LOG_EXIT_V2(FM_LOG_CAT_SWITCH, serDes, err);
 
-}   /* end fm10000GetSerdesErrorCounter */
+}
 
 
 
@@ -7983,7 +8046,7 @@ fm_status fm10000SetSerdesCursor(fm_int     sw,
     else
     {
         pLaneAttr = GET_LANE_ATTR( sw, serDes );
-        
+
         if ( !SerdesValidateAttenuationCoefficients(cursor, pLaneAttr->preCursor,pLaneAttr->postCursor) )
         {
             err = FM_ERR_INVALID_VALUE;
@@ -8005,7 +8068,7 @@ fm_status fm10000SetSerdesCursor(fm_int     sw,
 
     FM_LOG_EXIT_V2(FM_LOG_CAT_SWITCH, serDes, err);
 
-}   /* end fm10000SetSerdesCursor */
+}
 
 
 
@@ -8074,7 +8137,7 @@ fm_status fm10000SetSerdesPreCursor(fm_int    sw,
 
     FM_LOG_EXIT_V2(FM_LOG_CAT_SWITCH, serDes, err);
 
-}   /* end fm10000SetSerdesPreCursor */
+}
 
 
 
@@ -8140,10 +8203,9 @@ fm_status fm10000SetSerdesPostCursor(fm_int    sw,
         }
     }
 
-
     FM_LOG_EXIT_V2(FM_LOG_CAT_SWITCH, serDes, err);
 
-}   /* end fm10000SetSerdesPostCursor */
+}
 
 
 
@@ -8173,9 +8235,7 @@ fm_status fm10000SetSerdesLanePolarity(fm_int sw,
 {
     fm10000SerdesPolarity   polarity;
 
-
     VALIDATE_SWITCH_INDEX(sw);
-
     VALIDATE_SERDES(serdes);
 
     if (invertTx && invertRx)
@@ -8197,8 +8257,7 @@ fm_status fm10000SetSerdesLanePolarity(fm_int sw,
 
     return fm10000SerdesSetPolarity(sw, serdes, polarity);
 
-}   /* end fm10000SetSerdesLanePolarity */
-
+}
 
 
 
@@ -8223,18 +8282,16 @@ fm_status fm10000SerdesDfeTuningStartICal(fm_int     sw,
     fm_status   err;
     fm_uint32   dfeControl;
 
-
     VALIDATE_SWITCH_INDEX(sw);
-
     VALIDATE_SERDES(serDes);
+
 
     dfeControl = 0x01;
     err = fm10000SerdesSpicoWrOnlyInt(sw, serDes, FM10000_SPICO_SERDES_INTR_0X0A, dfeControl);
 
     return err;
 
-}   /* end fm10000SerdesDfeTuningStartICal */
-
+}
 
 
 
@@ -8260,9 +8317,7 @@ fm_status fm10000SerdesDfeTuningStartPCalSingleExec(fm_int     sw,
     fm_status   err;
     fm_uint32   dfeControl;
 
-
     VALIDATE_SWITCH_INDEX(sw);
-
     VALIDATE_SERDES(serDes);
 
 
@@ -8271,7 +8326,7 @@ fm_status fm10000SerdesDfeTuningStartPCalSingleExec(fm_int     sw,
 
     return err;
 
-}   /* end fm10000SerdesDfeTuningStartPCalSingleExec */
+}
 
 
 
@@ -8296,17 +8351,16 @@ fm_status fm10000SerdesDfeTuningStartPCalContinuous(fm_int     sw,
     fm_status   err;
     fm_uint32   dfeControl;
 
-
     VALIDATE_SWITCH_INDEX(sw);
-
     VALIDATE_SERDES(serDes);
+
 
     dfeControl = 0x06;
     err = fm10000SerdesSpicoWrOnlyInt(sw, serDes, FM10000_SPICO_SERDES_INTR_0X0A, dfeControl);
 
     return err;
 
-}   /* end fm10000SerdesDfeTuningStartPCalContinuous */
+}
 
 
 
@@ -8331,9 +8385,7 @@ fm_status fm10000SerdesDfeTuningStopAll(fm_int     sw,
     fm_status   err;
     fm_uint32   dfeControl;
 
-
     VALIDATE_SWITCH_INDEX(sw);
-
     VALIDATE_SERDES(serDes);
 
     dfeControl = 0x00;
@@ -8341,7 +8393,7 @@ fm_status fm10000SerdesDfeTuningStopAll(fm_int     sw,
 
     return err;
 
-}   /* end fm10000SerdesDfeTuningStopAll */
+}
 
 
 
@@ -8355,11 +8407,11 @@ fm_status fm10000SerdesDfeTuningStopAll(fm_int     sw,
  * \param[in]       sw is the switch on which to operate.
  *
  * \param[in]       serDes is the SERDES number on which to operate.
- * 
+ *
  * \param[out]      pDfeStatus is a pointer to a caller-allocated area where
  *                  this function will return the dfe tuning status.
- * 
- * \return          FM_ERR_INVALID_ARGUMENT if pDfeStatus is a NULL pointer 
+ *
+ * \return          FM_ERR_INVALID_ARGUMENT if pDfeStatus is a NULL pointer
  * \return          FM_ERR_INVALID_SWITCH if the switch ID is invalid
  * \return          FM_ERR_INVALID_ARGUMENT invalid value for the Serdes type
  *
@@ -8370,9 +8422,7 @@ fm_status fm10000SerdesDfeTuningGetStatus(fm_int     sw,
 {
     fm_status   err;
 
-
     VALIDATE_SWITCH_INDEX(sw);
-
     VALIDATE_SERDES(serDes);
 
     if (pDfeStatus == NULL)
@@ -8381,8 +8431,8 @@ fm_status fm10000SerdesDfeTuningGetStatus(fm_int     sw,
     }
     else
     {
-        err = fm10000SerdesSpicoInt(sw, 
-                                    serDes, 
+        err = fm10000SerdesSpicoInt(sw,
+                                    serDes,
                                     FM10000_SPICO_SERDES_INTR_0X26_READ,
                                     FM10000_SERDES_DFE_PARAM_DFE_STATUS_REG,
                                     pDfeStatus);
@@ -8395,7 +8445,7 @@ fm_status fm10000SerdesDfeTuningGetStatus(fm_int     sw,
 
     return err;
 
-}   /* end fm10000SerdesDfeTuningGetStatus */
+}
 
 
 
@@ -8410,11 +8460,11 @@ fm_status fm10000SerdesDfeTuningGetStatus(fm_int     sw,
  * \param[in]       sw is the switch on which to operate.
  *
  * \param[in]       serDes is the SERDES number on which to operate.
- * 
+ *
  * \param[out]      pICalStatus is a pointer to a caller-allocated area where
  *                  this function will return the status of iCal.
- * 
- * \return          FM_ERR_INVALID_ARGUMENT if pDfeStatus is a NULL pointer 
+ *
+ * \return          FM_ERR_INVALID_ARGUMENT if pDfeStatus is a NULL pointer
  * \return          FM_ERR_INVALID_SWITCH if the switch ID is invalid
  * \return          FM_ERR_INVALID_ARGUMENT invalid value for the Serdes type
  *
@@ -8425,7 +8475,7 @@ fm_status fm10000SerdesDfeTuningGetICalStatus(fm_int     sw,
 {
     fm_status   err;
     fm_uint32   dfeStatus;
-    
+
 
     if (pICalStatus == NULL)
     {
@@ -8448,7 +8498,7 @@ fm_status fm10000SerdesDfeTuningGetICalStatus(fm_int     sw,
 
     return err;
 
-}   /* end fm10000SerdesDfeTuningGetICalStatus */
+}
 
 
 
@@ -8460,17 +8510,17 @@ fm_status fm10000SerdesDfeTuningGetICalStatus(fm_int     sw,
  * \desc            Check if iCal was succesful or not. The criterion is
  *                  to perform a quick validation that was suggested by the
  *                  serdes provider. If iCal is succesful, this function
- *                  returns iCalSuccessful equal to TRUE or FALSE otherwise. 
+ *                  returns iCalSuccessful equal to TRUE or FALSE otherwise.
  *
  * \param[in]       sw is the switch on which to operate.
  *
  * \param[in]       serDes is the SERDES number on which to operate.
- * 
+ *
  * \param[out]      pICalSuccessful is a pointer to a caller-allocated area
  *                  where this function will return TRUE if iCal is
  *                  consiedered successful or FALSE otherwise.
- * 
- * \return          FM_ERR_INVALID_ARGUMENT if pDfeStatus is a NULL pointer 
+ *
+ * \return          FM_ERR_INVALID_ARGUMENT if pDfeStatus is a NULL pointer
  * \return          FM_ERR_INVALID_SWITCH if the switch ID is invalid
  * \return          FM_ERR_INVALID_ARGUMENT invalid value for the Serdes type
  *
@@ -8484,7 +8534,7 @@ fm_status fm10000SerdesDfeTuningCheckICalConvergence(fm_int     sw,
     fm_uint32       value1;
     fm_uint32       value2;
     fm_uint32       vDiff;
-    
+
 
     if (pICalSuccessful == NULL)
     {
@@ -8496,15 +8546,15 @@ fm_status fm10000SerdesDfeTuningCheckICalConvergence(fm_int     sw,
         *pICalSuccessful = FALSE;
 
 
-        err = fm10000SerdesSpicoInt(sw, 
-                                    serDes, 
+        err = fm10000SerdesSpicoInt(sw,
+                                    serDes,
                                     FM10000_SPICO_SERDES_INTR_0X26_READ,
                                     ((4 << 12) | 0),
                                     &value1);
         if (err == FM_OK)
         {
-            err = fm10000SerdesSpicoInt(sw, 
-                                        serDes, 
+            err = fm10000SerdesSpicoInt(sw,
+                                        serDes,
                                         FM10000_SPICO_SERDES_INTR_0X26_READ,
                                         ((4 << 12) | (1 << 8)),
                                         &value2);
@@ -8534,7 +8584,7 @@ fm_status fm10000SerdesDfeTuningCheckICalConvergence(fm_int     sw,
 
     return err;
 
-}   /* end fm10000SerdesDfeTuningCheckICalConvergence */
+}
 
 
 
@@ -8549,11 +8599,11 @@ fm_status fm10000SerdesDfeTuningCheckICalConvergence(fm_int     sw,
  * \param[in]       sw is the switch on which to operate.
  *
  * \param[in]       serDes is the SERDES number on which to operate.
- * 
+ *
  * \param[out]      pPCalStatus is a pointer to a caller-allocated area where
  *                  this function will return the status of pCal.
- * 
- * \return          FM_ERR_INVALID_ARGUMENT if pDfeStatus is a NULL pointer 
+ *
+ * \return          FM_ERR_INVALID_ARGUMENT if pDfeStatus is a NULL pointer
  * \return          FM_ERR_INVALID_SWITCH if the switch ID is invalid
  * \return          FM_ERR_INVALID_ARGUMENT invalid value for the Serdes type
  *
@@ -8565,7 +8615,7 @@ fm_status fm10000SerdesDfeTuningGetPCalStatus (fm_int     sw,
     fm_status   err;
     fm_uint32   dfeStatus;
 
-    
+
 
     if (pPCalStatus == NULL)
     {
@@ -8587,7 +8637,7 @@ fm_status fm10000SerdesDfeTuningGetPCalStatus (fm_int     sw,
 
     return err;
 
-}   /* end fm10000SerdesDfeTuningGetPCalStatus */
+}
 
 
 
@@ -8618,12 +8668,8 @@ fm_status fm10000SerdesDfeTuningStop(fm_int     sw,
     fm_uint32     fineTimeoutCnt;
     fm10000_lane *pLaneExt;
 
-
-
     VALIDATE_SWITCH_INDEX(sw);
-
     VALIDATE_SERDES(serDes);
-
 
     pLaneExt  = GET_LANE_EXT(sw, serDes);
 
@@ -8636,6 +8682,7 @@ fm_status fm10000SerdesDfeTuningStop(fm_int     sw,
 
     if (err == FM_OK)
     {
+
         err = fm10000SerdesDfeTuningGetStatus(sw, serDes, &dfeStatus);
     }
 
@@ -8644,6 +8691,7 @@ fm_status fm10000SerdesDfeTuningStop(fm_int     sw,
         if (dfeStatus & 0x03)
         {
             fm10000SerdesDfeTuningStopAll(sw,serDes);
+
 
             do
             {
@@ -8654,7 +8702,7 @@ fm_status fm10000SerdesDfeTuningStop(fm_int     sw,
                     break;
                 }
 
-                fmDelay(0, FM10000_SERDES_DFE_STOP_CYCLE_DELAY);  
+                fmDelay(0, FM10000_SERDES_DFE_STOP_CYCLE_DELAY);
 
             } while (++coarseTimeoutCnt < FM10000_SERDES_ICAL_STOP_MAX_CYCLES);
 
@@ -8670,7 +8718,7 @@ fm_status fm10000SerdesDfeTuningStop(fm_int     sw,
                         break;
                     }
 
-                    fmDelay(0, FM10000_SERDES_DFE_STOP_CYCLE_DELAY);  
+                    fmDelay(0, FM10000_SERDES_DFE_STOP_CYCLE_DELAY);
 
                 } while (++fineTimeoutCnt < FM10000_SERDES_PCAL_STOP_MAX_CYCLES);
             }
@@ -8681,22 +8729,22 @@ fm_status fm10000SerdesDfeTuningStop(fm_int     sw,
         {
             if (dfeStatus & 0x40)
             {
-    
+
                 err = fm10000SerdesDfeTuningStartPCalSingleExec(sw,serDes);
-    
+
                 if (err == FM_OK)
                 {
                     do
                     {
                         err = fm10000SerdesDfeTuningGetPCalStatus(sw,serDes, &dfeXCalStatus);
-    
+
                         if (err != FM_OK || !dfeXCalStatus )
                         {
                             break;
                         }
-    
-                        fmDelay(0, FM10000_SERDES_DFE_STOP_CYCLE_DELAY);  
-    
+
+                        fmDelay(0, FM10000_SERDES_DFE_STOP_CYCLE_DELAY);
+
                     } while (++fineTimeoutCnt < FM10000_SERDES_PCAL_STOP_MAX_CYCLES);
                 }
             }
@@ -8719,6 +8767,7 @@ fm_status fm10000SerdesDfeTuningStop(fm_int     sw,
     {
         FM_LOG_DEBUG_V2(FM_LOG_CAT_SERDES, serDes, "Delay to stop fine tuning=%d cycles\n", fineTimeoutCnt);
     }
+
 
     err2 = fm10000SerdesGetSignalOk(sw, serDes, &signalOk);
 
@@ -8754,7 +8803,7 @@ fm_status fm10000SerdesDfeTuningStop(fm_int     sw,
 
     return err;
 
-}   /* end fm10000SerdesDfeTuningStop */
+}
 
 
 
@@ -8797,14 +8846,14 @@ fm_status fm10000SerdesForcedDfeStop(fm_int       sw,
     serdesDbgLvl = fmGetIntApiProperty(FM_AAK_API_FM10000_SERDES_DBG_LVL,
                                        FM_AAD_API_FM10000_SERDES_DBG_LVL);
 
-     
+
     err = fm10000SerdesResetSpico(sw,serDes);
 
     if ( err == FM_OK )
     {
         err = fm10000SerdesTxRxEnaCtrl(sw,
                                        serDes,
-                                       FM10000_SERDES_CTRL_TX_ENA_MASK     | 
+                                       FM10000_SERDES_CTRL_TX_ENA_MASK     |
                                        FM10000_SERDES_CTRL_RX_ENA_MASK     |
                                        FM10000_SERDES_CTRL_OUTPUT_ENA_MASK | 0);
     }
@@ -8833,7 +8882,7 @@ fm_status fm10000SerdesForcedDfeStop(fm_int       sw,
         if (err == FM_OK)
         {
             err = fm10000SetSerdesPreCursor(sw, serDes, pLaneAttr->preCursor);
-    
+
             if (err == FM_OK)
             {
                 err = fm10000SetSerdesPostCursor(sw, serDes, pLaneAttr->postCursor);
@@ -8846,7 +8895,7 @@ fm_status fm10000SerdesForcedDfeStop(fm_int       sw,
         err = fm10000SerdesSetPllCalibrationMode(sw, serDes);
 
         if (err == FM_OK)
-        {            
+        {
             err = fm10000SerdesConfigurePhaseSlip(sw,serDes);
 
             if (err == FM_OK)
@@ -8858,8 +8907,8 @@ fm_status fm10000SerdesForcedDfeStop(fm_int       sw,
 
     if ( err == FM_OK )
     {
-        err = fm10000SetSerdesLanePolarity(sw, 
-                                           serDes, 
+        err = fm10000SetSerdesLanePolarity(sw,
+                                           serDes,
                                            (pLaneAttr->txPolarity != 0),
                                            (pLaneAttr->rxPolarity != 0));
     }
@@ -8869,9 +8918,9 @@ fm_status fm10000SerdesForcedDfeStop(fm_int       sw,
     {
         err = fm10000SerdesTxRxEnaCtrl(sw,
                                        serDes,
-                                       FM10000_SERDES_CTRL_TX_ENA_MASK | 
+                                       FM10000_SERDES_CTRL_TX_ENA_MASK |
                                        FM10000_SERDES_CTRL_TX_ENA      |
-                                       FM10000_SERDES_CTRL_RX_ENA_MASK | 
+                                       FM10000_SERDES_CTRL_RX_ENA_MASK |
                                        FM10000_SERDES_CTRL_RX_ENA);
         loopCnt = 100;
 
@@ -8906,7 +8955,7 @@ fm_status fm10000SerdesForcedDfeStop(fm_int       sw,
             if (serdesDbgLvl > 0)
             {
                 FM_LOG_PRINT("Serdes %d Recovery counter=%d\n",serDes, 100-loopCnt);
-            }           
+            }
         }
 
         if (err == FM_OK)
@@ -8926,7 +8975,7 @@ fm_status fm10000SerdesForcedDfeStop(fm_int       sw,
                                            FM10000_SERDES_CTRL_OUTPUT_ENA_MASK  |
                                            FM10000_SERDES_CTRL_OUTPUT_ENA);
         }
-        
+
         fmDelay(0, FM10000_SERDES_RESET_DELAY);
 
         if (err == FM_OK)
@@ -8940,7 +8989,7 @@ fm_status fm10000SerdesForcedDfeStop(fm_int       sw,
 
     FM_LOG_EXIT_V2(FM_LOG_CAT_SWITCH, serDes, err);
 
-}   /* end fm10000SerdesForcedDfeStop */
+}
 
 
 
@@ -8967,25 +9016,23 @@ fm_status fm10000SerdesDfeTuningConfig(fm_int     sw,
     fm_status        err;
     fm10000_lane *   pLaneExt;
     fm10000_laneDfe *pLaneDfe;
-    
 
     VALIDATE_SWITCH_INDEX(sw);
-
     VALIDATE_SERDES(serDes);
-    
+
     pLaneExt = GET_LANE_EXT(sw, serDes);
     pLaneDfe = &pLaneExt->dfeExt;
 
-    err = fm10000SerdesSpicoInt(sw, 
-                                serDes, 
+    err = fm10000SerdesSpicoInt(sw,
+                                serDes,
                                 FM10000_SPICO_SERDES_INTR_0X26,
                                 ((2 << 12) | ( 0 << 8) | (pLaneDfe->dfe_HF & 0xff)),
                                 NULL);
 
     if (err == FM_OK)
     {
-        err = fm10000SerdesSpicoInt(sw, 
-                                    serDes, 
+        err = fm10000SerdesSpicoInt(sw,
+                                    serDes,
                                     FM10000_SPICO_SERDES_INTR_0X26,
                                     ((2 << 12) | ( 1 << 8) | (pLaneDfe->dfe_LF & 0xff)),
                                     NULL );
@@ -8993,8 +9040,8 @@ fm_status fm10000SerdesDfeTuningConfig(fm_int     sw,
 
     if (err == FM_OK)
     {
-        err = fm10000SerdesSpicoInt(sw, 
-                                    serDes, 
+        err = fm10000SerdesSpicoInt(sw,
+                                    serDes,
                                     FM10000_SPICO_SERDES_INTR_0X26,
                                     ((2 << 12) | ( 2 << 8) | (pLaneDfe->dfe_DC & 0xff)),
                                     NULL );
@@ -9002,8 +9049,8 @@ fm_status fm10000SerdesDfeTuningConfig(fm_int     sw,
 
     if (err == FM_OK)
     {
-        err = fm10000SerdesSpicoInt(sw, 
-                                    serDes, 
+        err = fm10000SerdesSpicoInt(sw,
+                                    serDes,
                                     FM10000_SPICO_SERDES_INTR_0X26,
                                     ((2 << 12) | ( 3 << 8) | (pLaneDfe->dfe_BW & 0xff)),
                                     NULL );
@@ -9013,8 +9060,8 @@ fm_status fm10000SerdesDfeTuningConfig(fm_int     sw,
         (fmGetBoolApiProperty(FM_AAK_API_DFE_ALLOW_EARLY_LINK_UP_MODE,
                               FM_AAD_API_DFE_ALLOW_EARLY_LINK_UP_MODE) == TRUE))
     {
-        err = fm10000SerdesSpicoInt(sw, 
-                                    serDes, 
+        err = fm10000SerdesSpicoInt(sw,
+                                    serDes,
                                     FM10000_SPICO_SERDES_INTR_0X26,
                                     0x5b01,
                                     NULL );
@@ -9022,7 +9069,7 @@ fm_status fm10000SerdesDfeTuningConfig(fm_int     sw,
 
     return err;
 
-}   /* end fm10000SerdesDfeTuningConfig */
+}
 
 
 
@@ -9092,9 +9139,8 @@ fm_status fm10000SerdesGetEyeHeight(fm_int  sw,
     }
 
     return err;
+
 }
-
-
 
 
 
@@ -9164,7 +9210,8 @@ fm_status fm10000SerDesGetEyeHeightWidth(fm_int  sw,
 
     return err;
 
-} /* fm10000SerDesGetEyeHeight`Width */
+}
+
 
 
 
@@ -9223,7 +9270,7 @@ fm_status fm10000SerDesGetEyeDiagram(fm_int                 sw,
 
     return err;
 
-}   /* end fm10000SerDesGetEyeDiagram */
+}
 
 
 
@@ -9248,15 +9295,13 @@ fm_status fm10000SerdesDfeTuningReset(fm_int     sw,
     fm_status   err;
     fm_int      index;
 
-
     VALIDATE_SWITCH_INDEX(sw);
-
     VALIDATE_SERDES(serDes);
-    
+
     for (index=0; index < 12; index++)
     {
-        err = fm10000SerdesSpicoInt(sw, 
-                                    serDes, 
+        err = fm10000SerdesSpicoInt(sw,
+                                    serDes,
                                     FM10000_SPICO_SERDES_INTR_0X26,
                                     ((3 << 12) | ( index << 8)),
                                     NULL);
@@ -9264,7 +9309,7 @@ fm_status fm10000SerdesDfeTuningReset(fm_int     sw,
 
     return err;
 
-}   /* end fm10000SerdesDfeTuningReset */
+}
 
 
 
@@ -9278,9 +9323,9 @@ fm_status fm10000SerdesDfeTuningReset(fm_int     sw,
  * \param[in]       sw is the switch on which to operate.
  *
  * \param[in]       serDes is the SerDes number on which to operate.
- * 
+ *
  * \param[in]       relLane clause 92 lane ID.
- * 
+ *
  * \param[out]      pSeed points to the caller-allocated storage where
  *                  this function will return the seed for the current lane.
  *
@@ -9308,26 +9353,26 @@ fm_status fm10000SerdesSetupKrConfigClause92(fm_int     sw,
             {
                 case 3 :
                     {
-                        *pSeed = 0x7b6;         ; 
+                        *pSeed = 0x7b6;         ;
                         break;
                     }
-                case 2 : 
+                case 2 :
                     {
-                        *pSeed = 0x72d;         ; 
+                        *pSeed = 0x72d;         ;
                         break;
                     }
-                case 1 : 
+                case 1 :
                     {
-                        *pSeed = 0x645;        ; 
+                        *pSeed = 0x645;        ;
                         break;
                     }
                 case 0 :
-                default: 
+                default:
                     {
-                        *pSeed = 0x57e;        ; 
+                        *pSeed = 0x57e;        ;
                         break;
                     }
-            }   /* end switch(relLane) */
+            }
         }
 
         krConfig = ((relLane) & 0x0fff) | (3 << 12);
@@ -9336,7 +9381,7 @@ fm_status fm10000SerdesSetupKrConfigClause92(fm_int     sw,
         if (err == FM_OK)
         {
             krConfig = ((*pSeed) & 0x0fff) | (4 << 12);
-            err = fm10000SerdesSpicoWrOnlyInt(sw,serDes, FM10000_SPICO_SERDES_INTR_0X3D , krConfig);
+            err = fm10000SerdesSpicoWrOnlyInt(sw,serDes, FM10000_SPICO_SERDES_INTR_0X3D, krConfig);
         }
 
         if (err == FM_OK)
@@ -9344,13 +9389,13 @@ fm_status fm10000SerdesSetupKrConfigClause92(fm_int     sw,
 
 
             krConfig = (0x01) | (2 << 12);
-            err = fm10000SerdesSpicoWrOnlyInt(sw,serDes, FM10000_SPICO_SERDES_INTR_0X3D , krConfig);
+            err = fm10000SerdesSpicoWrOnlyInt(sw,serDes, FM10000_SPICO_SERDES_INTR_0X3D, krConfig);
         }
     }
 
     return err;
 
-}   /* end fm10000SerdesSetupKrConfigClause92 */
+}
 
 
 
@@ -9364,9 +9409,9 @@ fm_status fm10000SerdesSetupKrConfigClause92(fm_int     sw,
  * \param[in]       sw is the switch on which to operate.
  *
  * \param[in]       serDes is the SerDes number on which to operate.
- * 
+ *
  * \param[in]       relLane clause 84 lane ID.
- * 
+ *
  * \param[out]      pSeed points to the caller-allocated storage where
  *                  this function will return the seed for the current lane.
  *
@@ -9395,12 +9440,12 @@ fm_status fm10000SerdesSetupKrConfigClause84(fm_int     sw,
 
 
         krConfig = (0x04 | (3 << 12));
-        err = fm10000SerdesSpicoWrOnlyInt(sw,serDes, FM10000_SPICO_SERDES_INTR_0X3D , krConfig);
+        err = fm10000SerdesSpicoWrOnlyInt(sw,serDes, FM10000_SPICO_SERDES_INTR_0X3D, krConfig);
 
         if (err == FM_OK)
         {
             krConfig = ((*pSeed) & 0x0fff) | (4 << 12);
-            err = fm10000SerdesSpicoWrOnlyInt(sw,serDes, FM10000_SPICO_SERDES_INTR_0X3D , krConfig);
+            err = fm10000SerdesSpicoWrOnlyInt(sw,serDes, FM10000_SPICO_SERDES_INTR_0X3D, krConfig);
         }
 
         if (err == FM_OK)
@@ -9408,13 +9453,13 @@ fm_status fm10000SerdesSetupKrConfigClause84(fm_int     sw,
 
 
             krConfig = (0x01) | (2 << 12);
-            err = fm10000SerdesSpicoWrOnlyInt(sw,serDes, FM10000_SPICO_SERDES_INTR_0X3D , krConfig);
+            err = fm10000SerdesSpicoWrOnlyInt(sw,serDes, FM10000_SPICO_SERDES_INTR_0X3D, krConfig);
         }
     }
 
     return err;
 
-}   /* end fm10000SerdesSetupKrConfigClause84 */
+}
 
 
 
@@ -9446,11 +9491,12 @@ fm_status fm10000SerdesSetupKrConfig(fm_int       sw,
     fm_status       err;
     fm10000_switch *switchExt;
     fm10000_lane   *pLaneExt;
+    fm_laneAttr    *pLaneAttr;
     fm10000_laneKr *pLaneKr;
     fm_uint32       krConfig;
     fm_uint32       value;
     fm_bool         krIsRunning;
-    
+
 
     switchExt = GET_SWITCH_EXT(sw);
 
@@ -9461,11 +9507,12 @@ fm_status fm10000SerdesSetupKrConfig(fm_int       sw,
     else
     {
         pLaneExt    = GET_LANE_EXT(sw, serDes);
+        pLaneAttr   = GET_LANE_ATTR(sw, serDes);
 
         pLaneKr     = &pLaneExt->krExt;
         krIsRunning = FALSE;
         err         = FM_OK;
-    
+
         if (pKrIsRunning != NULL)
         {
             *pKrIsRunning = krIsRunning;
@@ -9475,13 +9522,13 @@ fm_status fm10000SerdesSetupKrConfig(fm_int       sw,
 
         if (pLaneKr->resetParameters)
         {
-            err = fm10000SerdesSpicoInt(sw,serDes, FM10000_SPICO_SERDES_INTR_0X3D , 0, &value);
+            err = fm10000SerdesSpicoInt(sw,serDes, FM10000_SPICO_SERDES_INTR_0X3D, 0, &value);
             if (err == FM_OK && value == 0)
             {
                 krIsRunning = TRUE;
             }
         }
-       
+
         if (pLaneKr->clause == FM10000_PMD_CONTROL_CLAUSE92)
         {
             err = fm10000SerdesSetupKrConfigClause92( sw, serDes, pLaneKr->relLane, &pLaneKr->seed);
@@ -9493,18 +9540,45 @@ fm_status fm10000SerdesSetupKrConfig(fm_int       sw,
         else if (pLaneKr->clause == FM10000_PMD_CONTROL_FV16G)
         {
             krConfig  = (1 << 12);
-            krConfig |= (pLaneKr->opt_TT_FECreq) ? 0x01 : 0; 
+            krConfig |= (pLaneKr->opt_TT_FECreq) ? 0x01 : 0;
             krConfig |= (pLaneKr->opt_TT_TF)     ? 0x02 : 0;
             krConfig |= (pLaneKr->opt_TT_FECcap) ? 0x04 : 0;
 
-            err = fm10000SerdesSpicoWrOnlyInt(sw,serDes, FM10000_SPICO_SERDES_INTR_0X3D , krConfig);
+            err = fm10000SerdesSpicoWrOnlyInt(sw,serDes, FM10000_SPICO_SERDES_INTR_0X3D, krConfig);
 
+        }
+
+        if (err == FM_OK &&
+            pLaneAttr->txLaneEnableConfigKrInit)
+        {
+
+            krConfig  = (0x09 << 12);
+            krConfig |= pLaneAttr->initializePreCursor;
+
+            err = fm10000SerdesSpicoWrOnlyInt(sw,serDes, FM10000_SPICO_SERDES_INTR_0X3D, krConfig);
+
+            if (err == FM_OK)
+            {
+                krConfig  = (0x0a << 12);
+                krConfig |= pLaneAttr->initializeCursor;
+
+                err = fm10000SerdesSpicoWrOnlyInt(sw,serDes, FM10000_SPICO_SERDES_INTR_0X3D, krConfig);
+            }
+
+            if (err == FM_OK)
+            {
+                krConfig  = (0x0b << 12);
+                krConfig |= pLaneAttr->initializePostCursor;
+
+                err = fm10000SerdesSpicoWrOnlyInt(sw,serDes, FM10000_SPICO_SERDES_INTR_0X3D, krConfig);
+            }
         }
 
         if (err == FM_OK)
         {
             err = fm10000SerdesSpicoInt(sw,serDes, FM10000_SPICO_SERDES_INTR_0X26, 0x5c00, NULL);
         }
+
 
         if (pKrIsRunning != NULL)
         {
@@ -9514,7 +9588,7 @@ fm_status fm10000SerdesSetupKrConfig(fm_int       sw,
 
     return err;
 
-}   /* end fm10000SerdesSetupKrConfig */
+}
 
 
 
@@ -9540,6 +9614,7 @@ fm_status fm10000StartKrTraining(fm_int  sw,
     fm_status       err;
     fm10000_switch *switchExt;
     fm10000_lane   *pLaneExt;
+    fm_laneAttr    *pLaneAttr;
     fm10000_laneKr *pLaneKr;
     fm_uint32       krCntrl;
 
@@ -9555,40 +9630,51 @@ fm_status fm10000StartKrTraining(fm_int  sw,
     }
     else
     {
-        pLaneExt = GET_LANE_EXT(sw, serDes);
-        pLaneKr  = &pLaneExt->krExt;
+        pLaneExt  = GET_LANE_EXT(sw, serDes);
+        pLaneAttr = GET_LANE_ATTR(sw, serDes);
+        pLaneKr   = &pLaneExt->krExt;
         pLaneKr->eyeScoreHeight = 0;
 
+
         err = fm10000StopKrTraining(sw,serDes,TRUE);
-    
+
         if (err == FM_OK)
         {
 
             err = fm10000SerdesSetupKrConfig(sw, serDes, NULL);
         }
-    
+
 
         if (err == FM_OK)
         {
             krCntrl = 0;
             pLaneKr->krTrainingCtrlCnt = FM10000_SERDES_KR_TRAINING_MAX_WAIT;
-    
+
             if (pLaneKr->invrtAdjPolarity)
             {
                 FM_SET_BIT(krCntrl, FM10000_SPICO_SERDES_INTR_0X04, BIT_3, 1);
             }
-    
+
             if (pLaneKr->disaTimeout)
             {
                 FM_SET_BIT(krCntrl, FM10000_SPICO_SERDES_INTR_0X04, BIT_4, 1);
             }
-    
+
             if (pLaneKr->disaTxEqAdjReq)
             {
                 FM_SET_BIT(krCntrl, FM10000_SPICO_SERDES_INTR_0X04, BIT_5, 1);
             }
+
+            if (pLaneAttr->txLaneEnableConfigKrInit)
+            {
+                pLaneAttr->preCursorDecOnPreset  &= 0x0f;
+                pLaneAttr->postCursorDecOnPreset &= 0x0f;
+
+                FM_SET_FIELD(krCntrl, FM10000_SPICO_SERDES_INTR_0X04, FIELD_2, pLaneAttr->preCursorDecOnPreset);
+                FM_SET_FIELD(krCntrl, FM10000_SPICO_SERDES_INTR_0X04, FIELD_3, pLaneAttr->postCursorDecOnPreset);
+            }
         }
-    
+
         if (err == FM_OK)
         {
 
@@ -9612,7 +9698,7 @@ fm_status fm10000StartKrTraining(fm_int  sw,
 
     FM_LOG_EXIT_V2(FM_LOG_CAT_SWITCH, serDes, err);
 
-}   /* end fm10000StartKrTraining */
+}
 
 
 
@@ -9642,6 +9728,8 @@ fm_status fm10000StopKrTraining(fm_int  sw,
     fm10000_switch *switchExt;
     fm_int          waitSignalOkCnt;
     fm_bool         signalOk;
+    fm_uint32       result;
+    fm10000_lane   *pLaneExt;
 
     FM_LOG_ENTRY_V2(FM_LOG_CAT_SERDES, serDes,
                     "sw=%d serdes=%d, waitSignalOk=%s\n",
@@ -9650,6 +9738,7 @@ fm_status fm10000StopKrTraining(fm_int  sw,
                     waitSignalOk? "TRUE" :"FALSE");
 
     switchExt = GET_SWITCH_EXT(sw);
+    pLaneExt  = GET_LANE_EXT(sw, serDes);
 
     if ( !switchExt->serdesSupportsKR )
     {
@@ -9658,7 +9747,28 @@ fm_status fm10000StopKrTraining(fm_int  sw,
     else
     {
 
-        err = fm10000SerdesSpicoWrOnlyInt(sw, serDes, FM10000_SPICO_SERDES_INTR_0X04, 0);
+        err = fm10000SerdesSpicoIntSBusWrite(sw, serDes, FM10000_SPICO_SERDES_INTR_0X04, 0);
+        if (err == FM_OK)
+        {
+            err = fm10000SerdesSpicoIntSBusReadFast(sw, serDes, &result);
+        }
+
+        if (err != FM_OK || result != FM10000_SPICO_SERDES_INTR_0X04)
+        {
+
+            FM_LOG_DEBUG_V2(FM_LOG_CAT_SERDES,serDes,
+                            "Serdes=0x%2.2x: Cannot stop KR training\n",
+                             serDes);
+
+            err = fm10000SerdesResetSpico(sw, serDes);
+
+            waitSignalOk = FALSE;
+
+            if (pLaneExt->fResetCnt < 0xffffffff)
+            {
+                pLaneExt->fResetCnt++;
+            }
+        }
 
         if (waitSignalOk == TRUE)
         {
@@ -9668,17 +9778,17 @@ fm_status fm10000StopKrTraining(fm_int  sw,
             {
 
                 err = fm10000SerdesGetSignalOk(sw, serDes, &signalOk);
-    
+
                 if (err != FM_OK || signalOk == TRUE)
                 {
                     break;
                 }
-    
+
 
                 fmDelay(0, FM10000_SERDES_KR_WAIT_SIGNAL_OK_CYCLE_DELAY);
-    
+
             } while (++waitSignalOkCnt < FM10000_SERDES_KR_WAIT_SIGNAL_OK_MAX_CYCLES);
-    
+
             if (err == FM_OK && waitSignalOkCnt >= FM10000_SERDES_KR_WAIT_SIGNAL_OK_MAX_CYCLES)
             {
                 FM_LOG_ERROR_V2(FM_LOG_CAT_SERDES, serDes,
@@ -9690,7 +9800,7 @@ fm_status fm10000StopKrTraining(fm_int  sw,
 
     FM_LOG_EXIT_V2(FM_LOG_CAT_SWITCH, serDes, err);
 
-}   /* end fm10000StopKrTraining */
+}
 
 
 
@@ -9707,7 +9817,7 @@ fm_status fm10000StopKrTraining(fm_int  sw,
  *
  * \param[in]       dfeMode is the DFE mode, which is used to set the KR
  *                  pCal mode.
- *                  
+ *
  *
  * \return          FM_OK if successful
  * \return          Other ''Status Codes'' as appropriate in case of failure.
@@ -9752,7 +9862,7 @@ fm_status fm10000SetKrPcalMode(fm_int  sw,
 
     FM_LOG_EXIT_V2(FM_LOG_CAT_SWITCH, serDes, err);
 
-}   /* end fm10000SetKrPcalMode */
+}
 
 
 
@@ -9780,7 +9890,6 @@ fm_status fm10000SerdesConfigureEeeInt(fm_int sw, fm_int serDes)
     VALIDATE_SERDES(serDes);
 
 
-     
     data = 0;
     FM_SET_BIT(data, FM10000_SPICO_SERDES_INTR_0X27, BIT_1, 1);
 
@@ -9791,7 +9900,7 @@ fm_status fm10000SerdesConfigureEeeInt(fm_int sw, fm_int serDes)
 
     return err;
 
-}   /* end fm10000SerdesConfigureEeeInt */
+}
 
 
 

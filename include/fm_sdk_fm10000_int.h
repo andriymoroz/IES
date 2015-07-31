@@ -47,6 +47,7 @@
 #include <api/internal/fm10000/fm10000_api_an_state_machines.h>
 #include <api/internal/fm10000/fm10000_api_attr_int.h>
 #include <api/internal/fm10000/fm10000_api_crm_int.h>
+#include <api/internal/fm10000/fm10000_api_crm_state_machines.h>
 #include <api/internal/fm10000/fm10000_api_debug_int.h>
 #include <api/internal/fm10000/fm10000_api_event_mac_maint_int.h>
 #include <api/internal/fm10000/fm10000_api_flooding_int.h>

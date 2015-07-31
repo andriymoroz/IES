@@ -29,7 +29,7 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
+ *****************************************************************************/
 
 #ifndef __FM_FM_API_ACL_H
 #define __FM_FM_API_ACL_H
@@ -618,6 +618,10 @@ typedef enum
  *  If multiple ACLs specifying any of these actions hit on a received
  *  frame, only the action of the highest precedence ACL will take effect.
  *
+ *  This action is not supported in the SWAG environment due to the
+ *  possibility of undesired double tagging when passing a frame from
+ *  one switch to another.
+ *
  *  \chips FM6000, FM10000 */
 #define FM_ACL_ACTIONEXT_PUSH_VLAN              (FM_LITERAL_U64(1) << 30)
 
@@ -859,6 +863,10 @@ typedef struct _fm_aclParamExt
     /** Tunnel Rule (direct tunnel group type) or TEP (hash tunnel group type),
      *  for use with ''FM_ACL_ACTIONEXT_REDIRECT_TUNNEL''. */
     fm_int    tunnelRule;
+
+    /** Enable or disable egress timestamp capture on Ethernet ports.
+     *  For use with ''FM_ACL_ACTIONEXT_CAPTURE_EGRESS_TIMESTAMP''. */
+    fm_bool   captureEgressTimestamp;
 
 } fm_aclParamExt;
 

@@ -197,11 +197,10 @@ static fm_status GetPortSerdesTxCfg(fm_int     sw,
     fm_platSerdesBitRate bitRate;
     fm_platformCfgPort * portCfg;
     fm_platformCfgLane * laneCfg;
-    fm_platformXcvrType  xcvrType;
-    fm_int               xcvrLen;
     fm_int               appCfg;
     fm_status            status;
     fm_char              buf[MAX_BUF_SIZE+1];
+    fm_bool              optical;
 
     portCfg = fmPlatformCfgPortGet(sw, port);
     if (!portCfg)
@@ -209,7 +208,7 @@ static fm_status GetPortSerdesTxCfg(fm_int     sw,
         return FM_ERR_INVALID_PORT;
     }
 
-    status = fmPlatformMgmtGetTransceiverType(sw, port, &xcvrType, &xcvrLen);
+    status = fmPlatformMgmtGetTransceiverType(sw, port, NULL, NULL, &optical);
     if (status)
     {
         return status;
@@ -233,7 +232,7 @@ static fm_status GetPortSerdesTxCfg(fm_int     sw,
     }
     else
     {
-        if ( xcvrType == FM_PLATFORM_XCVR_TYPE_OPTICAL )
+        if ( optical )
             *cursor = laneCfg->optical[bitRate].cursor;
         else
             *cursor = laneCfg->copper[bitRate].cursor;
@@ -247,7 +246,7 @@ static fm_status GetPortSerdesTxCfg(fm_int     sw,
     }
     else
     {
-        if ( xcvrType == FM_PLATFORM_XCVR_TYPE_OPTICAL )
+        if ( optical )
             *preCursor = laneCfg->optical[bitRate].preCursor;
         else
             *preCursor = laneCfg->copper[bitRate].preCursor;
@@ -261,7 +260,7 @@ static fm_status GetPortSerdesTxCfg(fm_int     sw,
     }
     else
     {
-        if ( xcvrType == FM_PLATFORM_XCVR_TYPE_OPTICAL )
+        if ( optical )
             *postCursor = laneCfg->optical[bitRate].postCursor;
         else
             *postCursor = laneCfg->copper[bitRate].postCursor;
@@ -342,6 +341,123 @@ static fm_status SetInitialLaneTxEq(fm_int sw, fm_platformCfgPort *portCfg)
     FM_LOG_EXIT(FM_LOG_CAT_PLATFORM, status);
 
 }   /* end SetInitialLaneTxEq */
+
+
+
+/*****************************************************************************/
+/** SetLaneTermination
+ * \ingroup intPlatform
+ *
+ * \desc            Set the lane termination for the given port.
+ *
+ * \param[in]       sw is the switch number
+ *
+ * \param[in]       portCfg is the pointer to the port config.
+ *
+ * \return          FM_OK if successful.
+ * \return          Other ''Status Codes'' as appropriate in case of
+ *                  failure.
+ *
+ *****************************************************************************/
+static fm_status SetLaneTermination(fm_int sw, fm_platformCfgPort *portCfg)
+{
+    fm_platformCfgLane *laneCfg;
+    fm_platformCfgPort *pCfg;
+    fm_int              portIdx;
+    fm_status           status;
+    fm_int              port;
+    fm_int              mac;
+    fm_int              lane;
+    fm_int              numLane;
+    fm_int              rxTermination;
+
+    FM_LOG_ENTRY(FM_LOG_CAT_PLATFORM, "sw = %d\n", sw);
+
+    status = FM_OK;
+    mac = 0;
+    port = portCfg->port;
+
+    /**************************************************
+     * For Quad port the termination MUST be set using 
+     * FM_PLAT_INTF_TYPE_QSFP_LANE0 only.
+     **************************************************/
+
+    if ( (portCfg->ethMode & FM_ETH_MODE_4_LANE_BIT_MASK) != 0 )
+    {
+        numLane = FM_PLAT_LANES_PER_EPL;
+    }
+    else if (portCfg->intfType != FM_PLAT_INTF_TYPE_QSFP_LANE1 &&
+             portCfg->intfType != FM_PLAT_INTF_TYPE_QSFP_LANE2 &&
+             portCfg->intfType != FM_PLAT_INTF_TYPE_QSFP_LANE3)
+    {
+        /* QSFP_LANE0, SFPP or NONE */
+        numLane = 1;
+    }
+    else
+    {
+        /* QSFP LANE1, LANE2 or LANE3 */
+        if (portCfg->ethMode == FM_ETH_MODE_DISABLED)
+        {
+            /* See if LANE0 for this quad port is set to 4-LANE eth mode */
+            portIdx = 
+                FM_PLAT_GET_SWITCH_CFG(sw)->epls[portCfg->epl].laneToPortIdx[0];
+            pCfg = FM_PLAT_GET_PORT_CFG(sw, portIdx);
+
+            if ((pCfg->ethMode & FM_ETH_MODE_4_LANE_BIT_MASK) != 0 )
+            {
+                /* termination has been set when processing LANE0 */
+                FM_LOG_EXIT(FM_LOG_CAT_PLATFORM, FM_OK);
+            }
+        }
+        numLane = 1;
+    }
+
+    for (lane = 0 ; lane < numLane ; lane++)
+    {
+        laneCfg = FM_PLAT_GET_LANE_CFG(sw, portCfg, lane);
+
+        /* Set the RX lane termination. */
+
+        switch (laneCfg->rxTermination)
+        {
+            case FM_PORT_TERMINATION_HIGH:
+            case FM_PORT_TERMINATION_LOW:
+            case FM_PORT_TERMINATION_FLOAT:
+                rxTermination = laneCfg->rxTermination;
+            break;
+            default:
+                /* Leave it to API default */
+                continue;
+            break;
+        }
+
+        FM_LOG_DEBUG_V2( FM_LOG_CAT_PORT,
+                         port,
+                         "Set rx termination, port %d, lane %d: %d\n",
+                         port,
+                         lane,
+                         rxTermination );
+
+        status = fmSetPortAttributeV2(sw,
+                                      port,
+                                      mac,
+                                      lane,
+                                      FM_PORT_RX_TERMINATION,
+                                      &rxTermination);
+        if (status != FM_OK)
+        {
+            FM_LOG_ERROR_V2( FM_LOG_CAT_PORT,
+                             port,
+                             "Unable to set rx termination: port %d, lane %d\n",
+                             port,
+                             lane );
+            break;
+        }
+    }
+
+    FM_LOG_EXIT(FM_LOG_CAT_PLATFORM, status);
+
+}   /* end SetLaneTermination */
 
 
 
@@ -981,8 +1097,7 @@ fm_status fmPlatformNotifyPortState(fm_int  sw,
                                     fm_bool isConfig,
                                     fm_int  state)
 {
-    fm_int      portIdx;
-    fm_bool     disabled;
+    fm_bool disabled;
 
     FM_NOT_USED(mac);
 
@@ -991,21 +1106,11 @@ fm_status fmPlatformNotifyPortState(fm_int  sw,
         FM_LOG_EXIT(FM_LOG_CAT_PLATFORM, FM_ERR_INVALID_ARGUMENT);
     }
 
-    portIdx = fmPlatformCfgPortGetIndex(sw, port);
-    if (portIdx < 0)
-    {
-        return FM_ERR_INVALID_ARGUMENT;
-    }
-
-    /* Disable transceiver if port state is powered down */
     if (isConfig)
     {
+        /* Disable transceiver if port state is powered down */
         disabled = (state == FM_PORT_MODE_ADMIN_PWRDOWN);
-
-        if (disabled != GET_PLAT_STATE(sw)->xcvrInfo[portIdx].disabled)
-        {
-            fmPlatformXcvrEnable(sw, port, !disabled);
-        }
+        fmPlatformMgmtEnableXcvr(sw, port, !disabled);
     }
 
     return fmPlatformLedSetPortState(sw, port, isConfig, state);
@@ -1059,6 +1164,7 @@ fm_status fmPlatformNotifyPortAttribute(fm_int sw,
 {
     fm_platformCfgPort *portCfg;
     fm_platformCfgLane *laneCfg;
+    fm_status           status;
 
     FM_LOG_ENTRY(FM_LOG_CAT_PLATFORM,
                  "sw=%d, port=%d lane=%d attr=%d\n",
@@ -1068,6 +1174,8 @@ fm_status fmPlatformNotifyPortAttribute(fm_int sw,
 
     portCfg = FM_PLAT_GET_PORT_CFG(sw, port);
     laneCfg = FM_PLAT_GET_LANE_CFG(sw, portCfg, lane);
+
+    status = FM_OK;
 
     if ( ( attribute == FM_PORT_TX_LANE_CURSOR ||
            attribute == FM_PORT_TX_LANE_PRECURSOR ||
@@ -1094,8 +1202,14 @@ fm_status fmPlatformNotifyPortAttribute(fm_int sw,
                     break;
             }
         }
+    else if ( attribute == FM_PORT_AUTODETECT_MODULE )
+    {
+        status = fmPlatformMgmtEnableCableAutoDetection(sw, 
+                                                        port, 
+                                                        *(fm_bool *)value);
+    }
 
-    FM_LOG_EXIT(FM_LOG_CAT_PLATFORM, FM_OK);
+    FM_LOG_EXIT(FM_LOG_CAT_PLATFORM, status);
 
 }   /* end fmPlatformNotifyPortAttribute */
 
@@ -1229,7 +1343,7 @@ ABORT:
         ps->lportToPortTableIndex = NULL;
     }
 
-    FM_LOG_EXIT(FM_LOG_CAT_SWITCH, status);
+    FM_LOG_EXIT(FM_LOG_CAT_PLATFORM, status);
 
 }   /* end fmPlatformInitPortTables */
 
@@ -1379,6 +1493,86 @@ fm_status fmPlatformSetPortSerdesTxCfg(fm_int     sw,
 
 
 /*****************************************************************************/
+/** fmPlatformSetPortEthMode
+ * \ingroup intPlatform
+ *
+ * \desc            Set the ethernet mode in the API for the specified port.
+ *
+ * \param[in]       sw is the switch number.
+ *
+ * \param[in]       port is the logical port number.
+ *
+ * \return          FM_OK if successful.
+ *
+ *****************************************************************************/
+fm_status fmPlatformSetPortEthMode(fm_int sw, fm_int port)
+{
+    fm_platformCfgPort *portCfg;
+    fm_status           status;
+    fm_int              anEnabled;
+    fm_uint64           anBasePage;
+
+    FM_LOG_ENTRY(FM_LOG_CAT_PLATFORM, "sw=%d, port=%d\n", sw, port);
+
+    portCfg = fmPlatformCfgPortGet(sw, port);
+    if (portCfg == NULL)
+    {
+        return FM_ERR_INVALID_PORT;
+    }
+
+    status = fmSetPortAttributeV2(sw,
+                                  port,
+                                  0,
+                                  FM_PORT_LANE_NA,
+                                  FM_PORT_ETHERNET_INTERFACE_MODE,
+                                  &portCfg->ethMode);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
+
+
+    if (portCfg->ethMode == FM_ETH_MODE_AN_73)
+    {
+        /* Enable AN */
+        anEnabled = FM_PORT_AUTONEG_CLAUSE_73;
+        status = fmSetPortAttributeV2(sw,
+                                      port,
+                                      0,
+                                      FM_PORT_LANE_NA,
+                                      FM_PORT_AUTONEG,
+                                      &anEnabled);
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
+
+        /* Set the basepage */
+        anBasePage = portCfg->an73Ability | 0x4001;
+        status = fmSetPortAttributeV2(sw,
+                                      port,
+                                      0,
+                                      FM_PORT_LANE_NA,
+                                      FM_PORT_AUTONEG_BASEPAGE,
+                                      &anBasePage);
+
+    }
+    else if (portCfg->ethMode == FM_ETH_MODE_SGMII)
+    {
+        /* Enable AN if ethMode is SGMII */
+        anEnabled = FM_PORT_AUTONEG_SGMII;
+        status = fmSetPortAttributeV2(sw,
+                                      port,
+                                      0,
+                                      FM_PORT_LANE_NA,
+                                      FM_PORT_AUTONEG,
+                                      &anEnabled);
+    }
+
+ABORT:
+
+    FM_LOG_EXIT(FM_LOG_CAT_PLATFORM, status);
+
+} /* end fmPlatformSetPortEthMode */
+
+
+
+
+/*****************************************************************************/
 /** fmPlatformPortInitialize
  * \ingroup intPlatform
  *
@@ -1478,6 +1672,12 @@ fm_status fmPlatformPortInitialize(fm_int sw)
         portEntry = GET_PORT_PTR(sw, port);
         portEntry->phyInfo.notifyEthModeChange = NotifyEthModeChange;
 
+        status = SetLaneTermination(sw, portCfg);
+        if ( status != FM_OK )
+        {
+            restoreDisableState = TRUE;
+        }
+
         status = SetLanePolarity(sw, portCfg);
         if ( status != FM_OK )
         {
@@ -1574,6 +1774,22 @@ fm_status fmPlatformPortInitialize(fm_int sw)
             restoreDisableState = TRUE;
         }
 
+        status = fmSetPortAttributeV2(sw,
+                                      port,
+                                      mac,
+                                      FM_PORT_LANE_ALL,
+                                      FM_PORT_AUTODETECT_MODULE,
+                                      &portCfg->autodetect);
+        if ( status != FM_OK )
+        {
+            FM_LOG_ERROR_V2( FM_LOG_CAT_PORT,
+                             port,
+                             "Error setting port %d cable auto detect%d!\n",
+                             port,
+                             portCfg->autodetect );
+            restoreDisableState = TRUE;
+        }
+
         if ( status == FM_OK )
         {
             configuredPorts++;
@@ -1611,4 +1827,3 @@ fm_status fmPlatformPortInitialize(fm_int sw)
     FM_LOG_EXIT(FM_LOG_CAT_PLATFORM, status);
 
 }   /* end fmPlatformPortInitialize */
-

@@ -29,7 +29,7 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
+ ****************************************************************************/
 
 #include <fm_sdk_fm10000_int.h>
 
@@ -38,27 +38,27 @@
  *****************************************************************************/
 
 /**
- * MAKE_DEST_MASK 
- *  
- * Converts a port mask to an FM10000 destination mask. 
- *  
- * \param[in]       portMask points to a physical port mask. 
- *  
- * \return          FM10000 destination mask as a 64-bit integer. 
+ * MAKE_DEST_MASK
+ *
+ * Converts a port mask to an FM10000 destination mask.
+ *
+ * \param[in]       portMask points to a physical port mask.
+ *
+ * \return          FM10000 destination mask as a 64-bit integer.
  */
 #define MAKE_DEST_MASK(portMask)                        \
     ( (((fm_uint64) (portMask)->maskWord[1]) << 32) |   \
        ((fm_uint64) (portMask)->maskWord[0]) )
 
 /**
- * MAKE_SUB_INDEX 
- *  
- * Converts an (offset, length) tuple to SubIndex format. 
- *  
- * \param[in]       offset is the position of the index in the DGLORT. 
- * \param[in]       length is the number of bits in the index. 
- *  
- * \return          Value of the SubIndex field. 
+ * MAKE_SUB_INDEX
+ *
+ * Converts an (offset, length) tuple to SubIndex format.
+ *
+ * \param[in]       offset is the position of the index in the DGLORT.
+ * \param[in]       length is the number of bits in the index.
+ *
+ * \return          Value of the SubIndex field.
  */
 #define MAKE_SUB_INDEX(offset, length)  \
         ( (((length) & 0x0f) << 4) | ((offset) & 0x0f) )
@@ -99,18 +99,18 @@
  *
  * \param[in]       port is the logical port to create.
  *
- * \param[in]       txTimestampMode is the timestamp types that can be sent to 
+ * \param[in]       txTimestampMode is the timestamp types that can be sent to
  *                  the port.
  *
  * \return          FM_OK if successful.
  * \return          FM_ERR_INVALID_PORT if port is invalid.
  * \return          FM_ERR_INVALID_VALUE if txTimestampMode is invalid.
- * \return          FM_ERR_ALREADY_EXISTS if an Ethernet timestamp owner 
+ * \return          FM_ERR_ALREADY_EXISTS if an Ethernet timestamp owner
  *                  already exists.
  *
  *****************************************************************************/
-static fm_status SetPortTxTimestampMode(fm_int                 sw, 
-                                        fm_int                 port, 
+static fm_status SetPortTxTimestampMode(fm_int                 sw,
+                                        fm_int                 port,
                                         fm_portTxTimestampMode txTimestampMode)
 {
     fm10000_port *      portExt;
@@ -120,18 +120,18 @@ static fm_status SetPortTxTimestampMode(fm_int                 sw,
     fm_bool             isPciePort;
 
     err = fm10000GetLogicalPortAttribute(sw, port, FM_LPORT_TYPE, (void *)&portType);
-    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);   
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
 
     err = fm10000IsPciePort(sw, port, &isPciePort);
-    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);   
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
 
-    /* Allow only PCIE physical port or virtual port belonging to PEP. */    
+    /* Allow only PCIE physical port or virtual port belonging to PEP. */
     if ( !( (portType == FM_PORT_TYPE_PHYSICAL && isPciePort) ||
             (portType == FM_PORT_TYPE_VIRTUAL) ||
-            (portType == FM_PORT_TYPE_CPU && isPciePort) ) ) 
+            (portType == FM_PORT_TYPE_CPU && isPciePort) ) )
     {
         err = FM_ERR_INVALID_PORT;
-        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);   
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
     }
 
     portExt   = GET_PORT_EXT(sw, port);
@@ -154,7 +154,7 @@ static fm_status SetPortTxTimestampMode(fm_int                 sw,
 
         case FM_PORT_TX_TIMESTAMP_MODE_PEP_TO_PEP:
         case FM_PORT_TX_TIMESTAMP_MODE_NONE:
-            /* If mode of the port previously registered to receive ethernet 
+            /* If mode of the port previously registered to receive ethernet
              * timestamps is changed. */
             if (portExt->txTimestampMode == FM_PORT_TX_TIMESTAMP_MODE_PEP_TO_ANY)
             {
@@ -181,14 +181,14 @@ ABORT:
  * \ingroup intPort
  *
  * \desc            Writes an entry to the glort CAM/RAM.
- * 
+ *
  * \note            Assumes that the caller has
  *                  (1) validated the switch,
  *                  (2) taken the switch and register locks, and
  *                  (3) suspended error checking on the GLORT CAM.
- * 
+ *
  * \note            If ((camKey & camMask) != camKey) the cam entry will
- *                  be disabled. 
+ *                  be disabled.
  *
  * \param[in]       sw is the switch number.
  *
@@ -217,7 +217,7 @@ static fm_status WriteGlortCamEntry(fm_int            sw,
     FM_LOG_DEBUG(FM_LOG_CAT_PORT, "sw=%d camIndex=%d\n", sw, camEntry->camIndex);
 
     switchPtr = GET_SWITCH_PTR(sw);
-    
+
     /***************************************************
      * Write into the RAM first.
      **************************************************/
@@ -230,7 +230,7 @@ static fm_status WriteGlortCamEntry(fm_int            sw,
              * FM10000 uses 0 to represent 16. */
             destCount = 0;
         }
-    
+
         rv = 0;
 
         subIndexA = MAKE_SUB_INDEX(camEntry->rangeAOffset,
@@ -245,7 +245,7 @@ static fm_status WriteGlortCamEntry(fm_int            sw,
         FM_SET_FIELD64(rv, FM10000_GLORT_RAM, RangeSubIndexB, subIndexB );
         FM_SET_FIELD64(rv, FM10000_GLORT_RAM, DestCount, destCount );
         FM_SET_BIT64(rv, FM10000_GLORT_RAM, HashRotation, camEntry->hashRotation );
-    
+
 #if (FM10000_USE_GLORT_RAM_CACHE)
         err = fmRegCacheWriteUINT64(sw,
                                     &fm10000CacheGlortRam,
@@ -258,12 +258,12 @@ static fm_status WriteGlortCamEntry(fm_int            sw,
 #endif
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
 
-    }   /* if (mode != FM_UPDATE_CAM_ONLY) */
+    }   /* end if (mode != FM_UPDATE_CAM_ONLY) */
 
     /***************************************************
      * Now write into the CAM.
      **************************************************/
-    
+
     if (mode != FM_UPDATE_RAM_ONLY)
     {
         if ( ( (camEntry->camKey & camEntry->camMask) != camEntry->camKey ) ||
@@ -275,17 +275,17 @@ static fm_status WriteGlortCamEntry(fm_int            sw,
         }
         else
         {
-            fmGenerateCAMKey2(&camEntry->camKey, 
-                              &camEntry->camMask, 
-                              &key, 
-                              &keyInvert, 
+            fmGenerateCAMKey2(&camEntry->camKey,
+                              &camEntry->camMask,
+                              &key,
+                              &keyInvert,
                               1);
         }
 
         cv = 0;
         FM_SET_FIELD(cv, FM10000_GLORT_CAM, Key, key);
         FM_SET_FIELD(cv, FM10000_GLORT_CAM, KeyInvert, keyInvert);
-        
+
 #if (FM10000_USE_GLORT_CAM_CACHE)
         err = fmRegCacheWriteSingle1D(sw,
                                       &fm10000CacheGlortCam,
@@ -299,7 +299,7 @@ static fm_status WriteGlortCamEntry(fm_int            sw,
 #endif
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
 
-    }   /* if (mode != FM_UPDATE_RAM_ONLY) */
+    }   /* end if (mode != FM_UPDATE_RAM_ONLY) */
 
 ABORT:
     return err;
@@ -394,7 +394,7 @@ fm_status fm10000CreateLogicalPort(fm_int sw, fm_int port)
     portPtr->isSpecialPort     = fm10000IsSpecialPort;
 
 #if 0
-    for (hogWm = 0; hogWm < 4; hogWm++)
+    for (hogWm = 0 ; hogWm < 4 ; hogWm++)
     {
         portExt->txHogWm[hogWm] = -1;
         portExt->autoTxHogWm[hogWm] = -1;
@@ -541,11 +541,11 @@ fm_status fm10000DbgDumpGlortTable(fm_int sw)
         bLength     = subIndex >> 4;
         bStart      = subIndex & 0xFL;
 
-        FM_LOG_PRINT("\tKey           : 0x%04x   (key : 0x%04x)\n", 
+        FM_LOG_PRINT("\tKey           : 0x%04x   (key : 0x%04x)\n",
                      key,
                      camKey);
 
-        FM_LOG_PRINT("\tKeyInvert     : 0x%04x   (mask: 0x%04x)\n", 
+        FM_LOG_PRINT("\tKeyInvert     : 0x%04x   (mask: 0x%04x)\n",
                      keyInvert,
                      camMask);
 
@@ -584,7 +584,7 @@ fm_status fm10000DbgDumpGlortTable(fm_int sw)
         else
         {
             /* If strict is ISL, then the entries may be either strict or
-             * hashed depending on the FTYPE, so print the larger of the 
+             * hashed depending on the FTYPE, so print the larger of the
              * two numbers of dest entries. */
             num = (numStrict > numHashed) ? numStrict : numHashed;
         }
@@ -617,7 +617,7 @@ fm_status fm10000DbgDumpGlortTable(fm_int sw)
                     fmMapCardinalPortInternal(switchPtr, cpi, &logPort, &physPort);
                     if (destMask & (1LL << physPort))
                     {
-                        if (logPort == 0)
+                        if (logPort == switchPtr->cpuPort)
                         {
                             FM_LOG_PRINT("CPU ");
                         }
@@ -666,7 +666,7 @@ ABORT:
 *
 * \return           FM_OK if successful.
 *
-*****************************************************************************/
+ ****************************************************************************/
 fm_status fm10000DbgDumpGlortDestTable(fm_int sw, fm_bool raw)
 {
     fm_switch *         switchPtr;
@@ -681,7 +681,7 @@ fm_status fm10000DbgDumpGlortDestTable(fm_int sw, fm_bool raw)
     switchPtr = GET_SWITCH_PTR(sw);
     lportInfo = &switchPtr->logicalPortInfo;
 
-    for (i = 0; i < lportInfo->numDestEntries; ++i)
+    for (i = 0 ; i < lportInfo->numDestEntries ; ++i)
     {
         if (!raw)
         {
@@ -794,8 +794,8 @@ fm_status fm10000GetGlortForSpecialPort(fm_int sw, fm_int port, fm_int *glort)
 
     FM_LOG_ENTRY(FM_LOG_CAT_PORT,
                  "sw=%d port=%d glort=%p\n",
-                 sw, 
-                 port, 
+                 sw,
+                 port,
                  (void *)glort);
 
     FM_NOT_USED(sw);
@@ -871,7 +871,7 @@ fm_status fm10000GetLogicalPortAttribute(fm_int sw,
     fm10000_port * portExt;
     fm_status      err = FM_OK;
 
-    FM_LOG_ENTRY(FM_LOG_CAT_PORT, 
+    FM_LOG_ENTRY(FM_LOG_CAT_PORT,
                  "sw=%d port=%d attr=%d value=%p\n",
                  sw,
                  port,
@@ -980,8 +980,8 @@ fm_status fm10000ResetPortSettings(fm_int sw, fm_int logicalPort)
     err = switchPtr->ReadUINT32(sw, FM10000_PORT_CFG_ISL(phys_port), &rv);
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
 
-    FM_SET_FIELD( rv, 
-                  FM10000_PORT_CFG_ISL, 
+    FM_SET_FIELD( rv,
+                  FM10000_PORT_CFG_ISL,
                   srcGlort,
                   FM_GET_GLORT_NUMBER(switchPtr, logicalPort) );
 
@@ -992,7 +992,7 @@ ABORT:
     {
         FM_FLAG_DROP_REG_LOCK(sw);
     }
-    
+
     FM_LOG_EXIT(FM_LOG_CAT_PORT, err);
 
 }   /* end fm10000ResetPortSettings */
@@ -1009,7 +1009,7 @@ ABORT:
  *                  table entry.
  *                                                                      \lb\lb
  *                  Called via the SetGlortDestMask function pointer.
- * 
+ *
  * \note            Assumes that the switch protection lock has already been
  *                  acquired and the switch pointer is valid.
  *
@@ -1030,7 +1030,7 @@ fm_status fm10000SetGlortDestMask(fm_int             sw,
     fm_status err;
 
     FM_LOG_ENTRY(FM_LOG_CAT_PORT,
-                 "sw=%d destIndex=%x " 
+                 "sw=%d destIndex=%x "
                  "destMask=0x%08x %08x\n",
                  sw,
                  destEntry->destIndex,
@@ -1140,7 +1140,7 @@ fm_status fm10000SetLogicalPortAttribute(fm_int sw,
  *                  setting the destination mask and IP multicast index.
  *                                                                      \lb\lb
  *                  Called internally within the FM10000 API.
- * 
+ *
  * \note            Assumes that the switch protection lock has already been
  *                  acquired and the switch pointer is valid.
  *
@@ -1161,7 +1161,7 @@ fm_status fm10000WriteDestEntry(fm_int             sw,
     fm_uint64   rv;
 
     FM_LOG_ENTRY(FM_LOG_CAT_PORT,
-                 "sw=%d destIndex=%x " 
+                 "sw=%d destIndex=%x "
                  "destMask=0x%08x %08x\n",
                  sw,
                  destEntry->destIndex,
@@ -1215,12 +1215,12 @@ ABORT:
  *
  * \desc            Writes an entry to the glort CAM/RAM.
  *                  Called via the WriteGlortCamEntry function pointer.
- * 
+ *
  * \note            Assumes that the switch protection lock has already been
  *                  acquired and the switch pointer is valid.
- * 
+ *
  * \note            If ((camKey & camMask) != camKey) the cam entry will
- *                  be disabled. 
+ *                  be disabled.
  *
  * \param[in]       sw is the switch number.
  *
@@ -1237,21 +1237,26 @@ fm_status fm10000WriteGlortCamEntry(fm_int            sw,
                                     fm_camUpdateMode  mode)
 {
     fm_status   err;
+    fm_bool     regLockTaken = FALSE;
 
     FM_LOG_ENTRY(FM_LOG_CAT_PORT,
                  "sw=%d camEntry=%p mode=%d\n",
-                 sw, (void *) camEntry, mode);
+                 sw,
+                 (void *) camEntry,
+                 mode);
 
-    /* Make the Glort CAM & RAM writes atomic */
-    TAKE_REG_LOCK(sw);
 
 #if (FM10000_USE_GLORT_CAM_MONITOR)
     if (mode != FM_UPDATE_RAM_ONLY)
     {
-        err = fm10000DisableCrmMonitor(sw, FM10000_GLORT_CAM_CRM_ID);
+        err = NotifyCRMEvent(sw, FM10000_GLORT_CAM_CRM_ID, FM10000_CRM_EVENT_SUSPEND_REQ);
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
     }
 #endif
+
+    /* Make the Glort CAM & RAM writes atomic */
+    TAKE_REG_LOCK(sw);
+    regLockTaken = TRUE;
 
     err = WriteGlortCamEntry(sw, camEntry, mode);
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
@@ -1259,16 +1264,19 @@ fm_status fm10000WriteGlortCamEntry(fm_int            sw,
 #if (FM10000_USE_GLORT_CAM_MONITOR)
     if (mode != FM_UPDATE_RAM_ONLY)
     {
-        err = fm10000UpdateCrmChecksum(sw, FM10000_GLORT_CAM_CRM_ID);
-        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_CRM, err);
+        DROP_REG_LOCK(sw);
+        regLockTaken = FALSE;
 
-        err = fm10000EnableCrmMonitor(sw, FM10000_GLORT_CAM_CRM_ID);
+        err = NotifyCRMEvent(sw, FM10000_GLORT_CAM_CRM_ID, FM10000_CRM_EVENT_RESUME_REQ);
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
     }
 #endif
 
 ABORT:
-    DROP_REG_LOCK(sw);
+    if (regLockTaken)
+    {
+        DROP_REG_LOCK(sw);
+    }
 
     FM_LOG_EXIT(FM_LOG_CAT_PORT, err);
 
@@ -1295,21 +1303,27 @@ fm_status fm10000InitGlortCam(fm_int sw)
     fm_switch *switchPtr;
     fm_int     i;
     fm_glortCamEntry camEntry;
+    fm_bool    regLockTaken = FALSE;
 
     switchPtr = GET_SWITCH_PTR(sw);
 
-    TAKE_REG_LOCK(sw);
+
 
 #if (FM10000_USE_GLORT_CAM_MONITOR)
-    err = fm10000DisableCrmMonitor(sw, FM10000_GLORT_CAM_CRM_ID);
+
+    err = NotifyCRMEvent(sw, FM10000_GLORT_CAM_CRM_ID, FM10000_CRM_EVENT_SUSPEND_REQ);
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
+
 #endif
+
+    TAKE_REG_LOCK(sw);
+    regLockTaken = TRUE;
 
     camEntry.camKey = 0xFFFF;
     camEntry.camMask = 0x0000;
-    
+
     /* Invalidate all entries */
-    for (i = 0; i < FM10000_GLORT_CAM_ENTRIES; i++)
+    for (i = 0 ; i < FM10000_GLORT_CAM_ENTRIES ; i++)
     {
         camEntry.camIndex = i;
 
@@ -1318,16 +1332,21 @@ fm_status fm10000InitGlortCam(fm_int sw)
     }
 
 #if (FM10000_USE_GLORT_CAM_MONITOR)
-    err = fm10000UpdateCrmChecksum(sw, FM10000_GLORT_CAM_CRM_ID);
-    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_CRM, err);
 
-    err = fm10000EnableCrmMonitor(sw, FM10000_GLORT_CAM_CRM_ID);
+    DROP_REG_LOCK(sw);
+    regLockTaken = FALSE;
+
+    err = NotifyCRMEvent(sw, FM10000_GLORT_CAM_CRM_ID, FM10000_CRM_EVENT_RESUME_REQ);
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
+
 #endif
 
 ABORT:
-    DROP_REG_LOCK(sw);
 
+    if (regLockTaken)
+    {
+        DROP_REG_LOCK(sw);
+    }
     return err;
 
 }   /* end fm10000InitGlortCam */
@@ -1342,10 +1361,10 @@ ABORT:
  * \desc            Free lane-level resources for the FM10000 chip.
  *
  * \param[in]       sw is the switch number.
- * 
+ *
  * \return          FM_OK if successful.
  * \return          FM_ERR_INVALID_SWITCH if the switch is invalid.
- * 
+ *
  *****************************************************************************/
 fm_status fm10000FreeLaneResources( fm_int sw )
 {
@@ -1356,9 +1375,9 @@ fm_status fm10000FreeLaneResources( fm_int sw )
 
     /* validate the switch ID */
     if ( sw < 0 || sw >= FM_MAX_NUM_SWITCHES )
-    {                                             
+    {
         return FM_ERR_INVALID_SWITCH;
-    }                                             
+    }
 
     switchPtr = GET_SWITCH_PTR( sw );
 
@@ -1414,9 +1433,9 @@ fm_status fm10000FreeLaneResources( fm_int sw )
  * \return          FM_OK if successful.
  * \return          FM_ERR_INVALID_SWITCH if sw is invalid.
  * \return          FM_ERR_INVALID_ARGUMENT if the logical port is invalid.
- * \return          FM_ERR_PORT_IS_IN_LAG if the logical port is currently 
+ * \return          FM_ERR_PORT_IS_IN_LAG if the logical port is currently
  *                  a LAG member.
- * 
+ *
  *****************************************************************************/
 fm_status fm10000FreeLogicalPort( fm_int sw, fm_int logicalPort )
 {
@@ -1430,6 +1449,7 @@ fm_status fm10000FreeLogicalPort( fm_int sw, fm_int logicalPort )
     {
         portExt = GET_PORT_EXT( sw, logicalPort );
         fmDeleteTimer( portExt->timerHandle );
+        fmDeleteTimer( portExt->pcieIntrTimerHandle );
         fmDeleteStateMachine( portExt->smHandle );
 
         if (portExt->anSmHandle)
@@ -1446,27 +1466,27 @@ fm_status fm10000FreeLogicalPort( fm_int sw, fm_int logicalPort )
 
 
 /*****************************************************************************/
-/** fm10000MapVsiGlortToLogicalPort
+/** fm10000MapVirtualGlortToLogicalPort
  * \ingroup intPort
  *
- * \desc            maps a VSI glort to the associated logical  port
+ * \desc            maps a virtual glort to the associated logical  port
  *
  * \param[in]       sw is the switch on which to operate
  *
- * \param[in]       vsiGlort is the VSI glort number on which to operate
+ * \param[in]       glort is the virtual glort number on which to operate
  *
  * \param[out]      port is the pointer to a caller-allocated area where this
  *                  function will return the logical port number
  *
  * \return          FM_OK if request succeeded.
- * 
- * \return          FM_ERR_NOT_FOUND if this PEP glort number was not found 
+ *
+ * \return          FM_ERR_NOT_FOUND if this PEP glort number was not found
  *                  in the PEP glort range.
  *
  *****************************************************************************/
-fm_status fm10000MapVsiGlortToLogicalPort(fm_int     sw,
-                                          fm_uint32  vsiGlort,
-                                          fm_int    *port)
+fm_status fm10000MapVirtualGlortToLogicalPort(fm_int    sw,
+                                              fm_uint32 glort,
+                                              fm_int *  port)
 {
     fm_status status;
     fm_int    i;
@@ -1475,9 +1495,10 @@ fm_status fm10000MapVsiGlortToLogicalPort(fm_int     sw,
     fm_uint32 lastGlort;
     fm_mailboxInfo *info;
 
-    FM_LOG_ENTRY(FM_LOG_CAT_PORT, "sw=%d, vsiGlort=0x%x, port = %p\n",
+    FM_LOG_ENTRY(FM_LOG_CAT_PORT,
+                 "sw=%d, glort=0x%x, port = %p\n",
                  sw,
-                 vsiGlort,
+                 glort,
                  (void *) port);
 
     portFound  = FALSE;
@@ -1488,12 +1509,12 @@ fm_status fm10000MapVsiGlortToLogicalPort(fm_int     sw,
 
     for (i = 0 ; i < FM10000_NUM_PEPS ; i++)
     {
-        firstGlort = info->glortBase + 
+        firstGlort = info->glortBase +
                      (i * info->glortsPerPep);
-        lastGlort = info->glortBase + 
+        lastGlort = info->glortBase +
                      ( (i + 1) * info->glortsPerPep);
 
-        if ( (vsiGlort >= firstGlort) && (vsiGlort < lastGlort) )
+        if ( (glort >= firstGlort) && (glort < lastGlort) )
         {
             status = fm10000MapPepToLogicalPort(sw,
                                                 i,
@@ -1513,33 +1534,33 @@ ABORT:
 
     FM_LOG_EXIT(FM_LOG_CAT_PORT, status);
 
-} /* end fm10000MapVsiGlortToLogicalPort */
+} /* end fm10000MapVirtualGlortToLogicalPort */
 
 
 
 
 /*****************************************************************************/
-/** fm10000MapVsiGlortToPhysicalPort
+/** fm10000MapVirtualGlortToPhysicalPort
  * \ingroup intPort
  *
- * \desc            maps a VSI glort to the associated physical port
+ * \desc            maps a virtual glort to the associated physical port
  *
  * \param[in]       sw is the switch on which to operate
  *
- * \param[in]       vsiGlort is the virtual port glort number on which to operate
+ * \param[in]       glort is the virtual port glort number on which to operate
  *
  * \param[out]      port is the pointer to a caller-allocated area where this
  *                  function will return the physical port number
  *
  * \return          FM_OK if request succeeded.
- * 
- * \return          FM_ERR_NOT_FOUND if this PEP glort number was not found 
+ *
+ * \return          FM_ERR_NOT_FOUND if this PEP glort number was not found
  *                  in the PEP glort range.
  *
  *****************************************************************************/
-fm_status fm10000MapVsiGlortToPhysicalPort(fm_int     sw,
-                                           fm_uint32  vsiGlort,
-                                           fm_int    *port)
+fm_status fm10000MapVirtualGlortToPhysicalPort(fm_int    sw,
+                                               fm_uint32 glort,
+                                               fm_int *  port)
 {
     fm_status status;
     fm_int    i;
@@ -1550,9 +1571,10 @@ fm_status fm10000MapVsiGlortToPhysicalPort(fm_int     sw,
     fm_uint32 lastGlort;
     fm_mailboxInfo *info;
 
-    FM_LOG_ENTRY(FM_LOG_CAT_PORT, "sw=%d, vsiGlort=0x%x, port = %p\n",
+    FM_LOG_ENTRY(FM_LOG_CAT_PORT,
+                 "sw=%d, glort=0x%x, port = %p\n",
                  sw,
-                 vsiGlort,
+                 glort,
                  (void *) port);
 
     portFound  = FALSE;
@@ -1565,12 +1587,12 @@ fm_status fm10000MapVsiGlortToPhysicalPort(fm_int     sw,
 
     for (i = 0 ; i < FM10000_NUM_PEPS ; i++)
     {
-        firstGlort = info->glortBase + 
+        firstGlort = info->glortBase +
                      (i * info->glortsPerPep);
-        lastGlort = info->glortBase + 
+        lastGlort = info->glortBase +
                      ( (i + 1) * info->glortsPerPep);
 
-        if ( (vsiGlort >= firstGlort) && (vsiGlort < lastGlort) )
+        if ( (glort >= firstGlort) && (glort < lastGlort) )
         {
             status = fm10000MapPepToLogicalPort(sw,
                                                 i,
@@ -1597,7 +1619,7 @@ ABORT:
 
     FM_LOG_EXIT(FM_LOG_CAT_PORT, status);
 
-} /* end fm10000MapVsiGlortToPhysicalPort */
+} /* end fm10000MapVirtualGlortToPhysicalPort */
 
 
 
@@ -1606,24 +1628,24 @@ ABORT:
 /** fm10000MapGlortToPepNumber
  * \ingroup intPort
  *
- * \desc            maps a VSI glort to the pep number
+ * \desc            maps a virtual glort to the pep number
  *
  * \param[in]       sw is the switch on which to operate
  *
- * \param[in]       vsiGlort is the virtual port glort number on which to operate
+ * \param[in]       glort is the virtual port glort number on which to operate
  *
  * \param[out]      pepNb is the pointer to a caller-allocated area where this
  *                  function will return the pep number
  *
  * \return          FM_OK if request succeeded.
- * 
- * \return          FM_ERR_NOT_FOUND if this VSI glort number was not found 
+ *
+ * \return          FM_ERR_NOT_FOUND if this VSI glort number was not found
  *                  in the PEP glort range.
  *
  *****************************************************************************/
-fm_status fm10000MapGlortToPepNumber(fm_int     sw,
-                                     fm_uint32  vsiGlort,
-                                     fm_int    *pepNb)
+fm_status fm10000MapGlortToPepNumber(fm_int    sw,
+                                     fm_uint32 glort,
+                                     fm_int *  pepNb)
 {
     fm_status status;
     fm_int    i;
@@ -1638,21 +1660,22 @@ fm_status fm10000MapGlortToPepNumber(fm_int     sw,
     lastGlort  = 0;
     info       = GET_MAILBOX_INFO(sw);
 
-    FM_LOG_ENTRY(FM_LOG_CAT_PORT, "sw=%d, vsiGlort=0x%x, pepNb = %p\n",
+    FM_LOG_ENTRY(FM_LOG_CAT_PORT,
+                 "sw=%d, glort=0x%x, pepNb = %p\n",
                  sw,
-                 vsiGlort,
+                 glort,
                  (void *) pepNb);
 
     for (i = 0 ; i < FM10000_NUM_PEPS ; i++)
     {
-        firstGlort = info->glortBase + 
+        firstGlort = info->glortBase +
                      (i * info->glortsPerPep);
-        lastGlort = info->glortBase + 
+        lastGlort = info->glortBase +
                      ( (i + 1) * info->glortsPerPep);
 
-        if ( (vsiGlort >= firstGlort) && (vsiGlort < lastGlort) )
+        if ( (glort >= firstGlort) && (glort < lastGlort) )
         {
-            *pepNb = i; 
+            *pepNb = i;
              pepFound = TRUE;
         }
     }
@@ -1679,11 +1702,11 @@ fm_status fm10000MapGlortToPepNumber(fm_int     sw,
  * \param[in]       sw is the switch on which to operate.
  *
  * \param[in]       pep is the PEP Id.
- * 
+ *
  * \param[in]       type is the type of pcie port to retrieve.
- * 
+ *
  * \param[in]       index is the queue offset to retrieve.
- * 
+ *
  * \param[out]      logicalPort points to a caller-provided integer
  *                  variable where this function will return the virtual
  *                  logical port assigned for this specific entry.
@@ -1697,7 +1720,7 @@ fm_status fm10000MapGlortToPepNumber(fm_int     sw,
  *                  or if the index is out of range.
  * \return          FM_ERR_INVALID_PORT if the pep is out of range or if the
  *                  PEP/VF/PF/VMDq does not map to a logical port.
- * 
+ *
  *****************************************************************************/
 fm_status fm10000GetPcieLogicalPort(fm_int sw,
                                     fm_int pep,
@@ -1711,7 +1734,8 @@ fm_status fm10000GetPcieLogicalPort(fm_int sw,
     fm_uint32 virtualGlort = 0;
     fm_mailboxInfo *info;
 
-    FM_LOG_ENTRY(FM_LOG_CAT_PORT, "sw=%d, pep=%d, type=%d, index=%d, logicalPort=%p\n",
+    FM_LOG_ENTRY(FM_LOG_CAT_PORT,
+                 "sw=%d, pep=%d, type=%d, index=%d, logicalPort=%p\n",
                  sw,
                  pep,
                  type,
@@ -1738,9 +1762,9 @@ fm_status fm10000GetPcieLogicalPort(fm_int sw,
 
     info = GET_MAILBOX_INFO(sw);
 
-    firstGlort = info->glortBase + 
+    firstGlort = info->glortBase +
                  (pep * info->glortsPerPep);
-    lastGlort = info->glortBase + 
+    lastGlort = info->glortBase +
                  ( (pep + 1) * info->glortsPerPep);
 
     switch (type)
@@ -1805,17 +1829,17 @@ ABORT:
  *                  entry.
  *
  * \param[in]       sw is the switch on which to operate.
- * 
+ *
  * \param[in]       logicalPort is the virtual port to map
  *
  * \param[out]      pep points to a caller-provided integer
  *                  variable where this function will return the PEP id
  *                  assigned for this specific entry.
- * 
+ *
  * \param[out]      type points to a caller-provided fm_pciePortType
  *                  variable where this function will return the pcie port
  *                  type for this specific entry.
- * 
+ *
  * \param[out]      index points to a caller-provided integer
  *                  variable where this function will return the index for
  *                  this specific entry.
@@ -1829,7 +1853,7 @@ ABORT:
  * \return          FM_ERR_INVALID_PORT if the logical port is out of range or
  *                  if the logical port does not map into a PEP/VF/PF/VMDq
  *                  entry.
- * 
+ *
  *****************************************************************************/
 fm_status fm10000GetLogicalPortPcie(fm_int sw,
                                     fm_int logicalPort,
@@ -1845,7 +1869,8 @@ fm_status fm10000GetLogicalPortPcie(fm_int sw,
     fm_int i;
     fm_mailboxInfo *info;
 
-    FM_LOG_ENTRY(FM_LOG_CAT_PORT, "sw=%d, logicalPort=%d, pep=%p, type=%p, index=%p\n",
+    FM_LOG_ENTRY(FM_LOG_CAT_PORT,
+                 "sw=%d, logicalPort=%d, pep=%p, type=%p, index=%p\n",
                  sw,
                  logicalPort,
                  (void *) pep,
@@ -1865,9 +1890,9 @@ fm_status fm10000GetLogicalPortPcie(fm_int sw,
 
     for (i = 0 ; i < FM10000_NUM_PEPS ; i++)
     {
-        firstGlort = info->glortBase + 
+        firstGlort = info->glortBase +
                      (i * info->glortsPerPep);
-        lastGlort = info->glortBase + 
+        lastGlort = info->glortBase +
                      ( (i + 1) * info->glortsPerPep);
 
         if ( (virtualGlort >= firstGlort) && (virtualGlort <= lastGlort) )

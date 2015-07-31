@@ -38,6 +38,10 @@
  * Macros, Constants & Types
  *****************************************************************************/
 
+/* The rule for permanent VLAN trigger which is necessary for sending
+ * specially handled frame as is. */
+#define FM10000_SEND_DIRECTED_REASSIGN_VLAN             1         
+
 typedef struct _fm10000_vlanEntry
 {
     /* Membership state mask, including CPU port #0.

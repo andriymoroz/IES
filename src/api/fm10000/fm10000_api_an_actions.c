@@ -52,12 +52,12 @@ static fm_status An73UpdateBreakLinkTimer( fm_int  sw,
                                            fm_int  port,
                                            fm_int  epl,
                                            fm_int  physLane,
-                                           fm_uint timeoutUsec );
+                                           fm_uint timeout );
 static fm_status An73UpdateLinkInhibitTimer( fm_int  sw,
                                              fm_int  port,
                                              fm_int  epl,
                                              fm_int  physLane,
-                                             fm_uint timeoutUsec );
+                                             fm_uint timeout );
 static fm_int An73AbilityToHCD(fm_uint ability);
 
 static fm_status SendApiAutoNegEvent( fm_int            sw,
@@ -268,7 +268,7 @@ static fm_status ConfigureAn73Timers( fm_smEventInfo *eventInfo,
     fm_int             physLane;
     fm10000_portAttr  *portAttrExt;
     fm10000_port      *portExt;
-    fm_uint            linkTimeoutUsec;
+    fm_uint            linkTimeout;
     fm_status          status;
 
     portExt  = (( fm10000_portSmEventInfo *)userInfo)->portExt;
@@ -291,11 +291,11 @@ static fm_status ConfigureAn73Timers( fm_smEventInfo *eventInfo,
         {
             case AN73_HCD_KX:
             case AN73_HCD_KX4:
-                linkTimeoutUsec = portAttrExt->autoNegLinkInhbTimerKx;
+                linkTimeout = portAttrExt->autoNegLinkInhbTimerKx;
                 break;
 
             default:
-                linkTimeoutUsec = portAttrExt->autoNegLinkInhbTimer;
+                linkTimeout = portAttrExt->autoNegLinkInhbTimer;
                 break;
         }
 
@@ -303,7 +303,7 @@ static fm_status ConfigureAn73Timers( fm_smEventInfo *eventInfo,
                                              port,
                                              epl, 
                                              physLane,
-                                             linkTimeoutUsec );
+                                             linkTimeout );
     }
 
     if ( eventInfo->eventId == FM10000_AN_EVENT_START_REQ ||
@@ -314,7 +314,7 @@ static fm_status ConfigureAn73Timers( fm_smEventInfo *eventInfo,
                                             port,
                                             epl, 
                                             physLane,
-                                            BREAK_LINK_TIMER_USEC );
+                                            BREAK_LINK_TIMER_MILLISEC );
     }
 
     return status;
@@ -336,7 +336,7 @@ static fm_status ConfigureAn73Timers( fm_smEventInfo *eventInfo,
  *
  * \param[in]       physLane is the corresponding epl physLane number.
  *
- * \param[in]       timeoutUsec is the time value to configure.
+ * \param[in]       timeout is the time value (in milliseconds) to configure.
  *
  * \return          FM_OK if successful.
  *
@@ -345,11 +345,12 @@ static fm_status An73UpdateBreakLinkTimer( fm_int  sw,
                                            fm_int  port,
                                            fm_int  epl,
                                            fm_int  physLane,
-                                           fm_uint timeoutUsec )
+                                           fm_uint timeout )
 {
     fm_switch *switchPtr;
     fm_status  status;
     fm_uint    timeScale;
+    fm_uint    breakTimeout;
     fm_uint    linkTimeout;
     fm_uint32  timerCfg;
     fm10000_portAttr *portAttrExt;
@@ -362,40 +363,51 @@ static fm_status An73UpdateBreakLinkTimer( fm_int  sw,
     portAttrExt = GET_FM10000_PORT_ATTR(sw, port);
 
     timerCfg    = 0;
-    linkTimeout = timeoutUsec/1000;
-
-    timeScale   = 5;
 
     portAttrExt = GET_FM10000_PORT_ATTR( sw, port );
     ability     = ( (portAttr->autoNegBasePage  >> 21) &  
                     (fm_uint64)(FM10000_AN73_SUPPORTED_ABILITIES) );
 
-    FM_SET_FIELD( timerCfg, 
-                  FM10000_AN_73_TIMER_CFG, 
-                  TimeScale, 
-                  timeScale );
-    FM_SET_FIELD( timerCfg, 
-                  FM10000_AN_73_TIMER_CFG, 
-                  BreakLinkTimeout, 
-                  linkTimeout);
-
     if ( ((ability) & ~(fm_uint64)(FM10000_AN73_ABILITY_1000BASE_KX)) != 0)
     {
-        inhibitTimer = portAttrExt->autoNegLinkInhbTimer / 1000;
+        inhibitTimer = portAttrExt->autoNegLinkInhbTimer;
     }
     else
     {
-        inhibitTimer = portAttrExt->autoNegLinkInhbTimerKx / 1000;
+        inhibitTimer = portAttrExt->autoNegLinkInhbTimerKx;
     }
 
+    if ( inhibitTimer < 512 )
+    {
+        /* timeout < 512 ms */
+        linkTimeout  = inhibitTimer;
+        breakTimeout = timeout;
+        timeScale    = 5;
+    }
+    else
+    {
+        /* 512 <= timeout */
+        linkTimeout  = inhibitTimer/10;
+        breakTimeout = timeout/10;
+        timeScale    = 6;
+    }
+
+    FM_SET_FIELD( timerCfg,
+                  FM10000_AN_73_TIMER_CFG,
+                  TimeScale,
+                  timeScale );
+    FM_SET_FIELD( timerCfg,
+                  FM10000_AN_73_TIMER_CFG,
+                  BreakLinkTimeout,
+                  breakTimeout);
     FM_SET_FIELD( timerCfg, 
                   FM10000_AN_73_TIMER_CFG, 
                   LinkFailInhibitTimeout,
-                  inhibitTimer );
+                  linkTimeout );
 
     FM_LOG_DEBUG_V2( FM_LOG_CAT_PORT_AUTONEG, 
                      port,
-                     "Settimg timer cfg to 0x%08x\n",
+                     "Setting timer cfg to 0x%08x\n",
                      timerCfg );
 
     status = switchPtr->WriteUINT32( sw, 
@@ -420,7 +432,7 @@ static fm_status An73UpdateBreakLinkTimer( fm_int  sw,
  *
  * \param[in]       physLane is the corresponding epl physical lane ID
  *
- * \param[in]       timeoutUsec is the time value to configure.
+ * \param[in]       timeout is the time value in milliseconds to configure.
  *
  * \return          FM_OK if successful.
  *
@@ -429,20 +441,36 @@ static fm_status An73UpdateLinkInhibitTimer( fm_int  sw,
                                              fm_int  port,
                                              fm_int  epl,
                                              fm_int  physLane,
-                                             fm_uint timeoutUsec )
+                                             fm_uint timeout )
 {
     fm_switch *switchPtr;
     fm_status  status;
     fm_uint    timeScale;
     fm_uint    linkTimeout;
+    fm_uint    breakTimeout;
     fm_uint32  timerCfg;
 
     switchPtr = GET_SWITCH_PTR(sw);
 
-    timerCfg    = 0;
-    linkTimeout = timeoutUsec/1000;
+    timerCfg     = 0;
 
-    timeScale   = 5;
+    /* practical timescales are
+     *   (timeout <  512ms) --> 5
+     *   (timeout >= 512ms) --> 6 */
+    if ( timeout < 512 )
+    {
+        /* timeout < 512 ms */
+        linkTimeout  = timeout;
+        breakTimeout = BREAK_LINK_TIMER_MILLISEC;
+        timeScale    = 5;
+    }
+    else
+    {
+        /* 512 <= timeout */
+        linkTimeout  = timeout/10;
+        breakTimeout = BREAK_LINK_TIMER_MILLISEC/10;
+        timeScale    = 6;
+    }
 
     FM_SET_FIELD( timerCfg, 
                   FM10000_AN_73_TIMER_CFG, 
@@ -451,7 +479,7 @@ static fm_status An73UpdateLinkInhibitTimer( fm_int  sw,
     FM_SET_FIELD( timerCfg, 
                   FM10000_AN_73_TIMER_CFG, 
                   BreakLinkTimeout,
-                  BREAK_LINK_TIMER_USEC / 1000 );
+                  breakTimeout );
     FM_SET_FIELD( timerCfg, 
                   FM10000_AN_73_TIMER_CFG, 
                   LinkFailInhibitTimeout, 
@@ -459,7 +487,7 @@ static fm_status An73UpdateLinkInhibitTimer( fm_int  sw,
 
     FM_LOG_DEBUG_V2( FM_LOG_CAT_PORT_AUTONEG, 
                      port,
-                     "Settimg timer cfg to 0x%08x\n",
+                     "Setting timer cfg to 0x%08x\n",
                      timerCfg );
     status = switchPtr->WriteUINT32( sw, 
                                      FM10000_AN_73_TIMER_CFG(epl, physLane),

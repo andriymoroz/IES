@@ -5,7 +5,7 @@
  * Creation Date:   March 8, 2012
  * Description:     Platform board/CPU specific definitions
  *
- * Copyright (c) 2012 - 2013, Intel Corporation
+ * Copyright (c) 2012 - 2015, Intel Corporation
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -29,7 +29,7 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
+ *****************************************************************************/
 
 #ifndef __FM_PLATFORM_REGS_H
 #define __FM_PLATFORM_REGS_H
@@ -206,11 +206,11 @@
 #define FM_FPGA_INT_MASK1_b_I2C_QSFP                7
 
 #define FM_FPGA_INT_MASK2                          25
-#define FM_FPGA_INT_MASK2_b_OT_WARN                 0 /* Alta Overtemp Warning */
+#define FM_FPGA_INT_MASK2_b_OT_WARN                 0 /* FM6000 Overtemp Warning */
 #define FM_FPGA_INT_MASK2_l_FC_OT                   2 /* Fan Controller Overtemp */
 #define FM_FPGA_INT_MASK2_h_FC_OT                   3
 #define FM_FPGA_INT_MASK2_b_PHY                     4 /* Marvell PHY */
-#define FM_FPGA_INT_MASK2_b_FM6000                  5 /* Alta interrupt */
+#define FM_FPGA_INT_MASK2_b_FM6000                  5 /* FM6000 interrupt */
 #define FM_FPGA_INT_MASK2_b_VDDS_VRM_STATUS         6
 #define FM_FPGA_INT_MASK2_b_VDD_VRM_STATUS          7
 

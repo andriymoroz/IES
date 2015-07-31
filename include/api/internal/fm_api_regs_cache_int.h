@@ -6,7 +6,6 @@
  * Description:     Header containing all declarations related to the
  *                  Register Cache implementation
  *
- *
  * Copyright (c) 2007 - 2015, Intel Corporation.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -31,7 +30,7 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
+ *****************************************************************************/
 
 #ifndef __FM_FM_API_REGS_CACHE_INT_H
 #define __FM_FM_API_REGS_CACHE_INT_H
@@ -153,8 +152,8 @@ typedef struct _fm_registerSGListEntry
  *  the possible combinations of the reference bit for key and
  *  keyInvert. The reference bit is the one chosen to manage the
  *  valid status of the CAM entry. Currently that is Bit[0:0]
- *  That is valid for chipsets using the key/keyInvert approach (Alta
- *  and presumably later chipsets).
+ *  That is valid for chipsets using the key/keyInvert approach
+ *  (FM6000 and presumably later chipsets).
  ******************************************************************/
 typedef enum
 {

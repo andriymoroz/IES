@@ -43,6 +43,8 @@ fm_status fmPlatformSetPortSerdesTxCfg(fm_int     sw,
                                        fm_bool    applyToAllLane,
                                        fm_ethMode mode);
 
+fm_status fmPlatformSetPortEthMode(fm_int sw, fm_int port);
+
 fm_status fmPlatformMapLogicalPortToPlatform(fm_int               sw,
                                              fm_int               port,
                                              fm_int *             swNum,

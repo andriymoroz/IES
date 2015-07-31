@@ -1471,10 +1471,10 @@ fm_status fmPlatformHostDrvOpen(fm_int  sw,
         info->uioNum = GetUioNumFromFilename(startUioName);
         if(info->uioNum < 0)
         {
-            FM_LOG_ERROR(FM_LOG_CAT_PLATFORM,
+            FM_LOG_DEBUG(FM_LOG_CAT_PLATFORM,
                          "Unable to specify uio nr for uio device: %s\n",
                          uioDevName);
-            FM_LOG_EXIT(FM_LOG_CAT_PLATFORM, FM_FAIL);
+            info->uioNum = 0;
         }
 
         /* Get information for uio device */

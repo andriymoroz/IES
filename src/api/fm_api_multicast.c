@@ -29,7 +29,7 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
+ *****************************************************************************/
 
 #include <fm_sdk_int.h>
 
@@ -45,6 +45,8 @@
 #define GET_VN_LISTENER_KEY(tunnelId, vni)                                      \
     ( ( ( (fm_uint64) tunnelId ) << 32 ) | ( (fm_uint64) vni ) )
 
+#define GET_FLOW_LISTENER_KEY(tableIndex, flowId)                               \
+    ( ( ( (fm_uint64) tableIndex ) << 32 ) | ( (fm_uint64) flowId ) )
 
 
 
@@ -127,7 +129,16 @@ static fm_status AllocateListener(fm_intMulticastGroup *    group,
 
     intListener->listener      = *listener;
     intListener->group         = group;
-    intListener->floodListener = FALSE;
+
+    if ( listener->listenerType == FM_MCAST_GROUP_LISTENER_PORT_VLAN )
+    {
+        intListener->floodListener = 
+                                  listener->info.portVlanListener.floodListener;
+    }
+    else
+    {
+        intListener->floodListener = FALSE;
+    }
 
     FM_DLL_INIT_LIST(intListener, firstSubListener, lastSubListener);
     FM_DLL_INIT_NODE(intListener, nextSubListener, prevSubListener);
@@ -537,6 +548,110 @@ ABORT:
 
 
 /*****************************************************************************/
+/** DeleteLagListener
+ * \ingroup intMulticast
+ *
+ * \desc            Delete a listener for a LAG port.
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \param[in]       group points to the multicast group.
+ *
+ * \param[in]       intListener points to the listener.
+ *
+ * \return          FM_OK if successful.
+ *
+ *****************************************************************************/
+static fm_status DeleteLagListener(fm_int                   sw,
+                                   fm_intMulticastGroup *   group,
+                                   fm_intMulticastListener *intListener)
+{
+    fm_switch               *switchPtr;
+    fm_int                   lagPort;
+    fm_int                   lagIndex;
+    fm_status                err;
+    fm_mcastGroupListener    tempListener;
+    fm_int                   portList[FM_MAX_NUM_LAG_MEMBERS];
+    fm_int                   numPorts;
+    fm_int                   i;
+    fm_intMulticastListener *subListener;
+
+    FM_LOG_ENTRY(FM_LOG_CAT_MULTICAST,
+                 "sw=%d, group=%d, intListener=%p\n",
+                 sw,
+                 group->handle,
+                 (void *) intListener);
+    FM_DBG_DUMP_LISTENER(&intListener->listener);
+
+    if (intListener->listener.listenerType != FM_MCAST_GROUP_LISTENER_PORT_VLAN)
+    {
+        FM_LOG_EXIT(FM_LOG_CAT_MULTICAST, FM_ERR_UNSUPPORTED);
+    }
+
+    switchPtr = GET_SWITCH_PTR(sw);
+
+    err = TAKE_LAG_LOCK(sw);
+    FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_MULTICAST, err);
+
+    err = fmLogicalPortToLagIndex(sw,
+                                  intListener->listener.info.portVlanListener.port,
+                                  &lagIndex);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MULTICAST, err);
+
+    /* Get the list of ports member of this LAG */
+    err = fmGetLAGMemberPorts(sw,
+                              lagIndex,
+                              &numPorts,
+                              portList,
+                              FM_MAX_NUM_LAG_MEMBERS,
+                              FALSE);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MULTICAST, err);
+    
+    /* For local port member, the port will be deleted from listener directly.
+     * For remote port member, re-delete the port member, it will be
+     * processed as a remote port and a listener with the
+     * internal port will be used to reach this remote port. */
+    
+    for (i = 0 ; i < numPorts ; i++)
+    {
+        lagPort = portList[i];
+
+        if (fmIsRemotePort(sw, lagPort))
+        {
+            tempListener = intListener->listener;
+            tempListener.info.portVlanListener.port = lagPort;
+
+            err =
+                fmDeleteMcastGroupListenerV2(sw, group->handle, &tempListener);
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MULTICAST, err);
+
+        }
+    }   /* end for (i = 0 ; i < numPorts ; i++) */
+    
+    /* For the remaining local port members, the ports will be deleted from
+     * listener directly. */
+    while (intListener->firstSubListener != NULL)
+    {
+        subListener = intListener->firstSubListener;
+        lagPort = subListener->listener.info.portVlanListener.port;
+
+        err = DeleteSubListener(sw, group, intListener, lagPort);
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MULTICAST, err);
+        
+    }   /* end while (intListener->firstSubListener != NULL) */
+
+ABORT:
+
+    DROP_LAG_LOCK(sw);
+
+    FM_LOG_EXIT(FM_LOG_CAT_MULTICAST, err);
+
+}   /* end DeleteLagListener */
+
+
+
+
+/*****************************************************************************/
 /** AddListenerToHardware
  * \ingroup intMulticast
  *
@@ -578,6 +693,7 @@ static fm_status AddListenerToHardware(fm_int                   sw,
             break;
 
         case FM_MCAST_GROUP_LISTENER_VN_TUNNEL:
+        case FM_MCAST_GROUP_LISTENER_FLOW_TUNNEL:
             FM_API_CALL_FAMILY(err,
                                switchPtr->AddMulticastListener,
                                sw,
@@ -649,10 +765,8 @@ static fm_status DeleteListenerFromHardware(fm_int                   sw,
     fm_switch *                      switchPtr;
     fm_port *                        portPtr;
     fm_status                        err;
-    fm_int                           lagIndex;
     fm_intMulticastInternalListener *internalPortListener;
     fm_mcastGroupListener            tempListener;
-    fm_intMulticastListener *        subListener;
 
     FM_LOG_ENTRY(FM_LOG_CAT_MULTICAST,
                  "sw = %d, group = %p, intListener = %p\n",
@@ -671,6 +785,7 @@ static fm_status DeleteListenerFromHardware(fm_int                   sw,
             break;
 
         case FM_MCAST_GROUP_LISTENER_VN_TUNNEL:
+        case FM_MCAST_GROUP_LISTENER_FLOW_TUNNEL:
             FM_API_CALL_FAMILY(err,
                                switchPtr->DeleteMulticastListener,
                                sw,
@@ -735,37 +850,8 @@ static fm_status DeleteListenerFromHardware(fm_int                   sw,
             break;
 
         case FM_PORT_TYPE_LAG:
-            err = TAKE_LAG_LOCK(sw);
-
-            if (err != FM_OK)
-            {
-                FM_LOG_EXIT(FM_LOG_CAT_MULTICAST, err);
-            }
-
-            err = fmLogicalPortToLagIndex(sw,
-                                          intListener->listener.info.portVlanListener.port,
-                                          &lagIndex);
-
-            if (err == FM_OK)
-            {
-                while (intListener->firstSubListener != NULL)
-                {
-                    subListener = intListener->firstSubListener;
-
-                    err = DeleteSubListener(sw,
-                                            group,
-                                            intListener,
-                                            subListener->listener.info.portVlanListener.port);
-
-                    if (err != FM_OK)
-                    {
-                        break;
-                    }
-                }
-
-            }   /* end if (err == FM_OK) */
-
-            DROP_LAG_LOCK(sw);
+            err = DeleteLagListener(sw, group, intListener);
+            FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_MULTICAST, err);
             break;
 
         default:
@@ -826,6 +912,12 @@ static fm_status DeleteMulticastListener(fm_int                   sw,
             portPtr     = NULL;
             listenerKey = GET_VN_LISTENER_KEY(intListener->listener.info.vnListener.tunnelId,
                                               intListener->listener.info.vnListener.vni);
+            break;
+
+        case FM_MCAST_GROUP_LISTENER_FLOW_TUNNEL:
+            portPtr     = NULL;
+            listenerKey = GET_FLOW_LISTENER_KEY(intListener->listener.info.flowListener.tableIndex,
+                                                intListener->listener.info.flowListener.flowId);
             break;
 
         default:
@@ -1116,6 +1208,69 @@ static fm_status ValidateVNTunnelListener(fm_int                 sw,
 
 
 /*****************************************************************************/
+/** ValidateFlowTunnelListener
+ * \ingroup intMulticast
+ *
+ * \desc            Determines whether a Flow Tunnel multicast listener can be
+ *                  added.
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \param[in]       listener points to the listener descriptor record.
+ *
+ * \return          FM_OK if successful.
+ * \return          FM_ERR_INVALID_ARGUMENT if the listener is not valid.
+ *
+ *****************************************************************************/
+static fm_status ValidateFlowTunnelListener(fm_int                 sw,
+                                            fm_mcastGroupListener *listener)
+{
+    fm_flowTableType flowTableType;
+    fm_status err;
+    fm_flowCondition flowCond;
+    fm_flowValue flowValue;
+    fm_flowAction flowAction;
+    fm_flowParam flowParam;
+    fm_int priority;
+    fm_int precedence;
+
+    FM_LOG_ENTRY(FM_LOG_CAT_MULTICAST,
+                 "sw = %d, listener = %p (tableIndex=%d, flowId=%d)\n",
+                 sw,
+                 (void *) listener,
+                 listener->info.flowListener.tableIndex,
+                 listener->info.flowListener.flowId);
+
+    err = fmGetFlowTableType(sw,
+                             listener->info.flowListener.tableIndex,
+                             &flowTableType);
+    if ( (err != FM_OK) || (flowTableType != FM_FLOW_TE_TABLE) )
+    {
+        FM_LOG_EXIT(FM_LOG_CAT_MULTICAST, FM_ERR_INVALID_ARGUMENT);
+    }
+
+    err = fmGetFlow(sw, 
+                    listener->info.flowListener.tableIndex,
+                    listener->info.flowListener.flowId,
+                    &flowCond,
+                    &flowValue,
+                    &flowAction,
+                    &flowParam,
+                    &priority,
+                    &precedence);
+    if (err != FM_OK)
+    {
+        FM_LOG_EXIT(FM_LOG_CAT_MULTICAST, FM_ERR_INVALID_ARGUMENT);
+    }
+
+    FM_LOG_EXIT(FM_LOG_CAT_MULTICAST, FM_OK);
+
+}   /* end ValidateFlowTunnelListener */
+
+
+
+
+/*****************************************************************************/
 /** CreateListener
  * \ingroup intMulticast
  *
@@ -1169,6 +1324,12 @@ static fm_status CreateListener(fm_int                    sw,
             portPtr     = NULL;
             listenerKey = GET_VN_LISTENER_KEY(listener->info.vnListener.tunnelId,
                                               listener->info.vnListener.vni);
+            break;
+
+        case FM_MCAST_GROUP_LISTENER_FLOW_TUNNEL:
+            portPtr     = NULL;
+            listenerKey = GET_FLOW_LISTENER_KEY(listener->info.flowListener.tableIndex,
+                                                listener->info.flowListener.flowId);
             break;
 
         default:
@@ -1293,6 +1454,12 @@ static fm_status DeleteListener(fm_int                 sw,
             portPtr     = NULL;
             listenerKey = GET_VN_LISTENER_KEY(listener->info.vnListener.tunnelId,
                                               listener->info.vnListener.vni);
+            break;
+
+        case FM_MCAST_GROUP_LISTENER_FLOW_TUNNEL:
+            portPtr     = NULL;
+            listenerKey = GET_FLOW_LISTENER_KEY(listener->info.flowListener.tableIndex,
+                                                listener->info.flowListener.flowId);
             break;
 
         default:
@@ -2008,6 +2175,91 @@ static fm_bool VerifyListener(fm_int                   sw,
 } /* end VerifyListener */
 
 
+
+
+/*****************************************************************************/
+/** UpdateMcastHNIFloodingGroups
+ * \ingroup intMulticast
+ *
+ * \desc            Updates mcast group configured as HNI flooding with given
+ *                  listener.
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \param[in]       mcastGroup is the multicast group ID number.
+ *
+ * \param[in]       listener points to an ''fm_mcastGroupListener'' structure
+ *                  describing the listener to add/remove.
+ *
+ * \param[in]       state is TRUE if the listener should be added to mcast 
+ *                  group, or FALSE if it should be removed from mcast group.
+ *
+ * \return          FM_OK if successful.
+ * \return          FM_ERR_MCAST_GROUP_NOT_ACTIVE if the group is not active.
+ *
+ *****************************************************************************/
+static fm_status UpdateMcastHNIFloodingGroups(fm_int                 sw,
+                                              fm_int                 mcastGroup,
+                                              fm_mcastGroupListener *listener,
+                                              fm_bool                state)
+{
+    fm_status status;
+
+    FM_LOG_ENTRY(FM_LOG_CAT_MULTICAST,
+                 "sw = %d, mcastGroup = %d, listener = %p, state = %d\n",
+                 sw,
+                 mcastGroup,
+                 (void *) listener,
+                 state);
+
+    if (state)
+    {
+        status = fmAddMcastGroupListenerInternalForFlood(sw,
+                                                         mcastGroup,
+                                                         listener);
+
+        if (status == FM_ERR_ALREADY_EXISTS)
+        {
+            FM_LOG_DEBUG(FM_LOG_CAT_MULTICAST,
+                         "Listener (port, vlan) = (%d, %d)"
+                         " already added to mcast group %d\n",
+                         listener->info.portVlanListener.port,
+                         FM_MAILBOX_DEF_VLAN_FOR_FLOOD_MCAST_GROUPS,
+                         mcastGroup);
+        }
+        else
+        {
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MULTICAST, status);
+        }
+    }
+    else
+    {
+        status = fmDeleteMcastGroupListenerInternalForFlood(sw,
+                                                            mcastGroup,
+                                                            listener);
+
+        if (status == FM_ERR_NOT_FOUND)
+        {
+            FM_LOG_DEBUG(FM_LOG_CAT_MULTICAST,
+                         "Listener (port, vlan) = (%d, %d)"
+                         " already deleted from mcast group %d\n",
+                         listener->info.portVlanListener.port,
+                         FM_MAILBOX_DEF_VLAN_FOR_FLOOD_MCAST_GROUPS,
+                         mcastGroup);
+        }
+        else
+        {
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MULTICAST, status);
+        }
+    }
+
+    status = FM_OK;
+
+ABORT:
+
+    FM_LOG_EXIT(FM_LOG_CAT_MULTICAST, status);
+
+}   /* end UpdateMcastHNIFloodingGroups */
 
 
 /*****************************************************************************
@@ -2858,7 +3110,8 @@ fm_status fmAddMcastGroupListenerInternal(fm_int                 sw,
 {
     fm_switch *              switchPtr;
     fm_status                err;
-    fm_bool                  lockTaken;
+    fm_bool                  routingLockTaken;
+    fm_bool                  flowLockTaken;
     fm_bool                  mcastHNIFlooding;
     fm_intMulticastGroup *   group;
     fm_intMulticastListener *intListener;
@@ -2878,10 +3131,11 @@ fm_status fmAddMcastGroupListenerInternal(fm_int                 sw,
     mcastHNIFlooding = fmGetBoolApiProperty(FM_AAK_API_MULTICAST_HNI_FLOODING,
                                             FM_AAD_API_MULTICAST_HNI_FLOODING);
 
-    switchPtr   = GET_SWITCH_PTR(sw);
-    lockTaken   = FALSE;
-    group       = NULL;
-    intListener = NULL;
+    switchPtr          = GET_SWITCH_PTR(sw);
+    routingLockTaken   = FALSE;
+    flowLockTaken      = FALSE;
+    group              = NULL;
+    intListener        = NULL;
 
     switch (listener->listenerType)
     {
@@ -2895,6 +3149,16 @@ fm_status fmAddMcastGroupListenerInternal(fm_int                 sw,
             FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MULTICAST, err);
             break;
 
+        case FM_MCAST_GROUP_LISTENER_FLOW_TUNNEL:
+            err = ValidateFlowTunnelListener(sw, listener);
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MULTICAST, err);
+
+            err = fmCaptureLock(&switchPtr->flowLock, FM_WAIT_FOREVER);
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MULTICAST, err);
+
+            flowLockTaken = TRUE;
+            break;
+
         default:
             err = FM_ERR_UNSUPPORTED;
             FM_LOG_ABORT(FM_LOG_CAT_MULTICAST, err);
@@ -2903,7 +3167,7 @@ fm_status fmAddMcastGroupListenerInternal(fm_int                 sw,
     err = fmCaptureWriteLock(&switchPtr->routingLock, FM_WAIT_FOREVER);
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MULTICAST, err);
 
-    lockTaken = TRUE;
+    routingLockTaken = TRUE;
 
     group = fmFindMcastGroup(sw, mcastGroup);
     if (group == NULL)
@@ -2948,9 +3212,14 @@ ABORT:
         }
     }
 
-    if (lockTaken)
+    if (routingLockTaken)
     {
         fmReleaseWriteLock(&switchPtr->routingLock);
+    }
+
+    if (flowLockTaken)
+    {
+        fmReleaseLock(&switchPtr->flowLock);
     }
 
     FM_LOG_EXIT(FM_LOG_CAT_MULTICAST, err);
@@ -3230,7 +3499,8 @@ fm_status fmAddMcastGroupListenerListInternal(fm_int                 sw,
     fm_mcastGroupListener *  listener;
     fm_intMulticastGroup *   groupPtr;
     fm_intMulticastListener *intListener;
-    fm_bool                  lockTaken;
+    fm_bool                  routingLockTaken;
+    fm_bool                  flowLockTaken;
     fm_bool                  mcastHNIFlooding;
     fm_status                err;
     fm_int                   i;
@@ -3243,8 +3513,9 @@ fm_status fmAddMcastGroupListenerListInternal(fm_int                 sw,
                  numListeners,
                  (void *) listenerList);
 
-    switchPtr = GET_SWITCH_PTR(sw);
-    lockTaken = FALSE;
+    switchPtr        = GET_SWITCH_PTR(sw);
+    routingLockTaken = FALSE;
+    flowLockTaken    = FALSE;
 
     mcastHNIFlooding = fmGetBoolApiProperty(FM_AAK_API_MULTICAST_HNI_FLOODING,
                                             FM_AAD_API_MULTICAST_HNI_FLOODING);
@@ -3268,6 +3539,19 @@ fm_status fmAddMcastGroupListenerListInternal(fm_int                 sw,
                 FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MULTICAST, err);
                 break;
 
+            case FM_MCAST_GROUP_LISTENER_FLOW_TUNNEL:
+                err = ValidateFlowTunnelListener(sw, listener);
+                FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MULTICAST, err);
+
+                if (flowLockTaken == FALSE)
+                {
+                    err = fmCaptureLock(&switchPtr->flowLock, FM_WAIT_FOREVER);
+                    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MULTICAST, err);
+
+                    flowLockTaken = TRUE;
+                }
+                break;
+
             default:
                 err = FM_ERR_UNSUPPORTED;
                 FM_LOG_ABORT(FM_LOG_CAT_MULTICAST, err);
@@ -3281,7 +3565,7 @@ fm_status fmAddMcastGroupListenerListInternal(fm_int                 sw,
 
     err = fmCaptureWriteLock(&switchPtr->routingLock, FM_WAIT_FOREVER);
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MULTICAST, err);
-    lockTaken = TRUE;
+    routingLockTaken = TRUE;
 
     /*****************************************************
      * Get a pointer to the multicast group object.
@@ -3344,9 +3628,14 @@ ABORT:
         }
     }
 
-    if (lockTaken)
+    if (routingLockTaken)
     {
         fmReleaseWriteLock(&switchPtr->routingLock);
+    }
+
+    if (flowLockTaken)
+    {
+        fmReleaseLock(&switchPtr->flowLock);
     }
 
     FM_LOG_EXIT(FM_LOG_CAT_MULTICAST, err);
@@ -3573,7 +3862,8 @@ fm_status fmDeleteMcastGroupListenerInternal(fm_int                 sw,
 {
     fm_switch *              switchPtr;
     fm_status                err;
-    fm_bool                  lockTaken;
+    fm_bool                  routingLockTaken;
+    fm_bool                  flowLockTaken;
     fm_bool                  mcastHNIFlooding;
     fm_intMulticastGroup *   group;
     fm_intMulticastListener *intListener;
@@ -3591,8 +3881,9 @@ fm_status fmDeleteMcastGroupListenerInternal(fm_int                 sw,
         FM_LOG_EXIT(FM_LOG_CAT_MULTICAST, FM_ERR_INVALID_ARGUMENT);
     }
 
-    switchPtr = GET_SWITCH_PTR(sw);
-    lockTaken = FALSE;
+    switchPtr        = GET_SWITCH_PTR(sw);
+    routingLockTaken = FALSE;
+    flowLockTaken    = FALSE;
 
     mcastHNIFlooding = fmGetBoolApiProperty(FM_AAK_API_MULTICAST_HNI_FLOODING,
                                             FM_AAD_API_MULTICAST_HNI_FLOODING);
@@ -3615,6 +3906,19 @@ fm_status fmDeleteMcastGroupListenerInternal(fm_int                 sw,
                                               listener->info.vnListener.vni);
             break;
 
+        case FM_MCAST_GROUP_LISTENER_FLOW_TUNNEL:
+            err = ValidateFlowTunnelListener(sw, listener);
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MULTICAST, err);
+
+            listenerKey = GET_FLOW_LISTENER_KEY(listener->info.flowListener.tableIndex,
+                                                listener->info.flowListener.flowId);
+
+            err = fmCaptureLock(&switchPtr->flowLock, FM_WAIT_FOREVER);
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MULTICAST, err);
+
+            flowLockTaken = TRUE;
+            break;
+
         default:
             err = FM_ERR_UNSUPPORTED;
             FM_LOG_ABORT(FM_LOG_CAT_MULTICAST, err);
@@ -3623,7 +3927,7 @@ fm_status fmDeleteMcastGroupListenerInternal(fm_int                 sw,
     err = fmCaptureWriteLock(&switchPtr->routingLock, FM_WAIT_FOREVER);
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MULTICAST, err);
 
-    lockTaken = TRUE;
+    routingLockTaken = TRUE;
 
     group = fmFindMcastGroup(sw, mcastGroup);
 
@@ -3662,11 +3966,25 @@ ABORT:
                                                      TRUE);
             FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_MULTICAST, err);
         }
+        else if ( ( fmIsMcastGroupHNIFlooding(sw, group->handle) ) &&
+                  ( !fmHasMcastGroupVirtualListeners(sw, group->handle) ) )
+        {
+            /* Mcast group shouldn't be configured as requested by HNI */
+            err = fmConfigureMcastGroupAsHNIFlooding(sw,
+                                                     group->handle,
+                                                     FALSE);
+            FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_MULTICAST, err);
+        }
     }
 
-    if (lockTaken)
+    if (routingLockTaken)
     {
         fmReleaseWriteLock(&switchPtr->routingLock);
+    }
+
+    if (flowLockTaken)
+    {
+        fmReleaseLock(&switchPtr->flowLock);
     }
 
     FM_LOG_EXIT(FM_LOG_CAT_MULTICAST, err);
@@ -4898,6 +5216,11 @@ fm_status fmGetMcastGroupListenerNextV2(fm_int                 sw,
         case FM_MCAST_GROUP_LISTENER_VN_TUNNEL:
             key = GET_VN_LISTENER_KEY(currentListener->info.vnListener.tunnelId,
                                       currentListener->info.vnListener.vni);
+            break;
+
+        case FM_MCAST_GROUP_LISTENER_FLOW_TUNNEL:
+            key = GET_FLOW_LISTENER_KEY(currentListener->info.flowListener.tableIndex,
+                                        currentListener->info.flowListener.flowId);
             break;
 
         default:
@@ -6986,6 +7309,9 @@ fm_status fmMcastAddPortToLagNotify(fm_int sw, fm_int lagIndex, fm_int port)
     fm_int                   addedListenerCount = 0;
     fm_int                   deletedListenerCount = 0;
     fm_uint64                listenerKey;
+    fm_bool                  internalLag;
+    fm_mcastGroupListener    tempListener;
+
 #if FM_SUPPORT_SWAG
     fm_int                   swagSw;
     fmSWAG_switch *          swagExt;
@@ -7002,39 +7328,6 @@ fm_status fmMcastAddPortToLagNotify(fm_int sw, fm_int lagIndex, fm_int port)
     switchPtr = GET_SWITCH_PTR(sw);
     portPtr   = GET_PORT_PTR(sw, port);
 
-    /* Ignore ports of type FM_PORT_TYPE_REMOTE.
-     * This can be received in Stacking or SWAG mode. */
-
-    if( portPtr->portType == FM_PORT_TYPE_REMOTE )
-    {
-        FM_LOG_EXIT( FM_LOG_CAT_MULTICAST, FM_OK );
-    }
-
-#if FM_SUPPORT_SWAG
-    err = fmIsSwitchInASWAG(sw, &swagSw);
-
-    if (err == FM_OK)
-    {
-        swagExt = GET_SWITCH_EXT(swagSw);
-        member  = fmFindSwitchInSWAG(swagExt, sw);
-
-        if (member == NULL)
-        {
-            FM_LOG_EXIT(FM_LOG_CAT_LAG, FM_ERR_SWITCH_NOT_IN_AGGREGATE);
-        }
-
-        swagLagIndex = member->swagLagGroups[lagIndex];
-
-        if (swagLagIndex >= 0)
-        {
-            err = fmMcastAddPortToLagNotify(swagSw,
-                                            swagLagIndex,
-                                            portPtr->swagPort);
-            FM_LOG_EXIT(FM_LOG_CAT_MULTICAST, err);
-        }
-    }
-#endif
-
     err = fmLagIndexToLogicalPort(sw, lagIndex, &lagLogicalPort);
 
     if (err != FM_OK)
@@ -7044,6 +7337,47 @@ fm_status fmMcastAddPortToLagNotify(fm_int sw, fm_int lagIndex, fm_int port)
                      err);
         FM_LOG_EXIT(FM_LOG_CAT_MULTICAST, err);
     }
+
+    err =
+        fmGetPortAttribute(sw, lagLogicalPort, FM_PORT_INTERNAL, &internalLag);
+    FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_MULTICAST, err);
+
+    /* Ignore ports of type FM_PORT_TYPE_REMOTE with the exception of internal
+     * LAG.
+     * This can be received in Stacking or SWAG mode. */
+    if( (internalLag == FALSE) && (portPtr->portType == FM_PORT_TYPE_REMOTE) )
+    {
+        FM_LOG_EXIT( FM_LOG_CAT_MULTICAST, FM_OK );
+    }
+
+#if FM_SUPPORT_SWAG
+    
+    if (portPtr->portType != FM_PORT_TYPE_REMOTE)
+    {
+        err = fmIsSwitchInASWAG(sw, &swagSw);
+
+        if (err == FM_OK)
+        {
+            swagExt = GET_SWITCH_EXT(swagSw);
+            member  = fmFindSwitchInSWAG(swagExt, sw);
+            
+            if (member == NULL)
+            {
+                FM_LOG_EXIT(FM_LOG_CAT_LAG, FM_ERR_SWITCH_NOT_IN_AGGREGATE);
+            }
+            
+            swagLagIndex = member->swagLagGroups[lagIndex];
+            
+            if (swagLagIndex >= 0)
+            {
+                err = fmMcastAddPortToLagNotify(swagSw,
+                                                swagLagIndex,
+                                                portPtr->swagPort);
+                FM_LOG_EXIT(FM_LOG_CAT_MULTICAST, err);
+            }
+        }
+    }
+#endif
 
     lagPortPtr = GET_PORT_PTR(sw, lagLogicalPort);
 
@@ -7131,13 +7465,26 @@ fm_status fmMcastAddPortToLagNotify(fm_int sw, fm_int lagIndex, fm_int port)
         /* Add it only if the group is activated */
         if (listener->group->activated)
         {
-            err = AddSubListener(sw, listener->group, listener, port);
-
-            if (err != FM_OK)
+            if (fmIsRemotePort(sw, port))
             {
-                break;
+                tempListener = listener->listener;
+                tempListener.info.portVlanListener.port = port;
+                
+                err =
+                    fmAddMcastGroupListenerV2(sw,
+                                              listener->group->handle,
+                                              &tempListener);
+                FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MULTICAST, err);         
             }
-
+            else
+            {
+                err = AddSubListener(sw, listener->group, listener, port);
+                
+                if (err != FM_OK)
+                {
+                    break;
+                }
+            }
             addedListenerCount++;
         }
     }
@@ -7323,6 +7670,11 @@ fm_status fmMcastRemovePortFromLagNotify(fm_int sw,
             case FM_MCAST_GROUP_LISTENER_VN_TUNNEL:
                 listenerKey = GET_VN_LISTENER_KEY(listener->listener.info.vnListener.tunnelId,
                                                   listener->listener.info.vnListener.vni);
+                break;
+
+            case FM_MCAST_GROUP_LISTENER_FLOW_TUNNEL:
+                listenerKey = GET_FLOW_LISTENER_KEY(listener->listener.info.flowListener.tableIndex,
+                                                    listener->listener.info.flowListener.flowId);
                 break;
 
             default:
@@ -7614,6 +7966,10 @@ fm_status fmMcastDeleteVlanNotify(fm_int sw, fm_int vlan)
                             {
                                 listenerList[listenerListIndex++] = listener->listener;
                             }
+                            break;
+
+                        case FM_MCAST_GROUP_LISTENER_FLOW_TUNNEL:
+                            /* Flow Tunnel are GLORT based */
                             break;
 
                         default:
@@ -9019,7 +9375,8 @@ fm_bool fmHasMcastGroupNonVirtualListeners(fm_int sw,
     {
         if ( (status == FM_OK) && (!intListener->floodListener) )
         {
-            if (intListener->listener.listenerType == FM_MCAST_GROUP_LISTENER_VN_TUNNEL)
+            if ( (intListener->listener.listenerType == FM_MCAST_GROUP_LISTENER_VN_TUNNEL) ||
+                 (intListener->listener.listenerType == FM_MCAST_GROUP_LISTENER_FLOW_TUNNEL) )
             {
                 return TRUE;
             }
@@ -9135,6 +9492,73 @@ fm_bool fmHasMcastGroupVirtualListeners(fm_int sw,
 
 
 /*****************************************************************************/
+/** fmHasMcastGroupNonFloodingListeners
+ * \ingroup intMulticast
+ *
+ * \desc            Helper function to check whether a multicast group has
+ *                  non-flooding listeners.
+ *
+ * \note            This function assumes that the caller has taken the
+ *                  appropriate lock and made sure switch state is valid.
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \param[in]       mcastGroup is the multicast group ID number.
+ *
+ * \return          TRUE if mcast group has listeners for ports
+ *                  that are not virtual.
+ * \return          FALSE if otherwise
+ *
+ *****************************************************************************/
+fm_bool fmHasMcastGroupNonFloodingListeners(fm_int sw,
+                                            fm_int mcastGroup)
+{
+    fm_status                status;
+    fm_intMulticastGroup *   group;
+    fm_intMulticastListener *intListener;
+    fm_treeIterator          iter;
+    fm_uint64                key;
+
+    status = FM_OK;
+
+    group = fmFindMcastGroup(sw, mcastGroup);
+
+    if (group == NULL)
+    {
+        return FALSE;
+    }
+
+    fmTreeIterInit(&iter, &group->listenerTree);
+
+    status = fmTreeIterNext( &iter, &key, (void **) &intListener);
+
+    while (status != FM_ERR_NO_MORE)
+    {
+        if ( (status == FM_OK) && (!intListener->floodListener) )
+        {
+            return TRUE;
+        }
+        else if ( (status != FM_OK) && ( status != FM_ERR_NO_MORE) )
+        {
+            FM_LOG_DEBUG(FM_LOG_CAT_MULTICAST,
+                         "Check listeners for mcastGroup = %d"
+                         " failed with err = %d\n",
+                         mcastGroup,
+                         status);
+            break;
+        }
+
+        status = fmTreeIterNext( &iter, &key, (void **) &intListener);
+    }
+
+    return FALSE;
+
+}   /* end fmHasMcastGroupNonFloodingListeners */
+
+
+
+
+/*****************************************************************************/
 /** fmUpdateMcastHNIFloodingGroups
  * \ingroup intMulticast
  *
@@ -9180,46 +9604,11 @@ fm_status fmUpdateMcastHNIFloodingGroups(fm_int  sw,
                          FM_MAILBOX_DEF_VLAN_FOR_FLOOD_MCAST_GROUPS;
             tempListener.info.portVlanListener.port = port;
 
-            if (state)
-            {
-                status = fmAddMcastGroupListenerInternalForFlood(sw,
-                                                                 mcastGroupNumber,
-                                                                 &tempListener);
-
-                if (status == FM_ERR_ALREADY_EXISTS)
-                {
-                    FM_LOG_DEBUG(FM_LOG_CAT_MULTICAST,
-                                 "Listener (port, vlan) = (%d, %d)"
-                                 " already added to mcast group %d\n",
-                                 port,
-                                 FM_MAILBOX_DEF_VLAN_FOR_FLOOD_MCAST_GROUPS,
-                                 mcastGroupNumber);
-                }
-                else
-                {
-                    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MULTICAST, status);
-                }
-            }
-            else
-            {
-                status = fmDeleteMcastGroupListenerInternalForFlood(sw,
-                                                                    mcastGroupNumber,
-                                                                    &tempListener);
-
-                if (status == FM_ERR_NOT_FOUND)
-                {
-                    FM_LOG_DEBUG(FM_LOG_CAT_MULTICAST,
-                                 "Listener (port, vlan) = (%d, %d)"
-                                 " already deleted from mcast group %d\n",
-                                 port,
-                                 FM_MAILBOX_DEF_VLAN_FOR_FLOOD_MCAST_GROUPS,
-                                 mcastGroupNumber);
-                }
-                else
-                {
-                    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MULTICAST, status);
-                }
-            }
+            status = UpdateMcastHNIFloodingGroups(sw,
+                                                  mcastGroupNumber,
+                                                  &tempListener,
+                                                  state);
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MULTICAST, status);
         }
 
         currentMcastGroupNumber = mcastGroupNumber;

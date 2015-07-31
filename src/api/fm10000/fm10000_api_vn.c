@@ -371,6 +371,129 @@ static fm_status GetTunnelGroups(fm_int           sw,
 
 
 /*****************************************************************************/
+/** ConvertTunnelGroupToString
+ * \ingroup intVN
+ *
+ * \desc            Converts a tunnel group number into a string containing
+ *                  the group's name.
+ *
+ * \param[in]       tunnelGroup specifies the VN tunnel group number.
+ *
+ * \param[in]       textBufSize is the size of textOut buffer.
+ *
+ * \param[out]      textOut points to caller-allocated storage where
+ *                  the string will be stored.
+ *
+ * \return          nothing.
+ *
+ *****************************************************************************/
+static void ConvertTunnelGroupToString(fm_int tunnelGroup,
+                                       fm_int textBufSize,
+                                       fm_char *textOut)
+{
+    switch (tunnelGroup)
+    {
+        case FM_VN_ENCAP_GROUP_DMAC_VID:
+            FM_STRCPY_S(textOut, textBufSize, "ENCAP_GROUP_DMAC_VID");
+            break;
+        case FM_VN_ENCAP_GROUP_DIP_VID:
+            FM_STRCPY_S(textOut, textBufSize, "ENCAP_GROUP_DIP_VID");
+            break;
+        case FM_VN_ENCAP_GROUP_DIRECT:
+            FM_STRCPY_S(textOut, textBufSize, "ENCAP_GROUP_DIRECT");
+            break;
+        case FM_VN_DECAP_GROUP_DMAC_VID:
+            FM_STRCPY_S(textOut, textBufSize, "DECAP_GROUP_DMAC_VID");
+            break;
+        case FM_VN_DECAP_GROUP_DIP_VID:
+            FM_STRCPY_S(textOut, textBufSize, "DECAP_GROUP_DIP_VID");
+            break;
+        case FM_VN_DECAP_GROUP_DIRECT:
+            FM_STRCPY_S(textOut, textBufSize, "DECAP_GROUP_DIRECT");
+            break;
+        case -1:
+            FM_STRCPY_S(textOut, textBufSize, "-1");
+            break;
+        default:
+            FM_STRCPY_S(textOut, textBufSize, "unknown");
+    }
+}
+
+
+
+
+/*****************************************************************************/
+/** ConvertTunnelTypeToString
+ * \ingroup intVN
+ *
+ * \desc            Converts a tunnel type number into a string containing
+ *                  the tunnel type's name.
+ *
+ * \param[in]       tunnelType specifies the protocol used by a tunnel.
+ *
+ * \param[in]       textBufSize is the size of textOut buffer.
+ *
+ * \param[out]      textOut points to caller-allocated storage where
+ *                  the string will be stored.
+ *
+ * \return          nothing.
+ *
+ *****************************************************************************/
+static void ConvertTunnelTypeToString(fm_vnTunnelType tunnelType,
+                                      fm_int textBufSize,
+                                      fm_char *textOut)
+{
+    switch (tunnelType)
+    {
+        case FM_VN_TUNNEL_TYPE_VXLAN_IPV4:
+            FM_STRCPY_S(textOut, textBufSize, "VXLAN_IPV4");
+            break;
+        case FM_VN_TUNNEL_TYPE_VXLAN_IPV6:
+            FM_STRCPY_S(textOut, textBufSize, "VXLAN_IPV6");
+            break;
+        case FM_VN_TUNNEL_TYPE_NVGRE:
+            FM_STRCPY_S(textOut, textBufSize, "NVGRE");
+            break;
+        case FM_VN_TUNNEL_TYPE_GENEVE:
+            FM_STRCPY_S(textOut, textBufSize, "GENEVE");
+            break;
+        default:
+            FM_STRCPY_S(textOut, textBufSize, "unknown");
+    }
+}
+
+
+
+
+/*****************************************************************************/
+/** PrintBitArray
+ * \ingroup intVN
+ *
+ * \desc            Dump a bit array for debugging purposes.
+ *
+ * \param[in]       bitArray points to the bit array.
+ *
+ * \return          nothing.
+ *
+ *****************************************************************************/
+static void PrintBitArray(fm_bitArray *bitArray)
+{
+    FM_LOG_PRINT("bit array:");
+    if (bitArray->bitCount > 0)
+    {
+        FM_LOG_PRINT("\n----------");
+        fmDbgDumpBitArray(bitArray, bitArray->bitCount);
+    }
+    else
+    {
+        FM_LOG_PRINT(" [zero size]\n\n");
+    }
+}
+
+
+
+
+/*****************************************************************************/
 /** CreateTunnelGroup
  * \ingroup intVN
  *
@@ -5117,9 +5240,32 @@ fm_status fm10000AddVNRemoteAddressMask(fm_int             sw,
 
                     remAddrList[numRemAddrs++] = addrRec;
 
+                    /* Remove the remote address from the encap direct group. */
+
+                    if (addrRec->encapTep != NULL)
+                    {
+                        status = DeleteEncapTepRule(sw, addrRec->encapTep);
+                        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_VN, status);
+
+                        addrRec->encapTep = NULL;
+                    }
+
+                    addrTunnelExt = addrRec->tunnel->extension;
+
+                    if (addrRec->encapTunnelGroup >= 0)
+                    {
+                        if (--addrTunnelExt->ruleCounts[addrRec->encapTunnelGroup][encapFlowType] == 0)
+                        {
+                            status = DeleteEncapFlow(sw,
+                                                     addrRec->tunnel,
+                                                     addrRec->encapTunnelGroup,
+                                                     encapFlowType);
+                            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_VN, status);
+                        }
+                    }
+
                     addrRec->encapTunnelGroup = addrRec->hashEncapGroup;
                     addrRec->addrMask         = addressMask;
-                    addrTunnelExt             = addrRec->tunnel->extension;
 
                     /* Create the encap flow record if needed. */
                     if (addrTunnelExt->encapFlowIds[addrRec->encapTunnelGroup][encapFlowType] < 0)
@@ -5142,6 +5288,120 @@ fm_status fm10000AddVNRemoteAddressMask(fm_int             sw,
 
     if (tunnel != NULL)
     {
+        /* Update all remote addresses included within this address mask */
+        fmCustomTreeIterInit(&iter, &vnExt->remoteAddresses);
+
+        while (1)
+        {
+            status = fmCustomTreeIterNext(&iter,
+                                          (void **) &addrKey,
+                                          (void **) &addrRec);
+
+            if (status == FM_ERR_NO_MORE)
+            {
+                status = FM_OK;
+                break;
+            }
+
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_VN, status);
+
+            if (addrRec->vn == vn)
+            {
+                foundMatch = FALSE;
+
+                switch (vn->descriptor.addressType)
+                {
+                    case FM_VN_ADDR_TYPE_MAC:
+                        if ( (addr->macAddress & addrMask->macAddress)
+                             == (addrRec->remoteAddress.macAddress & addrMask->macAddress) )
+                        {
+                            foundMatch = TRUE;
+                        }
+                        break;
+
+                    case FM_VN_ADDR_TYPE_IP:
+                        if ( fmIsIPAddressInRangeMask(&addr->ipAddress,
+                                                      &addrMask->ipAddress,
+                                                      &addrRec->remoteAddress.ipAddress) )
+                        {
+                            foundMatch = TRUE;
+                        }
+                        break;
+
+                    default:
+                        FM_LOG_ABORT(FM_LOG_CAT_VN, FM_FAIL);
+                        break;
+                }
+
+                if (foundMatch)
+                {
+                    FM_LOG_DEBUG(FM_LOG_CAT_VN,
+                                 "Found matching addrRec %p\n",
+                                 (void *) addrRec);
+
+                    if (numRemAddrs == remAddrListSize)
+                    {
+                        /* This array is only used locally to this thread
+                         * during this function's execution. It does not need
+                         * to be allocated from shared memory. */
+                        newRemAddrList = malloc( sizeof(fm10000_vnRemoteAddress *)
+                                                 * (remAddrListSize + 10000) );
+                        if (newRemAddrList == NULL)
+                        {
+                            status = FM_ERR_NO_MEM;
+                            FM_LOG_ABORT(FM_LOG_CAT_VN, status);
+                        }
+
+                        if (remAddrList != NULL)
+                        {
+                            FM_MEMCPY_S(newRemAddrList,
+                                        sizeof(fm10000_vnRemoteAddress *) * remAddrListSize,
+                                        remAddrList,
+                                        sizeof(fm10000_vnRemoteAddress *) * remAddrListSize);
+                            free(remAddrList);
+                        }
+
+                        remAddrList = newRemAddrList;
+                        remAddrListSize += 10000;
+
+                        FM_LOG_DEBUG(FM_LOG_CAT_VN,
+                                     "Allocated temporary address list at %p with %d entries\n",
+                                     (void *) remAddrList,
+                                     remAddrListSize);
+                    }
+
+                    remAddrList[numRemAddrs++] = addrRec;
+
+                    /* Remove the remote address from the encap direct group. */
+
+                    if (addrRec->encapTep != NULL)
+                    {
+                        status = DeleteEncapTepRule(sw, addrRec->encapTep);
+                        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_VN, status);
+
+                        addrRec->encapTep = NULL;
+                    }
+
+                    addrTunnelExt = addrRec->tunnel->extension;
+                    if (addrRec->encapTunnelGroup >= 0)
+                    {
+                        if (--addrTunnelExt->ruleCounts[addrRec->encapTunnelGroup][encapFlowType] == 0)
+                        {
+                            status = DeleteEncapFlow(sw,
+                                                     addrRec->tunnel,
+                                                     addrRec->encapTunnelGroup,
+                                                     encapFlowType);
+                            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_VN, status);
+                        }
+                    }
+
+                    addrRec->encapTunnelGroup = -1;
+                    addrRec->addrMask         = addressMask;
+
+                }
+            }
+        }
+
         tunnelExt = tunnel->extension;
 
         /* Update the tunnel use count and broadcast/flooding listener list. */
@@ -5241,8 +5501,22 @@ fm_status fm10000AddVNRemoteAddressMask(fm_int             sw,
 
         if (addrRec->encapAclRule >= 0)
         {
+            addrRec->encapTunnelGroup = FM_VN_ENCAP_GROUP_DIRECT;
+            addrRec->addrMask         = NULL;
+
             status = DeleteEncapAclRule(sw, addrRec);
             FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_VN, status);
+
+            if (tunnel != NULL)
+            {
+                addrRec->encapTunnelGroup = -1;
+                addrRec->addrMask         = addressMask;
+            }
+            else
+            {
+                addrRec->encapTunnelGroup = addrRec->hashEncapGroup;
+                addrRec->addrMask         = addressMask;
+            }
         }
     }
 
@@ -5368,6 +5642,7 @@ fm_status fm10000DeleteVNRemoteAddressMask(fm_int             sw,
     fm_status                    status;
     fm10000_switch *             switchExt;
     fm10000_virtualNetwork *     vnExt;
+    fm10000_vnTunnel *           addrTunnelExt;
     fm10000_vnRemoteAddressMask  ruleKey;
     fm10000_vnRemoteAddressMask *addressMask;
     fm_vnAddressType             addrType;
@@ -5375,6 +5650,7 @@ fm_status fm10000DeleteVNRemoteAddressMask(fm_int             sw,
     fm_customTreeIterator        iter;
     fm_char                      statusText[STATUS_TEXT_LEN];
     fm10000_vnDecapAclRule *     decapAclRule;
+    fm_int                       encapFlowType;
     fm10000_vnRemoteAddress **   remAddrList;
     fm10000_vnRemoteAddress **   newRemAddrList;
     fm_int                       remAddrListSize;
@@ -5394,6 +5670,7 @@ fm_status fm10000DeleteVNRemoteAddressMask(fm_int             sw,
     switchExt       = GET_SWITCH_EXT(sw);
     vnExt           = vn->extension;
     addrType        = vn->descriptor.addressType;
+    encapFlowType   = GET_ENCAP_FLOW_TYPE(vn);
     remAddrList     = NULL;
     remAddrListSize = 0;
     numRemAddrs     = 0;
@@ -5479,6 +5756,61 @@ fm_status fm10000DeleteVNRemoteAddressMask(fm_int             sw,
                 }
 
                 remAddrList[numRemAddrs++] = addrRec;
+
+                if (addressMask->tunnel == NULL)
+                {
+                    /* Remove the remote address from the encap hash group
+                     * and add it to the encap direct group. */
+
+                    addrTunnelExt = addrRec->tunnel->extension;
+                    if (addrRec->encapTunnelGroup >= 0)
+                    {
+                        if (--addrTunnelExt->ruleCounts[addrRec->encapTunnelGroup][encapFlowType] == 0)
+                        {
+                            status = DeleteEncapFlow(sw,
+                                                     addrRec->tunnel,
+                                                     addrRec->encapTunnelGroup,
+                                                     encapFlowType);
+                            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_VN, status);
+                        }
+                    }
+
+                    if (addrTunnelExt->encapFlowIds[FM_VN_ENCAP_GROUP_DIRECT][encapFlowType] < 0)
+                    {
+                        status = WriteEncapFlow(sw,
+                                                addrRec->tunnel,
+                                                vn,
+                                                FM_VN_ENCAP_GROUP_DIRECT);
+                        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_VN, status);
+                    }
+
+                    ++addrTunnelExt->ruleCounts[FM_VN_ENCAP_GROUP_DIRECT][encapFlowType];
+
+                    /* Get the encap tunnel end-point for this tunnel/vni */
+                    status = GetEncapTepRule(sw, vn, addrRec->tunnel, TRUE, &addrRec->encapTep);
+                    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_VN, status);
+                }
+                else
+                {
+                    /* Add the remote address to the encap direct group. */
+
+                    /* Create the encap flow record. */
+                    addrTunnelExt = addrRec->tunnel->extension;
+                    if (addrTunnelExt->encapFlowIds[FM_VN_ENCAP_GROUP_DIRECT][encapFlowType] < 0)
+                    {
+                        status = WriteEncapFlow(sw,
+                                                addrRec->tunnel,
+                                                vn,
+                                                FM_VN_ENCAP_GROUP_DIRECT);
+                        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_VN, status);
+                    }
+
+                    ++addrTunnelExt->ruleCounts[FM_VN_ENCAP_GROUP_DIRECT][encapFlowType];
+
+                    /* Get the encap tunnel end-point for this tunnel/vni */
+                    status = GetEncapTepRule(sw, vn, addrRec->tunnel, TRUE, &addrRec->encapTep);
+                    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_VN, status);
+                }
 
                 addrRec->encapTunnelGroup = FM_VN_ENCAP_GROUP_DIRECT;
                 addrRec->addrMask         = NULL;
@@ -6390,4 +6722,579 @@ fm_status fm10000FreeVNResources(fm_int sw)
     FM_LOG_EXIT(FM_LOG_CAT_VN, FM_OK);
 
 }   /* end fm10000FreeVNResources */
+
+
+
+
+/*****************************************************************************/
+/** fm10000DbgDumpVN
+ * \ingroup intDebug
+ *
+ * \chips           FM10000
+ *
+ * \desc            Display the virtual networks status of a switch
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \return          FM_OK if successful.
+ *
+ *****************************************************************************/
+fm_status fm10000DbgDumpVN(fm_int sw)
+{
+    fm_status               status;
+    fm10000_switch *        switchExt;
+    fm_customTreeIterator   iter;
+    fm10000_vnDecapAclRule *aclRuleKey;
+    fm10000_vnDecapAclRule *aclRule;
+    fm_char                 tempString[100];
+    fm_int                  cnt;
+    fm_int                  i;
+
+    switchExt = GET_SWITCH_EXT(sw);
+
+    FM_LOG_PRINT("vnVxlanUdpPort:        %u\n", switchExt->vnVxlanUdpPort);
+    FM_LOG_PRINT("vnGeneveUdpPort:       %u\n", switchExt->vnGeneveUdpPort);
+    FM_LOG_PRINT("useSharedEncapFlows:   %s\n",
+                 (switchExt->useSharedEncapFlows == TRUE) ? "TRUE" : "FALSE");
+    FM_LOG_PRINT("maxVNRemoteAddresses:  %d\n",
+                 switchExt->maxVNRemoteAddresses);
+    FM_LOG_PRINT("vnTunnelGroupHashSize: %d\n",
+                 switchExt->vnTunnelGroupHashSize);
+    FM_LOG_PRINT("vnTeVid:               %d\n", switchExt->vnTeVid);
+    FM_LOG_PRINT("vnEncapProtocol:       0x%x\n", switchExt->vnEncapProtocol);
+    FM_LOG_PRINT("vnEncapVersion:        %d\n", switchExt->vnEncapVersion);
+    FM_LOG_PRINT("vnEncapAcl:            %d\n", switchExt->vnEncapAcl);
+    FM_LOG_PRINT("vnDecapAcl:            %d\n", switchExt->vnDecapAcl);
+    FM_LOG_PRINT("numVirtualNetworks:    %d\n", switchExt->numVirtualNetworks);
+    FM_LOG_PRINT("numVNTunnels:          %d\n", switchExt->numVNTunnels);
+    FM_LOG_PRINT("vnOuterTTL:            %d\n", switchExt->vnOuterTTL);
+
+    FM_LOG_PRINT("\nvnTunnelGroups:\n");
+    for (i = 0; i < FM_VN_NUM_TUNNEL_GROUPS; i++)
+    {
+        ConvertTunnelGroupToString(i, sizeof(tempString), tempString);
+        FM_LOG_PRINT("    tunnel group %s:\tID=%d\n",
+                     tempString, switchExt->vnTunnelGroups[i]);
+    }
+
+    FM_LOG_PRINT("\nvnTunnelRuleIds:\n\n");
+    for (i = 0; i < FM_VN_NUM_TUNNEL_GROUPS; i++)
+    {
+        ConvertTunnelGroupToString(i, sizeof(tempString), tempString);
+        FM_LOG_PRINT("    tunnel group %s:\n\n", tempString);
+        PrintBitArray(&switchExt->vnTunnelRuleIds[i]);
+    }
+
+    FM_LOG_PRINT("\nvnTunnelActiveEncapFlowIds:\n\n");
+    for (i = 0; i < FM_VN_NUM_TUNNEL_GROUPS; i++)
+    {
+        ConvertTunnelGroupToString(i, sizeof(tempString), tempString);
+        FM_LOG_PRINT("    tunnel group %s:\n\n", tempString);
+        PrintBitArray(&switchExt->vnTunnelActiveEncapFlowIds[i]);
+    }
+
+    FM_LOG_PRINT("\nvnEncapAclRuleNumbers:\n\n");
+    PrintBitArray(&switchExt->vnEncapAclRuleNumbers);
+
+    FM_LOG_PRINT("\nEncapAclFloodsetRuleNumbers:\n\n");
+    PrintBitArray(&switchExt->vnEncapAclFloodsetRuleNumbers);
+
+    FM_LOG_PRINT("\nDecapAclRuleNumbers:\n\n");
+    PrintBitArray(&switchExt->vnDecapAclRuleNumbers);
+
+    FM_LOG_PRINT("\nDecap ACL Rules:\n");
+    FM_LOG_PRINT("-------------------------------------------------------------------------------\n\n");
+
+    fmCustomTreeIterInit(&iter, &switchExt->vnDecapAclRuleTree);
+    cnt = 0;
+
+    while (1)
+    {
+        status = fmCustomTreeIterNext(&iter,
+                                      (void **) &aclRuleKey,
+                                      (void **) &aclRule);
+        if (status == FM_ERR_NO_MORE)
+        {
+            status = FM_OK;
+            break;
+        }
+        FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_VN, status);
+
+        FM_LOG_PRINT("    aclRule: %d, useCount: %d\n",
+                     aclRule->aclRule, aclRule->useCount);
+        ConvertTunnelGroupToString(aclRule->decapTunnelGroup,
+                                   sizeof(tempString),
+                                   tempString);
+        FM_LOG_PRINT("        decapTunnelGroup: %s\n", tempString);
+        FM_LOG_PRINT("        vn: %p (vsId: %d)\n",
+                     (void *) aclRule->vn, aclRule->vn->vsId);
+        FM_LOG_PRINT("        tunnel: %p (tunnelId: %d)\n",
+                     (void *) aclRule->tunnel, aclRule->tunnel->tunnelId);
+		cnt++;
+    }
+    if (cnt == 0)
+    {
+        FM_LOG_PRINT("    [none]\n");
+    }
+
+    FM_LOG_PRINT("\nVSI numbers in use:\n");
+    for (i = 0, cnt = 0; i < FM10000_TE_VNI_ENTRIES_0; i++)
+    {
+        if (switchExt->vnVsi[i] != NULL)
+        {
+            FM_LOG_PRINT("\n    VSI %d: vn %p (vsId %d)\n",
+                         i, (void *) switchExt->vnVsi[i],
+                         switchExt->vnVsi[i]->vsId);
+			cnt++;
+        }
+    }
+	if (cnt == 0)
+    {
+        FM_LOG_PRINT("    [none]\n");
+    }
+
+    FM_LOG_EXIT(FM_LOG_CAT_VN, status);
+
+}   /* end fm10000DbgDumpVN */
+
+
+
+
+/*****************************************************************************/
+/** fm10000DbgDumpVirtualNetwork
+ * \ingroup intDebug
+ *
+ * \chips           FM10000
+ *
+ * \desc            Display a virtual network status
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \param[in]       vni is the virtual network VNI.
+ *
+ * \return          FM_OK if successful.
+ *                  FM_ERR_INVALID_ARGUMENT if a VN for a given vni
+ *                  does not exist.
+ *
+ *****************************************************************************/
+fm_status fm10000DbgDumpVirtualNetwork(fm_int sw, fm_uint32 vni)
+{
+    fm_status                    status;
+    fm_virtualNetwork *          vn;
+    fm10000_virtualNetwork *     vnExt;
+    fm_treeIterator              iter;
+    fm_customTreeIterator        customIter;
+    fm10000_vnRemoteAddress *    addrKey;
+    fm10000_vnRemoteAddress *    addrRec;
+    fm10000_vnRemoteAddressMask *addrMaskKey;
+    fm10000_vnRemoteAddressMask *addrMaskRule;
+    fm_int                       tunnelId;
+    fm10000_vnTunnelUseCount *   tunnelUseCount;
+    fm_char                      tempString1[100];
+    fm_char                      tempString2[100];
+    fm_char                      tempString3[100];
+    fm_int                       cnt;
+    fm_int                       cnt2;
+    fm_int                       i;
+
+    /* Get the VN record */
+    vn = fmGetVN(sw, vni);
+    if (vn == NULL)
+    {
+        /* VN doesn't exist */
+        status = FM_ERR_INVALID_ARGUMENT;
+        FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_VN, status);
+    }
+
+    FM_LOG_PRINT("\n===============================================================================\n");
+    FM_LOG_PRINT("Virtual network VS ID %u\n", vn->vsId);
+    FM_LOG_PRINT("(vn record pointer: %p)\n", (void *) vn);
+    FM_LOG_PRINT("===============================================================================\n\n");
+
+    FM_LOG_PRINT("Internal ID:        %u\n", vn->descriptor.internalId);
+    FM_LOG_PRINT("VLAN:               %u\n", vn->descriptor.vlan);
+    FM_LOG_PRINT("Mode:               %s\n",
+                 (vn->descriptor.mode == FM_VN_MODE_VSWITCH_OFFLOAD) ?
+                 "VSwitch-Offload" : "Transparent");
+    FM_LOG_PRINT("Address type:       %s\n",
+                 (vn->descriptor.addressType == FM_VN_ADDR_TYPE_MAC) ?
+                 "MAC" : "IP");
+    if (vn->descriptor.mode == FM_VN_MODE_VSWITCH_OFFLOAD)
+    {
+        fmDbgConvertIPAddressToString(&vn->descriptor.sip, tempString1);
+        FM_LOG_PRINT("Source IP address:  %s\n", tempString1);
+    }
+    FM_LOG_PRINT("Broadcast/Flooding: %s\n",
+                 (vn->descriptor.bcastFlooding == TRUE) ?
+                 "Enabled" : "Disabled");
+
+    vnExt = vn->extension;
+
+    FM_LOG_PRINT("\n*** FM10000-specific data: ***\n\n");
+
+    FM_LOG_PRINT("primaryVsi:           %d\n", vnExt->primaryVsi);
+    FM_LOG_PRINT("floodsetMcastGroup:   %d\n", vnExt->floodsetMcastGroup);
+    FM_LOG_PRINT("floodsetEncapAclRule: %d\n", vnExt->floodsetEncapAclRule);
+
+    /* Tree of remote addresses associated with this virtual network. */
+
+    FM_LOG_PRINT("\nRemote Addresses:\n");
+    FM_LOG_PRINT("-------------------------------------------------------------------------------\n\n");
+
+    fmCustomTreeIterInit(&customIter, &vnExt->remoteAddresses);
+    cnt = 0;
+
+    while (1)
+    {
+        status = fmCustomTreeIterNext(&customIter,
+                                      (void **) &addrKey,
+                                      (void **) &addrRec);
+        if (status == FM_ERR_NO_MORE)
+        {
+            status = FM_OK;
+            break;
+        }
+        FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_VN, status);
+
+        if (vn->descriptor.addressType == FM_VN_ADDR_TYPE_MAC)
+        {
+            fmDbgConvertMacAddressToString(addrRec->remoteAddress.macAddress,
+                                           tempString1);
+            if (addrRec->addrMask != NULL)
+            {
+                fmDbgConvertMacAddressToString(addrRec->addrMask->remoteAddress.macAddress,
+                                               tempString2);
+                fmDbgConvertMacAddressToString(addrRec->addrMask->addrMask.macAddress,
+                                               tempString3);
+            }
+        }
+        else
+        {
+            fmDbgConvertIPAddressToString(&addrRec->remoteAddress.ipAddress,
+                                          tempString1);
+            if (addrRec->addrMask != NULL)
+            {
+                fmDbgConvertIPAddressToString(&addrRec->addrMask->remoteAddress.ipAddress,
+                                              tempString2);
+                fmDbgConvertIPAddressToString(&addrRec->addrMask->addrMask.ipAddress,
+                                              tempString3);
+            }
+        }
+
+        FM_LOG_PRINT("    Address: %s, Address Mask: ", tempString1);
+		if (addrRec->addrMask == NULL)
+		{
+            FM_LOG_PRINT("NULL\n");
+		}
+		else
+		{
+            FM_LOG_PRINT("%s / %s\n", tempString2, tempString3);
+		}
+
+        FM_LOG_PRINT("        tunnelId: %d (tunnel: %p)\n",
+                     addrRec->tunnel->tunnelId, (void *) addrRec->tunnel);
+
+        ConvertTunnelGroupToString(addrRec->encapTunnelGroup,
+                                   sizeof(tempString1), tempString1);
+        ConvertTunnelGroupToString(addrRec->hashEncapGroup,
+                                   sizeof(tempString2), tempString2);
+        ConvertTunnelGroupToString(addrRec->decapTunnelGroup,
+                                   sizeof(tempString3), tempString3);
+        FM_LOG_PRINT("        encapTunnelGroup: %s\n", tempString1);
+        FM_LOG_PRINT("        hashEncapGroup:   %s\n", tempString2);
+        FM_LOG_PRINT("        decapTunnelGroup: %s\n", tempString3);
+
+        FM_LOG_PRINT("        encapAclRule: %d, encapTunnelRule: %d, decapTunnelRule: %d\n",
+                     addrRec->encapAclRule,
+                     addrRec->encapTunnelRule,
+                     addrRec->decapTunnelRule);
+
+        FM_LOG_PRINT("        encapTep: %p", (void *) addrRec->encapTep);
+        if (addrRec->encapTep == NULL)
+        {
+            FM_LOG_PRINT("\n");
+        }
+        else
+        {
+            FM_LOG_PRINT(" (useCount: %d, encapTunnelRule: %d)\n",
+                         addrRec->encapTep->useCount,
+                         addrRec->encapTep->encapTunnelRule);
+        }
+
+        if (addrRec->encapTunnelGroup == addrRec->hashEncapGroup)
+        {
+            FM_LOG_PRINT("        encapTunnelRules:\n");
+            for (i = 0, cnt2 = 0; i < FM10000_TE_VNI_ENTRIES_0; i++)
+            {
+                if (addrRec->encapTunnelRules[i] >= 0)
+                {
+                    FM_LOG_PRINT("            vsi %d: %d\n",
+                                 i, addrRec->encapTunnelRules[i]);
+					cnt2++;
+                }
+            }
+            if (cnt2 == 0)
+            {
+               FM_LOG_PRINT("            [none]\n");
+            }
+        }
+
+		cnt++;
+    }
+    if (cnt == 0)
+    {
+        FM_LOG_PRINT("    [none]\n");
+    }
+
+    /* Tree of remote address masks. */
+
+    FM_LOG_PRINT("\nRemote Address Masks:\n");
+    FM_LOG_PRINT("-------------------------------------------------------------------------------\n\n");
+
+    fmCustomTreeIterInit(&customIter, &vnExt->addressMasks);
+    cnt = 0;
+
+    while (1)
+    {
+        status = fmCustomTreeIterNext(&customIter,
+                                      (void **) &addrMaskKey,
+                                      (void **) &addrMaskRule);
+        if (status == FM_ERR_NO_MORE)
+        {
+            status = FM_OK;
+            break;
+        }
+        FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_VN, status);
+
+        if (vn->descriptor.addressType == FM_VN_ADDR_TYPE_MAC)
+        {
+            fmDbgConvertMacAddressToString(addrMaskRule->remoteAddress.macAddress,
+                                           tempString1);
+            fmDbgConvertMacAddressToString(addrMaskRule->addrMask.macAddress,
+                                           tempString2);
+        }
+        else
+        {
+            fmDbgConvertIPAddressToString(&addrMaskRule->remoteAddress.ipAddress,
+                                          tempString1);
+            fmDbgConvertIPAddressToString(&addrMaskRule->addrMask.ipAddress,
+                                          tempString2);
+        }
+
+        FM_LOG_PRINT("    Address Mask: %s / %s\n", tempString1, tempString2);
+
+        FM_LOG_PRINT("        tunnel: %p", (void *) addrMaskRule->tunnel);
+        if (addrMaskRule->tunnel == NULL)
+        {
+            FM_LOG_PRINT("\n");
+        }
+        else
+        {
+            FM_LOG_PRINT(" (tunnelId: %d)\n", addrMaskRule->tunnel->tunnelId);
+        }
+
+        FM_LOG_PRINT("        encapAclRule: %d, encapTunnelRule: %d\n",
+                     addrMaskRule->encapAclRule, addrMaskRule->encapTunnelRule);
+
+        FM_LOG_PRINT("        encapTep: %p", (void *) addrMaskRule->encapTep);
+        if (addrMaskRule->encapTep == NULL)
+        {
+            FM_LOG_PRINT("\n");
+        }
+        else
+        {
+            FM_LOG_PRINT(" (useCount: %d, encapTunnelRule: %d)\n",
+                         addrMaskRule->encapTep->useCount,
+                         addrMaskRule->encapTep->encapTunnelRule);
+        }
+
+		cnt++;
+    }
+    if (cnt == 0)
+    {
+        FM_LOG_PRINT("    [none]\n");
+    }
+
+    /* Tree of tunnels that service this virtual network. */
+
+    FM_LOG_PRINT("\nTunnels:\n");
+    FM_LOG_PRINT("-------------------------------------------------------------------------------\n\n");
+
+    fmTreeIterInit(&iter, &vnExt->tunnels);
+    cnt = 0;
+
+    while (1)
+    {
+
+        status = fmTreeIterNext(&iter,
+                                (fm_uint64 *) &tunnelId,
+                                (void **) &tunnelUseCount);
+        if (status == FM_ERR_NO_MORE)
+        {
+            status = FM_OK;
+            break;
+        }
+        FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_VN, status);
+
+        FM_LOG_PRINT("    tunnelId: %d (tunnel: %p), useCount: %d\n",
+                     tunnelId,
+                     (void *) tunnelUseCount->tunnel,
+                     tunnelUseCount->useCount);
+
+		cnt++;
+    }
+    if (cnt == 0)
+    {
+        FM_LOG_PRINT("    [none]\n");
+    }
+
+    FM_LOG_EXIT(FM_LOG_CAT_VN, status);
+
+}   /* end fm10000DbgDumpVirtualNetwork */
+
+
+
+
+/*****************************************************************************/
+/** fm10000DbgDumpVNTunnel
+ * \ingroup intDebug
+ *
+ * \chips           FM10000
+ *
+ * \desc            Display a virtual network tunnel status
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \param[in]       tunnelId is the tunnel identifier.
+ *
+ * \return          FM_OK if successful.
+ *                  FM_ERR_INVALID_ARGUMENT if a tunnel for a given tunnel ID
+ *                  does not exist.
+ *
+ *****************************************************************************/
+fm_status fm10000DbgDumpVNTunnel(fm_int sw, fm_int tunnelId)
+{
+    fm_status             status;
+    fm_vnTunnel *         tunnel;
+    fm10000_vnTunnel *    tunnelExt;
+    fm_customTreeIterator customIter;
+    fm10000_vnEncapTep    tepRuleKey;
+    fm10000_vnEncapTep *  tepRule;
+    fm_char               tempString[100];
+    fm_char               routeDesc[1000];
+    fm_int                cnt;
+    fm_int                i;
+
+    /* Get the Tunnel Record */
+    tunnel = fmGetVNTunnel(sw, tunnelId);
+    if (tunnel == NULL)
+    {
+        /* Tunnel doesn't exist */
+        status = FM_ERR_INVALID_ARGUMENT;
+        FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_VN, status);
+    }
+
+    FM_LOG_PRINT("\n===============================================================================\n");
+    FM_LOG_PRINT("Tunnel ID %d\n", tunnel->tunnelId);
+    FM_LOG_PRINT("(tunnel record pointer: %p)\n", (void *) tunnel);
+    FM_LOG_PRINT("===============================================================================\n\n");
+
+    ConvertTunnelTypeToString(tunnel->tunnelType,
+                              sizeof(tempString),
+                              tempString);
+    FM_LOG_PRINT("Tunnel Type:                 %s\n", tempString);
+
+    FM_LOG_PRINT("Traffic Identifier:          %d\n",
+                 tunnel->trafficIdentifier);
+
+    fmDbgConvertIPAddressToString(&tunnel->localIp, tempString);
+    FM_LOG_PRINT("Local IP Address:            %s\n", tempString);
+
+    fmDbgConvertIPAddressToString(&tunnel->remoteIp, tempString);
+    FM_LOG_PRINT("Remote IP Address:           %s\n", tempString);
+
+    FM_LOG_PRINT("Virtual Router ID:           %d\n", tunnel->vrid);
+    FM_LOG_PRINT("Remote IP Virtual Router ID: %d\n", tunnel->remoteIpVrid);
+    FM_LOG_PRINT("Multicast Group Number:      %d\n", tunnel->mcastGroup);
+
+    fmDbgConvertMacAddressToString(tunnel->mcastDmac, tempString);
+    FM_LOG_PRINT("Multicast DMAC:              %s\n", tempString);
+
+    FM_LOG_PRINT("Encapsulation TTL Value:     %d\n", tunnel->encapTTL);
+
+    FM_LOG_PRINT("route: %p\n", (void *) tunnel->route);
+    if (tunnel->route != NULL)
+    {
+        fmDbgBuildRouteDescription(&tunnel->route->route, routeDesc);
+        FM_LOG_PRINT("    %s\n", routeDesc);
+    }
+
+    tunnelExt = tunnel->extension;
+
+    FM_LOG_PRINT("\n*** FM10000-specific data: ***\n\n");
+
+    FM_LOG_PRINT("haveLocalIp:  %s\n",
+                 (tunnelExt->haveLocalIp == TRUE) ? "TRUE" : "FALSE");
+    FM_LOG_PRINT("haveRemoteIp: %s\n",
+                 (tunnelExt->haveRemoteIp == TRUE) ? "TRUE" : "FALSE");
+    FM_LOG_PRINT("decapAclRule: %d\n", tunnelExt->decapAclRule);
+
+    FM_LOG_PRINT("encapFlowIds:\n");
+    for (i = 0; i < FM_VN_NUM_TUNNEL_GROUPS; i++)
+    {
+        ConvertTunnelGroupToString(i, sizeof(tempString), tempString);
+        FM_LOG_PRINT("    tunnel group %s, ENCAP_FLOW_TRANSPARENT:\t%d\n",
+                     tempString,
+                     tunnelExt->encapFlowIds[i][FM_VN_ENCAP_FLOW_TRANSPARENT]);
+        FM_LOG_PRINT("    tunnel group %s, ENCAP_FLOW_VSWITCH:\t%d\n",
+                     tempString,
+                     tunnelExt->encapFlowIds[i][FM_VN_ENCAP_FLOW_VSWITCH]);
+    }
+
+    FM_LOG_PRINT("ruleCounts:\n");
+    for (i = 0; i < FM_VN_NUM_TUNNEL_GROUPS; i++)
+    {
+        ConvertTunnelGroupToString(i, sizeof(tempString), tempString);
+        FM_LOG_PRINT("    tunnel group %s, ENCAP_FLOW_TRANSPARENT:\t%d\n",
+                     tempString,
+                     tunnelExt->ruleCounts[i][FM_VN_ENCAP_FLOW_TRANSPARENT]);
+        FM_LOG_PRINT("    tunnel group %s, ENCAP_FLOW_VSWITCH:\t%d\n",
+                     tempString,
+                     tunnelExt->ruleCounts[i][FM_VN_ENCAP_FLOW_VSWITCH]);
+    }
+
+    /* Tree of TEP encap tunnel rules. */
+
+    FM_LOG_PRINT("\nTEP Rules:\n");
+    FM_LOG_PRINT("-------------------------------------------------------------------------------\n\n");
+
+    fmCustomTreeIterInit(&customIter, &tunnelExt->tepRules);
+    cnt = 0;
+
+    while (1)
+    {
+        status = fmCustomTreeIterNext(&customIter,
+                                      (void **) &tepRuleKey,
+                                      (void **) &tepRule);
+        if (status == FM_ERR_NO_MORE)
+        {
+            status = FM_OK;
+            break;
+        }
+        FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_VN, status);
+
+        FM_LOG_PRINT("    encapTunnelRule: %d, useCount: %d, vn: %p (vsId: %d)\n",
+                     tepRule->encapTunnelRule, tepRule->useCount,
+                     (void *) tepRule->vn, tepRule->vn->vsId);
+
+		cnt++;
+    }
+    if (cnt == 0)
+    {
+        FM_LOG_PRINT("    [none]\n");
+    }
+
+    FM_LOG_EXIT(FM_LOG_CAT_VN, status);
+
+}   /* end fm10000DbgDumpVNTunnel */
 

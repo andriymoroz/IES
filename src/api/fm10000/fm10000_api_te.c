@@ -5247,6 +5247,8 @@ fm_status fm10000GetTeData(fm_int            sw,
                   (void*) teDataReturnLength,
                   FM_BOOLSTRING(useCache) );
 
+
+    teDataIndex = 0;
     VALIDATE_AND_PROTECT_SWITCH(sw);
 
     if (!fmSupportsTe(sw))

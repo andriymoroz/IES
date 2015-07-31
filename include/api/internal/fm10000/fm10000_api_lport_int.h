@@ -155,17 +155,17 @@ fm_status fm10000FreeLogicalPort( fm_int sw, fm_int logicalPort );
 
 fm_status fm10000CreateVsiGlortCams(fm_int sw);
 
-fm_status fm10000MapVsiGlortToLogicalPort(fm_int     sw,
-                                          fm_uint32  vsiGlort,
-                                          fm_int    *port);
+fm_status fm10000MapVirtualGlortToLogicalPort(fm_int    sw,
+                                              fm_uint32 glort,
+                                              fm_int *  port);
 
-fm_status fm10000MapVsiGlortToPhysicalPort(fm_int     sw,
-                                           fm_uint32  vsiGlort,
-                                           fm_int    *port);
+fm_status fm10000MapVirtualGlortToPhysicalPort(fm_int    sw,
+                                               fm_uint32 glort,
+                                               fm_int *  port);
 
-fm_status fm10000MapGlortToPepNumber(fm_int     sw,
-                                     fm_uint32  vsiGlort,
-                                     fm_int    *pepNb);
+fm_status fm10000MapGlortToPepNumber(fm_int    sw,
+                                     fm_uint32 glort,
+                                     fm_int *  pepNb);
 
 fm_status fm10000GetPcieLogicalPort(fm_int sw,
                                     fm_int pep,

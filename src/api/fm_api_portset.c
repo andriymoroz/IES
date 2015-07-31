@@ -787,7 +787,7 @@ ABORT:
  *
  * \param[in]       portSet is the port set number (handle).
  *
- * \param[in]       port is the port number to be added to the port set.
+ * \param[in]       port is the logical port number to be added to the port set.
  *
  * \return          FM_OK if successful.
  * \return          FM_ERR_INVALID_PORT_SET if portSet is not the
@@ -838,7 +838,7 @@ fm_status fmAddPortSetPort(fm_int sw, fm_int portSet, fm_int port)
  *
  * \param[in]       portSet is the port set number (handle).
  *
- * \param[in]       port is the port number to be added to the port set.
+ * \param[in]       port is the logical port number to be added to the port set.
  *
  * \return          FM_OK if successful.
  * \return          FM_ERR_INVALID_PORT_SET if portSet is not the
@@ -885,7 +885,7 @@ fm_status fmAddPortSetPortInt(fm_int sw, fm_int portSet, fm_int port)
     /* Set the port in the array (in cardinal port form) */
     err = fmSetPortInBitArray(sw,
                               &portSetEntry->associatedPorts,
-                              GET_PORT_INDEX(sw, port),
+                              port,
                               TRUE);
 
 ABORT:
@@ -911,7 +911,7 @@ ABORT:
  *
  * \param[in]       portSet is the port set number (handle).
  *
- * \param[in]       port is the port number to be removed from the port set.
+ * \param[in]       port is the logical port number to be removed from the port set.
  *
  * \return          FM_OK if successful.
  * \return          FM_ERR_INVALID_PORT_SET if portSet is not the
@@ -962,7 +962,7 @@ fm_status fmDeletePortSetPort(fm_int sw, fm_int portSet, fm_int port)
  *
  * \param[in]       portSet is the port set number (handle).
  *
- * \param[in]       port is the port number to be removed from the port set.
+ * \param[in]       port is the logical port number to be removed from the port set.
  *
  * \return          FM_OK if successful.
  * \return          FM_ERR_INVALID_PORT_SET if portSet is not the
@@ -1009,7 +1009,7 @@ fm_status fmDeletePortSetPortInt(fm_int sw, fm_int portSet, fm_int port)
     /* Set the port in the array (in cardinal port form) */
     err = fmSetPortInBitArray(sw,
                               &portSetEntry->associatedPorts,
-                              GET_PORT_INDEX(sw, port),
+                              port,
                               FALSE);
 
 ABORT:
@@ -1180,7 +1180,7 @@ ABORT:
  * \param[in]       portSet is the port set number (handle).
  *
  * \param[out]      port points to caller-allocated storage where
- *                  this function should place the first port number.
+ *                  this function should place the first logical port number.
  *
  * \return          FM_OK if successful.
  * \return          FM_ERR_NO_PORT_SET_PORT if no port available.
@@ -1193,7 +1193,6 @@ fm_status fmGetPortSetPortFirst(fm_int sw, fm_int portSet, fm_int *port)
     fm_status    err = FM_OK;
     fm_switch *  switchPtr;
     fm_portSet * portSetEntry;
-    fm_int       cpi;
 
     FM_LOG_ENTRY_API(FM_LOG_CAT_PORT,
                      "sw = %d, portSet = %d, port = %p\n",
@@ -1228,13 +1227,8 @@ fm_status fmGetPortSetPortFirst(fm_int sw, fm_int portSet, fm_int *port)
     err = fmFindPortInBitArray(sw,
                                &portSetEntry->associatedPorts,
                                -1,
-                               &cpi,
+                               port,
                                FM_ERR_NO_PORT_SET_PORT);
-
-    if (cpi != -1)
-    {
-        *port = GET_LOGICAL_PORT(sw, cpi);
-    }
 
 ABORT:
     DROP_PORTSET_LOCK(sw);
@@ -1259,7 +1253,7 @@ ABORT:
  * \param[in]       portSet is the port set number (handle).
  *
  * \param[out]      port points to caller-supplied storage where
- *                  this function should place the first port number.
+ *                  this function should place the first logical port number.
  *
  * \return          FM_OK if successful.
  * \return          FM_ERR_NO_PORT_SET_PORT if no port available.
@@ -1272,7 +1266,6 @@ fm_status fmGetPortSetPortFirstInt(fm_int sw, fm_int portSet, fm_int *port)
     fm_status    err = FM_OK;
     fm_switch *  switchPtr;
     fm_portSet * portSetEntry;
-    fm_int       cpi;
 
     FM_LOG_ENTRY(FM_LOG_CAT_PORT,
                  "sw = %d, portSet = %d, port = %p\n",
@@ -1302,13 +1295,8 @@ fm_status fmGetPortSetPortFirstInt(fm_int sw, fm_int portSet, fm_int *port)
     err = fmFindPortInBitArray(sw,
                                &portSetEntry->associatedPorts,
                                -1,
-                               &cpi,
+                               port,
                                FM_ERR_NO_PORT_SET_PORT);
-
-    if (cpi != -1)
-    {
-        *port = GET_LOGICAL_PORT(sw, cpi);
-    }
 
 ABORT:
     DROP_PORTSET_LOCK(sw);
@@ -1331,10 +1319,10 @@ ABORT:
  *
  * \param[in]       portSet is the port set number (handle).
  *
- * \param[in]       currentPort is the current port number.
+ * \param[in]       currentPort is the current logical port number.
  *
  * \param[out]      nextPort points to caller-allocated storage where
- *                  this function should place the next port number.
+ *                  this function should place the next logical port number.
  *
  * \return          FM_OK if successful.
  * \return          FM_ERR_INVALID_PORT_SET if portSet is not the
@@ -1351,8 +1339,6 @@ fm_status fmGetPortSetPortNext(fm_int sw,
     fm_status    err = FM_OK;
     fm_switch *  switchPtr;
     fm_portSet * portSetEntry;
-    fm_int       currentCpi;
-    fm_int       nextCpi;
 
     FM_LOG_ENTRY_API(FM_LOG_CAT_PORT,
                      "sw = %d, portSet = %d, currentPort = %d, nextPort = %p\n",
@@ -1387,18 +1373,11 @@ fm_status fmGetPortSetPortNext(fm_int sw,
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
     }
 
-    currentCpi = GET_PORT_INDEX(sw, currentPort);
-    
     err = fmFindPortInBitArray(sw,
                                &portSetEntry->associatedPorts,
                                currentPort,
-                               &nextCpi,
+                               nextPort,
                                FM_ERR_NO_PORT_SET_PORT);
-
-    if (nextCpi != -1)
-    {
-        *nextPort = GET_LOGICAL_PORT(sw, nextCpi);
-    }
 
 ABORT:
     DROP_PORTSET_LOCK(sw);
@@ -1422,10 +1401,10 @@ ABORT:
  *
  * \param[in]       portSet is the port set number (handle).
  *
- * \param[in]       currentPort is the current port number.
+ * \param[in]       currentPort is the current logical port number.
  *
  * \param[out]      nextPort points to caller-supplied storage where
- *                  this function should place the next port number.
+ *                  this function should place the next logical port number.
  *
  * \return          FM_OK if successful.
  * \return          FM_ERR_INVALID_PORT_SET if portSet is not the
@@ -1442,8 +1421,6 @@ fm_status fmGetPortSetPortNextInt(fm_int sw,
     fm_status    err = FM_OK;
     fm_switch *  switchPtr;
     fm_portSet * portSetEntry;
-    fm_int       currentCpi;
-    fm_int       nextCpi;
 
     FM_LOG_ENTRY(FM_LOG_CAT_PORT,
                  "sw = %d, portSet = %d, currentPort = %d, nextPort = %p\n",
@@ -1476,18 +1453,11 @@ fm_status fmGetPortSetPortNextInt(fm_int sw,
     }
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
 
-    currentCpi = GET_PORT_INDEX(sw, currentPort);
-    
     err = fmFindPortInBitArray(sw,
                                &portSetEntry->associatedPorts,
                                currentPort,
-                               &nextCpi,
+                               nextPort,
                                FM_ERR_NO_PORT_SET_PORT);
-
-    if (nextCpi != -1)
-    {
-        *nextPort = GET_LOGICAL_PORT(sw, nextCpi);
-    }
 
 ABORT:
     DROP_PORTSET_LOCK(sw);
@@ -1620,7 +1590,7 @@ ABORT:
  *
  * \param[in]       portSet is the port set number (handle).
  *
- * \param[in]       port is the port number to be updated in the port set.
+ * \param[in]       port is the logical port number to be updated in the port set.
  * 
  * \param[in]       state is TRUE if the port is to be added to the set,
  *                  or FALSE if it should be removed from the set.
@@ -1673,7 +1643,7 @@ fm_status fmSetPortSetPortInt(fm_int  sw,
     /* Set the port in the array (in cardinal port form) */
     err = fmSetPortInBitArray(sw,
                               &portSetEntry->associatedPorts,
-                              GET_PORT_INDEX(sw, port),
+                              port,
                               state);
 
 ABORT:
@@ -1999,7 +1969,7 @@ fm_int fmGetPortSetCountInt(fm_int sw, fm_int portSet)
  * 
  * \param[in]       portSet is the portset to operate on.
  * 
- * \param[in]       port is the port number to test for.
+ * \param[in]       port is the logical port number to test for.
  *
  * \return          TRUE if the port set is valid and has any members.
  *
@@ -2021,7 +1991,9 @@ fm_bool fmIsPortInPortSetInt(fm_int sw, fm_int portSet, fm_int port)
 
     if (err == FM_OK)
     {
-        err = fmGetBitArrayBit(&portSetPtr->associatedPorts, port, &bitValue);
+        err = fmGetBitArrayBit(&portSetPtr->associatedPorts,
+                               GET_PORT_INDEX(sw, port),
+                               &bitValue);
     }
 
     DROP_PORTSET_LOCK(sw);

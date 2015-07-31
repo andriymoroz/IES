@@ -38,6 +38,9 @@
  * Macros, Constants & Types
  *****************************************************************************/
 
+/* Min NMV version that supports SOFT_RESET locking */
+#define NVM_PCIE_RECOVERY_VER               0x122
+
 typedef struct _fm10000_switch
 {
     /**************************************************
@@ -265,6 +268,11 @@ typedef struct _fm10000_switch
     fm10000_parityInfo          parityInfo;
     fm_lock                     parityLock;
 
+    /***************************************************
+     * Counter Rate Monitor (CRM) subsystem.
+     **************************************************/
+    fm10000_crmInfo             crmInfo;
+
     /**************************************************
      * Information related to the Virtual Network API.
      **************************************************/
@@ -371,6 +379,9 @@ typedef struct _fm10000_switch
     /* Mirror TrapCode ID of the mirror created for PEP to PEP Timestamp retrieval purpose. */
     fm_int                      pepToPepTimestampTrapcodeId;
 
+    /* Indicates whether Egress Timestamping is enabled/disabled. */
+    fm_bool                     txTimestampMode;
+
     /**************************************************
      * Information related to the QoS API.
      **************************************************/
@@ -395,6 +406,9 @@ typedef struct _fm10000_switch
  * Public Function Prototypes
  *****************************************************************************/
 
+fm_status fm10000TakeSoftResetLock(fm_int sw);
+fm_status fm10000DropSoftResetLock(fm_int sw);
+fm_status fm10000StartPepStatusPollingTimer(fm_int sw, fm_int port);
 fm_status fm10000AllocateDataStructures(fm_switch *switchPtr);
 fm_status fm10000FreeDataStructures(fm_switch *switchPtr);
 fm_status fm10000ComputeFHClockFreq(fm_int sw, fm_float *fhMhz);

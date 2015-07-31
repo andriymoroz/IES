@@ -4,9 +4,8 @@
  * File:            fm10000_api_serdes_dfe_actions.c
  * Creation Date:   Mars 19, 2014
  * Description:     Action callbacks for the FM10000 serdes state machines
- *  
  *
- * Copyright (c) 2014, Intel Corporation
+ * Copyright (c) 2014 - 2015, Intel Corporation
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -30,7 +29,7 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
+ *****************************************************************************/
 
 #include <fm_sdk_fm10000_int.h>
 
@@ -43,11 +42,11 @@
  * Local function prototypes
  *****************************************************************************/
 
-static fm_status SendDfeEventInd(fm_smEventInfo *eventInfo, 
+static fm_status SendDfeEventInd(fm_smEventInfo *eventInfo,
                                  void           *userInfo,
-                                 fm_int          eventId );
+                                 fm_int          eventId);
 static fm_status StartTimeoutTimer(fm_smEventInfo *eventInfo,
-                                   void           *userInfo, 
+                                   void           *userInfo,
                                    fm_timestamp   *pTimeout);
 static void HandleDfeTuningTimeout(void *arg);
 
@@ -76,18 +75,18 @@ static void HandleDfeTuningTimeout(void *arg);
  *                  state machine belonging to the current serdes
  *
  * \param[in]       eventInfo is a pointer the generic event descriptor.
- * 
+ *
  * \param[in]       userInfo is pointer a purpose specific event descriptor
  *                  (must be casted to ''fm10000_dfeSmEventInfo'')
- * 
+ *
  * \param[in]       eventId is the event to be notified.
- * 
+ *
  * \return          FM_OK if successful
  *
  * \return          Other ''Status Codes'' as appropriate in case of failure.
- * 
+ *
  *****************************************************************************/
-fm_status SendDfeEventInd(fm_smEventInfo *eventInfo, 
+fm_status SendDfeEventInd(fm_smEventInfo *eventInfo,
                           void           *userInfo,
                           fm_int          eventId )
 {
@@ -112,7 +111,7 @@ fm_status SendDfeEventInd(fm_smEventInfo *eventInfo,
 
     return err;
 
-}   /* end SendDfeEventInd */
+}
 
 
 
@@ -120,8 +119,6 @@ fm_status SendDfeEventInd(fm_smEventInfo *eventInfo,
 /*****************************************************************************/
 /** HandleDfeTuningTimeout
  * \ingroup intSerDesDfe
- * 
- * \chips           FM10000
  *
  * \desc            Handles a DFE state machine timeout generating a
  *                  ''FM10000_SERDES_DFE_EVENT_TIMEOUT_IND'' event.
@@ -131,13 +128,15 @@ fm_status SendDfeEventInd(fm_smEventInfo *eventInfo,
  *                  structure (type ''fm10000_laneDfe'')
  *
  * \return          None
+ *
  *****************************************************************************/
 static void HandleDfeTuningTimeout(void *arg)
 {
-    fm_smEventInfo             eventInfo; 
+    fm_smEventInfo             eventInfo;
     fm10000_dfeSmEventInfo    *pDfeEventInfo;
     fm10000_laneDfe           *pLaneDfe;
     fm_int                     sw;
+
 
     pLaneDfe          = (fm10000_laneDfe *) arg;
     pDfeEventInfo     = &pLaneDfe->eventInfo;
@@ -145,7 +144,7 @@ static void HandleDfeTuningTimeout(void *arg)
 
     PROTECT_SWITCH(sw);
 
-   
+
     eventInfo.smType  = pLaneDfe->smType;
     eventInfo.eventId = FM10000_SERDES_DFE_EVENT_TIMEOUT_IND;
     eventInfo.lock    = FM_GET_STATE_LOCK(sw);
@@ -157,7 +156,7 @@ static void HandleDfeTuningTimeout(void *arg)
 
     UNPROTECT_SWITCH(sw);
 
-}   /* end HandleDfeTuningTimeout */
+}
 
 
 
@@ -166,27 +165,25 @@ static void HandleDfeTuningTimeout(void *arg)
 /** StartTimeoutTimer
  * \ingroup intSerDesDfe
  *
- * \chips           FM10000
- *
  * \desc            Start SerDes-DFE timeout timer. Timer is started using the
  *                  provided expiration time. The number of repetitions is
- *                  always set to 1. 
- * 
+ *                  always set to 1.
+ *
  * \param[in]       eventInfo is a pointer the generic event descriptor (unused
  *                  in this function)
- * 
+ *
  * \param[in]       userInfo pointer a purpose specific event descriptor (must
  *                  be casted to ''fm10000_dfeSmEventInfo'')
- * 
+ *
  * \param[in]       pTimeout points to a ''fm_timestamp'' structure that
  *                  specifies the timer expiration time.
- * 
+ *
  * \return          FM_OK if successful
  * \return          Other ''Status Codes'' as appropriate in case of failure.
- * 
+ *
  *****************************************************************************/
 fm_status StartTimeoutTimer(fm_smEventInfo *eventInfo,
-                            void           *userInfo, 
+                            void           *userInfo,
                             fm_timestamp   *pTimeout)
 {
     fm_status        err;
@@ -195,18 +192,17 @@ fm_status StartTimeoutTimer(fm_smEventInfo *eventInfo,
     FM_NOT_USED(eventInfo);
 
 
-    
-     
+
     pLaneDfe = ((fm10000_dfeSmEventInfo *)userInfo)->laneDfe;
-    
+
     err = fmStartTimer( pLaneDfe->timerHandle,
                         pTimeout,
-                        1, 
+                        1,
                         HandleDfeTuningTimeout,
                         pLaneDfe );
     return err;
 
-}   /* end StartTimeoutTimer */
+}
 
 
 
@@ -217,18 +213,17 @@ fm_status StartTimeoutTimer(fm_smEventInfo *eventInfo,
 
 
 /*****************************************************************************/
-/** fm10000LogSerDesDfeTransition 
+/** fm10000LogSerDesDfeTransition
  * \ingroup intSerDesDfe
  *
- * \chips           FM10000
- *
  * \desc            Logs transitions of the SerDes-DFE state machine.
- * 
+ *
  * \param[in]       record is the pointer to a caller-allocated structure
  *                  containing the SerDes state transition information to be
  *                  logged
  *
  * \return          FM_OK
+ *
  *****************************************************************************/
 fm_status fm10000LogSerDesDfeTransition(fm_smTransitionRecord *record)
 {
@@ -263,7 +258,7 @@ fm_status fm10000LogSerDesDfeTransition(fm_smTransitionRecord *record)
 
     return FM_OK;
 
-}   /* end fm10000LogSerDesDfeTransition */
+}
 
 
 
@@ -271,18 +266,17 @@ fm_status fm10000LogSerDesDfeTransition(fm_smTransitionRecord *record)
 /** fm10000SerDesDfeFlagError
  * \ingroup intSerDesDfe
  *
- * \chips           FM10000
- *
  * \desc            Action indicating an invalid state-event combination for
  *                  this state machine.
- * 
+ *
  * \param[in]       eventInfo pointer to a caller-allocated area containing
  *                  the generic event descriptor (unused in this function)
- * 
+ *
  * \param[in]       userInfo pointer to a caller-allocated area containing the
  *                  purpose specific event descriptor (unused in this function)
- * 
+ *
  * \return          FM_ERR_INVALID_STATE
+ *
  *****************************************************************************/
 fm_status fm10000SerDesDfeFlagError(fm_smEventInfo *eventInfo,
                                     void           *userInfo)
@@ -292,7 +286,7 @@ fm_status fm10000SerDesDfeFlagError(fm_smEventInfo *eventInfo,
 
     return FM_ERR_INVALID_STATE;
 
-}   /* end fm10000SerDesDfeFlagError() */
+}
 
 
 
@@ -301,15 +295,13 @@ fm_status fm10000SerDesDfeFlagError(fm_smEventInfo *eventInfo,
 /** fm10000SerDesDfeConfigDfe
  * \ingroup intSerDesDfe
  *
- * \chips           FM10000
- *
  * \desc            Action initializing several DFE parameters.
- * 
+ *
  * \param[in]       eventInfo is a pointer the generic event descriptor.
- * 
+ *
  * \param[in]       userInfo pointer a purpose specific event descriptor (must
  *                  be casted to ''fm10000_dfeSmEventInfo'')
- * 
+ *
  * \return          FM_OK if successful.
  * \return          Other ''Status Codes'' as appropriate in case of failure.
  *
@@ -327,23 +319,23 @@ fm_status fm10000SerDesDfeConfigDfe(fm_smEventInfo *eventInfo,
     FM_NOT_USED(eventInfo);
 
     err = FM_OK;
-    
+
     pLaneExt  = ((fm10000_dfeSmEventInfo *)userInfo)->laneExt;
     serDes    = pLaneExt->serDes;
     switchPtr = ((fm10000_dfeSmEventInfo *)userInfo)->switchPtr;
     sw        = switchPtr->switchNumber;
     pLaneDfe  = ((fm10000_dfeSmEventInfo *)userInfo)->laneDfe;
-    
-    
+
+
     pLaneDfe->dfeDataLevThreshold = FM10000_SERDES_DFE_DATA_LEVEL0_THRESHLD;
     pLaneDfe->pause = FALSE;
 
-    
+
     err = fm10000SerdesDfeTuningConfig(sw,serDes);
 
     return err;
 
-}   /* end fm10000SerDesDfeConfigDfe */
+}
 
 
 
@@ -352,16 +344,14 @@ fm_status fm10000SerDesDfeConfigDfe(fm_smEventInfo *eventInfo,
 /** fm10000SerDesDfeStartTuning
  * \ingroup intSerDesDfe
  *
- * \chips           FM10000
- *
  * \desc            Action starting DFE tuning on the serdes associated to this
  *                  state machine.
- * 
+ *
  * \param[in]       eventInfo is a pointer the generic event descriptor.
- * 
+ *
  * \param[in]       userInfo pointer a purpose specific event descriptor (must
  *                  be casted to ''fm10000_dfeSmEventInfo'')
- * 
+ *
  * \return          FM_OK if successful.
  * \return          Other ''Status Codes'' as appropriate in case of failure.
  *
@@ -384,9 +374,10 @@ fm_status fm10000SerDesDfeStartTuning(fm_smEventInfo *eventInfo,
     pLaneDfe = ((fm10000_dfeSmEventInfo *)userInfo)->laneDfe;
 
 
-    
+
     pLaneDfe->dfeAdaptive = (pLaneExt->dfeMode == FM_DFE_MODE_CONTINUOUS);
     pLaneDfe->refTimeMs = fm10000SerdesGetTimestampMs();
+    pLaneDfe->pause = FALSE;
     pLaneExt->dfeExt.sendDfeComplete = FALSE;
     pLaneExt->dfeExt.pCalKrMode = FALSE;
 
@@ -394,12 +385,13 @@ fm_status fm10000SerDesDfeStartTuning(fm_smEventInfo *eventInfo,
 
     if (err == FM_OK)
     {
+
         err = fm10000SerdesDfeTuningStartICal(sw, serDes);
     }
 
     return err;
 
-}   /* end fm10000SerDesDfeStartTuning */
+}
 
 
 
@@ -408,16 +400,14 @@ fm_status fm10000SerDesDfeStartTuning(fm_smEventInfo *eventInfo,
 /** fm10000SerDesDfeStartKrPCalTuning
  * \ingroup intSerDesDfe
  *
- * \chips           FM10000
- *
  * \desc            Action starting DFE tuning on the serdes associated to this
  *                  state machine.
- * 
+ *
  * \param[in]       eventInfo is a pointer the generic event descriptor.
- * 
+ *
  * \param[in]       userInfo pointer a purpose specific event descriptor (must
  *                  be casted to ''fm10000_dfeSmEventInfo'')
- * 
+ *
  * \return          FM_OK if successful.
  * \return          Other ''Status Codes'' as appropriate in case of failure.
  *
@@ -438,9 +428,11 @@ fm_status fm10000SerDesDfeStartKrPCalTuning(fm_smEventInfo *eventInfo,
     serDes   = pLaneExt->serDes;
     sw       = ((fm10000_dfeSmEventInfo *)userInfo)->switchPtr->switchNumber;
     pLaneDfe = ((fm10000_dfeSmEventInfo *)userInfo)->laneDfe;
-    
+
     pLaneDfe->dfeAdaptive = (pLaneExt->krExt.pCalMode ==  FM10000_SERDES_KR_PCAL_MODE_CONTINUOUS);
     pLaneDfe->refTimeMs = fm10000SerdesGetTimestampMs();
+    pLaneDfe->pause = FALSE;
+    pLaneDfe->dfeDataLevThreshold = FM10000_SERDES_DFE_DATA_LEVEL0_THRESHLD;
     pLaneExt->dfeExt.sendDfeComplete = FALSE;
     pLaneExt->dfeExt.pCalKrMode = TRUE;
 
@@ -448,7 +440,7 @@ fm_status fm10000SerDesDfeStartKrPCalTuning(fm_smEventInfo *eventInfo,
 
     return err;
 
-}   /* end fm10000SerDesDfeStartKrPCalTuning */
+}
 
 
 
@@ -457,16 +449,14 @@ fm_status fm10000SerDesDfeStartKrPCalTuning(fm_smEventInfo *eventInfo,
 /** fm10000SerDesDfePauseTuning
  * \ingroup intSerDesDfe
  *
- * \chips           FM10000
- *
  * \desc            Action pausing DFE tuning on the serdes associated to this
  *                  state machine.
- * 
+ *
  * \param[in]       eventInfo is a pointer the generic event descriptor.
- * 
+ *
  * \param[in]       userInfo pointer a purpose specific event descriptor (must
  *                  be casted to ''fm10000_dfeSmEventInfo'')
- * 
+ *
  * \return          FM_OK if successful.
  * \return          Other ''Status Codes'' as appropriate in case of failure.
  *
@@ -489,7 +479,7 @@ fm_status fm10000SerDesDfePauseTuning(fm_smEventInfo *eventInfo,
     if (*pPause == FALSE)
     {
         err = fm10000SerdesDfeTuningStop(sw,serDes);
-    
+
         if (err == FM_OK)
         {
             *pPause = TRUE;
@@ -498,7 +488,7 @@ fm_status fm10000SerDesDfePauseTuning(fm_smEventInfo *eventInfo,
 
     return err;
 
-}   /* end fm10000SerDesDfePauseTuning */
+}
 
 
 
@@ -507,16 +497,14 @@ fm_status fm10000SerDesDfePauseTuning(fm_smEventInfo *eventInfo,
 /** fm10000SerDesDfeResumeTuning
  * \ingroup intSerDesDfe
  *
- * \chips           FM10000
- *
  * \desc            Action pausing DFE tuning on the serdes associated to this
  *                  state machine.
- * 
+ *
  * \param[in]       eventInfo is a pointer the generic event descriptor.
- * 
+ *
  * \param[in]       userInfo pointer a purpose specific event descriptor (must
  *                  be casted to ''fm10000_dfeSmEventInfo'')
- * 
+ *
  * \return          FM_OK if successful.
  * \return          Other ''Status Codes'' as appropriate in case of failure.
  *
@@ -537,10 +525,10 @@ fm_status fm10000SerDesDfeResumeTuning(fm_smEventInfo *eventInfo,
 
     err = FM_OK;
 
-    
+
     if (pLaneDfe->dfeAdaptive && pLaneDfe->pause == TRUE)
     {
-        
+
         err = fm10000SerdesDfeTuningStartPCalContinuous(sw, serDes);
 
         if (err == FM_OK)
@@ -551,7 +539,7 @@ fm_status fm10000SerDesDfeResumeTuning(fm_smEventInfo *eventInfo,
 
     return err;
 
-}   /* end fm10000SerDesDfeResumeTuning */
+}
 
 
 
@@ -560,21 +548,19 @@ fm_status fm10000SerDesDfeResumeTuning(fm_smEventInfo *eventInfo,
 /** fm10000SerDesDfePushAutoStartTuning
  * \ingroup intSerDesDfe
  *
- * \chips           FM10000
- *
  * \desc            Conditional transition callback processing autostart
  *                  timeout events.
- * 
+ *
  * \param[in]       eventInfo is a pointer the generic event descriptor.
- * 
+ *
  * \param[in]       userInfo is pointer a purpose specific event descriptor
  *                  (must be casted to ''fm10000_dfeSmEventInfo'')
- * 
+ *
  * \return          FM_OK if successful
  * \return          Other ''Status Codes'' as appropriate in case of failure.
- * 
+ *
  *****************************************************************************/
-fm_status fm10000SerDesDfePushAutoStartTuning(fm_smEventInfo *eventInfo, 
+fm_status fm10000SerDesDfePushAutoStartTuning(fm_smEventInfo *eventInfo,
                                               void           *userInfo)
 {
     fm_status        err;
@@ -589,33 +575,34 @@ fm_status fm10000SerDesDfePushAutoStartTuning(fm_smEventInfo *eventInfo,
     pLaneDfe  = ((fm10000_dfeSmEventInfo *)userInfo)->laneDfe;
 
 
-    
+
     if (--pLaneDfe->retryCntr > 0)
     {
-        
+
 
         dfeEventInfo.smType  = pLaneDfe->smType;
         dfeEventInfo.eventId = FM10000_SERDES_DFE_EVENT_START_TUNING_REQ;
         dfeEventInfo.lock    = FM_GET_STATE_LOCK( sw );
-    
+
         err = fmNotifyStateMachineEvent(pLaneDfe->smHandle,
                                         &dfeEventInfo,
                                         &pLaneDfe->eventInfo,
                                         &pLaneDfe->pLaneExt->serDes);
         if (err != FM_OK)
         {
-            
+
             err = fm10000SerDesDfeStartTimeoutTimerShrt(eventInfo,userInfo);
         }
     }
     else
     {
-        
+
         err = fm10000SerDesDfeSendTuningStoppedInd(eventInfo,userInfo);
     }
 
     return err;
-}   /* end fm10000SerDesDfePushAutoStartTuning */
+
+}
 
 
 
@@ -624,20 +611,18 @@ fm_status fm10000SerDesDfePushAutoStartTuning(fm_smEventInfo *eventInfo,
 /** fm10000SerDesDfeStartTimeoutTimerShrt
  * \ingroup intSerDesDfe
  *
- * \chips           FM10000
- *
  * \desc            Action starting the SerDes-DFE timeout timer using the a
  *                  short expiration time.
- * 
+ *
  * \param[in]       eventInfo is a pointer the generic event descriptor (unused
  *                  in this function)
- * 
+ *
  * \param[in]       userInfo pointer a purpose specific event descriptor (must
  *                  be casted to ''fm10000_dfeSmEventInfo'')
- * 
+ *
  * \return          FM_OK if successful
  * \return          Other ''Status Codes'' as appropriate in case of failure.
- * 
+ *
  *****************************************************************************/
 fm_status fm10000SerDesDfeStartTimeoutTimerShrt(fm_smEventInfo *eventInfo,
                                                 void           *userInfo )
@@ -653,7 +638,7 @@ fm_status fm10000SerDesDfeStartTimeoutTimerShrt(fm_smEventInfo *eventInfo,
 
     return err;
 
-}   /* end fm10000SerDesDfeStartTimeoutTimerShrt */
+}
 
 
 
@@ -662,20 +647,18 @@ fm_status fm10000SerDesDfeStartTimeoutTimerShrt(fm_smEventInfo *eventInfo,
 /** fm10000SerDesDfeStartTimeoutTimerStopTuning
  * \ingroup intSerDesDfe
  *
- * \chips           FM10000
- *
  * \desc            Action starting the SerDes-DFE timeout timer used when
  *                  tuning is being stopped.
- * 
+ *
  * \param[in]       eventInfo is a pointer the generic event descriptor (unused
  *                  in this function)
- * 
+ *
  * \param[in]       userInfo pointer a purpose specific event descriptor (must
  *                  be casted to ''fm10000_dfeSmEventInfo'')
- * 
+ *
  * \return          FM_OK if successful
  * \return          Other ''Status Codes'' as appropriate in case of failure.
- * 
+ *
  *****************************************************************************/
 fm_status fm10000SerDesDfeStartTimeoutTimerStopTuning(fm_smEventInfo *eventInfo,
                                                       void           *userInfo )
@@ -691,7 +674,7 @@ fm_status fm10000SerDesDfeStartTimeoutTimerStopTuning(fm_smEventInfo *eventInfo,
 
     return err;
 
-}   /* end fm10000SerDesDfeStartTimeoutTimerStopTuning */
+}
 
 
 
@@ -700,20 +683,18 @@ fm_status fm10000SerDesDfeStartTimeoutTimerStopTuning(fm_smEventInfo *eventInfo,
 /** fm10000SerDesDfeStartTimeoutTimerDebounce
  * \ingroup intSerDesDfe
  *
- * \chips           FM10000
- *
  * \desc            Action starting the SerDes-DFE timeout timer using the
- *                  debounce time. 
- * 
+ *                  debounce time.
+ *
  * \param[in]       eventInfo is a pointer the generic event descriptor (unused
  *                  in this function)
- * 
+ *
  * \param[in]       userInfo pointer a purpose specific event descriptor (must
  *                  be casted to ''fm10000_dfeSmEventInfo'')
- * 
+ *
  * \return          FM_OK if successful
  * \return          Other ''Status Codes'' as appropriate in case of failure.
- * 
+ *
  *****************************************************************************/
 fm_status fm10000SerDesDfeStartTimeoutTimerDebounce(fm_smEventInfo *eventInfo,
                                                     void           *userInfo )
@@ -737,19 +718,19 @@ fm_status fm10000SerDesDfeStartTimeoutTimerDebounce(fm_smEventInfo *eventInfo,
         dfeDebounceTime = FM10000_SERDES_DFE_DFAULT_DEBOUNCE_TIME;
     }
 
-    
-    timeout.sec  = 0;
-    //timeout.usec = dfeDebounceTime * 1000;
 
-    
+    timeout.sec  = 0;
+
+
+
     timeout.usec = dfeDebounceTime * 50;
-        
+
 
     err = StartTimeoutTimer(eventInfo,userInfo,&timeout);
 
     return err;
 
-}   /* end fm10000SerDesDfeStartTimeoutTimerDebounce */
+}
 
 
 
@@ -758,20 +739,18 @@ fm_status fm10000SerDesDfeStartTimeoutTimerDebounce(fm_smEventInfo *eventInfo,
 /** fm10000SerDesDfeStartTimeoutTimerAdaptive
  * \ingroup intSerDesDfe
  *
- * \chips           FM10000
- *
  * \desc            Action starting the SerDes-DFE timeout timer using an
  *                  adaptive algorithm.
- * 
+ *
  * \param[in]       eventInfo is a pointer the generic event descriptor (unused
  *                  in this function)
- * 
+ *
  * \param[in]       userInfo pointer a purpose specific event descriptor (must
  *                  be casted to ''fm10000_dfeSmEventInfo'')
- * 
+ *
  * \return          FM_OK if successful
  * \return          Other ''Status Codes'' as appropriate in case of failure.
- * 
+ *
  *****************************************************************************/
 fm_status fm10000SerDesDfeStartTimeoutTimerAdaptive(fm_smEventInfo *eventInfo,
                                                     void           *userInfo )
@@ -786,7 +765,7 @@ fm_status fm10000SerDesDfeStartTimeoutTimerAdaptive(fm_smEventInfo *eventInfo,
     timeout.usec = 0;
     timeout.sec  = FM10000_SERDES_DFE_ADAPTIVE_TIMEOUT_MIN;
 
-    
+
     timeout.sec += ((pLaneDfe->cycleCntr) >> 3);
 
     if (timeout.sec > FM10000_SERDES_DFE_ADAPTIVE_TIMEOUT_MAX)
@@ -798,7 +777,7 @@ fm_status fm10000SerDesDfeStartTimeoutTimerAdaptive(fm_smEventInfo *eventInfo,
 
     return err;
 
-}   /* end fm10000SerDesDfeStartTimeoutTimerAdaptive */
+}
 
 
 
@@ -807,19 +786,17 @@ fm_status fm10000SerDesDfeStartTimeoutTimerAdaptive(fm_smEventInfo *eventInfo,
 /** fm10000SerDesDfeStopTimeoutTimer
  * \ingroup intSerDesDfe
  *
- * \chips           FM10000
- *
  * \desc            Action stopping the SerDes-DFE timeout timer.
- * 
+ *
  * \param[in]       eventInfo is a pointer the generic event descriptor (unused
  *                  in this function)
- * 
+ *
  * \param[in]       userInfo pointer a purpose specific event descriptor (must
  *                  be casted to ''fm10000_dfeSmEventInfo'')
- * 
+ *
  * \return          FM_OK if successful
  * \return          Other ''Status Codes'' as appropriate in case of failure.
- * 
+ *
  *****************************************************************************/
 fm_status fm10000SerDesDfeStopTimeoutTimer(fm_smEventInfo *eventInfo,
                                            void           *userInfo )
@@ -829,13 +806,13 @@ fm_status fm10000SerDesDfeStopTimeoutTimer(fm_smEventInfo *eventInfo,
 
     FM_NOT_USED(eventInfo);
 
-    
+
     pLaneDfe  = ((fm10000_dfeSmEventInfo *)userInfo)->laneDfe;
     err = fmStopTimer(pLaneDfe->timerHandle);
 
     return err;
 
-}   /* end fm10000SerDesDfeStopTimeoutTimer */
+}
 
 
 
@@ -844,15 +821,13 @@ fm_status fm10000SerDesDfeStopTimeoutTimer(fm_smEventInfo *eventInfo,
 /** fm10000SerDesDfeClrCycleCntr
  * \ingroup intSerDesDfe
  *
- * \chips           FM10000
- *
  * \desc            Action clearing the dfe cycle counter.
- * 
+ *
  * \param[in]       eventInfo is a pointer the generic event descriptor.
- * 
+ *
  * \param[in]       userInfo pointer a purpose specific event descriptor (must
  *                  be casted to ''fm10000_dfeSmEventInfo'')
- * 
+ *
  * \return          FM_OK if successful.
  * \return          Other ''Status Codes'' as appropriate in case of failure.
  *
@@ -864,13 +839,13 @@ fm_status fm10000SerDesDfeClrCycleCntr(fm_smEventInfo *eventInfo,
 
     FM_NOT_USED(eventInfo);
 
-    
+
     pLaneDfe  = ((fm10000_dfeSmEventInfo *)userInfo)->laneDfe;
     pLaneDfe->cycleCntr = 0;
 
     return FM_OK;
 
-}   /* end fm10000SerDesDfeClrCycleCntr  */
+}
 
 
 
@@ -879,15 +854,13 @@ fm_status fm10000SerDesDfeClrCycleCntr(fm_smEventInfo *eventInfo,
 /** fm10000SerDesDfeIncCycleCntr
  * \ingroup intSerDesDfe
  *
- * \chips           FM10000
- *
  * \desc            Action incrementing the dfe cycle counter.
- * 
+ *
  * \param[in]       eventInfo is a pointer the generic event descriptor.
- * 
+ *
  * \param[in]       userInfo pointer a purpose specific event descriptor (must
  *                  be casted to ''fm10000_dfeSmEventInfo'')
- * 
+ *
  * \return          FM_OK if successful.
  * \return          Other ''Status Codes'' as appropriate in case of failure.
  *
@@ -899,13 +872,13 @@ fm_status fm10000SerDesDfeIncCycleCntr(fm_smEventInfo *eventInfo,
 
     FM_NOT_USED(eventInfo);
 
-    
+
     pLaneDfe  = ((fm10000_dfeSmEventInfo *)userInfo)->laneDfe;
     pLaneDfe->cycleCntr++;
 
     return FM_OK;
 
-}   /* end fm10000SerDesDfeIncCycleCntr  */
+}
 
 
 
@@ -914,15 +887,13 @@ fm_status fm10000SerDesDfeIncCycleCntr(fm_smEventInfo *eventInfo,
 /** fm10000SerDesDfeLoadRetryCntr
  * \ingroup intSerDesDfe
  *
- * \chips           FM10000
- *
  * \desc            Action loading the dfe retry counter.
- * 
+ *
  * \param[in]       eventInfo is a pointer the generic event descriptor.
- * 
+ *
  * \param[in]       userInfo pointer a purpose specific event descriptor (must
  *                  be casted to ''fm10000_dfeSmEventInfo'')
- * 
+ *
  * \return          FM_OK if successful.
  * \return          Other ''Status Codes'' as appropriate in case of failure.
  *
@@ -934,7 +905,7 @@ fm_status fm10000SerDesDfeLoadRetryCntr(fm_smEventInfo *eventInfo,
 
     FM_NOT_USED(eventInfo);
 
-    
+
     pLaneDfe  = ((fm10000_dfeSmEventInfo *)userInfo)->laneDfe;
     if (pLaneDfe->retryCntr == 0)
     {
@@ -943,7 +914,7 @@ fm_status fm10000SerDesDfeLoadRetryCntr(fm_smEventInfo *eventInfo,
 
     return FM_OK;
 
-}   /* end fm10000SerDesDfeLoadRetryCntr */
+}
 
 
 
@@ -952,15 +923,13 @@ fm_status fm10000SerDesDfeLoadRetryCntr(fm_smEventInfo *eventInfo,
 /** fm10000SerDesDfeClrRetryCntr
  * \ingroup intSerDesDfe
  *
- * \chips           FM10000
- *
  * \desc            Action clearing the dfe retry counter.
- * 
+ *
  * \param[in]       eventInfo is a pointer the generic event descriptor.
- * 
+ *
  * \param[in]       userInfo pointer a purpose specific event descriptor (must
  *                  be casted to ''fm10000_dfeSmEventInfo'')
- * 
+ *
  * \return          FM_OK if successful.
  * \return          Other ''Status Codes'' as appropriate in case of failure.
  *
@@ -972,13 +941,13 @@ fm_status fm10000SerDesDfeClrRetryCntr(fm_smEventInfo *eventInfo,
 
     FM_NOT_USED(eventInfo);
 
-    
+
     pLaneDfe  = ((fm10000_dfeSmEventInfo *)userInfo)->laneDfe;
     pLaneDfe->retryCntr =  0;
 
     return FM_OK;
 
-}   /* end fm10000SerDesDfeClrRetryCntr */
+}
 
 
 
@@ -987,16 +956,14 @@ fm_status fm10000SerDesDfeClrRetryCntr(fm_smEventInfo *eventInfo,
 /** fm10000SerDesDfeStopTuning
  * \ingroup intSerDesDfe
  *
- * \chips           FM10000
- *
  * \desc            Action stopping tuning on the serdes associated to this
  *                  state machine.
- * 
+ *
  * \param[in]       eventInfo is a pointer the generic event descriptor.
- * 
+ *
  * \param[in]       userInfo pointer a purpose specific event descriptor (must
  *                  be casted to ''fm10000_dfeSmEventInfo'')
- * 
+ *
  * \return          FM_OK if successful.
  * \return          Other ''Status Codes'' as appropriate in case of failure.
  *
@@ -1017,7 +984,7 @@ fm_status fm10000SerDesDfeStopTuning(fm_smEventInfo *eventInfo,
 
     return err;
 
-}   /* end fm10000SerDesDfeStopTuning */
+}
 
 
 
@@ -1026,32 +993,30 @@ fm_status fm10000SerDesDfeStopTuning(fm_smEventInfo *eventInfo,
 /** fm10000SerDesDfeSendTuningStartedInd
  * \ingroup intSerDesDfe
  *
- * \chips           FM10000
- *
  * \desc            Action sending a DFE started indication event to the
  *                  parent state machine.
- * 
+ *
  * \param[in]       eventInfo is a pointer the generic event descriptor.
- * 
+ *
  * \param[in]       userInfo is pointer a purpose specific event descriptor
  *                  (must be casted to ''fm10000_dfeSmEventInfo'')
- * 
+ *
  * \return          FM_OK if successful
  * \return          Other ''Status Codes'' as appropriate in case of failure.
- * 
+ *
  *****************************************************************************/
 fm_status fm10000SerDesDfeSendTuningStartedInd(fm_smEventInfo *eventInfo,
                                                void           *userInfo )
 {
     fm10000_lane    *pLaneExt;
 
-    
+
     pLaneExt = ((fm10000_dfeSmEventInfo *)userInfo)->laneExt;
     pLaneExt->dfeExt.dfeTuningStat = 0x01;
 
     return SendDfeEventInd(eventInfo, userInfo, FM10000_SERDES_EVENT_DFE_TUNING_STARTED_IND);
 
-}   /* end fm10000SerDesDfeSendTuningStartedInd */
+}
 
 
 
@@ -1060,19 +1025,17 @@ fm_status fm10000SerDesDfeSendTuningStartedInd(fm_smEventInfo *eventInfo,
 /** fm10000SerDesDfeSendTuningStoppedInd
  * \ingroup intSerDesDfe
  *
- * \chips           FM10000
- *
  * \desc            Action sending a DFE stopped indication event to the parent
  *                  state machine.
- * 
+ *
  * \param[in]       eventInfo is a pointer the generic event descriptor.
- * 
+ *
  * \param[in]       userInfo is pointer a purpose specific event descriptor
  *                  (must be casted to ''fm10000_dfeSmEventInfo'')
- * 
+ *
  * \return          FM_OK if successful
  * \return          Other ''Status Codes'' as appropriate in case of failure.
- * 
+ *
  *****************************************************************************/
 fm_status fm10000SerDesDfeSendTuningStoppedInd(fm_smEventInfo *eventInfo,
                                                void           *userInfo )
@@ -1083,7 +1046,7 @@ fm_status fm10000SerDesDfeSendTuningStoppedInd(fm_smEventInfo *eventInfo,
 
     return err;
 
-}   /* end fm10000SerDesDfeSendTuningStoppedInd */
+}
 
 
 
@@ -1092,19 +1055,17 @@ fm_status fm10000SerDesDfeSendTuningStoppedInd(fm_smEventInfo *eventInfo,
 /** fm10000SerDesDfeSendTuningCompleteInd
  * \ingroup intSerDesDfe
  *
- * \chips           FM10000
- *
  * \desc            Action sending a DFE complete indication event to the
  *                  parent state machine.
- * 
+ *
  * \param[in]       eventInfo is a pointer the generic event descriptor.
- * 
+ *
  * \param[in]       userInfo is pointer a purpose specific event descriptor
  *                  (must be casted to ''fm10000_dfeSmEventInfo'')
- * 
+ *
  * \return          FM_OK if successful
  * \return          Other ''Status Codes'' as appropriate in case of failure.
- * 
+ *
  *****************************************************************************/
 fm_status fm10000SerDesDfeSendTuningCompleteInd(fm_smEventInfo *eventInfo,
                                                 void           *userInfo )
@@ -1122,7 +1083,7 @@ fm_status fm10000SerDesDfeSendTuningCompleteInd(fm_smEventInfo *eventInfo,
     }
     return err;
 
-}   /* end fm10000SerDesDfeSendTuningCompleteInd */
+}
 
 
 
@@ -1131,19 +1092,17 @@ fm_status fm10000SerDesDfeSendTuningCompleteInd(fm_smEventInfo *eventInfo,
 /** fm10000SerDesDfeSendICalTuningCompleteInd
  * \ingroup intSerDesDfe
  *
- * \chips           FM10000
- *
  * \desc            Action sending a DFE iCal complete indication event to
  *                  the parent state machine.
- * 
+ *
  * \param[in]       eventInfo is a pointer the generic event descriptor.
- * 
+ *
  * \param[in]       userInfo is pointer a purpose specific event descriptor
  *                  (must be casted to ''fm10000_dfeSmEventInfo'')
- * 
+ *
  * \return          FM_OK if successful
  * \return          Other ''Status Codes'' as appropriate in case of failure.
- * 
+ *
  *****************************************************************************/
 fm_status fm10000SerDesDfeSendICalTuningCompleteInd(fm_smEventInfo *eventInfo,
                                                     void           *userInfo )
@@ -1154,7 +1113,7 @@ fm_status fm10000SerDesDfeSendICalTuningCompleteInd(fm_smEventInfo *eventInfo,
 
     return err;
 
-}   /* end fm10000SerDesDfeSendICalTuningCompleteInd */
+}
 
 
 
@@ -1163,19 +1122,17 @@ fm_status fm10000SerDesDfeSendICalTuningCompleteInd(fm_smEventInfo *eventInfo,
 /** fm10000SerDesDfeReadEyeH
  * \ingroup intSerDesDfe
  *
- * \chips           FM10000
- *
  * \desc            Action reading the height of the eye for the serdes
  *                  associated to this state machine.
- * 
+ *
  * \param[in]       eventInfo is a pointer the generic event descriptor.
- * 
+ *
  * \param[in]       userInfo is pointer a purpose specific event descriptor
  *                  (must be casted to ''fm10000_dfeSmEventInfo'')
- * 
+ *
  * \return          FM_OK if successful
  * \return          Other ''Status Codes'' as appropriate in case of failure.
- * 
+ *
  *****************************************************************************/
 fm_status fm10000SerDesDfeReadEyeH(fm_smEventInfo *eventInfo,
                                    void           *userInfo )
@@ -1188,7 +1145,6 @@ fm_status fm10000SerDesDfeReadEyeH(fm_smEventInfo *eventInfo,
     fm_int           eyeHeight;
     fm_int           eyeHeightMv;
 
-
     FM_NOT_USED(eventInfo);
 
     pLaneExt  = ((fm10000_dfeSmEventInfo *)userInfo)->laneExt;
@@ -1200,7 +1156,7 @@ fm_status fm10000SerDesDfeReadEyeH(fm_smEventInfo *eventInfo,
 
     return err;
 
-}   /* end fm10000SerDesDfeReadEyeH */
+}
 
 
 
@@ -1209,19 +1165,17 @@ fm_status fm10000SerDesDfeReadEyeH(fm_smEventInfo *eventInfo,
 /** fm10000SerDesDfeReadEyeW
  * \ingroup intSerDesDfe
  *
- * \chips           FM10000
- *
  * \desc            Action reading the width  of the eye for the serdes
  *                  associated to this state machine.
- * 
+ *
  * \param[in]       eventInfo is a pointer the generic event descriptor.
- * 
+ *
  * \param[in]       userInfo is pointer a purpose specific event descriptor
  *                  (must be casted to ''fm10000_dfeSmEventInfo'')
- * 
+ *
  * \return          FM_OK if successful
  * \return          Other ''Status Codes'' as appropriate in case of failure.
- * 
+ *
  *****************************************************************************/
 fm_status fm10000SerDesDfeReadEyeW(fm_smEventInfo *eventInfo,
                                    void           *userInfo )
@@ -1232,14 +1186,12 @@ fm_status fm10000SerDesDfeReadEyeW(fm_smEventInfo *eventInfo,
 
     err = FM_OK;
 
-    
 
-    
-     
+
 
     return err;
 
-}   /* end fm10000SerDesDfeReadEyeW */
+}
 
 
 
@@ -1248,18 +1200,16 @@ fm_status fm10000SerDesDfeReadEyeW(fm_smEventInfo *eventInfo,
 /** fm10000SerDesDfeConfigureEyeW
  * \ingroup intSerDesDfe
  *
- * \chips           FM10000
- *
  * \desc            Action configuring the serdes to read the width of the eye.
- * 
+ *
  * \param[in]       eventInfo is a pointer the generic event descriptor.
- * 
+ *
  * \param[in]       userInfo is pointer a purpose specific event descriptor
  *                  (must be casted to ''fm10000_dfeSmEventInfo'')
- * 
+ *
  * \return          FM_OK if successful
  * \return          Other ''Status Codes'' as appropriate in case of failure.
- * 
+ *
  *****************************************************************************/
 fm_status fm10000SerDesDfeConfigureEyeW(fm_smEventInfo *eventInfo,
                                         void           *userInfo )
@@ -1270,12 +1220,12 @@ fm_status fm10000SerDesDfeConfigureEyeW(fm_smEventInfo *eventInfo,
 
     err = FM_OK;
 
-    
-     
+
+
 
     return err;
 
-}   /* end fm10000SerDesDfeConfigureEyeW */
+}
 
 
 
@@ -1284,18 +1234,16 @@ fm_status fm10000SerDesDfeConfigureEyeW(fm_smEventInfo *eventInfo,
 /** fm10000SerDesDfeConfigureEyeH
  * \ingroup intSerDesDfe
  *
- * \chips           FM10000
- *
  * \desc            Action configuring the serdes to read the height of the eye.
- * 
+ *
  * \param[in]       eventInfo is a pointer the generic event descriptor.
- * 
+ *
  * \param[in]       userInfo is pointer a purpose specific event descriptor
  *                  (must be casted to ''fm10000_dfeSmEventInfo'')
- * 
+ *
  * \return          FM_OK if successful
  * \return          Other ''Status Codes'' as appropriate in case of failure.
- * 
+ *
  *****************************************************************************/
 fm_status fm10000SerDesDfeConfigureEyeH(fm_smEventInfo *eventInfo,
                                         void           *userInfo)
@@ -1306,12 +1254,12 @@ fm_status fm10000SerDesDfeConfigureEyeH(fm_smEventInfo *eventInfo,
 
     err = FM_OK;
 
-    
-     
+
+
 
     return err;
 
-}   /* end fm10000SerDesDfeConfigureEyeH */
+}
 
 
 
@@ -1320,21 +1268,19 @@ fm_status fm10000SerDesDfeConfigureEyeH(fm_smEventInfo *eventInfo,
 /** fm10000SerDesDfeDontSaveRecord
  * \ingroup intSerDesDfe
  *
- * \chips           FM10000
- *
  * \desc            Action setting the flag to do not save record for the
  *                  current transaction. This tipically is used with timeouts
  *                  and periodically events to avoid saving redundant information
  *                  and sweep the state machine history buffer.
- * 
+ *
  * \param[in]       eventInfo is a pointer the generic event descriptor.
- * 
+ *
  * \param[in]       userInfo is pointer a purpose specific event descriptor
  *                  (must be casted to ''fm10000_dfeSmEventInfo'')
- * 
+ *
  * \return          FM_OK if successful
  * \return          Other ''Status Codes'' as appropriate in case of failure.
- * 
+ *
  *****************************************************************************/
 fm_status fm10000SerDesDfeDontSaveRecord(fm_smEventInfo *eventInfo,
                                          void           *userInfo )
@@ -1345,7 +1291,7 @@ fm_status fm10000SerDesDfeDontSaveRecord(fm_smEventInfo *eventInfo,
 
     return FM_OK;
 
-}   /* end fm10000SerDesDfeDontSaveRecord */
+}
 
 
 
@@ -1354,25 +1300,23 @@ fm_status fm10000SerDesDfeDontSaveRecord(fm_smEventInfo *eventInfo,
 /** fm10000SerDesDfeProcessICalTimeout
  * \ingroup intSerDesDfe
  *
- * \chips           FM10000
- *
  * \desc            Conditional transition callback processing timeout events
  *                  during iCal DFE tuning.
- * 
+ *
  * \param[in]       eventInfo is a pointer the generic event descriptor.
- * 
+ *
  * \param[in]       userInfo is pointer a purpose specific event descriptor
  *                  (must be casted to ''fm10000_dfeSmEventInfo'')
- * 
+ *
  * \param[out]      nextState is a pointer to a caller-allocated area where
  *                  this function will return the state the state machine
  *                  will transition to
  *
  * \return          FM_OK if successful
  * \return          Other ''Status Codes'' as appropriate in case of failure.
- * 
+ *
  *****************************************************************************/
-fm_status fm10000SerDesDfeProcessICalTimeout(fm_smEventInfo *eventInfo, 
+fm_status fm10000SerDesDfeProcessICalTimeout(fm_smEventInfo *eventInfo,
                                              void           *userInfo,
                                              fm_int         *nextState )
 {
@@ -1398,10 +1342,10 @@ fm_status fm10000SerDesDfeProcessICalTimeout(fm_smEventInfo *eventInfo,
     iCalInProgress = FALSE;
     iCalSuccessful = FALSE;
 
-    
+
     err = fm10000SerdesDfeTuningGetICalStatus(sw,serDes,&iCalInProgress);
 
-    
+
     if ( err == FM_OK && !iCalInProgress)
     {
         err = fm10000SerdesDfeTuningCheckICalConvergence(sw, serDes, &iCalSuccessful);
@@ -1418,11 +1362,11 @@ fm_status fm10000SerDesDfeProcessICalTimeout(fm_smEventInfo *eventInfo,
                 pLaneDfe->cycleCntr = -1;
 
                 if (pLaneExt->dfeMode != FM_DFE_MODE_ICAL_ONLY)
-                {  
+                {
                     *nextState = FM10000_SERDES_DFE_STATE_WAIT_PCAL;
 
                     err = fm10000SerdesDfeTuningStartPCalSingleExec(sw, serDes);
-    
+
                     pLaneExt->dfeExt.dfeTuningStat = 0x02;
                 }
                 else
@@ -1438,17 +1382,17 @@ fm_status fm10000SerDesDfeProcessICalTimeout(fm_smEventInfo *eventInfo,
                     {
                         *nextState = FM10000_SERDES_DFE_STATE_EYE_H_DELAY;
                         err = fm10000SerDesDfeReadEyeH(eventInfo,userInfo);
-            
+
                         if (err == FM_OK)
                         {
                             err = fm10000SerDesDfeClrCycleCntr(eventInfo,userInfo);
                         }
-            
+
                         if (err == FM_OK)
                         {
                             err = fm10000SerDesDfeStartTimeoutTimerAdaptive(eventInfo, userInfo);
                         }
-            
+
                         if (err == FM_OK)
                         {
                             pLaneExt->dfeExt.sendDfeComplete = TRUE;
@@ -1465,12 +1409,13 @@ fm_status fm10000SerDesDfeProcessICalTimeout(fm_smEventInfo *eventInfo,
             }
             else
             {
+
                 pLaneDfe->cycleCntr = FM10000_SERDES_ICAL_TUNING_MAX_CYCLES;
             }
         }
     }
 
-    
+
     if (++pLaneDfe->cycleCntr > FM10000_SERDES_ICAL_TUNING_MAX_CYCLES )
     {
         err = fm10000SerDesDfeStopTuning(eventInfo,userInfo);
@@ -1478,25 +1423,26 @@ fm_status fm10000SerDesDfeProcessICalTimeout(fm_smEventInfo *eventInfo,
         if (err == FM_OK)
         {
             *nextState = FM10000_SERDES_DFE_STATE_STOP_TUNING;
-            
+
             err2 = fm10000SerDesDfeStartTimeoutTimerStopTuning(eventInfo, userInfo);
         }
     }
     else
     {
-        
+
         err2 = fm10000SerDesDfeStartTimeoutTimerShrt( eventInfo, userInfo );
     }
 
     if (*nextState == FM10000_SERDES_DFE_STATE_WAIT_ICAL)
     {
+
         eventInfo->dontSaveRecord = TRUE;
     }
 
     if (pLaneDfe->cycleCntr == 1)
     {
-        
-         
+
+
         err = fm10000SerDesDfeSendTuningStartedInd (eventInfo,userInfo);
     }
 
@@ -1504,7 +1450,7 @@ fm_status fm10000SerDesDfeProcessICalTimeout(fm_smEventInfo *eventInfo,
 
     return err;
 
-}   /* end fm10000SerDesDfeProcessICalTimeout */
+}
 
 
 
@@ -1513,25 +1459,23 @@ fm_status fm10000SerDesDfeProcessICalTimeout(fm_smEventInfo *eventInfo,
 /** fm10000SerDesDfeProcessPCalTimeout
  * \ingroup intSerDesDfe
  *
- * \chips           FM10000
- *
  * \desc            Conditional transition callback processing timeout events
  *                  during DFE tuning.
- * 
+ *
  * \param[in]       eventInfo is a pointer the generic event descriptor.
- * 
+ *
  * \param[in]       userInfo is pointer a purpose specific event descriptor
  *                  (must be casted to ''fm10000_dfeSmEventInfo'')
- * 
+ *
  * \param[out]      nextState is a pointer to a caller-allocated area where
  *                  this function will return the state the state machine
  *                  will transition to
  *
  * \return          FM_OK if successful
  * \return          Other ''Status Codes'' as appropriate in case of failure.
- * 
+ *
  *****************************************************************************/
-fm_status fm10000SerDesDfeProcessPCalTimeout(fm_smEventInfo *eventInfo, 
+fm_status fm10000SerDesDfeProcessPCalTimeout(fm_smEventInfo *eventInfo,
                                              void           *userInfo,
                                              fm_int         *nextState )
 {
@@ -1560,14 +1504,15 @@ fm_status fm10000SerDesDfeProcessPCalTimeout(fm_smEventInfo *eventInfo,
     {
         if (pLaneDfe->dfeAdaptive)
         {
-            
+
             err = fm10000SerdesDfeTuningStartPCalContinuous(sw, serDes);
         }
 
-        
+
         if (!pLaneExt->dfeExt.pCalKrMode)
         {
             pLaneExt->dfeExt.dfeTuningStat = 0x0a;
+
 
             fm10000SerdesSavePCalTuningStatsInfo(sw,serDes,pLaneDfe->cycleCntr + 1);
             fm10000SerdesSavePCalTuningDelayInfo(sw,serDes);
@@ -1605,26 +1550,26 @@ fm_status fm10000SerDesDfeProcessPCalTimeout(fm_smEventInfo *eventInfo,
     }
     else
     {
-        
+
         if (++pLaneDfe->cycleCntr > FM10000_SERDES_DFE_TUNING_MAX_CYCLES )
         {
-            
+
             err = fm10000SerDesDfeStopTuning(eventInfo,userInfo);
 
             if (err == FM_OK)
             {
                 *nextState = FM10000_SERDES_DFE_STATE_STOP_TUNING;
 
-                
+
                 err2 = fm10000SerDesDfeStartTimeoutTimerStopTuning(eventInfo, userInfo);
             }
         }
         else
         {
-            
+
             err2 = fm10000SerDesDfeStartTimeoutTimerShrt( eventInfo, userInfo );
 
-            
+
             eventInfo->dontSaveRecord = TRUE;
         }
     }
@@ -1633,7 +1578,7 @@ fm_status fm10000SerDesDfeProcessPCalTimeout(fm_smEventInfo *eventInfo,
 
     return err;
 
-}   /* end fm10000SerDesDfeProcessPCalTimeout */
+}
 
 
 
@@ -1642,25 +1587,23 @@ fm_status fm10000SerDesDfeProcessPCalTimeout(fm_smEventInfo *eventInfo,
 /** fm10000SerDesDfeProcessStopTuningTimeout
  * \ingroup intSerDesDfe
  *
- * \chips           FM10000
- *
  * \desc            Conditional transition callback processing stop tuning
  *                  timeout events.
- * 
+ *
  * \param[in]       eventInfo is a pointer the generic event descriptor.
- * 
+ *
  * \param[in]       userInfo is pointer a purpose specific event descriptor
  *                  (must be casted to ''fm10000_dfeSmEventInfo'')
- * 
+ *
  * \param[out]      nextState is a pointer to a caller-allocated area where
  *                  this function will return the state the state machine
  *                  will transition to
  *
  * \return          FM_OK if successful
  * \return          Other ''Status Codes'' as appropriate in case of failure.
- * 
+ *
  *****************************************************************************/
-fm_status fm10000SerDesDfeProcessStopTuningTimeout(fm_smEventInfo *eventInfo, 
+fm_status fm10000SerDesDfeProcessStopTuningTimeout(fm_smEventInfo *eventInfo,
                                                    void           *userInfo,
                                                    fm_int         *nextState )
 {
@@ -1673,18 +1616,19 @@ fm_status fm10000SerDesDfeProcessStopTuningTimeout(fm_smEventInfo *eventInfo,
     pLaneDfe  = ((fm10000_dfeSmEventInfo *)userInfo)->laneDfe;
 
 
-    
+
     if (pLaneDfe->retryCntr > 0)
     {
-        
+
         err = fm10000SerDesDfeStartTimeoutTimerShrt(eventInfo,userInfo);
     }
 
-    
+
     *nextState = FM10000_SERDES_DFE_STATE_START;
 
     return err;
-}   /* end fm10000SerDesDfeProcessStopTuningTimeout */
+
+}
 
 
 

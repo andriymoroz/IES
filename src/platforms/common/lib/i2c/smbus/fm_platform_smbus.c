@@ -5,7 +5,7 @@
  * Creation Date:   June 3, 2013
  * Description:     SMBUS functions.
  *
- * Copyright (c) 2013 - 2014, Intel Corporation
+ * Copyright (c) 2013 - 2015, Intel Corporation
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -29,7 +29,7 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
+ *****************************************************************************/
 
 #include <fm_sdk.h>
 
@@ -435,10 +435,10 @@ fm_status fmPlatformSMBusI2cWriteRead(int      fd,
     }
     else if (wl == 3 && rl == 4)
     {
-        /* Reading Alta register requires a write of 3 bytes for address and read back
+        /* Reading FM6000 register requires a write of 3 bytes for address and read back
          * of 4 bytes for value. However there is no such SMBUS command defined.
          * A method is to write 3 bytes for address, followed by a write read with writing of
-         * 1 byte of zero. Alta will ignore the 1 byte write and return the 4 bytes register value */
+         * 1 byte of zero. FM6000 will ignore the 1 byte write and return the 4 bytes register value */
         status = fmPlatformSMBusI2cWriteRead(fd, device, data, 3, 0);
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
 

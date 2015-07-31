@@ -58,6 +58,15 @@
                              (x)->info.vnListener.vni);                         \
                 break;                                                          \
                                                                                 \
+            case FM_MCAST_GROUP_LISTENER_FLOW_TUNNEL:                           \
+                FM_LOG_DEBUG(FM_LOG_CAT_MULTICAST,                              \
+                             "    listener = %p, FLOW_TUNNEL type: "            \
+                             "tableIndex = %d, flowId = %d)\n",                 \
+                             (void *) x,                                        \
+                             (x)->info.flowListener.tableIndex,                 \
+                             (x)->info.flowListener.flowId);                    \
+                break;                                                          \
+                                                                                \
             default:                                                            \
                 FM_LOG_DEBUG(FM_LOG_CAT_MULTICAST,                              \
                              "    listener = %p, UNKNOWN TYPE!\n",              \
@@ -452,6 +461,9 @@ fm_bool fmHasMcastGroupNonVirtualListeners(fm_int sw,
 
 fm_bool fmHasMcastGroupVirtualListeners(fm_int sw,
                                         fm_int mcastGroup);
+
+fm_bool fmHasMcastGroupNonFloodingListeners(fm_int sw,
+                                            fm_int mcastGroup);
 
 fm_status fmUpdateMcastHNIFloodingGroups(fm_int  sw,
                                          fm_int  port,

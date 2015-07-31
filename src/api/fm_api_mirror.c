@@ -5,7 +5,7 @@
  * Creation Date:   2005
  * Description:     Structures and functions for dealing with mirroring and ACLs
  *
- * Copyright (c) 2005 - 2014, Intel Corporation
+ * Copyright (c) 2005 - 2015, Intel Corporation
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -29,7 +29,7 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
+ *****************************************************************************/
 
 #include <fm_sdk_int.h>
 
@@ -3184,6 +3184,10 @@ fm_int fmGetMirrorPortDest(fm_int sw, fm_int port, fm_mirrorType mirrorType)
                         err = fmGetBitArrayBit(&grp->egressPortUsed,
                                                portPtr->portIndex,
                                                &portVal);
+                        break;
+
+                    default:
+                        err = FM_ERR_INVALID_VALUE;
                         break;
 
                 }   /* end switch (mirrorType) */

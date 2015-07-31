@@ -30,7 +30,7 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
+ *****************************************************************************/
 
 #ifndef __FM_FM10000_API_HW_INT_H
 #define __FM_FM10000_API_HW_INT_H
@@ -123,7 +123,7 @@
  * \ingroup  constSystem  */
 #define FM10000_MAX_ECMP_GROUP_SIZE     16
 
-/* The maximum number of routers supported */
+/* The maximum number of routers supported. */
 #define FM10000_MAX_VIRTUAL_ROUTERS     14
 
 #define FM10000_MAX_TRAFFIC_CLASS       8
@@ -142,7 +142,7 @@
  *  \ingroup constSystem */
 #define FM10000_MAX_MEMORY_SEGMENTS     24576
 
-/** The size of a FM10000 segment in bytes */
+/** The size of an FM10000 segment in bytes. */
 #define FM10000_SEGMENT_SIZE            192
 
 /* The maximum number of switch priorities.  */
@@ -151,22 +151,23 @@
 /* The maximum number of switch memory partitions.  */
 #define FM10000_MAX_SWITCH_SMPS         2
 
-/* The maximum number of hardware CRMs */
+/* The maximum number of hardware CRMs. */
 #define FM10000_MAX_HW_CRM              64
 
-/* The number of policer banks */
+/* The number of policer banks. */
 #define FM10000_MAX_POLICER_BANKS       4
 
-/* Ethernet Reference Clock (ETH_REFCLK) */
+/* Ethernet Reference Clock (ETH_REFCLK). */
 #define FM10000_ETH_REF_CLOCK_FREQ      156250000
 
-/* The maximum frame size suppported in bytes (15KB) */
+/* The maximum frame size suppported in bytes (15KB). */
 #define FM10000_MAX_FRAME_SIZE          15368
 
-/** Maximum number of Virtual Network Tunnels supported by FM10000 hardware */
+/** Maximum number of Virtual Network Tunnels supported by FM10000
+ *  hardware. */
 #define FM10000_MAX_VN_TUNNELS          FM10000_TE_LOOKUP_ENTRIES_0
 
-/* The number of PEPs */
+/* The number of PEPs. */
 #define FM10000_MAX_PEP                 8
 #define FM10000_NUM_PEPS                (FM10000_MAX_PEP + 1)
 #define FM10000_MAX_DUAL_PEP            7

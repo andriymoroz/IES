@@ -52,9 +52,9 @@
  * Local Variables
  *****************************************************************************/
 
-static fm_semaphore mgmtSem;
-static fm_bool      pollingPendingTask = FALSE;
-static fm_bool      enableMgmt = FALSE;
+static fm_semaphore mgmtSem[FM_MAX_NUM_SWITCHES];
+static fm_bool      pollingPendingTask[FM_MAX_NUM_SWITCHES] = {FALSE};
+static fm_bool      enableMgmt[FM_MAX_NUM_SWITCHES] = {FALSE};
 
 
 /*****************************************************************************
@@ -88,6 +88,7 @@ static fm_bool IsSfppModule1000BaseT(fm_platXcvrInfo *xcvrInfo)
     return FALSE;
 
 }   /* end IsSfppModule1000BaseT */
+
 
 
 
@@ -144,6 +145,7 @@ static fm_bool IsSfppPort1G(fm_platXcvrInfo *xcvrInfo)
 
 
 
+
 /*****************************************************************************/
 /* IsPortAnEnabled
  * \ingroup intPlatform
@@ -176,6 +178,127 @@ static fm_bool IsPortAnEnabled(fm_int sw, fm_int port)
     return FALSE;
 
 }   /* end IsPortAnEnabled */
+
+
+
+
+/*****************************************************************************/
+/* GetEthModeFromXcvrType
+ * \ingroup intPlatform
+ *
+ * \desc            Returns the ethernet mode associated to the transceiver
+ *                  type
+ *
+ * \param[in]       type is the transceiver type.
+ *
+ * \return          ethMode ethernet mode.
+ *
+ *****************************************************************************/
+fm_ethMode GetEthModeFromXcvrType(fm_platformXcvrType type, fm_byte *eeprom)
+{
+    switch (type)
+    {
+        case FM_PLATFORM_XCVR_TYPE_1000BASE_T:
+            return FM_ETH_MODE_SGMII;
+                                         
+        case FM_PLATFORM_XCVR_TYPE_SFP_DAC:
+            return FM_ETH_MODE_10GBASE_CR;
+                                         
+        case FM_PLATFORM_XCVR_TYPE_SFP_OPT:
+            if ( fmPlatformXcvrIs1G(eeprom) )
+            {
+                return FM_ETH_MODE_1000BASE_X;
+            }
+            else
+            {
+                return FM_ETH_MODE_10GBASE_SR;
+            }
+                                         
+        case FM_PLATFORM_XCVR_TYPE_QSFP_DAC:
+            return FM_ETH_MODE_AN_73;
+                                         
+        case FM_PLATFORM_XCVR_TYPE_QSFP_AOC:
+        case FM_PLATFORM_XCVR_TYPE_QSFP_OPT:
+            return FM_ETH_MODE_40GBASE_SR4;
+                                         
+        case FM_PLATFORM_XCVR_TYPE_QSFP28_DAC:
+            return FM_ETH_MODE_AN_73;
+                                         
+        case FM_PLATFORM_XCVR_TYPE_QSFP28_AOC:
+        case FM_PLATFORM_XCVR_TYPE_QSFP28_OPT:
+            return FM_ETH_MODE_100GBASE_SR4;
+
+        case FM_PLATFORM_XCVR_TYPE_UNKNOWN:
+        case FM_PLATFORM_XCVR_TYPE_NOT_PRESENT:
+        default:
+            return FM_ETH_MODE_DISABLED;
+    }
+
+
+}   /* end GetEthModeFromXcvrType */
+
+
+
+
+/*****************************************************************************/
+/* SetPortConfig
+ * \ingroup intPlatform
+ *
+ * \desc            Helper function to set some port configuration elements
+ *                  based on the transceiver detetected.
+ *
+ * \param[in]       sw is the switch number.
+ *
+ * \param[in]       portIndex is the index to the transceiver info structure.
+ *
+ * \return          None.
+ *
+ *****************************************************************************/
+void SetPortConfig(fm_int sw, fm_int portIndex)
+{
+    fm_platformCfgPort *portCfg;
+    fm_platXcvrInfo *   xcvrInfo;
+
+    portCfg = FM_PLAT_GET_PORT_CFG(sw, portIndex);
+    xcvrInfo = &GET_PLAT_STATE(sw)->xcvrInfo[portIndex];
+
+    portCfg->ethMode = GetEthModeFromXcvrType(xcvrInfo->type, 
+                                              xcvrInfo->eeprom);
+
+    if ( xcvrInfo->type == FM_PLATFORM_XCVR_TYPE_QSFP28_DAC )
+    {
+        /* Advertise only 40G and/or 100G as set in the config file. */
+        portCfg->an73Ability = portCfg->an73AbilityCfg & 
+                                        (FM_PLAT_AN73_ABILITY_40GBASE_CR4 |
+                                         FM_PLAT_AN73_ABILITY_100GBASE_CR4);
+        if ( portCfg->an73Ability == 0 )
+        {
+            /* Advertise both 40G and 100G */
+            portCfg->an73Ability = FM_PLAT_AN73_ABILITY_40GBASE_CR4 |
+                                   FM_PLAT_AN73_ABILITY_100GBASE_CR4;
+        }
+    }
+    else if (xcvrInfo->type == FM_PLATFORM_XCVR_TYPE_QSFP_DAC)
+    {
+        /* Advertize 40G only */
+        portCfg->an73Ability = FM_PLAT_AN73_ABILITY_40GBASE_CR4;
+    }
+
+    MOD_STATE_DEBUG("Port %d:%d module autodetected (%s)\n"
+                    "          ethMode: %s\n",
+                    sw,
+                    portCfg->port, 
+                    fmPlatformXcvrTypeGetName(xcvrInfo->type),
+                    fm10000GetEthModeStr(portCfg->ethMode));
+
+    if ( portCfg->ethMode == FM_ETH_MODE_AN_73 )
+    {
+        MOD_STATE_DEBUG("          anAbility: 0x%x\n",
+                        portCfg->an73Ability);
+    }
+
+}   /* end SetPortConfig */
+
 
 
 
@@ -219,7 +342,7 @@ static fm_status ConfigureSfppXcvr(fm_int sw,
 
     if ( IsSfppModuleDualRate(xcvrInfo) )
     {
-        /* Per SFF-8472, Table 3.17 */
+        /* Per SFF-8472, Table 9.11 */
         data = IsSfppPort1G(xcvrInfo) ? 0x0 : 0x8;
         status = fmPlatformXcvrMemWrite(sw, port, 1, 110, &data, 1);
         FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
@@ -409,6 +532,15 @@ static fm_status XcvrReadAndValidateEeprom(fm_int  sw,
                                       XCVR_EEPROM_CACHE_SIZE);
     if (status == FM_OK)
     {
+        if (retry)
+        {
+            MOD_STATE_DEBUG("Port %d:%d Reading module EEPROM "
+                            "success in %d tries\n",
+                             sw,
+                             portCfg->port,
+                             MAX_EEPROM_READ_RETRY - xcvrInfo->eepromReadRetries);
+        }
+
         xcvrInfo->eepromReadRetries = 0;
         xcvrInfo->eepromBaseValid =
             fmPlatformXcvrEepromIsBaseCsumValid(xcvrInfo->eeprom);
@@ -449,6 +581,107 @@ static fm_status XcvrReadAndValidateEeprom(fm_int  sw,
     return status;
 
 }   /* end XcvrReadAndValidateEeprom */
+
+
+
+
+/*****************************************************************************/
+/* NotifyXcvrDetection
+ * \ingroup intPlatform
+ *
+ * \desc            If auto-detection is enabled on the port this function
+ *                  will configure the Ethernet mode based on the transceiver
+ *                  type.
+ *
+ * \param[in]       sw is the switch number.
+ *
+ * \param[in]       portIndex is the index to the transceiver info structure.
+ *
+ * \return          FM_OK if successful.
+ * \return          Other ''Status Codes'' as appropriate in case of
+ *                  failure.
+ *
+ *****************************************************************************/
+static fm_status NotifyXcvrDetection(fm_int sw, fm_int portIndex)
+{
+    fm_platformCfgPort *portCfg;
+    fm_platformCfgPort *pCfg;
+    fm_platformCfgEpl * epl;
+    fm_platXcvrInfo *   xcvrInfo;
+    fm_status           status;
+    fm_ethMode          mode;
+    fm_int              idx;
+    fm_int              lane;
+
+    portCfg = FM_PLAT_GET_PORT_CFG(sw, portIndex);
+    xcvrInfo = &GET_PLAT_STATE(sw)->xcvrInfo[portIndex];
+    status = FM_OK;
+
+    if ( portCfg->autodetect )
+    {
+        /* Set the portCfg->ethMode and anAbility based on the detected xcvr */
+        SetPortConfig(sw, portIndex);
+
+        if ( portCfg->ethMode != xcvrInfo->ethMode || 
+             portCfg->ethMode == FM_ETH_MODE_AN_73 )
+        {
+            /* If QSFP port then set the four lanes on that EPL in DISABLED
+               state first. */
+            if ( portCfg->intfType == FM_PLAT_INTF_TYPE_QSFP_LANE0 )
+            {
+                /* Save the new ethernet mode */
+                mode = portCfg->ethMode;
+
+                epl = &FM_PLAT_GET_SWITCH_CFG(sw)->epls[portCfg->epl];
+                for ( lane = 0 ; lane < 4 ; lane++ )
+                {
+                    /* Get the portIndex associated to the lane. */
+                    idx = epl->laneToPortIdx[lane];
+                    if ( idx != FM_PLAT_UNDEFINED )
+                    {
+                        pCfg = FM_PLAT_GET_PORT_CFG(sw, idx);
+                        pCfg->ethMode = FM_ETH_MODE_DISABLED;
+
+                        MOD_STATE_DEBUG("Port %d:%d Force ethMode: %s\n", 
+                                        sw, 
+                                        pCfg->port,
+                                        fm10000GetEthModeStr(pCfg->ethMode));
+
+                        fmPlatformSetPortEthMode(sw, pCfg->port);
+                    }
+                }
+
+                /* Restore the new ethernet mode */
+                portCfg->ethMode = mode;
+            }
+
+            MOD_STATE_DEBUG("Port %d:%d set ethMode: %s in the API\n", 
+                            sw, 
+                            portCfg->port,
+                            fm10000GetEthModeStr(portCfg->ethMode));
+
+
+            /* Send the new ethMode to the API. */
+            status = fmPlatformSetPortEthMode(sw, portCfg->port);
+
+            /* Note: xcvrInfo->ethMode will be changed in function
+                     fmPlatformMgmtNotifyEthModeChange */
+        }
+        else
+        {
+            UpdateSerdesSettings(sw, portIndex);
+            UpdateXcvrConfig(sw, portIndex, MAX_CONFIG_RETRY);
+        }
+    }
+    else
+    {
+        UpdateSerdesSettings(sw, portIndex);
+        UpdateXcvrConfig(sw, portIndex, MAX_CONFIG_RETRY);
+    }
+
+    return status;
+
+}   /* end NotifyXcvrDetection */
 
 
 
@@ -699,13 +932,13 @@ static void XcvrUpdateState(fm_int sw, fm_bool force, fm_bool interrupting)
             if (notify && present && (xcvrState & FM_PLAT_XCVR_ENABLE))
             {
                 status = XcvrReadAndValidateEeprom(sw, portIdx, FALSE);
-                MOD_STATE_DEBUG("Port %d module reading EEPROM: %s\n",
+                MOD_STATE_DEBUG("Port %d:%d module reading EEPROM: %s\n",
+                                sw,
                                 port, 
                                 fmErrorMsg(status));
                 if (status == FM_OK)
                 {
-                    UpdateSerdesSettings(sw, portIdx);
-                    UpdateXcvrConfig(sw, portIdx, MAX_CONFIG_RETRY);
+                    NotifyXcvrDetection(sw, portIdx);
                 }
             }
 
@@ -761,10 +994,13 @@ static void XcvrUpdateState(fm_int sw, fm_bool force, fm_bool interrupting)
                 if (xcvrInfo[portIdx].ethMode != FM_ETH_MODE_DISABLED)
                 {
                     /* Notify the API */
-                    fmNotifyXcvrChange(sw, port, 0, 0, xcvrSignals, NULL);
-                    MOD_STATE_DEBUG("Port %d Notify API xcvrSignals 0x%x\n",
-                                    port, 
-                                    xcvrSignals);
+                    status = fmNotifyXcvrChange(sw, port, 0, 0, xcvrSignals, NULL);
+                    if (status != FM_ERR_UNSUPPORTED)
+                    {
+                        MOD_STATE_DEBUG("Port %d Notify API xcvrSignals 0x%x\n",
+                                        port, 
+                                        xcvrSignals);
+                    }
                 }
 
                 /* Notify the Application */
@@ -804,17 +1040,20 @@ static void XcvrUpdateState(fm_int sw, fm_bool force, fm_bool interrupting)
                             pCfg = FM_PLAT_GET_PORT_CFG(sw, lanePortIdx);
 
                             /* Notify the API */
-                            fmNotifyXcvrChange(sw, 
-                                               pCfg->port, 
-                                               0, 
-                                               0, 
-                                               xcvrSignals, 
-                                               NULL);
+                            status = fmNotifyXcvrChange(sw, 
+                                                        pCfg->port, 
+                                                        0, 
+                                                        0, 
+                                                        xcvrSignals, 
+                                                        NULL);
 
-                            MOD_STATE_DEBUG("Port %d Notify API "
-                                            "xcvrSignals 0x%x\n",
-                                            pCfg->port, 
-                                            xcvrSignals);
+                            if (status != FM_ERR_UNSUPPORTED)
+                            {
+                                MOD_STATE_DEBUG("Port %d Notify API "
+                                                "xcvrSignals 0x%x\n",
+                                                pCfg->port, 
+                                                xcvrSignals);
+                            }
                         }
                     }
 
@@ -839,18 +1078,21 @@ static void XcvrUpdateState(fm_int sw, fm_bool force, fm_bool interrupting)
                         if (xcvrInfo[portIdx].ethMode != FM_ETH_MODE_DISABLED)
                         {
                             /* Notify the API */
-                            fmNotifyXcvrChange(sw, 
-                                               port, 
-                                               0, 
-                                               lane, 
-                                               xcvrSignals, 
-                                               NULL);
+                            status = fmNotifyXcvrChange(sw, 
+                                                        port, 
+                                                        0, 
+                                                        lane, 
+                                                        xcvrSignals, 
+                                                        NULL);
 
-                            MOD_STATE_DEBUG("Port %d.%d Notify API "
-                                            "xcvrSignals 0x%x\n",
-                                            port, 
-                                            lane, 
-                                            xcvrSignals);
+                            if (status != FM_ERR_UNSUPPORTED)
+                            {
+                                MOD_STATE_DEBUG("Port %d.%d Notify API "
+                                                "xcvrSignals 0x%x\n",
+                                                port, 
+                                                lane, 
+                                                xcvrSignals);
+                            }
                         }
                     }
 
@@ -933,14 +1175,8 @@ static void XcvrRetryEepromRead(fm_int sw)
                 continue;
             }
 
-            MOD_STATE_DEBUG("Port %d:%d Reading module EEPROM "
-                            "success in %d tries\n",
-                             sw,
-                             portCfg->port,
-                             MAX_EEPROM_READ_RETRY - xcvrInfo->eepromReadRetries);
-
             xcvrInfo->eepromReadRetries = 0;
-            UpdateSerdesSettings(sw, portIdx);
+            NotifyXcvrDetection(sw, portIdx);
         }
     }
 
@@ -1014,6 +1250,180 @@ static void XcvrRetryConfig(fm_int sw)
 
 
 
+/*****************************************************************************/
+/** GetQsfpTxDisableBitmask
+ * \ingroup intPlatform
+ *
+ * \desc            Return the Tx_Disable bitmask associated to the four
+ *                  ports of a QSFP module.
+ * 
+ * \note            The switch number and port index are assumed to be valid.
+ * 
+ * \param[in]       sw is the switch number.
+ *
+ * \param[in]       port is the logical port number.
+ *
+ * \return          The Tx_Disable bitmask for the QSFP module
+ *
+ *****************************************************************************/
+static fm_byte GetQsfpTxDisableBitmask(fm_int sw, fm_int port)
+{
+    fm_platformCfgPort *portCfg;
+    fm_platformCfgEpl * epl;
+    fm_platXcvrInfo *   xcvrInfo;
+    fm_int              portIdx;
+    fm_int              lane;
+    fm_byte             data;
+    
+    data = 0;
+        
+    portCfg = fmPlatformCfgPortGet(sw, port);
+    if (portCfg)
+    {
+        epl = &FM_PLAT_GET_SWITCH_CFG(sw)->epls[portCfg->epl];
+
+        /* Read the Tx_Disable state for each QSFP_LANE0..3 */
+        for ( lane = 0 ; lane < 4 ; lane++ )
+        {
+            /* Get the portIndex associated to the lane. */
+            portIdx = epl->laneToPortIdx[lane];
+
+            if ( portIdx != FM_PLAT_UNDEFINED )
+            {
+                xcvrInfo = &GET_PLAT_STATE(sw)->xcvrInfo[portIdx];
+                if ( xcvrInfo->disabled )
+                {
+                    /* Set the corresponding Tx_Disable bit */
+                    data |= (1 << lane);
+                }
+            }
+        }
+    }
+
+    return data;
+
+}   /* end GetQsfpTxDisableBitmask */
+
+
+
+
+/*****************************************************************************/
+/** WriteEepromTxDisableBits
+ * \ingroup intPlatform
+ *
+ * \desc            Write the Tx_Disable bits into the Control bytes 86 for
+ *                  the specified module EEPROM.
+ * 
+ *                  Per table 6-9 in SFF-8636. 
+ *  
+ *                  Bit
+ *                  ===
+ *                  7-4: Reserved
+ *                   3:  Tx4 Disable 
+ *                   2:  Tx3 Disable 
+ *                   1:  Tx2 Disable 
+ *                   0:  Tx1 Disable
+ *  
+ *                  Writing 1 disables the laser of the channel
+ *
+ * \param[in]       sw is the switch number.
+ *
+ * \param[in]       port is the logical port number of the QSFP module.
+ *
+ * \param[out]      data specifies the Tx_Disable value to write.
+ *
+ * \return          FM_OK if successful.
+ * \return          Other ''Status Codes'' as appropriate in case of
+ *                  failure.
+ *
+ *****************************************************************************/
+static fm_status WriteEepromTxDisableBits(fm_int sw, fm_int port, fm_byte data)
+{
+
+    return fmPlatformXcvrMemWrite(sw, port, 0, 86, &data, 1);
+
+}   /* end WriteEepromTxDisableBits */
+
+
+
+
+/*****************************************************************************/
+/** SetPortXcvrState
+ * \ingroup intPlatform
+ *
+ * \desc            Enables/disables a transceiver.
+ *                  For SFP it will set the Tx_Disable signal accordingly.
+ *                  For QSFP it will set the ResetL signal accordingly.
+ *
+ * \param[in]       sw is the switch number.
+ *
+ * \param[in]       port is the logical port number.
+ *
+ * \param[out]      enable specifies enable or disable the transceiver.
+ *
+ * \return          FM_OK if successful.
+ *
+ *****************************************************************************/
+static fm_status SetPortXcvrState(fm_int sw, fm_int port, fm_bool enable)
+{
+    fm_status       status;
+    fm_int          swNum;
+    fm_uint32       hwResId;
+    fm_uint32       xcvrStateValid;
+    fm_uint32       xcvrState;
+    fm_platformLib *libFunc;
+
+    FM_LOG_ENTRY(FM_LOG_CAT_PLATFORM,
+                 "sw = %d, port = %d, enable = %d\n",
+                 sw,
+                 port,
+                 enable);
+
+    /* Switch and port number have been validate by the caller */
+
+    libFunc = FM_PLAT_GET_LIB_FUNCS_PTR(sw);
+
+    if ( !libFunc->SetPortXcvrState )
+    {
+        FM_LOG_EXIT(FM_LOG_CAT_PLATFORM, FM_OK);
+    }
+
+    status = fmPlatformMapLogicalPortToPlatform(sw,
+                                                port,
+                                                &swNum,
+                                                &hwResId,
+                                                NULL);
+    FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
+
+    if ((status = fmPlatformMgmtTakeSwitchLock(sw)) != FM_OK)
+    {
+         FM_LOG_EXIT(FM_LOG_CAT_PLATFORM, status);
+    }
+    TAKE_PLAT_I2C_BUS_LOCK(sw);
+
+    if ( libFunc->SelectBus )
+    {
+        status = libFunc->SelectBus(swNum, FM_PLAT_BUS_XCVR_STATE, hwResId);
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
+    }
+
+    xcvrStateValid = FM_PLAT_XCVR_ENABLE;
+    xcvrState      = enable ? FM_PLAT_XCVR_ENABLE : 0;
+
+    status = libFunc->SetPortXcvrState(swNum,
+                                       hwResId,
+                                       xcvrStateValid,
+                                       xcvrState);
+ABORT:
+    DROP_PLAT_I2C_BUS_LOCK(sw);
+    fmPlatformMgmtDropSwitchLock(sw);
+
+    FM_LOG_EXIT(FM_LOG_CAT_PLATFORM, status);
+
+}   /* end SetPortXcvrState */
+
+
+
 
 /*****************************************************************************/
 /* fmPlatformMgmtThread
@@ -1044,7 +1454,7 @@ static void *fmPlatformMgmtThread(void *args)
 
     status = fmCreateSemaphore("platformMgmtSem",
                                FM_SEM_BINARY,
-                               &mgmtSem,
+                               &mgmtSem[sw],
                                0);
 
     if (status != FM_OK)
@@ -1080,13 +1490,13 @@ static void *fmPlatformMgmtThread(void *args)
     while (1)
     {
         /* Handle interrupt and polling */
-        status = fmWaitSemaphore(&mgmtSem, &timeout);
+        status = fmWaitSemaphore(&mgmtSem[sw], &timeout);
 
         /* Status != OK means the semaphore timeout, so do polling */
         interrupt = (status == FM_OK) ? TRUE : FALSE;
 
         /* Don't start before switch is brought up */
-        if (!enableMgmt)
+        if (!enableMgmt[sw])
         {
             continue;
         }
@@ -1096,10 +1506,10 @@ static void *fmPlatformMgmtThread(void *args)
             continue;
         }
 
-        if (!interrupt || pollingPendingTask)
+        if (!interrupt || pollingPendingTask[sw])
         {
             /* Do polling task here */
-            pollingPendingTask = FALSE;
+            pollingPendingTask[sw] = FALSE;
 
             /* Retry EEPROM reading when module is not ready */
             XcvrRetryEepromRead(sw);
@@ -1378,12 +1788,22 @@ fm_status fmPlatformMgmtXcvrInitialize(fm_int sw)
         if ( (xcvrStateValidList[hwResIdIdx] & FM_PLAT_XCVR_ENABLE) &&
              (xcvrInfo->modState & FM_PLAT_XCVR_ENABLE) )
         {
-            MOD_STATE_DEBUG("Port %d:%d module is ENABLED\n", sw, portCfg->port);
+            MOD_STATE_DEBUG("Port %d:%d module is ENABLED\n", 
+                            sw, 
+                            portCfg->port);
  
             /* Read the module EEPROM */
             if (xcvrInfo->present)
             {
-                XcvrReadAndValidateEeprom(sw, portIdx, FALSE);
+                status = XcvrReadAndValidateEeprom(sw, portIdx, FALSE);
+                if ( status == FM_OK && portCfg->autodetect )
+                {
+                    /* Set the ethMode and anAbility based on the detected
+                       xcvr. The selected ethMode will be sent to the API
+                       in fmPlatformPortInitialize */
+                    SetPortConfig(sw, portIdx);
+                    xcvrInfo->ethMode = portCfg->ethMode;
+                }
             }
         }
     }
@@ -1471,7 +1891,7 @@ void fmPlatformMgmtEnableInterrupt(fm_int sw)
     /* Update the start up state */
     XcvrUpdateState( sw, TRUE, FALSE );
 
-    enableMgmt = TRUE;
+    enableMgmt[sw] = TRUE;
 
 }   /* end fmPlatformMgmtEnableInterrupt */
 
@@ -1499,7 +1919,7 @@ void fmPlatformMgmtSignalInterrupt(fm_int sw, fm_int gpio)
     /* Re-enable interrupt on that GPIO */
     fmPlatformGpioUnmaskIntr(sw, gpio, FM_PLAT_GPIO_INTR_FALLING);
 
-    fmSignalSemaphore(&mgmtSem);
+    fmSignalSemaphore(&mgmtSem[sw]);
 
 }   /* end fmPlatformMgmtSignalInterrupt */
 
@@ -1511,15 +1931,17 @@ void fmPlatformMgmtSignalInterrupt(fm_int sw, fm_int gpio)
  * \ingroup intPlatform
  *
  * \desc            Signal the polling thread to run right away.
+ * 
+ * \param[in]       sw is the switch number
  *
  * \return          None.
  *
  *****************************************************************************/
-void fmPlatformMgmtSignalPollingThread(void)
+void fmPlatformMgmtSignalPollingThread(fm_int sw)
 {
 
-    fmSignalSemaphore(&mgmtSem);
-    pollingPendingTask = TRUE;
+    fmSignalSemaphore(&mgmtSem[sw]);
+    pollingPendingTask[sw] = TRUE;
 
 }   /* end fmPlatformMgmtSignalPollingThread */
 
@@ -1531,7 +1953,7 @@ void fmPlatformMgmtSignalPollingThread(void)
  * \ingroup intPlatform
  *
  * \desc            Returns the transceiver type for a given port along with
- *                  length if applicable.
+ *                  length and a flag indicating if the xcvr is optical or not.
  *
  * \param[in]       sw is the switch number.
  *
@@ -1543,6 +1965,9 @@ void fmPlatformMgmtSignalPollingThread(void)
  * \param[out]      xcvrLen points to storage where the transceiver cable length,
  *                  if applicable, will be written.
  *
+ * \param[out]      isOptical points to storage where the optical indication
+ *                  will be written.
+ * 
  * \return          FM_OK if successful.
  * \return          Other ''Status Codes'' as appropriate in case of
  *                  failure.
@@ -1551,7 +1976,8 @@ void fmPlatformMgmtSignalPollingThread(void)
 fm_status fmPlatformMgmtGetTransceiverType(fm_int               sw,
                                            fm_int               port,
                                            fm_platformXcvrType *xcvrType,
-                                           fm_int *             xcvrLen)
+                                           fm_int *             xcvrLen,
+                                           fm_bool *            isOptical)
 {
     fm_platformCfgPort *portCfg;
     fm_platXcvrInfo *   xcvrInfo;
@@ -1588,11 +2014,17 @@ fm_status fmPlatformMgmtGetTransceiverType(fm_int               sw,
         *xcvrLen  = xcvrInfo->cableLength;
     }
 
-    MOD_TYPE_DEBUG("Port %d:%d Transceiver type: %s length: %d\n",
+    if (isOptical)
+    {
+        *isOptical = fmPlatformXcvrIsOptical(xcvrInfo->type);
+    }
+    
+    MOD_TYPE_DEBUG("Port %d:%d Transceiver type: %s length: %d isOptical %d\n",
                    sw,
                    port, 
                    fmPlatformXcvrTypeGetName(xcvrInfo->type), 
-                   xcvrInfo->cableLength);
+                   xcvrInfo->cableLength,
+                   fmPlatformXcvrIsOptical(xcvrInfo->type));
 
     return FM_OK;
 
@@ -1624,6 +2056,8 @@ void fmPlatformMgmtNotifyEthModeChange(fm_int     sw,
     fm_int              portIdx;
     fm_platformCfgPort *portCfg;
     fm_platXcvrInfo *   xcvrInfo;
+    fm_ethMode          oldMode;
+    fm_byte             data;
 
     portIdx = fmPlatformCfgPortGetIndex(sw, port);
 
@@ -1636,18 +2070,31 @@ void fmPlatformMgmtNotifyEthModeChange(fm_int     sw,
     portCfg  = FM_PLAT_GET_PORT_CFG(sw, portIdx);
     xcvrInfo = &GET_PLAT_STATE(sw)->xcvrInfo[portIdx];
 
-    MOD_TYPE_DEBUG("%s: port %d mode change from %s ",
-                   __func__,
-                   port,
-                   fmPlatformGetEthModeStr(xcvrInfo->ethMode));
+    MOD_STATE_DEBUG("Port %d:%d EthMode change from %s to %s\n",
+                    sw,
+                    port,
+                    fmPlatformGetEthModeStr(xcvrInfo->ethMode),
+                    fmPlatformGetEthModeStr(mode));
 
-    MOD_TYPE_DEBUG("to %s\n",fmPlatformGetEthModeStr(mode));
 
+    oldMode = xcvrInfo->ethMode;
     xcvrInfo->ethMode = mode;
     if (mode & FM_ETH_MODE_MULTI_LANE_MASK)
     {
         /* Multi-lane eth mode */
         fmPlatformSetPortSerdesTxCfg(sw, port, TRUE, mode);
+
+        if (xcvrInfo->present &&
+            portCfg->intfType == FM_PLAT_INTF_TYPE_QSFP_LANE0)
+        {
+            /* Make sure the 4 lanes are set appropriately. */
+            data = ( xcvrInfo->disabled ) ? 0xf : 0x0;
+            MOD_STATE_DEBUG("Port %d:%d EthMode, set Tx_Disable bits to %Xh\n", 
+                            sw, 
+                            port,
+                            data);
+            WriteEepromTxDisableBits(sw, port, data);
+        }
     }
     else
     {
@@ -1668,12 +2115,27 @@ void fmPlatformMgmtNotifyEthModeChange(fm_int     sw,
             {
                 /* Let the background thread do it */
                 xcvrInfo->configRetries = MAX_CONFIG_RETRY;
-                fmPlatformMgmtSignalPollingThread();
+                fmPlatformMgmtSignalPollingThread(sw);
             }
+        }
+        else if ( xcvrInfo->present && 
+                  portCfg->intfType == FM_PLAT_INTF_TYPE_QSFP_LANE0 &&
+                  (oldMode & FM_ETH_MODE_MULTI_LANE_MASK) )
+        {
+            /* Make sure all lanes are set based on their configuration. */
+
+            /* Get Tx_Disable bitmask associated to the four channels */
+            data = GetQsfpTxDisableBitmask(sw, port);
+            MOD_STATE_DEBUG("Port %d:%d EthMode, set Tx_Disable bits to %Xh\n", 
+                            sw, 
+                            port,
+                            data);
+            WriteEepromTxDisableBits(sw, port, data);
         }
     }
 
 }   /* end fmPlatformMgmtNotifyEthModeChange */
+
 
 
 
@@ -1720,7 +2182,7 @@ fm_status fmPlatformMgmtConfigSfppXcvrAutoNeg(fm_int sw,
 
     /* Do the update in the back ground */
     xcvrInfo->configRetries = MAX_CONFIG_RETRY;
-    fmPlatformMgmtSignalPollingThread();
+    fmPlatformMgmtSignalPollingThread(sw);
 
     return FM_OK;
 
@@ -1779,3 +2241,254 @@ fm_status fmPlatformMgmtDumpPort(fm_int sw, fm_int port)
     return FM_OK;
 
 }   /* end fmPlatformMgmtDumpPort */
+
+
+
+/*****************************************************************************/
+/** fmPlatformMgmtEnableXcvr
+ * \ingroup intPlatform
+ *
+ * \desc            Enables/disables a transceiver.
+ *
+ * \param[in]       sw is the switch number.
+ *
+ * \param[in]       port is the logical port number.
+ *
+ * \param[out]      enable specifies enable or disable the transceiver.
+ *
+ * \return          FM_OK if successful.
+ *
+ *****************************************************************************/
+fm_status fmPlatformMgmtEnableXcvr(fm_int sw, fm_int port, fm_bool enable)
+{
+    fm_platformCfgPort *portCfg;
+    fm_platXcvrInfo *   xcvrInfo;
+    fm_status           status;
+    fm_int              portIdx;
+    fm_byte             data;
+
+    FM_LOG_ENTRY(FM_LOG_CAT_PLATFORM,
+                 "sw = %d, port = %d, enable = %d\n",
+                 sw,
+                 port,
+                 enable);
+
+    if ( (sw >= FM_FIRST_FOCALPOINT) && (sw < FM_PLAT_NUM_SW) )
+    {
+        portIdx = fmPlatformCfgPortGetIndex(sw, port);
+
+        if (portIdx < 0)
+        {
+            status = FM_ERR_INVALID_PORT;
+            FM_LOG_ABORT(FM_LOG_CAT_PLATFORM, status);
+        }
+
+    }
+    else
+    {
+        status = FM_ERR_INVALID_SWITCH;
+        FM_LOG_ABORT(FM_LOG_CAT_PLATFORM, status);
+    }
+
+    portCfg = FM_PLAT_GET_PORT_CFG(sw, portIdx);
+    xcvrInfo = &GET_PLAT_STATE(sw)->xcvrInfo[portIdx];
+
+    if ( xcvrInfo->disabled == !enable )
+    {
+        /* The disable state did not change, then nothing to do */
+        status = FM_OK;
+        FM_LOG_ABORT(FM_LOG_CAT_PLATFORM, status);
+    }
+
+    MOD_STATE_DEBUG("Port %d:%d Enable XCVR (enable %d, intfType %d)\n", 
+                    sw, 
+                    port, 
+                    enable,
+                    portCfg->intfType);
+
+    /* Save the new state */
+    xcvrInfo->disabled = !enable;
+
+    if ( portCfg->intfType == FM_PLAT_INTF_TYPE_SFPP )
+    {
+        /************************************************** 
+         * Enable/disable the transmitter through the 
+         * SFP Tx_Disable pin. 
+         **************************************************/
+
+        status = SetPortXcvrState(sw, port, enable);
+    }
+    else if ( portCfg->intfType == FM_PLAT_INTF_TYPE_QSFP_LANE0 ||
+              portCfg->intfType == FM_PLAT_INTF_TYPE_QSFP_LANE1 ||
+              portCfg->intfType == FM_PLAT_INTF_TYPE_QSFP_LANE2 ||
+              portCfg->intfType == FM_PLAT_INTF_TYPE_QSFP_LANE3 )
+    {
+        /************************************************** 
+         * Enable/disable the transmitter through the 
+         * Control bytes 86 per table 6-9 in SFF-8636. 
+         *  
+         *  Bit
+         *  ===
+         *  7-4: Reserved
+         *   3:  Tx4 Disable 
+         *   2:  Tx3 Disable 
+         *   1:  Tx2 Disable 
+         *   0:  Tx1 Disable
+         *  
+         *  Writing 1 disables the laser of the channel
+         **************************************************/
+
+        if ( portCfg->intfType != FM_PLAT_INTF_TYPE_QSFP_LANE0 )
+        {
+            /* EEPROM is accessed using QSFP_LANE0 port, so get pointer to
+               QSFP_LANE0 xcvrInfo. */
+            portIdx =
+                FM_PLAT_GET_SWITCH_CFG(sw)->epls[portCfg->epl].laneToPortIdx[0];
+
+            xcvrInfo = &GET_PLAT_STATE(sw)->xcvrInfo[portIdx];
+
+            if ( xcvrInfo->ethMode & FM_ETH_MODE_MULTI_LANE_MASK )
+            {
+                /* QSFP_LANE0 is in multi-lane mode then do not update the
+                   EEPROM since the Tx_Disable field is set based on lane 0
+                   state. */
+                MOD_STATE_DEBUG("Port %d:%d QSFP_LANE0 is in multi-lane mode, "
+                                "no need to set corresponding Tx_Disable bit\n", 
+                                sw, 
+                                port);
+                status = FM_OK;
+                FM_LOG_ABORT(FM_LOG_CAT_PLATFORM, status);
+            }
+
+            port = FM_PLAT_GET_PORT_CFG(sw, portIdx)->port;
+        }
+
+        if ( !xcvrInfo->present )
+        {
+            /* There is no module installed so no EEPROM to write to. */
+            MOD_STATE_DEBUG("Port %d:%d QSFP module not present\n", sw, port);
+            status = FM_OK;
+            FM_LOG_ABORT(FM_LOG_CAT_PLATFORM, status);
+        }
+
+        if ( portCfg->intfType == FM_PLAT_INTF_TYPE_QSFP_LANE0 &&
+             xcvrInfo->ethMode & FM_ETH_MODE_MULTI_LANE_MASK )
+        {
+            /* Operate on the four channels. */
+            data = (enable) ? 0x0 : 0x0f;
+        }
+        else
+        {
+            /* Get Tx_Disable bitmask associated to the four channels */
+            data = GetQsfpTxDisableBitmask(sw, port);
+        }
+
+        MOD_STATE_DEBUG("Port %d:%d set EEPROM Tx_Disable bits to %Xh\n", 
+                        sw, 
+                        port,
+                        data);
+
+        status = WriteEepromTxDisableBits(sw, port, data);
+    }
+    else
+    {
+        /* Does not have transceiver attached */
+        status = FM_OK;
+    }
+
+ABORT:
+    FM_LOG_EXIT(FM_LOG_CAT_PLATFORM, status);
+
+}   /* end fmPlatformMgmtEnableXcvr */
+
+
+
+
+/*****************************************************************************/
+/** fmPlatformMgmtEnableCableAutoDetection
+ * \ingroup intPlatform
+ *
+ * \desc            Enables/disables cable auto detection.
+ *
+ * \param[in]       sw is the switch number.
+ *
+ * \param[in]       port is the logical port number.
+ *
+ * \param[out]      enable specifies enable or disable auto detection.
+ *
+ * \return          FM_OK if successful.
+ *
+ *****************************************************************************/
+fm_status fmPlatformMgmtEnableCableAutoDetection(fm_int  sw, 
+                                                 fm_int  port, 
+                                                 fm_bool enable)
+{
+    fm_platformCfgPort *portCfg;
+    fm_status           status;
+    fm_int              portIdx;
+
+    FM_LOG_ENTRY(FM_LOG_CAT_PLATFORM,
+                 "sw = %d, port = %d, enable = %d\n",
+                 sw,
+                 port,
+                 enable);
+
+    /* Validate arguments */
+    if ( (sw >= FM_FIRST_FOCALPOINT) && (sw < FM_PLAT_NUM_SW) )
+    {
+        portIdx = fmPlatformCfgPortGetIndex(sw, port);
+
+        if (portIdx < 0)
+        {
+            status = FM_ERR_INVALID_PORT;
+            FM_LOG_ABORT(FM_LOG_CAT_PLATFORM, status);
+        }
+    }
+    else
+    {
+        status = FM_ERR_INVALID_SWITCH;
+        FM_LOG_ABORT(FM_LOG_CAT_PLATFORM, status);
+    }
+
+    portCfg = FM_PLAT_GET_PORT_CFG(sw, portIdx);
+
+    if ( portCfg->intfType == FM_PLAT_INTF_TYPE_SFPP || 
+         portCfg->intfType == FM_PLAT_INTF_TYPE_QSFP_LANE0 )
+    {
+        status = FM_OK;
+
+        if ( portCfg->autodetect != enable )
+        {
+            portCfg->autodetect = enable;
+            MOD_STATE_DEBUG("Port %d:%d autodetect set to %d \n", 
+                            sw,
+                            port,
+                            enable);
+            if (enable)
+            {
+                NotifyXcvrDetection(sw, portIdx);
+            }
+        }
+        else
+        {
+            MOD_STATE_DEBUG("Port %d:%d autodetect set to %d but "
+                            "it is unchanged\n", 
+                            sw,
+                            port,
+                            enable);
+        }
+    }
+    else
+    {
+        MOD_STATE_DEBUG("Port %d:%d ERROR autodetect can bet set on "
+                        "SFP or QSFP_LANE0 logical port only.\n", 
+                        sw,
+                        port);
+        status = FM_ERR_INVALID_PORT;
+    }
+
+ABORT:
+    FM_LOG_EXIT(FM_LOG_CAT_PLATFORM, status);
+
+}   /* end fmPlatformMgmtEnableCableAutoDetection */
+

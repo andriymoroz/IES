@@ -82,18 +82,24 @@ fm_status fmPlatformMgmtInit(fm_int sw);
 fm_status fmPlatformMgmtXcvrInitialize(fm_int sw);
 void fmPlatformMgmtEnableInterrupt(fm_int sw);
 void fmPlatformMgmtSignalInterrupt(fm_int sw, fm_int gpio);
-void fmPlatformMgmtSignalPollingThread(void);
+void fmPlatformMgmtSignalPollingThread(fm_int sw);
 void fmPlatformMgmtNotifyEthModeChange(fm_int sw, 
                                        fm_int port, 
                                        fm_ethMode mode);
 fm_status fmPlatformMgmtGetTransceiverType(fm_int               sw,
                                            fm_int               port,
                                            fm_platformXcvrType *xcvrType,
-                                           fm_int              *xcvrLen);
+                                           fm_int              *xcvrLen,
+                                           fm_bool *            isOptical);
 
 fm_status fmPlatformMgmtConfigSfppXcvrAutoNeg(fm_int sw,
                                               fm_int port,
                                               fm_bool enable);
+fm_status fmPlatformMgmtEnableXcvr(fm_int sw, fm_int port, fm_bool enable);
 fm_status fmPlatformMgmtDumpPort(fm_int sw, fm_int port);
+
+fm_status fmPlatformMgmtEnableCableAutoDetection(fm_int  sw, 
+                                                 fm_int  port, 
+                                                 fm_bool enable);
 
 #endif /* __FM_PLATFORM_XCVR_MGMT_H */

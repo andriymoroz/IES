@@ -6,7 +6,7 @@
  * Description:     Contains functions dealing with the state of individual
  *                  ports
  *
- * Copyright (c) 2005 - 2014, Intel Corporation
+ * Copyright (c) 2005 - 2015, Intel Corporation
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -169,7 +169,7 @@ fm_status fmSetPortState(fm_int sw, fm_int port, fm_int mode, fm_int subMode)
     fm_status err;
 
     err = fmSetPortStateV2(sw, port, FM_PORT_ACTIVE_MAC, mode, subMode);
-    
+
     return err;
 
 }   /* end fmSetPortState */
@@ -865,8 +865,11 @@ fm_status fmSetPortAttributeV2(fm_int sw,
     fm_port *  portPtr;
     fm_int     allowMode;
     fm_switch *switchPtr;
-    fm_bool    takeRoutingLock;
+    fm_bool    takeLocks;
+    fm_bool    l2LockTaken;
+    fm_bool    mTableLockTaken;
     fm_bool    routingLockTaken;
+    fm_bool    lagLockTaken;
 
     FM_LOG_ENTRY_API_V2(FM_LOG_CAT_PORT, port,
                      "sw=%d port=%d mac=%d lane=%d attr=%d value=%p\n",
@@ -880,8 +883,11 @@ fm_status fmSetPortAttributeV2(fm_int sw,
     VALIDATE_AND_PROTECT_SWITCH(sw);
     switchPtr = GET_SWITCH_PTR(sw);
 
-    takeRoutingLock  = FALSE;
+    takeLocks  = FALSE;
+    l2LockTaken = FALSE;
+    mTableLockTaken = FALSE;
     routingLockTaken = FALSE;
+    lagLockTaken = FALSE;
 
     /* Some attributes can apply to the CPU interface port. */
     switch (attr)
@@ -953,12 +959,12 @@ fm_status fmSetPortAttributeV2(fm_int sw,
 
         case FM_PORT_MCAST_PRUNING:
             allowMode = DISALLOW_CPU;
-            /* We need to take the routing lock (for the benefit 
-               of updating multicast HNI flooding groups) 
+            /* We need to take different locks (routing, L2 and mtable lock),
+               for the benefit of updating multicast HNI flooding groups, 
                to prevent possible lock inversions. Lock must
                be taken after VALIDATE_LOGICAL_PORT call for lock
                inversion reason as well. */
-            takeRoutingLock = TRUE;
+            takeLocks = TRUE;
             break;
             
         default:
@@ -985,12 +991,23 @@ fm_status fmSetPortAttributeV2(fm_int sw,
 
     portPtr = GET_PORT_PTR(sw, port);
 
-    if (takeRoutingLock)
+    if (takeLocks)
     {
         err = fmCaptureWriteLock(&switchPtr->routingLock, FM_WAIT_FOREVER);
-        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MULTICAST, err);
-
+        FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
         routingLockTaken = TRUE;
+
+        err = TAKE_LAG_LOCK(sw);
+        FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+        lagLockTaken = TRUE;
+
+        err = FM_TAKE_L2_LOCK(sw);
+        FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+        l2LockTaken = TRUE;
+
+        err = FM_TAKE_MTABLE_LOCK(sw);
+        FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+        mTableLockTaken = TRUE;
     }
 
     /* Apply the attribute to the port (can be a LAG logical port) */
@@ -1004,6 +1021,21 @@ fm_status fmSetPortAttributeV2(fm_int sw,
                        value);
 
 ABORT:
+
+    if (mTableLockTaken)
+    {
+        FM_DROP_MTABLE_LOCK(sw);
+    }
+
+    if (l2LockTaken)
+    {
+        FM_DROP_L2_LOCK(sw);
+    }
+
+    if (lagLockTaken)
+    {
+        DROP_LAG_LOCK(sw);
+    }
 
     if (routingLockTaken)
     {
@@ -2499,7 +2531,7 @@ fm_status fmGetNumPortLanes( fm_int sw,
     VALIDATE_AND_PROTECT_SWITCH(sw);
 
     /* CPU port allowed, LAG ports not allowed */
-    VALIDATE_LOGICAL_PORT( sw, port, ALLOW_CPU );
+    VALIDATE_LOGICAL_PORT( sw, port, ALLOW_CPU | ALLOW_VIRTUAL );
 
     portPtr = GET_PORT_PTR(sw, port);
 

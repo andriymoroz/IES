@@ -3,10 +3,10 @@
 /*****************************************************************************
  * File:            fm10000_api_serdes_debug.c
  * Creation Date:   October 22, 2014
- * Description:     File containing a low level functions to manage the 
+ * Description:     File containing a low level functions to manage the
  *                  FM10000 PCIe and Ethernet Serdes
  *
- * Copyright (c) 2007 - 2014, Intel Corporation
+ * Copyright (c) 2007 - 2015, Intel Corporation
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -30,7 +30,7 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
+ *****************************************************************************/
 
 #include <fm_sdk_fm10000_int.h>
 
@@ -172,8 +172,7 @@ fm_status fm10000DbgDumpSerDes(fm_int  sw,
 
     return err;
 
-}   /* end fm10000DbgDumpSerDes */
-
+}
 
 
 
@@ -218,7 +217,7 @@ fm_status fm10000SerdesDump(fm_int sw, fm_int serdes, fm_bool detailed)
 
     return err;
 
-}   /* end fm10000SerdesDump */
+}
 
 
 
@@ -268,7 +267,7 @@ fm_status fm10000DbgSerdesInit(fm_int  sw,
 
     return err;
 
-} /* end fm10000DbgSerdesInit */
+}
 
 
 
@@ -331,7 +330,7 @@ fm_status fm10000DbgSerdesRunDfeTuning(fm_int        sw,
 
     return err;
 
-} /* end fm10000DbgSerdesRunDfeTuning */
+}
 
 
 
@@ -375,7 +374,7 @@ fm_status fm10000DbgResetSerDes(fm_int sw,
 
     return err;
 
-}   /* end fm10000DbgResetSerDes */
+}
 
 
 
@@ -426,7 +425,7 @@ fm_status fm10000DbgReadSerDesRegister(fm_int     sw,
 
     return err;
 
-}   /* end fm10000DbgReadSerDesRegister */
+}
 
 
 
@@ -476,7 +475,7 @@ fm_status fm10000DbgWriteSerDesRegister(fm_int     sw,
 
     return err;
 
-}   /* end fm10000DbgWriteSerDesRegister */
+}
 
 
 
@@ -523,7 +522,7 @@ fm_status fm10000DbgSetSerDesTxPattern(fm_int  sw,
 
     return err;
 
-}   /* end fm10000DbgSetSerDesTxPattern */
+}
 
 
 
@@ -570,7 +569,8 @@ fm_status fm10000DbgSetSerDesRxPattern(fm_int  sw,
 
     return err;
 
-}   /* end fm10000DbgSetSerDesRxPattern */
+}
+
 
 
 
@@ -616,7 +616,8 @@ fm_status fm10000DbgSetSerdesPolarity(fm_int  sw,
 
     return err;
 
-}   /* end fm10000DbgSetSerdesPolarity */
+}
+
 
 
 
@@ -663,7 +664,8 @@ fm_status fm10000DbgSetSerdesLoopback(fm_int  sw,
 
     return err;
 
-}   /* end fm10000DbgSetSerdesLoopback */
+}
+
 
 
 
@@ -679,7 +681,7 @@ fm_status fm10000DbgSetSerdesLoopback(fm_int  sw,
  *
  * \param[in]       serdesSel specified the where to inject errors: Tx, Rx or
  *                  TxRx. See 'fm10000SerdesSelect'.
- * 
+ *
  * \param[in]       numErrors the number of errors to be injected.
  *
  * \return          FM_OK if successful.
@@ -714,7 +716,9 @@ fm_status fm10000DbgSerdesInjectErrors(fm_int   sw,
 
     return err;
 
-}   /* end fm10000DbgSerdesInjectErrors */
+}
+
+
 
 
 /*****************************************************************************/
@@ -771,7 +775,7 @@ fm_status fm10000DbgReadSBusRegister(fm_int     sw,
 
     return err;
 
-}   /* end fm10000DbgReadSBusRegister */
+}
 
 
 
@@ -823,7 +827,7 @@ fm_status fm10000DbgWriteSBusRegister(fm_int     sw,
 
     return err;
 
-}   /* end fm10000DbgWriteSBusRegister */
+}
 
 
 
@@ -884,7 +888,7 @@ fm_status fm10000DbgInterruptSpico(fm_int      sw,
 
     return err;
 
-}   /* end fm10000DbgInterruptSpico */
+}
 
 
 

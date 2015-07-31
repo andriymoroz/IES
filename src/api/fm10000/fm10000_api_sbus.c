@@ -327,30 +327,35 @@ static fm_status DropPcieSbusLock(fm_int sw)
     fm_switch *     switchPtr;
     fm_uint32       busLock;
     fm_uint         lockOwner;
+    fm_uint32       nvmVer;
 
     switchPtr = GET_SWITCH_PTR(sw);
 
-    err = switchPtr->ReadUINT32( sw, 
-                                 FM10000_BSM_SCRATCH(1),
-                                 &busLock );
+    err = fm10000GetNvmImageVersion(sw, &nvmVer);
     FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_SWITCH, err);
 
-    lockOwner = FM_GET_UNNAMED_FIELD( busLock, 0, 2);
-
-    switch (lockOwner)
+    if (nvmVer >= MIN_NVM_VERSION)
     {
-        case 2:
-            return (switchPtr->WriteUINT32( sw, 
-                                            FM10000_BSM_SCRATCH(1),
-                                            0 ));
-            break;
-        case 0:
-            break;
-        default:
-            FM_LOG_WARNING(FM_LOG_CAT_SWITCH,
-                "Attemp to release API lock but lock is being used by %d\n",
-                lockOwner);
-            break;
+        err = switchPtr->ReadUINT32( sw, 
+                                     FM10000_BSM_SCRATCH(1),
+                                     &busLock );
+        FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_SWITCH, err);
+
+        lockOwner = FM_GET_UNNAMED_FIELD( busLock, 0, 2);
+
+        switch (lockOwner)
+        {
+            case FM10000_PCIE_SBUS_LOCK_API:
+                return (switchPtr->WriteUINT32( sw, 
+                                                FM10000_BSM_SCRATCH(1),
+                                                0 ));
+                break;
+            default:
+                FM_LOG_WARNING(FM_LOG_CAT_SWITCH,
+                    "Attemp to release API lock but lock is being used by %d\n",
+                    lockOwner);
+                break;
+        }
     }
 
     FM_LOG_EXIT(FM_LOG_CAT_SWITCH, err);

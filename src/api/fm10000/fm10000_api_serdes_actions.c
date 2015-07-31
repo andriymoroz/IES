@@ -1,5 +1,5 @@
 /* vim:ts=4:sw=4:expandtab
- * (No tabs, indent level is 4 spaces)  */
+ * (No tabs, indent level is 4 spaces) */
 /*****************************************************************************
  * File:            fm10000_api_serdes_actions.c
  * Creation Date:   December 13, 2013
@@ -29,7 +29,7 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
+ *****************************************************************************/
 
 #include <fm_sdk_fm10000_int.h>
 
@@ -41,12 +41,12 @@
 /*****************************************************************************
  * Local function prototypes
  *****************************************************************************/
- 
+
 static void HandlePllTimeout( void *arg );
 static void HandleSignalTimeout( void *arg );
 static void HandleTuningTimeout( void *arg );
 
- 
+
 
 static void HandleSerDesTimeout( void *arg );
 static fm_status SendDfeEventReq( fm_smEventInfo *eventInfo,
@@ -68,6 +68,9 @@ static fm_status EnableRxBistMode(fm_smEventInfo *eventInfo,
 /*****************************************************************************
  * Local Variables
  *****************************************************************************/
+
+static fm_int transactionLogDebugMode = 0;
+
 
 /*****************************************************************************
  * Local Functions
@@ -120,7 +123,7 @@ fm_status SendDfeEventReq( fm_smEventInfo *eventInfo,
 
     return err;
 
-}   /* end SendDfeEventReq */
+}
 
 
 
@@ -164,7 +167,7 @@ static void HandlePllTimeout( void *arg )
                                &laneExt->serDes );
     UNPROTECT_SWITCH( sw );
 
-}   /* end HandlePllTimeout */
+}
 
 
 
@@ -209,7 +212,7 @@ static void HandleSignalTimeout( void *arg )
                                &laneExt->serDes );
     UNPROTECT_SWITCH( sw );
 
-}   /* end HandleSignalTimeout */
+}
 
 
 
@@ -262,14 +265,14 @@ static void HandleTuningTimeout( void *arg )
                                &laneExt->serDes );
     UNPROTECT_SWITCH( sw );
 
-}   /* end HandleTuningTimeout */
+}
 
 
 
 
- 
- 
- 
+
+
+
 
 
 
@@ -314,7 +317,7 @@ void HandleSerDesTimeout( void *arg )
                                &laneExt->serDes );
     UNPROTECT_SWITCH( sw );
 
-}   /* end HandleSerDesTimeout */
+}
 
 
 
@@ -359,7 +362,7 @@ fm_status StartTimeoutTimer(fm_smEventInfo *eventInfo,
                         pLaneExt );
     return err;
 
-}   /* end StartTimeoutTimer */
+}
 
 
 
@@ -402,7 +405,7 @@ static fm_status EnableRxBistMode(fm_smEventInfo *eventInfo,
 
     switch (bistSubMode)
     {
-        
+
         case FM_BIST_RX_PRBS_128:
         case FM_BIST_RX_PRBS_512B:
         case FM_BIST_RX_PRBS_2048:
@@ -420,7 +423,7 @@ static fm_status EnableRxBistMode(fm_smEventInfo *eventInfo,
         case FM_BIST_RX_CUSTOM20:
         case FM_BIST_RX_CUSTOM40:
         case FM_BIST_RX_CUSTOM80:
-        
+
         case FM_BIST_TXRX_PRBS_128:
         case FM_BIST_TXRX_PRBS_512B:
         case FM_BIST_TXRX_PRBS_2048:
@@ -494,7 +497,7 @@ static fm_status EnableRxBistMode(fm_smEventInfo *eventInfo,
 
     return err;
 
-}   /* end EnableRxBistMode */
+}
 
 
 
@@ -502,6 +505,33 @@ static fm_status EnableRxBistMode(fm_smEventInfo *eventInfo,
 /*****************************************************************************
  * Public Functions
  *****************************************************************************/
+
+
+/*****************************************************************************/
+/** fm10000EnableSerDesTransitionDebugMode
+ * \ingroup intSerdes
+ *
+ * \desc            Enables / Disables the record of all state machine
+ *                  transitions ignoring the dontSaveRecord setting.
+ *
+ * \param[in]       debugMode is the pointer debug mode: 0 normal behavior,
+ *                  1: save all transactions, -1: dont take any action, just
+ *                  returns the current setting.
+ *
+ * \return          current mode: 0 normal, 1 debug
+ *
+ *****************************************************************************/
+fm_int fm10000EnableSerDesTransitionDebugMode( fm_int debugMode )
+{
+    if ( debugMode == 0  || debugMode == 1 )
+    {
+        transactionLogDebugMode = debugMode;
+    }
+    return transactionLogDebugMode;
+
+}
+
+
 
 
 /*****************************************************************************/
@@ -550,7 +580,7 @@ fm_status fm10000LogSerDesTransition( fm_smTransitionRecord *record )
 
     return FM_OK;
 
-}   /* end fm10000LogSerDesTransition */
+}
 
 
 
@@ -588,7 +618,7 @@ fm_status fm10000SerDesStubAction( fm_smEventInfo *eventInfo, void *userInfo )
 
     return FM_OK;
 
-}   /* end fm10000SerDesStubAction */
+}
 
 
 
@@ -619,7 +649,7 @@ fm_status fm10000SerDesFlagError(fm_smEventInfo *eventInfo,
 
     return FM_ERR_INVALID_STATE;
 
-}   /* end fm10000SerDesFlagError */
+}
 
 
 
@@ -646,14 +676,14 @@ fm_status fm10000FlagError(fm_smEventInfo *eventInfo,
     FM_NOT_USED(eventInfo);
     FM_NOT_USED(userInfo);
 
-    
+
 
 
 
 
     return FM_ERR_INVALID_STATE;
 
-}   /* end fm10000FlagError */
+}
 
 
 
@@ -692,7 +722,7 @@ fm_status fm10000SerDesStartStubPllTimer( fm_smEventInfo *eventInfo, void *userI
                           HandlePllTimeout,
                           laneExt );
 
-}   /* end fm10000SerDesStartStubPllTimer */
+}
 
 
 
@@ -725,7 +755,7 @@ fm_status fm10000SerDesStopStubPllTimer( fm_smEventInfo *eventInfo, void *userIn
     laneExt = ((fm10000_serDesSmEventInfo *)userInfo)->laneExt;
     return fmStopTimer( laneExt->timerHandle );
 
-}   /* end fm10000SerDesStartStubPllTimer */
+}
 
 
 
@@ -764,7 +794,7 @@ fm_status fm10000SerDesStartStubSignalTimer( fm_smEventInfo *eventInfo, void *us
                           HandleSignalTimeout,
                           laneExt );
 
-}   /* end fm10000SerDesStartStubSignalTimer */
+}
 
 
 
@@ -797,7 +827,7 @@ fm_status fm10000SerDesStopStubSignalTimer( fm_smEventInfo *eventInfo, void *use
     laneExt = ((fm10000_serDesSmEventInfo *)userInfo)->laneExt;
     return fmStopTimer( laneExt->timerHandle );
 
-}   /* end fm10000SerDesStartStubSignalTimer */
+}
 
 
 
@@ -838,7 +868,7 @@ fm_status fm10000SerDesStartStubTuningTimer( fm_smEventInfo *eventInfo, void *us
                           HandleTuningTimeout,
                           laneExt );
 
-}   /* end fm10000SerDesStartStubTuningTimer */
+}
 
 
 
@@ -873,7 +903,7 @@ fm_status fm10000SerDesStopStubTuningTimer( fm_smEventInfo *eventInfo, void *use
     laneExt = ((fm10000_serDesSmEventInfo *)userInfo)->laneExt;
     return fmStopTimer( laneExt->timerHandle );
 
-}   /* end fm10000SerDesStartStubTuningTimer */
+}
 
 
 
@@ -919,7 +949,7 @@ fm_status fm10000SerDesSendPortLaneReadyInd( fm_smEventInfo *eventInfo, void *us
                                       &portExt->eventInfo,
                                       &portExt->base->portNumber );
 
-}   /* end fm10000SerDesSendPortLaneReadyInd */
+}
 
 
 
@@ -966,7 +996,7 @@ fm_status fm10000SerDesSendPortLaneNotReadyInd( fm_smEventInfo *eventInfo, void 
                                       &portExt->eventInfo,
                                       &portExt->base->portNumber );
 
-}   /* end fm10000SerDesSendPortLaneNotReadyInd */
+}
 
 
 
@@ -1014,7 +1044,7 @@ fm_status fm10000SerDesSendPortKrTrainingCompleteInd(fm_smEventInfo *eventInfo,
                                       &portExt->eventInfo,
                                       &portExt->base->portNumber );
 
-}   /* end fm10000SerDesSendPortKrTrainingCompleteInd */
+}
 
 
 
@@ -1061,7 +1091,7 @@ fm_status fm10000SerDesSendPortKrTrainingFailedInd( fm_smEventInfo *eventInfo, v
                                       &portExt->eventInfo,
                                       &portExt->base->portNumber );
 
-}   /* end fm10000SerDesSendPortKrTrainingFailedInd */
+}
 
 
 
@@ -1108,7 +1138,7 @@ fm_status fm10000SerDesSendPortDfeTuningCompleteInd( fm_smEventInfo *eventInfo, 
                                       &portExt->eventInfo,
                                       &portExt->base->portNumber );
 
-}   /* end fm10000SerDesSendPortDfeTuningCompleteInd */
+}
 
 
 
@@ -1155,7 +1185,7 @@ fm_status fm10000SerDesSendPortDfeTuningFailedInd( fm_smEventInfo *eventInfo, vo
                                       &portExt->eventInfo,
                                       &portExt->base->portNumber );
 
-}   /* end fm10000SerDesSendPortDfeTuningFailedInd */
+}
 
 
 
@@ -1189,7 +1219,7 @@ fm_status fm10000SerDesMarkBothPllsUp( fm_smEventInfo *eventInfo, void *userInfo
     }
     return FM_OK;
 
-}   /* end fm10000SerDesMarkBothPllsUp */
+}
 
 
 
@@ -1224,7 +1254,7 @@ fm_status fm10000SerDesMarkTxPllUp( fm_smEventInfo *eventInfo, void *userInfo )
 
     return FM_OK;
 
-}   /* end fm10000SerDesMarkTxPllUp */
+}
 
 
 
@@ -1258,7 +1288,7 @@ fm_status fm10000SerDesMarkRxPllUp( fm_smEventInfo *eventInfo, void *userInfo )
     }
     return FM_OK;
 
-}   /* end fm10000SerDesMarkRxPllUp */
+}
 
 
 
@@ -1292,7 +1322,7 @@ fm_status fm10000SerDesMarkBothPllsDown( fm_smEventInfo *eventInfo, void *userIn
     }
     return FM_OK;
 
-}   /* end fm10000SerDesMarkBothPllsDown */
+}
 
 
 
@@ -1326,7 +1356,7 @@ fm_status fm10000SerDesMarkTxPllDown( fm_smEventInfo *eventInfo, void *userInfo 
     }
     return FM_OK;
 
-}   /* end fm10000SerDesMarkTxPllDown */
+}
 
 
 
@@ -1361,7 +1391,7 @@ fm_status fm10000SerDesMarkRxPllDown(fm_smEventInfo *eventInfo,
     }
     return FM_OK;
 
-}   /* end fm10000SerDesMarkRxPllDown */
+}
 
 
 
@@ -1401,7 +1431,7 @@ fm_status fm10000SerDesProcessStubSignalTimer( fm_smEventInfo *eventInfo,
     FM_NOT_USED(eventInfo);
 
 
-     
+
 
     laneExt  = ((fm10000_serDesSmEventInfo *)userInfo)->laneExt;
     laneAttr = ((fm10000_serDesSmEventInfo *)userInfo)->laneAttr;
@@ -1410,17 +1440,17 @@ fm_status fm10000SerDesProcessStubSignalTimer( fm_smEventInfo *eventInfo,
     status = FM_OK;
     switch ( laneExt->pllMask )
     {
-        
+
         case 0:
             *nextState = FM10000_SERDES_STATE_CONFIGURED;
             break;
 
-        
+
         case 1:
             *nextState = FM10000_SERDES_STATE_TX_ON;
             break;
 
-        
+
         case 2:
         case 3:
             if ( laneExt->krTrainingEn != FALSE              ||
@@ -1443,7 +1473,7 @@ fm_status fm10000SerDesProcessStubSignalTimer( fm_smEventInfo *eventInfo,
             }
             break;
 
-        
+
         default:
             FM_LOG_ERROR_V2( FM_LOG_CAT_SERDES,
                              serDes,
@@ -1452,12 +1482,12 @@ fm_status fm10000SerDesProcessStubSignalTimer( fm_smEventInfo *eventInfo,
             status = FM_ERR_INVALID_STATE;
             break;
 
-    }   /* end switch ( laneExt->pllMask ) */
+    }
 
 
     return status;
 
-}   /* end fm10000SerDesProcessStubSignalTimer */
+}
 
 
 
@@ -1499,12 +1529,12 @@ fm_status fm10000SerDesProcessStubPllTimer( fm_smEventInfo *eventInfo,
     status = FM_OK;
     switch ( laneExt->pllMask )
     {
-        
+
         case 0:
             *nextState = FM10000_SERDES_STATE_CONFIGURED;
             break;
 
-        
+
         case 1:
             status     = fm10000SerDesSendPortLaneReadyInd( eventInfo, userInfo );
             FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_SERDES, serDes, status );
@@ -1512,7 +1542,7 @@ fm_status fm10000SerDesProcessStubPllTimer( fm_smEventInfo *eventInfo,
             *nextState = FM10000_SERDES_STATE_TX_ON;
             break;
 
-        
+
         case 2:
         case 3:
             status     = fm10000SerDesStartStubSignalTimer( eventInfo, userInfo );
@@ -1524,7 +1554,7 @@ fm_status fm10000SerDesProcessStubPllTimer( fm_smEventInfo *eventInfo,
             *nextState = FM10000_SERDES_STATE_POWERED_UP;
             break;
 
-        
+
         default:
             FM_LOG_ERROR_V2( FM_LOG_CAT_SERDES,
                              serDes,
@@ -1533,13 +1563,13 @@ fm_status fm10000SerDesProcessStubPllTimer( fm_smEventInfo *eventInfo,
             status = FM_ERR_INVALID_STATE;
             break;
 
-    }   /* end switch ( laneExt->pllMask ) */
+    }
 
 
 ABORT:
     return status;
 
-}   /* end fm10000SerDesProcessStubPllTimer */
+}
 
 
 
@@ -1583,27 +1613,27 @@ fm_status fm10000SerDesProcessStubTuningTimer( fm_smEventInfo *eventInfo,
     status = FM_OK;
     switch ( laneExt->pllMask )
     {
-        
+
         case 0:
             *nextState = FM10000_SERDES_STATE_CONFIGURED;
             break;
 
-        
+
         case 1:
             *nextState = FM10000_SERDES_STATE_TX_ON;
             break;
 
-        
+
         case 2:
             *nextState = FM10000_SERDES_STATE_RX_ON;
             break;
 
-        
+
         case 3:
             *nextState = FM10000_SERDES_STATE_MISSION;
             break;
 
-        
+
         default:
             FM_LOG_ERROR_V2( FM_LOG_CAT_SERDES,
                              serDes,
@@ -1612,19 +1642,19 @@ fm_status fm10000SerDesProcessStubTuningTimer( fm_smEventInfo *eventInfo,
             status = FM_ERR_INVALID_STATE;
             break;
 
-    }   /* end switch ( laneExt->pllMask ) */
+    }
 
 
     return status;
 
-}   /* end fm10000SerDesProcessStubTuningTimer */
+}
 
 
 
 
- 
- 
- 
+
+
+
 
 
 
@@ -1667,7 +1697,7 @@ fm_status fm10000SerDesInitStateVar( fm_smEventInfo *eventInfo,
     pLaneExt->bistTxSubMode = FM_BIST_MAX;
     pLaneExt->bistRxSubMode = FM_BIST_MAX;
 
-    
+
     err = fm10000SerdesGetOpMode(sw,0,&serdesOpMode,NULL,NULL);
 
     if (err == FM_OK && serdesOpMode == FM_SERDES_OPMODE_TEST_BOARD)
@@ -1681,7 +1711,7 @@ fm_status fm10000SerDesInitStateVar( fm_smEventInfo *eventInfo,
 
     return err;
 
-}   /* end fm10000SerDesInitStateVar */
+}
 
 
 
@@ -1705,6 +1735,7 @@ fm_status fm10000SerDesSaveDfeConfig(fm_smEventInfo *eventInfo,
                                      void           *userInfo )
 {
     fm_status     err;
+    fm_int        newDfeModeExt;
     fm_int        newDfeMode;
     fm10000_lane *pLaneExt;
 
@@ -1713,22 +1744,28 @@ fm_status fm10000SerDesSaveDfeConfig(fm_smEventInfo *eventInfo,
 
     err = FM_OK;
     pLaneExt = ((fm10000_serDesSmEventInfo *)userInfo)->laneExt;
-    newDfeMode = ((fm10000_serDesSmEventInfo *)userInfo)->info.dfeMode;
+    newDfeModeExt = (((fm10000_serDesSmEventInfo *)userInfo)->info.dfeMode);
+    newDfeMode = newDfeModeExt & 0xff;
 
-    
+
     if (newDfeMode < 0 || newDfeMode > FM_DFE_MODE_ICAL_ONLY )
     {
         err = FM_ERR_INVALID_ARGUMENT;
     }
     else
     {
-        
+
         pLaneExt->dfeMode = newDfeMode;
+
+        if ( newDfeMode == FM_DFE_MODE_KR )
+        {
+            pLaneExt->krExt.pCalMode = newDfeModeExt >> 8;
+        }
     }
 
     return err;
 
-}   /* end fm10000SerDesSaveDfeConfig */
+}
 
 
 
@@ -1767,7 +1804,7 @@ fm_status fm10000SerDesSaveBitRateConfig(fm_smEventInfo *eventInfo,
     pLaneExt->nearLoopbackEn = FALSE;
     err = fm10000GetSerdesWidthModeRateSel(serDes, newBitRate, &widthMode, &rateSel);
 
-    
+
     if (err == FM_OK )
     {
         pLaneExt->prevBitRate = pLaneExt->bitRate;
@@ -1778,7 +1815,7 @@ fm_status fm10000SerDesSaveBitRateConfig(fm_smEventInfo *eventInfo,
 
     return err;
 
-}   /* end fm10000SerDesSaveBitRateConfig */
+}
 
 
 
@@ -1811,7 +1848,7 @@ fm_status fm10000SerDesSetFarLoopbackModeOn(fm_smEventInfo *eventInfo,
 
     return FM_OK;
 
-}   /* end fm10000SerDesSetFarLoopbackModeOn */
+}
 
 
 
@@ -1844,7 +1881,7 @@ fm_status fm10000SerDesSetFarLoopbackModeOff(fm_smEventInfo *eventInfo,
 
     return FM_OK;
 
-}   /* end fm10000SerDesSetFarLoopbackModeOff */
+}
 
 
 
@@ -1880,7 +1917,7 @@ fm_status fm10000SerDesStartTimeoutTimerShrt(fm_smEventInfo *eventInfo,
 
     return err;
 
-}   /* end fm10000SerDesStartTimeoutTimerShrt */
+}
 
 
 
@@ -1916,7 +1953,7 @@ fm_status fm10000SerDesStartTimeoutTimerLng(fm_smEventInfo *eventInfo,
 
     return err;
 
-}   /* end fm10000SerDesStartTimeoutTimerLng */
+}
 
 
 
@@ -1952,7 +1989,7 @@ fm_status fm10000SerDesStartTimeoutTimerXLng(fm_smEventInfo *eventInfo,
 
     return err;
 
-}   /* end fm10000SerDesStartTimeoutTimerXLng */
+}
 
 
 
@@ -1988,7 +2025,7 @@ fm_status fm10000SerDesStartKrDeferralTimer(fm_smEventInfo *eventInfo,
 
     return err;
 
-}   /* end fm10000SerDesStartKrDeferralTimer */
+}
 
 
 
@@ -2017,13 +2054,13 @@ fm_status fm10000SerDesStopTimeoutTimer( fm_smEventInfo *eventInfo,
 
     FM_NOT_USED(eventInfo);
 
-    
+
     pLaneExt = ((fm10000_serDesSmEventInfo *)userInfo)->laneExt;
     err = fmStopTimer( pLaneExt->timerHandle );
 
     return err;
 
-}   /* end fm10000SerDesStopTimeoutTimer */
+}
 
 
 
@@ -2059,7 +2096,7 @@ fm_status fm10000SerDesRstSignalOkDebounce(fm_smEventInfo *eventInfo,
 
     return err;
 
-}   /* end fm10000SerDesRstSignalOkDebounce */
+}
 
 
 
@@ -2069,7 +2106,7 @@ fm_status fm10000SerDesRstSignalOkDebounce(fm_smEventInfo *eventInfo,
  * \ingroup intSerdes
  *
  * \desc            Action setting the field SdOverride of LANE_SIGNAL_DETECT_CFG
- *                  register to FORCE_BAD. 
+ *                  register to FORCE_BAD.
  *
  * \param[in]       eventInfo is a pointer the generic event descriptor.
  *
@@ -2101,21 +2138,21 @@ fm_status fm10000SerDesSetSignalDtctForcedBadC(fm_smEventInfo *eventInfo,
     pLaneExt = ((fm10000_serDesSmEventInfo *)userInfo)->laneExt;
     serDes   = pLaneExt->serDes;
 
-    
+
 
     switchPtr = ((fm10000_serDesSmEventInfo *)userInfo)->switchPtr;
     sw        = switchPtr->switchNumber;
     channel   = pLaneExt->channel;
     epl       = pLaneExt->epl;
 
-    
+
     laneSignalDetectCfgAddr = FM10000_LANE_SIGNAL_DETECT_CFG(epl, channel);
 
     err = switchPtr->ReadUINT32(sw, laneSignalDetectCfgAddr, &laneSignalDetectCfg);
 
     if (err == FM_OK)
     {
-        
+
         FM_SET_FIELD(laneSignalDetectCfg, FM10000_LANE_SIGNAL_DETECT_CFG, SdOverride, 2);
 
         err = switchPtr->WriteUINT32(sw, laneSignalDetectCfgAddr, laneSignalDetectCfg);
@@ -2123,7 +2160,7 @@ fm_status fm10000SerDesSetSignalDtctForcedBadC(fm_smEventInfo *eventInfo,
 
     return err;
 
-}   /* end fm10000SerDesSetSignalDtctForcedBadC */
+}
 
 
 
@@ -2135,7 +2172,7 @@ fm_status fm10000SerDesSetSignalDtctForcedBadC(fm_smEventInfo *eventInfo,
  * \desc            Action restoring to the normal state the field SdOverride of
  *                  LANE_SIGNAL_DETECT_CFG when the serdes is configured with
  *                  a static DFE mode or the API attribute ''LINK_DEPENDS_ON_DFE''
- *                  is FALSE. 
+ *                  is FALSE.
  *
  * \param[in]       eventInfo is a pointer the generic event descriptor.
  *
@@ -2174,12 +2211,12 @@ fm_status fm10000SerDesSetStaticDfeSignalDtctNormal(fm_smEventInfo *eventInfo,
     channel   = pLaneExt->channel;
     epl       = pLaneExt->epl;
 
-    
-     
 
-     
 
-     
+
+
+
+
 
     linkDependsOnDfe = fmGetBoolApiProperty(FM_AAK_API_FM10000_LINK_DEPENDS_ON_DFE,
                                             FM_AAD_API_FM10000_LINK_DEPENDS_ON_DFE);
@@ -2197,7 +2234,7 @@ fm_status fm10000SerDesSetStaticDfeSignalDtctNormal(fm_smEventInfo *eventInfo,
 
         if (err == FM_OK)
         {
-            
+
 
             FM_SET_FIELD(laneSignalDetectCfg, FM10000_LANE_SIGNAL_DETECT_CFG, SdOverride, 0);
 
@@ -2207,7 +2244,7 @@ fm_status fm10000SerDesSetStaticDfeSignalDtctNormal(fm_smEventInfo *eventInfo,
 
     return err;
 
-}   /* end fm10000SerDesSetStaticDfeSignalDtctNormal */
+}
 
 
 
@@ -2246,7 +2283,7 @@ fm_status fm10000SerDesSetSignalDtctNormal( fm_smEventInfo *eventInfo,
 
     err = FM_OK;
 
-    
+
     switchPtr = ((fm10000_serDesSmEventInfo *)userInfo)->switchPtr;
     sw        = switchPtr->switchNumber;
     pLaneExt  = ((fm10000_serDesSmEventInfo *)userInfo)->laneExt;
@@ -2254,14 +2291,14 @@ fm_status fm10000SerDesSetSignalDtctNormal( fm_smEventInfo *eventInfo,
     channel   = pLaneExt->channel;
     epl       = pLaneExt->epl;
 
-    
+
     laneSignalDetectCfgAddr = FM10000_LANE_SIGNAL_DETECT_CFG(epl, channel);
 
     err = switchPtr->ReadUINT32( sw, laneSignalDetectCfgAddr, &laneSignalDetectCfg);
 
     if (err == FM_OK)
     {
-        
+
 
         FM_SET_FIELD(laneSignalDetectCfg, FM10000_LANE_SIGNAL_DETECT_CFG, SdOverride, 0);
 
@@ -2270,7 +2307,7 @@ fm_status fm10000SerDesSetSignalDtctNormal( fm_smEventInfo *eventInfo,
 
     return err;
 
-}   /* end fm10000SerDesSetSignalDtctNormal */
+}
 
 
 
@@ -2308,7 +2345,7 @@ fm_status fm10000SerDesConfigureBitRateAndWidthMode( fm_smEventInfo *eventInfo,
     serDes   = pLaneExt->serDes;
     portExt  = pLaneExt->parentPortExt;
 
-    
+
     err = fm10000SerdesTxRxEnaCtrl(sw,
                                    serDes,
                                    FM10000_SERDES_CTRL_TX_ENA_MASK      |
@@ -2317,7 +2354,7 @@ fm_status fm10000SerDesConfigureBitRateAndWidthMode( fm_smEventInfo *eventInfo,
                                    0);
 
 
-    
+
     if (err == FM_OK)
     {
         FM_LOG_DEBUG_V2(FM_LOG_CAT_SERDES,serDes,
@@ -2338,7 +2375,7 @@ fm_status fm10000SerDesConfigureBitRateAndWidthMode( fm_smEventInfo *eventInfo,
         }
         else
         {
-            
+
             err = fm10000SetPcslCfgWidthMode(sw, serDes, pLaneExt->widthMode);
 
             if ( err != FM_OK )
@@ -2361,7 +2398,7 @@ fm_status fm10000SerDesConfigureBitRateAndWidthMode( fm_smEventInfo *eventInfo,
 
     return err;
 
-}   /* end fm10000SerDesConfigureBitRateAndWidthMode */
+}
 
 
 
@@ -2400,15 +2437,15 @@ fm_status fm10000SerDesConfigureWidthMode( fm_smEventInfo *eventInfo,
 
     err = fm10000GetSerdesWidthModeRateSel(serDes, laneExt->bitRate, &widthMode, NULL);
 
-    
+
     if (err == FM_OK)
     {
-        
+
         FM_LOG_DEBUG_V2(FM_LOG_CAT_SERDES,serDes,
                         "Configure Serdes %d, widthMode=%d\n",
                         serDes,
                         widthMode);
- 
+
         err = fm10000SerdesSetWidthMode(sw,serDes,widthMode);
 
         if (err != FM_OK)
@@ -2422,7 +2459,7 @@ fm_status fm10000SerDesConfigureWidthMode( fm_smEventInfo *eventInfo,
 
     return err;
 
-}   /* end fm10000SerDesConfigureBitRateAndWidthMode */
+}
 
 
 
@@ -2456,7 +2493,7 @@ fm_status fm10000SerDesConfigureDataSelect( fm_smEventInfo *eventInfo,
     sw = ((fm10000_serDesSmEventInfo *)userInfo)->switchPtr->switchNumber;
     serDes  = ((fm10000_serDesSmEventInfo *)userInfo)->laneExt->serDes;
 
-    
+
     err = fm10000SerdesSetTxDataSelect(sw,
                                        serDes,
                                        FM10000_SERDES_TX_DATA_SEL_CORE);
@@ -2470,7 +2507,7 @@ fm_status fm10000SerDesConfigureDataSelect( fm_smEventInfo *eventInfo,
 
     return err;
 
-}   /* end fm10000SerDesConfigureDataSelect */
+}
 
 
 
@@ -2511,19 +2548,19 @@ fm_status fm10000SerDesConfigureOptions( fm_smEventInfo *eventInfo,
 
     if (err == FM_OK)
     {
-        
+
         err = fm10000SerdesConfigurePhaseSlip(sw,serDes);
     }
 
     if (err == FM_OK)
     {
-        
+
         err = fm10000SerdesSetRxTerm(sw, serDes, pLaneExt->rxTermination);
     }
 
     return err;
 
-}   /* end fm10000SerDesConfigureOptions */
+}
 
 
 
@@ -2560,7 +2597,7 @@ fm_status fm10000SerDesDisableLanePolarity( fm_smEventInfo *eventInfo,
 
     return err;
 
-}   /* end fm10000SerDesDisableLanePolarity */
+}
 
 
 
@@ -2594,8 +2631,8 @@ fm_status fm10000SerDesConfigLanePolarity(fm_smEventInfo *eventInfo,
     serDes  = ((fm10000_serDesSmEventInfo *)userInfo)->laneExt->serDes;
     laneAttr = ((fm10000_serDesSmEventInfo *)userInfo)->laneAttr;
 
-    err = fm10000SetSerdesLanePolarity(sw, 
-                                       serDes, 
+    err = fm10000SetSerdesLanePolarity(sw,
+                                       serDes,
                                        (laneAttr->txPolarity != 0),
                                        (laneAttr->rxPolarity != 0));
     if ( err != FM_OK )
@@ -2608,7 +2645,7 @@ fm_status fm10000SerDesConfigLanePolarity(fm_smEventInfo *eventInfo,
 
     return err;
 
-}   /* end fm10000SerDesConfigLanePolarity */
+}
 
 
 
@@ -2650,26 +2687,26 @@ fm_status fm10000SerDesConfigureTxEqualization( fm_smEventInfo *eventInfo,
     pLaneExt  = ((fm10000_serDesSmEventInfo *)userInfo)->laneExt;
     serDes    = pLaneExt->serDes;
 
-    
-     
 
-     
+
+
+
     if (pLaneExt->dfeMode != FM_DFE_MODE_KR)
     {
-        
+
         preCursor  = pLaneAttr->preCursor;
         cursor     = pLaneAttr->cursor;
         postCursor = pLaneAttr->postCursor;
     }
     else
     {
-        
+
         preCursor  = 0;
         cursor     = 0;
         postCursor = 0;
     }
 
-    
+
     err = fm10000SetSerdesCursor(sw, serDes, cursor);
 
     if (err == FM_OK)
@@ -2684,7 +2721,7 @@ fm_status fm10000SerDesConfigureTxEqualization( fm_smEventInfo *eventInfo,
 
     return err;
 
-}   /* end fm10000SerDesConfigureTxEqualization */
+}
 
 
 
@@ -2716,12 +2753,12 @@ fm_status fm10000SerDesConfigureDfeMode( fm_smEventInfo *eventInfo,
 
     err = FM_OK;
 
-    
-     
+
+
 
     return err;
 
-}   /* end fm10000SerDesConfigureDfeMode */
+}
 
 
 
@@ -2758,14 +2795,14 @@ fm_status fm10000SerDesEnableInterrupts( fm_smEventInfo *eventInfo,
     pLaneExt = ((fm10000_serDesSmEventInfo *)userInfo)->laneExt;
     switchPtr = ((fm10000_serDesSmEventInfo *)userInfo)->switchPtr;
 
-    
+
     err = fm10000SerdesEnableSerDesInterrupts(sw, serDes);
 
     if (err == FM_OK)
     {
         pLaneExt->serdesInterruptMask = FM10000_SERDES_PWRUP_INTR_MASK;
 
-        
+
         TAKE_REG_LOCK( sw );
 
         err = switchPtr->WriteUINT32( sw,
@@ -2789,7 +2826,7 @@ fm_status fm10000SerDesEnableInterrupts( fm_smEventInfo *eventInfo,
 
     return err;
 
-}   /* end fm10000SerDesEnableInterrupts */
+}
 
 
 
@@ -2827,7 +2864,7 @@ fm_status fm10000SerDesDisableInterrupts( fm_smEventInfo *eventInfo,
     pLaneExt = ((fm10000_serDesSmEventInfo *)userInfo)->laneExt;
     switchPtr = ((fm10000_serDesSmEventInfo *)userInfo)->switchPtr;
 
-    
+
     TAKE_REG_LOCK( sw );
     pLaneExt->serdesInterruptMask = 0;
 
@@ -2845,7 +2882,7 @@ fm_status fm10000SerDesDisableInterrupts( fm_smEventInfo *eventInfo,
 
     return err;
 
-}   /* end fm10000SerDesDisableInterrupts */
+}
 
 
 
@@ -2882,7 +2919,7 @@ fm_status fm10000SerDesResetSpico( fm_smEventInfo *eventInfo,
 
     return err;
 
-}   /* end fm10000SerDesResetSpico */
+}
 
 
 
@@ -2932,7 +2969,7 @@ fm_status fm10000SerDesRestoreSpico( fm_smEventInfo *eventInfo,
 
     return err;
 
-}   /* end fm10000SerDesRestoreSpico */
+}
 
 
 
@@ -2967,7 +3004,7 @@ fm_status fm10000SerDesEnableNearLoopback( fm_smEventInfo *eventInfo,
 
     return err;
 
-}   /* end fm10000SerDesEnableNearLoopback */
+}
 
 
 
@@ -3004,7 +3041,7 @@ fm_status fm10000SerDesDisableNearLoopback( fm_smEventInfo *eventInfo,
 
     return err;
 
-}   /* end fm10000SerDesDisableNearLoopback */
+}
 
 
 
@@ -3035,9 +3072,9 @@ fm_status fm10000SerDesSaveNearLoopbackOnConfig(fm_smEventInfo *eventInfo,
 
     err = FM_OK;
     pLaneExt = ((fm10000_serDesSmEventInfo *)userInfo)->laneExt;
-    newDfeMode = ((fm10000_serDesSmEventInfo *)userInfo)->info.dfeMode;
+    newDfeMode = (((fm10000_serDesSmEventInfo *)userInfo)->info.dfeMode) & 0xff;
 
-    
+
     if (newDfeMode < 0 || newDfeMode > FM_DFE_MODE_ICAL_ONLY )
     {
         err = FM_ERR_INVALID_ARGUMENT;
@@ -3049,7 +3086,7 @@ fm_status fm10000SerDesSaveNearLoopbackOnConfig(fm_smEventInfo *eventInfo,
 
     return err;
 
-}   /* end fm10000SerDesSaveNearLoopbackOnConfig */
+}
 
 
 
@@ -3081,9 +3118,9 @@ fm_status fm10000SerDesSaveNearLoopbackOffConfig(fm_smEventInfo *eventInfo,
 
     err = FM_OK;
     pLaneExt = ((fm10000_serDesSmEventInfo *)userInfo)->laneExt;
-    newDfeMode = ((fm10000_serDesSmEventInfo *)userInfo)->info.dfeMode;
+    newDfeMode = (((fm10000_serDesSmEventInfo *)userInfo)->info.dfeMode) & 0xff;
 
-    
+
     if (newDfeMode < 0 || newDfeMode > FM_DFE_MODE_ICAL_ONLY )
     {
         err = FM_ERR_INVALID_ARGUMENT;
@@ -3095,7 +3132,7 @@ fm_status fm10000SerDesSaveNearLoopbackOffConfig(fm_smEventInfo *eventInfo,
 
     return err;
 
-}   /* end fm10000SerDesSaveNearLoopbackOffConfig */
+}
 
 
 
@@ -3148,7 +3185,7 @@ fm_status fm10000SerDesEnableParallelLoopback(fm_smEventInfo *eventInfo,
 
     return err;
 
-}   /* end fm10000SerDesEnableParallelLoopback */
+}
 
 
 
@@ -3199,7 +3236,7 @@ fm_status fm10000SerDesDisableParallelLoopback(fm_smEventInfo *eventInfo,
 
     return err;
 
-}   /* end fm10000SerDesDisableParallelLoopback */
+}
 
 
 
@@ -3321,14 +3358,14 @@ fm_status fm10000SerDesEnableBistMode(fm_smEventInfo *eventInfo,
         case FM_BIST_RX_CJPAT:
         case FM_BIST_TXRX_CJPAT:
         {
-            
+
             FM_LOG_ERROR_V2(FM_LOG_CAT_SERDES, serDes,
                             "Unsupported BIST submode: %d\n", bistSubMode );
             err = FM_ERR_UNSUPPORTED;
             break;
         }
         default:
-            
+
             FM_LOG_ERROR_V2(FM_LOG_CAT_SERDES, serDes,
                             "Invalid BIST submode: %d\n", bistSubMode );
             err = FM_ERR_INVALID_SUBMODE;
@@ -3336,12 +3373,14 @@ fm_status fm10000SerDesEnableBistMode(fm_smEventInfo *eventInfo,
 
     if (err == FM_OK && configTxBist == TRUE)
     {
-        
+
         if ((pLaneExt->farLoopbackStatus & 0x01) == 0)
         {
-            
+
             if ( bistSubMode != pLaneExt->bistTxSubMode )
             {
+
+
                 err = fm10000SetSerdesTxPattern(sw,
                                                 serDes,
                                                 bistSubMode,
@@ -3357,16 +3396,16 @@ fm_status fm10000SerDesEnableBistMode(fm_smEventInfo *eventInfo,
         {
             FM_LOG_ERROR_V2(FM_LOG_CAT_SERDES, serDes,
                             "Incompatible test mode\n");
-            
-             
+
+
             err = FM_ERR_INVALID_SUBMODE;
         }
     }
 
     if (err == FM_OK && configRxBist == TRUE)
     {
-        
-         
+
+
 
 
         err = SendDfeEventReq(eventInfo,
@@ -3375,8 +3414,8 @@ fm_status fm10000SerDesEnableBistMode(fm_smEventInfo *eventInfo,
 
         if (err == FM_OK)
         {
-            
-             
+
+
             err = fm10000SetSerdesRxPattern(sw,
                                             serDes,
                                             bistSubMode,
@@ -3397,8 +3436,8 @@ fm_status fm10000SerDesEnableBistMode(fm_smEventInfo *eventInfo,
     }
     else
     {
-        
-         
+
+
 
         if ((pLaneExt->farLoopbackStatus & 0x01) == 0)
         {
@@ -3411,7 +3450,7 @@ fm_status fm10000SerDesEnableBistMode(fm_smEventInfo *eventInfo,
         }
         else
         {
-            
+
             locErr = fm10000SerDesEnableParallelLoopback(eventInfo, userInfo);
             if (locErr != FM_OK)
             {
@@ -3424,7 +3463,7 @@ fm_status fm10000SerDesEnableBistMode(fm_smEventInfo *eventInfo,
 
     return err;
 
-}   /* end fm10000SerDesEnableBistMode */
+}
 
 
 
@@ -3467,7 +3506,7 @@ fm_status fm10000SerDesEnableTxBistMode(fm_smEventInfo *eventInfo,
 
     switch (bistSubMode)
     {
-        
+
         case FM_BIST_TX_PRBS_128:
         case FM_BIST_TX_PRBS_512B:
         case FM_BIST_TX_PRBS_2048:
@@ -3485,7 +3524,7 @@ fm_status fm10000SerDesEnableTxBistMode(fm_smEventInfo *eventInfo,
         case FM_BIST_TX_CUSTOM20:
         case FM_BIST_TX_CUSTOM40:
         case FM_BIST_TX_CUSTOM80:
-        
+
         case FM_BIST_TXRX_PRBS_128:
         case FM_BIST_TXRX_PRBS_512B:
         case FM_BIST_TXRX_PRBS_2048:
@@ -3504,12 +3543,14 @@ fm_status fm10000SerDesEnableTxBistMode(fm_smEventInfo *eventInfo,
         case FM_BIST_TXRX_CUSTOM40:
         case FM_BIST_TXRX_CUSTOM80:
         {
-            
+
             if ((pLaneExt->farLoopbackStatus & 0x01) == 0)
             {
-                
+
                 if ( bistSubMode != pLaneExt->bistTxSubMode )
                 {
+
+
                     err = fm10000SetSerdesTxPattern(sw,
                                                     serDes,
                                                     bistSubMode,
@@ -3526,8 +3567,8 @@ fm_status fm10000SerDesEnableTxBistMode(fm_smEventInfo *eventInfo,
             {
                 FM_LOG_ERROR_V2(FM_LOG_CAT_SERDES, serDes,
                                 "Incompatible test mode\n");
-                
-                 
+
+
                 err = FM_ERR_INVALID_SUBMODE;
             }
             break;
@@ -3542,7 +3583,7 @@ fm_status fm10000SerDesEnableTxBistMode(fm_smEventInfo *eventInfo,
         case FM_BIST_RX_CJPAT:
         case FM_BIST_TXRX_CJPAT:
         {
-            
+
             FM_LOG_ERROR_V2(FM_LOG_CAT_SERDES, serDes,
                             "Unsupported BIST submode: %d\n", bistSubMode );
             err = FM_ERR_UNSUPPORTED;
@@ -3566,7 +3607,7 @@ fm_status fm10000SerDesEnableTxBistMode(fm_smEventInfo *eventInfo,
         case FM_BIST_RX_CUSTOM40:
         case FM_BIST_RX_CUSTOM80:
         default:
-            
+
             FM_LOG_ERROR_V2(FM_LOG_CAT_SERDES, serDes,
                             "Invalid BIST submode: %d\n", bistSubMode );
             err = FM_ERR_INVALID_SUBMODE;
@@ -3574,7 +3615,7 @@ fm_status fm10000SerDesEnableTxBistMode(fm_smEventInfo *eventInfo,
 
     return err;
 
-}   /* end fm10000SerDesEnableTxBistMode */
+}
 
 
 
@@ -3628,7 +3669,7 @@ fm_status fm10000SerDesEnableRxBistMode(fm_smEventInfo *eventInfo,
         FM_LOG_ERROR_V2(FM_LOG_CAT_SERDES, serDes,
                         "Invalid BIST submode: %d\n", bistSubMode );
     }
-    else 
+    else
     {
         pLaneExt->bistRxSubMode = bistSubMode;
         pLaneExt->bistActive = TRUE;
@@ -3636,7 +3677,7 @@ fm_status fm10000SerDesEnableRxBistMode(fm_smEventInfo *eventInfo,
 
     return err;
 
-}   /* end fm10000SerDesEnableRxBistMode */
+}
 
 
 
@@ -3690,7 +3731,7 @@ fm_status fm10000SerDesRemoveBistConfig(fm_smEventInfo *eventInfo,
 
     return err;
 
-}   /* end fm10000SerDesRemoveBistConfig */
+}
 
 
 
@@ -3726,7 +3767,7 @@ fm_status fm10000SerDesInitSignalOk( fm_smEventInfo *eventInfo,
 
     return err;
 
-}   /* end fm10000SerDesInitSignalOk */
+}
 
 
 
@@ -3761,7 +3802,7 @@ fm_status fm10000SerDesDisableTxRx( fm_smEventInfo *eventInfo,
     pLaneExt = ((fm10000_serDesSmEventInfo *)userInfo)->laneExt;
     serDes   = pLaneExt->serDes;
 
-    
+
     if (pLaneExt->farLoopbackStatus & 0x02)
     {
         err = fm10000SerDesDisableParallelLoopback(eventInfo,userInfo);
@@ -3776,7 +3817,7 @@ fm_status fm10000SerDesDisableTxRx( fm_smEventInfo *eventInfo,
 
     return err;
 
-}   /* end fm10000SerDesDisableTxRx */
+}
 
 
 
@@ -3824,7 +3865,7 @@ fm_status fm10000SerDesEnableRx( fm_smEventInfo *eventInfo,
 
     return err;
 
-}   /* end fm10000SerDesEnableRx */
+}
 
 
 
@@ -3833,7 +3874,7 @@ fm_status fm10000SerDesEnableRx( fm_smEventInfo *eventInfo,
 /** fm10000SerDesEnableTxRx
  * \ingroup intSerdes
  *
- * \desc            Action enabling the SerDes Tx and Rx PLLs. 
+ * \desc            Action enabling the SerDes Tx and Rx PLLs.
  *
  * \param[in]       eventInfo is a pointer the generic event descriptor.
  *
@@ -3863,9 +3904,9 @@ fm_status fm10000SerDesEnableTxRx( fm_smEventInfo *eventInfo,
 
     err = fm10000SerdesTxRxEnaCtrl(sw,
                                    serDes,
-                                   FM10000_SERDES_CTRL_TX_ENA_MASK | 
+                                   FM10000_SERDES_CTRL_TX_ENA_MASK |
                                    FM10000_SERDES_CTRL_TX_ENA      |
-                                   FM10000_SERDES_CTRL_RX_ENA_MASK | 
+                                   FM10000_SERDES_CTRL_RX_ENA_MASK |
                                    FM10000_SERDES_CTRL_RX_ENA);
 
     if (err != FM_OK)
@@ -3877,7 +3918,7 @@ fm_status fm10000SerDesEnableTxRx( fm_smEventInfo *eventInfo,
 
     return err;
 
-}   /* end fm10000SerDesEnableTxRx */
+}
 
 
 
@@ -3912,14 +3953,14 @@ fm_status fm10000SerDesDisableRx( fm_smEventInfo *eventInfo,
     pLaneExt = ((fm10000_serDesSmEventInfo *)userInfo)->laneExt;
     serDes   = pLaneExt->serDes;
 
-    
+
     err = fm10000SerdesTxRxEnaCtrl(sw,
                                    serDes,
                                    FM10000_SERDES_CTRL_RX_ENA_MASK | 0);
 
     return err;
 
-}   /* end fm10000SerDesDisableRx */
+}
 
 
 
@@ -3967,7 +4008,7 @@ fm_status fm10000SerDesEnableTx( fm_smEventInfo *eventInfo,
 
     return err;
 
-}   /* end fm10000SerDesEnableTx */
+}
 
 
 
@@ -4011,7 +4052,7 @@ fm_status fm10000SerDesDisableTx( fm_smEventInfo *eventInfo,
 
     return err;
 
-}   /* end fm10000SerDesDisableTx */
+}
 
 
 
@@ -4047,7 +4088,7 @@ fm_status fm10000SerDesEnableTxOutput( fm_smEventInfo *eventInfo,
     pLaneExt = ((fm10000_serDesSmEventInfo *)userInfo)->laneExt;
     serDes   = pLaneExt->serDes;
 
-    
+
     serDesEnable = pLaneExt->serDesEnableCache;
 
     if (serDesEnable & FM10000_SERDES_CTRL_TX_ENA)
@@ -4071,7 +4112,7 @@ fm_status fm10000SerDesEnableTxOutput( fm_smEventInfo *eventInfo,
 
     return err;
 
-}   /* end fm10000SerDesEnableTxOutput */
+}
 
 
 
@@ -4112,7 +4153,7 @@ fm_status fm10000SerDesDisableTxOutput( fm_smEventInfo *eventInfo,
     return err;
 
 
-}   /* end fm10000SerDesDisableTxOutput */
+}
 
 
 
@@ -4149,7 +4190,7 @@ fm_status fm10000SerDesEnableEeeOpMode( fm_smEventInfo *eventInfo,
     return FM_OK;
 
 
-}   /* end fm10000SerDesEnableEeeOpMode */
+}
 
 
 
@@ -4186,7 +4227,7 @@ fm_status fm10000SerDesDisableEeeOpMode( fm_smEventInfo *eventInfo,
     return FM_OK;
 
 
-}   /* end fm10000SerDesDisableEeeOpMode */
+}
 
 
 
@@ -4221,14 +4262,14 @@ fm_status fm10000SerDesConfigureEee( fm_smEventInfo *eventInfo,
     serDes  = pLaneExt->serDes;
 
 
- 
- 
+
+
     err = fm10000SerdesConfigureEeeInt(sw,serDes);
 
     return err;
 
 
-}   /* end fm10000SerDesConfigureEee */
+}
 
 
 
@@ -4281,7 +4322,7 @@ fm_status fm10000SerDesDumpBitRate(fm_smEventInfo *eventInfo,
 
     return FM_OK;
 
-}   /* end fm10000SerDesDumpBitRate */
+}
 
 
 
@@ -4329,7 +4370,7 @@ fm_status fm10000SerDesStartKrTraining( fm_smEventInfo *eventInfo,
 
     return err;
 
-}   /* end fm10000SerDesStartKrTraining */
+}
 
 
 
@@ -4369,19 +4410,69 @@ fm_status fm10000SerDesStopKrTraining(fm_smEventInfo *eventInfo,
 
     if ( pLaneExt->dfeMode == FM_DFE_MODE_KR && switchExt->serdesSupportsKR )
     {
-        
+
         err = fm10000StopKrTraining(sw, serDes, FALSE);
         pLaneExt->krExt.eyeScoreHeight = 0xffff;
     }
     else
     {
-        
+
         err = FM_OK;
     }
 
     return err;
 
-}   /* end fm10000SerDesStopKrTraining */
+}
+
+
+
+
+/*****************************************************************************/
+/** fm10000SerDesSaveKrTimeoutStats
+ * \ingroup intSerdes
+ *
+ * \desc            Action saving statistical information about KR training
+ *                  timeouts.
+ *
+ * \param[in]       eventInfo is a pointer the generic event descriptor (unused
+ *                  in this function)
+ *
+ * \param[in]       userInfo pointer a purpose specific event descriptor (must
+ *                  be casted to ''fm10000_serdesSmEventInfo'')
+ *
+ * \return          FM_OK if successful
+ * \return          Other ''Status Codes'' as appropriate in case of failure.
+ *
+ *****************************************************************************/
+fm_status fm10000SerDesSaveKrTimeoutStats(fm_smEventInfo *eventInfo,
+                                          void           *userInfo )
+{
+    fm_status       err;
+    fm_int          sw;
+    fm_int          serDes;
+    fm10000_lane   *pLaneExt;
+    fm10000_switch *switchExt;
+
+    FM_NOT_USED(eventInfo);
+
+    sw = ((fm10000_serDesSmEventInfo *)userInfo)->switchPtr->switchNumber;
+    pLaneExt = ((fm10000_serDesSmEventInfo *)userInfo)->laneExt;
+    serDes   = pLaneExt->serDes;
+
+    switchExt = GET_SWITCH_EXT(sw);
+
+    if ( pLaneExt->dfeMode == FM_DFE_MODE_KR && switchExt->serdesSupportsKR )
+    {
+        err = fm10000SerdesSaveKrTrainingTimeoutInfo(sw, serDes);
+    }
+    else
+    {
+        err = FM_OK;
+    }
+
+    return err;
+
+}
 
 
 
@@ -4410,7 +4501,7 @@ fm_status fm10000SerDesSendDfeStartTuningReq(fm_smEventInfo *eventInfo,
                            userInfo,
                            FM10000_SERDES_DFE_EVENT_START_TUNING_REQ);
 
-}   /* end fm10000SerDesSendDfeStartTuningReq */
+}
 
 
 
@@ -4456,7 +4547,7 @@ fm_status fm10000SerDesSendDfeStopTuningReq(fm_smEventInfo *eventInfo,
 
     return err;
 
-}   /* end fm10000SerDesSendDfeStopTuningReq */
+}
 
 
 
@@ -4485,7 +4576,7 @@ fm_status fm10000SerDesSendDfeSuspendTuningReq(fm_smEventInfo *eventInfo,
                            userInfo,
                            FM10000_SERDES_DFE_EVENT_PAUSE_TUNING_REQ);
 
-}   /* end fm10000SerDesSendDfeSuspendTuningReq */
+}
 
 
 
@@ -4514,7 +4605,7 @@ fm_status fm10000SerDesSendDfeResumeTuningReq(fm_smEventInfo *eventInfo,
                            userInfo,
                            FM10000_SERDES_DFE_EVENT_RESUME_TUNING_REQ);
 
-}   /* end fm10000SerDesSendDfeResumeTuningReq */
+}
 
 
 
@@ -4555,7 +4646,7 @@ fm_status fm10000SerDesSendKrStartPcalReq(fm_smEventInfo *eventInfo,
 
     return err;
 
-}   /* end fm10000SerDesSendKrStartPcalReq */
+}
 
 
 
@@ -4583,11 +4674,14 @@ fm_status fm10000SerDesDontSaveTransitionRecord(fm_smEventInfo *eventInfo,
 {
     FM_NOT_USED(userInfo);
 
-    eventInfo->dontSaveRecord = TRUE;
+    if ( transactionLogDebugMode == 0 )
+    {
+        eventInfo->dontSaveRecord = TRUE;
+    }
 
     return FM_OK;
 
-}   /* end fm10000SerDesDontSaveTransitionRecord */
+}
 
 
 
@@ -4616,12 +4710,12 @@ fm_status fm10000SerDesSaveTransitionRecord(fm_smEventInfo *eventInfo,
 {
     FM_NOT_USED(userInfo);
 
-    
+
     eventInfo->dontSaveRecord = FALSE;
 
     return FM_OK;
 
-}   /* end fm10000SerDesSaveTransitionRecord */
+}
 
 
 
@@ -4654,6 +4748,7 @@ fm_status fm10000SerDesProcessRxTxPllLockEvents( fm_smEventInfo *eventInfo,
     fm10000_lane  *pLaneExt;
     fm_int         sw;
     fm_int         serDes;
+    fm_int         progressInd;
 
 
     FM_NOT_USED(eventInfo);
@@ -4663,6 +4758,7 @@ fm_status fm10000SerDesProcessRxTxPllLockEvents( fm_smEventInfo *eventInfo,
     serDes   = pLaneExt->serDes;
 
     err = FM_OK;
+    progressInd = 0;
 
     switch (eventInfo->eventId)
     {
@@ -4684,82 +4780,102 @@ fm_status fm10000SerDesProcessRxTxPllLockEvents( fm_smEventInfo *eventInfo,
 
     if (err == FM_OK && ((pLaneExt->serDesPllStatus & 0x03) == 0x03))
     {
-        
 
-        
+
+
         err = fm10000ConfigurePcslBitSlip(sw, serDes);
 
         if (err == FM_OK)
         {
+            progressInd++;
             err = fm10000SerDesConfigureWidthMode(eventInfo, userInfo);
         }
 
         if (err == FM_OK)
         {
-            
+
+            progressInd++;
             err = fm10000SerDesEnableTxOutput(eventInfo,userInfo);
         }
 
-        
+
         if (err == FM_OK)
         {
+            progressInd++;
             err = fm10000SerDesStartTimeoutTimerShrt(eventInfo, userInfo);
         }
 
         if (err == FM_OK)
         {
+            progressInd++;
             err = fm10000SerDesSendPortLaneReadyInd(eventInfo,userInfo);
         }
 
         if (err == FM_OK)
         {
+            progressInd++;
             err = fm10000SerDesSetStaticDfeSignalDtctNormal(eventInfo, userInfo);
         }
 
         if ( err == FM_OK )
         {
+            progressInd++;
             err = fm10000SerDesInitSignalOk(eventInfo,userInfo);
         }
 
         if (err == FM_OK)
         {
+
             if (!pLaneExt->nearLoopbackEn )
             {
                 *nextState = FM10000_SERDES_STATE_POWERED_UP;
             }
             else
             {
+                progressInd++;
                 err = fm10000SerDesDisableLanePolarity(eventInfo,userInfo);
 
                 if (err == FM_OK)
                 {
+                    progressInd++;
                     err = fm10000SerDesEnableNearLoopback(eventInfo,userInfo);
                 }
-        
+
                 if (err == FM_OK)
                 {
+                    progressInd++;
                     err = fm10000SerDesDisableTxOutput(eventInfo,userInfo);
                 }
-        
+
                 if (err == FM_OK)
                 {
+                    progressInd++;
                     err = fm10000SerDesSetSignalDtctNormal(eventInfo,userInfo);
                 }
                 *nextState = FM10000_SERDES_STATE_LOOPBACK;
             }
-            
+
             pLaneExt->serdesInterruptMask = FM10000_SERDES_OPSTATE_INTR_MASK;
         }
     }
     else
     {
-        
+
         pLaneExt->serdesInterruptMask = FM10000_SERDES_PWRUP_INTR_MASK;
+    }
+
+    if ( err != FM_OK )
+    {
+        FM_LOG_DEBUG_V2( FM_LOG_CAT_SERDES,
+                         serDes,
+                         "Error processing RxTx Lock Events, serdes= %d, progressInd=%d\n",
+                         serDes,
+                         progressInd);
     }
 
     return err;
 
-}   /* end fm10000SerDesProcessRxTxPllLockEvents */
+}
 
 
 
@@ -4802,8 +4918,8 @@ fm_status fm10000SerDesProcessRxTxPllLockTimeout( fm_smEventInfo *eventInfo,
 
     FM_NOT_USED(eventInfo);
 
-    
-     
+
+
 
 
     sw        = ((fm10000_serDesSmEventInfo *)userInfo)->switchPtr->switchNumber;
@@ -4819,13 +4935,13 @@ fm_status fm10000SerDesProcessRxTxPllLockTimeout( fm_smEventInfo *eventInfo,
         {
             if (txRdy == TRUE && rxRdy == TRUE)
             {
-                
-                 
 
-                
+
+
+
                 pLaneExt->serDesPllStatus = 0x03;
 
-                
+
                 err = fm10000ConfigurePcslBitSlip(sw, serDes);
 
                 if (err == FM_OK)
@@ -4835,11 +4951,11 @@ fm_status fm10000SerDesProcessRxTxPllLockTimeout( fm_smEventInfo *eventInfo,
 
                 if (err == FM_OK)
                 {
-                    
+
                     err = fm10000SerDesEnableTxOutput(eventInfo,userInfo);
                 }
 
-                
+
                 if (err == FM_OK)
                 {
                     err = fm10000SerDesStartTimeoutTimerShrt(eventInfo, userInfo);
@@ -4859,11 +4975,12 @@ fm_status fm10000SerDesProcessRxTxPllLockTimeout( fm_smEventInfo *eventInfo,
                 {
                     err = fm10000SerDesInitSignalOk(eventInfo,userInfo);
                 }
-                
+
                 if (err == FM_OK)
                 {
                     if (!pLaneExt->nearLoopbackEn )
                     {
+
                         *nextState = FM10000_SERDES_STATE_POWERED_UP;
                     }
                     else
@@ -4874,12 +4991,12 @@ fm_status fm10000SerDesProcessRxTxPllLockTimeout( fm_smEventInfo *eventInfo,
                         {
                             err = fm10000SerDesEnableNearLoopback(eventInfo,userInfo);
                         }
-                
+
                         if (err == FM_OK)
                         {
                             err = fm10000SerDesDisableTxOutput(eventInfo,userInfo);
                         }
-                
+
                         if (err == FM_OK)
                         {
                             err = fm10000SerDesSetSignalDtctNormal(eventInfo,userInfo);
@@ -4887,12 +5004,12 @@ fm_status fm10000SerDesProcessRxTxPllLockTimeout( fm_smEventInfo *eventInfo,
                         *nextState = FM10000_SERDES_STATE_LOOPBACK;
                     }
 
-                    
+
                     pLaneExt->serdesInterruptMask = FM10000_SERDES_OPSTATE_INTR_MASK;
 
                     TAKE_REG_LOCK( sw );
 
-                    err = switchPtr->WriteUINT32( sw, 
+                    err = switchPtr->WriteUINT32( sw,
                                                   FM10000_SERDES_IP(pLaneExt->epl, pLaneExt->physLane),
                                                   ~0 );
 
@@ -4902,23 +5019,23 @@ fm_status fm10000SerDesProcessRxTxPllLockTimeout( fm_smEventInfo *eventInfo,
                                                       FM10000_SERDES_IM(pLaneExt->epl, pLaneExt->physLane),
                                                       ~pLaneExt->serdesInterruptMask);
                     }
-                    
+
                     DROP_REG_LOCK( sw );
                 }
 
             }
             else
             {
-                
-                 
 
-                 
 
-                 
 
-                 
 
-                 
+
+
+
+
+
+
                 err = fm10000SerDesDisableTxRx(eventInfo,userInfo);
 
                 pLaneExt->serDesEnableRetryCtrl = 1;
@@ -4941,14 +5058,14 @@ fm_status fm10000SerDesProcessRxTxPllLockTimeout( fm_smEventInfo *eventInfo,
 
     if (err != FM_OK)
     {
-        
+
         err = fm10000SerDesStartTimeoutTimerLng(eventInfo,userInfo);
 
     }
 
     return err;
 
-}   /* end fm10000SerDesProcessRxTxPllLockTimeout */
+}
 
 
 
@@ -4990,7 +5107,7 @@ fm_status fm10000SerDesProcessRxPllLockTimeout(fm_smEventInfo *eventInfo,
 
     FM_NOT_USED(eventInfo);
 
-    
+
 
     sw        = ((fm10000_serDesSmEventInfo *)userInfo)->switchPtr->switchNumber;
     pLaneExt  = ((fm10000_serDesSmEventInfo *)userInfo)->laneExt;
@@ -5003,11 +5120,11 @@ fm_status fm10000SerDesProcessRxPllLockTimeout(fm_smEventInfo *eventInfo,
     {
         if (rxRdy == TRUE)
         {
-            
-             
+
+
             pLaneExt->serDesPllStatus = 0x02;
 
-                       
+
             err = fm10000ConfigurePcslBitSlip(sw, serDes);
 
             if (err == FM_OK)
@@ -5015,7 +5132,7 @@ fm_status fm10000SerDesProcessRxPllLockTimeout(fm_smEventInfo *eventInfo,
                 err = fm10000SerDesSendPortLaneReadyInd( eventInfo, userInfo);
             }
 
-            
+
             if (err == FM_OK)
             {
                 err = fm10000SerDesStartTimeoutTimerShrt(eventInfo, userInfo);
@@ -5025,12 +5142,13 @@ fm_status fm10000SerDesProcessRxPllLockTimeout(fm_smEventInfo *eventInfo,
             {
                 err = fm10000SerDesInitSignalOk(eventInfo,userInfo);
             }
-            
+
+
             if (err == FM_OK)
             {
                 *nextState = FM10000_SERDES_STATE_RX_ON;
 
-                
+
                 pLaneExt->serdesInterruptMask = FM10000_SERDES_OPSTATE_INTR_MASK;
 
                 TAKE_REG_LOCK( sw );
@@ -5050,16 +5168,16 @@ fm_status fm10000SerDesProcessRxPllLockTimeout(fm_smEventInfo *eventInfo,
         }
         else
         {
-            
-             
 
-             
 
-             
 
-             
 
-             
+
+
+
+
+
+
             err = fm10000SerDesDisableTxRx(eventInfo,userInfo);
 
             if (err == FM_OK)
@@ -5076,15 +5194,15 @@ fm_status fm10000SerDesProcessRxPllLockTimeout(fm_smEventInfo *eventInfo,
 
     if (err != FM_OK)
     {
-        
-         
+
+
         err = fm10000SerDesStartTimeoutTimerLng(eventInfo,userInfo);
 
     }
 
     return err;
 
-}   /* end fm10000SerDesProcessRxPllLockTimeout */
+}
 
 
 
@@ -5126,7 +5244,7 @@ fm_status fm10000SerDesProcessTxPllLockTimeout(fm_smEventInfo *eventInfo,
 
     FM_NOT_USED(eventInfo);
 
-    
+
 
     sw        = ((fm10000_serDesSmEventInfo *)userInfo)->switchPtr->switchNumber;
     pLaneExt  = ((fm10000_serDesSmEventInfo *)userInfo)->laneExt;
@@ -5139,14 +5257,14 @@ fm_status fm10000SerDesProcessTxPllLockTimeout(fm_smEventInfo *eventInfo,
     {
         if (txRdy == TRUE)
         {
-            
-             
+
+
             pLaneExt->serDesPllStatus = 0x01;
 
-            
+
             err = fm10000SerDesEnableTxOutput(eventInfo, userInfo);
 
-            
+
             if (err == FM_OK)
             {
                 err = fm10000SerDesStartTimeoutTimerShrt(eventInfo, userInfo);
@@ -5157,12 +5275,12 @@ fm_status fm10000SerDesProcessTxPllLockTimeout(fm_smEventInfo *eventInfo,
                 err = fm10000SerDesSendPortLaneReadyInd(eventInfo, userInfo);
             }
 
-            
+
             if (err == FM_OK)
             {
                 *nextState = FM10000_SERDES_STATE_TX_ON;
 
-                
+
                 pLaneExt->serdesInterruptMask = 0;
 
                 TAKE_REG_LOCK( sw );
@@ -5182,16 +5300,16 @@ fm_status fm10000SerDesProcessTxPllLockTimeout(fm_smEventInfo *eventInfo,
         }
         else
         {
-            
-             
 
-             
 
-             
 
-             
 
-             
+
+
+
+
+
+
             err = fm10000SerDesDisableTxRx(eventInfo,userInfo);
 
             if (err == FM_OK)
@@ -5208,14 +5326,14 @@ fm_status fm10000SerDesProcessTxPllLockTimeout(fm_smEventInfo *eventInfo,
 
     if (err != FM_OK)
     {
-        
+
         err = fm10000SerDesStartTimeoutTimerLng(eventInfo,userInfo);
 
     }
 
     return err;
 
-}   /* end fm10000SerDesProcessTxPllLockTimeout */
+}
 
 
 
@@ -5261,10 +5379,10 @@ fm_status fm10000SerDesProcessSignalOkAsserted(fm_smEventInfo *eventInfo,
     {
         case FM_DFE_MODE_STATIC:
         {
-            
 
-            
-             
+
+
+
 
 
             err = fm10000SerDesSetStaticDfeSignalDtctNormal(eventInfo,userInfo);
@@ -5284,15 +5402,37 @@ fm_status fm10000SerDesProcessSignalOkAsserted(fm_smEventInfo *eventInfo,
         case FM_DFE_MODE_CONTINUOUS:
         case FM_DFE_MODE_ICAL_ONLY:
         {
+
             pLaneExt->signalOkDebounce = 1;
 
-            err = fm10000SerDesDontSaveTransitionRecord(eventInfo,userInfo);
-            restartTimer = FALSE;
+            if ( fmGetBoolApiProperty(FM_AAK_API_DFE_ENABLE_SIGNALOK_DEBOUNCING,
+                                      FM_AAD_API_DFE_ENABLE_SIGNALOK_DEBOUNCING) == FALSE )
+
+            {
+                err = fm10000SerDesSendDfeStartTuningReq(eventInfo,userInfo);
+                if (err == FM_OK)
+                {
+                    *nextState = FM10000_SERDES_STATE_DFE_TUNING;
+                }
+                else
+                {
+                    FM_LOG_ERROR_V2(FM_LOG_CAT_SERDES,
+                                    serDes,
+                                    "Cannot send event to DFE sm on serdes=%d\n",
+                                    serDes);
+                }
+            }
+            else
+            {
+                err = fm10000SerDesDontSaveTransitionRecord(eventInfo,userInfo);
+                restartTimer = FALSE;
+            }
 
             break;
         }
         case FM_DFE_MODE_KR:
         {
+
             err = fm10000SerDesStartKrTraining(eventInfo, userInfo );
             if (err == FM_OK)
             {
@@ -5310,21 +5450,22 @@ fm_status fm10000SerDesProcessSignalOkAsserted(fm_smEventInfo *eventInfo,
                             serDes,
                             "Invalid DFE mode on serdes=%d\n",
                             serDes);
-            
+
     }
-     
+
 
     if ( restartTimer )
     {
+
         locErr = fm10000SerDesStartTimeoutTimerShrt(eventInfo,userInfo);
     }
 
-    
+
     err = (err != FM_OK)? err : locErr;
 
     return err;
 
-}   /* end fm10000SerDesProcessSignalOkAsserted */
+}
 
 
 
@@ -5370,7 +5511,7 @@ fm_status fm10000SerDesProcessSignalOkAssertedRx(fm_smEventInfo *eventInfo,
     {
         case FM_DFE_MODE_STATIC:
         {
-            
+
             *nextState = FM10000_SERDES_STATE_MISSION;
             break;
         }
@@ -5378,8 +5519,8 @@ fm_status fm10000SerDesProcessSignalOkAssertedRx(fm_smEventInfo *eventInfo,
         case FM_DFE_MODE_CONTINUOUS:
         case FM_DFE_MODE_ICAL_ONLY:
         {
-            
-             
+
+
 
             err = fm10000SerDesSendDfeStartTuningReq(eventInfo,userInfo);
 
@@ -5395,26 +5536,25 @@ fm_status fm10000SerDesProcessSignalOkAssertedRx(fm_smEventInfo *eventInfo,
         case FM_DFE_MODE_KR:
         default:
         {
-            
+
             err = FM_FAIL;
             FM_LOG_ERROR_V2(FM_LOG_CAT_SERDES,
                             serDes,
                             "Invalid DFE mode on serdes=%d\n",
                             serDes);
-            
+
         }
     }
 
-    
-     
+
     locErr = fm10000SerDesStartTimeoutTimerShrt(eventInfo,userInfo);
 
-    
+
     err = (err != FM_OK)? err : locErr;
 
     return err;
 
-}   /* end fm10000SerDesProcessSignalOkAssertedRx */
+}
 
 
 
@@ -5464,10 +5604,10 @@ fm_status fm10000SerDesProcessSignalOkDeasserted(fm_smEventInfo *eventInfo,
         {
             case FM_DFE_MODE_KR:
             {
-                
+
                 err = fm10000SerDesStopKrTraining(eventInfo, userInfo);
 
-                if ( err == FM_OK && 
+                if ( err == FM_OK &&
                      (pLaneExt->krExt.pCalMode == FM10000_SERDES_KR_PCAL_MODE_ONE_SHOT ||
                       pLaneExt->krExt.pCalMode == FM10000_SERDES_KR_PCAL_MODE_CONTINUOUS) )
                 {
@@ -5482,7 +5622,7 @@ fm_status fm10000SerDesProcessSignalOkDeasserted(fm_smEventInfo *eventInfo,
             }
             case FM_DFE_MODE_STATIC:
             {
-                
+
                 *nextState = FM10000_SERDES_STATE_POWERED_UP;
                 break;
             }
@@ -5491,12 +5631,12 @@ fm_status fm10000SerDesProcessSignalOkDeasserted(fm_smEventInfo *eventInfo,
             case FM_DFE_MODE_ICAL_ONLY:
             {
                 err = fm10000SerDesSetSignalDtctForcedBadC(eventInfo,userInfo);
-    
+
                 if ( err == FM_OK )
                 {
                     err = fm10000SerDesSendDfeStopTuningReq(eventInfo,userInfo);
                 }
-    
+
                 if ( err == FM_OK )
                 {
                     *nextState = FM10000_SERDES_STATE_POWERED_UP;
@@ -5517,23 +5657,24 @@ fm_status fm10000SerDesProcessSignalOkDeasserted(fm_smEventInfo *eventInfo,
                                 "Invalid DFE mode on serdes=%d\n",
                                 serDes);
 
-        }   /* end switch (pLaneExt->dfeMode) */
+        }
+
 
         locErr = fm10000SerDesStartTimeoutTimerShrt(eventInfo,userInfo);
-    }   
+    }
     else
     {
         err = fm10000SerDesDontSaveTransitionRecord(eventInfo,userInfo);
 
         locErr = fm10000SerDesStartTimeoutTimerLng(eventInfo,userInfo);
-    }   /* end if (!pLaneExt->eeeModeActive) */
+    }
 
-    
+
     err = (err != FM_OK)? err : locErr;
 
     return err;
 
-}   /* end fm10000SerDesProcessSignalOkDeasserted */
+}
 
 
 
@@ -5613,19 +5754,18 @@ fm_status fm10000SerDesProcessSignalOkDeassertedRx(fm_smEventInfo *eventInfo,
                             serDes,
                             "Invalid DFE mode on serdes=%d\n",
                             serDes);
-            
+
     }
 
-    
-     
+
     locErr = fm10000SerDesStartTimeoutTimerShrt(eventInfo,userInfo);
 
-    
+
     err = (err != FM_OK)? err : locErr;
 
     return err;
 
-}   /* end fm10000SerDesProcessSignalOkDeassertedRx */
+}
 
 
 
@@ -5671,9 +5811,10 @@ fm_status fm10000SerDesProcessSignalOkTimeout(fm_smEventInfo *eventInfo,
     sw        = ((fm10000_serDesSmEventInfo *)userInfo)->switchPtr->switchNumber;
     switchPtr = ((fm10000_serDesSmEventInfo *)userInfo)->switchPtr;
 
-    
+
     currentState = *nextState;
     debounceActive = FALSE;
+
 
 
     err = fm10000SerdesGetSignalOk(sw, serDes, &signalOk);
@@ -5685,8 +5826,8 @@ fm_status fm10000SerDesProcessSignalOkTimeout(fm_smEventInfo *eventInfo,
             case FM_DFE_MODE_STATIC:
             {
 
-                
-                 
+
+
 
 
                 err = fm10000SerDesSetStaticDfeSignalDtctNormal(eventInfo,userInfo);
@@ -5696,7 +5837,7 @@ fm_status fm10000SerDesProcessSignalOkTimeout(fm_smEventInfo *eventInfo,
                     err = fm10000SerDesEnableParallelLoopback(eventInfo,userInfo);
                 }
 
-                
+
                 *nextState = FM10000_SERDES_STATE_MISSION;
                 break;
             }
@@ -5704,8 +5845,12 @@ fm_status fm10000SerDesProcessSignalOkTimeout(fm_smEventInfo *eventInfo,
             case FM_DFE_MODE_CONTINUOUS:
             case FM_DFE_MODE_ICAL_ONLY:
             {
-                if ( pLaneExt->signalOkDebounce++ > FM10000_SERDES_SIGNALOK_DEBOUNCE_THRESHOLD )
+                if ( pLaneExt->signalOkDebounce++ > FM10000_SERDES_SIGNALOK_DEBOUNCE_THRESHOLD ||
+                     (fmGetBoolApiProperty(FM_AAK_API_DFE_ENABLE_SIGNALOK_DEBOUNCING,
+                                           FM_AAD_API_DFE_ENABLE_SIGNALOK_DEBOUNCING) == FALSE) )
+
                 {
+
                     err = fm10000SerDesSendDfeStartTuningReq(eventInfo,userInfo);
                     if (err == FM_OK)
                     {
@@ -5741,7 +5886,7 @@ fm_status fm10000SerDesProcessSignalOkTimeout(fm_smEventInfo *eventInfo,
                                 serDes,
                                 "Invalid DFE mode on serdes=%d\n",
                                 serDes);
-                
+
         }
 
         if ( currentState == *nextState )
@@ -5751,6 +5896,9 @@ fm_status fm10000SerDesProcessSignalOkTimeout(fm_smEventInfo *eventInfo,
     }
     else
     {
+
+
+
         if ( pLaneExt->signalOkDebounce )
         {
             debounceActive = TRUE;
@@ -5767,13 +5915,16 @@ fm_status fm10000SerDesProcessSignalOkTimeout(fm_smEventInfo *eventInfo,
         }
         else
         {
-            
+
             fm10000SerDesDontSaveTransitionRecord(eventInfo,userInfo);
         }
 
     }
 
-    
+
+
+
+
     if ( debounceActive ||
         (currentState != *nextState &&
          *nextState != FM10000_SERDES_STATE_KR_TRAINING))
@@ -5787,7 +5938,7 @@ fm_status fm10000SerDesProcessSignalOkTimeout(fm_smEventInfo *eventInfo,
 
     return err;
 
-}   /* end fm10000SerDesProcessSignalOkTimeout */
+}
 
 
 
@@ -5831,10 +5982,10 @@ fm_status fm10000SerDesProcessSignalOkTimeoutRx(fm_smEventInfo *eventInfo,
     serDes   = pLaneExt->serDes;
     sw       = ((fm10000_serDesSmEventInfo *)userInfo)->switchPtr->switchNumber;
 
-    
+
     currentState = *nextState;
 
-    
+
     err = fm10000SerdesGetSignalOk(sw, serDes, &signalOk);
 
     if (err == FM_OK && signalOk == TRUE)
@@ -5842,7 +5993,7 @@ fm_status fm10000SerDesProcessSignalOkTimeoutRx(fm_smEventInfo *eventInfo,
         switch (pLaneExt->dfeMode)
         {
         case FM_DFE_MODE_STATIC:
-            
+
             *nextState = FM10000_SERDES_STATE_RX_MISSION;
             break;
         case FM_DFE_MODE_ONE_SHOT:
@@ -5869,13 +6020,13 @@ fm_status fm10000SerDesProcessSignalOkTimeoutRx(fm_smEventInfo *eventInfo,
                             serDes,
                             "Invalid DFE mode on serdes=%d\n",
                             serDes);
-            
+
         }
     }
     else
     {
-        
-         
+
+
 
         if (err != FM_OK)
         {
@@ -5884,12 +6035,12 @@ fm_status fm10000SerDesProcessSignalOkTimeoutRx(fm_smEventInfo *eventInfo,
                             serDes);
         }
 
-        
+
         fm10000SerDesDontSaveTransitionRecord(eventInfo,userInfo);
     }
 
-    
-     
+
+
 
 
     if (currentState != *nextState)
@@ -5903,7 +6054,7 @@ fm_status fm10000SerDesProcessSignalOkTimeoutRx(fm_smEventInfo *eventInfo,
 
     return err;
 
-}   /* end fm10000SerDesProcessSignalOkTimeoutRx */
+}
 
 
 
@@ -5943,9 +6094,9 @@ fm_status fm10000SerDesProcessDfeComplete(fm_smEventInfo *eventInfo,
     pLaneExt = ((fm10000_serDesSmEventInfo *)userInfo)->laneExt;
     serDes   = pLaneExt->serDes;
     sw       = ((fm10000_serDesSmEventInfo *)userInfo)->switchPtr->switchNumber;
-    
+
     err = fm10000SerDesSetSignalDtctNormal(eventInfo,userInfo);
-    
+
     if ( err == FM_OK )
     {
         err =fm10000SerDesEnableParallelLoopback(eventInfo,userInfo);
@@ -5980,7 +6131,7 @@ fm_status fm10000SerDesProcessDfeComplete(fm_smEventInfo *eventInfo,
 
     if (locErr != FM_OK)
     {
-        
+
         FM_LOG_ERROR_V2(FM_LOG_CAT_SERDES,
                         serDes,
                         "Cannot start timer, serdes=%d\n",
@@ -5991,7 +6142,7 @@ fm_status fm10000SerDesProcessDfeComplete(fm_smEventInfo *eventInfo,
 
     return err;
 
-}   /* end fm10000SerDesProcessDfeComplete */
+}
 
 
 
@@ -6039,19 +6190,19 @@ fm_status fm10000SerDesProcessDfeICalComplete(fm_smEventInfo *eventInfo,
                               FM_AAD_API_DFE_ALLOW_EARLY_LINK_UP_MODE) == TRUE) )
     {
         err = fm10000SerDesSetSignalDtctNormal(eventInfo,userInfo);
-        
+
         if ( err == FM_OK )
         {
             err =fm10000SerDesEnableParallelLoopback(eventInfo,userInfo);
         }
-    
+
         *nextState = FM10000_SERDES_STATE_MISSION;
-    
+
         locErr = fm10000SerDesStartTimeoutTimerShrt(eventInfo,userInfo);
-    
+
         if (locErr != FM_OK)
         {
-            
+
             FM_LOG_ERROR_V2(FM_LOG_CAT_SERDES,
                             serDes,
                             "Cannot start timer, serdes=%d\n",
@@ -6063,7 +6214,7 @@ fm_status fm10000SerDesProcessDfeICalComplete(fm_smEventInfo *eventInfo,
 
     return err;
 
-}   /* end fm10000SerDesProcessDfeICalComplete */
+}
 
 
 
@@ -6107,21 +6258,25 @@ fm_status fm10000SerDesProcessKrTrainingTimeout(fm_smEventInfo *eventInfo,
     serDes   = pLaneExt->serDes;
     sw       = ((fm10000_serDesSmEventInfo *)userInfo)->switchPtr->switchNumber;
 
-    
+
 
     fm10000SerDesSetSignalDtctNormal(eventInfo,userInfo);
-     
+
+
+
+
+
     err = fm10000SerdesGetKrTrainingStatus(sw, serDes, &krSignalOk, &krFailed);
 
     if (err == FM_OK)
     {
         if (krFailed == TRUE || (--pLaneExt->krExt.krTrainingCtrlCnt <= 0) )
         {
-            
-             
 
-            
-             
+
+
+
+
 
             if (pLaneExt->dbgLvl >= FM10000_SERDES_DBG_TEST_BOARD_LVL_1)
             {
@@ -6143,13 +6298,12 @@ fm_status fm10000SerDesProcessKrTrainingTimeout(fm_smEventInfo *eventInfo,
         }
         else if (krSignalOk == TRUE)
         {
-            
+
             if (pLaneExt->dbgLvl == FM10000_SERDES_DBG_TEST_BOARD_LVL_1)
             {
-                
-                 
 
-                
+
+
                 err = fm10000SetSerdesTxPattern(sw, serDes, FM_BIST_TX_PRBS_2048, 0, 0);
                 if (err != FM_OK)
                 {
@@ -6177,7 +6331,7 @@ fm_status fm10000SerDesProcessKrTrainingTimeout(fm_smEventInfo *eventInfo,
                     FM_LOG_PRINT("*> serdes=%d: KR Training Completed\n",serDes);
                 }
 
-                
+
                 if (err == FM_OK)
                 {
                     locErr = fm10000SerDesEnableParallelLoopback(eventInfo, userInfo);
@@ -6188,13 +6342,14 @@ fm_status fm10000SerDesProcessKrTrainingTimeout(fm_smEventInfo *eventInfo,
                                       serDes);
                     }
 
-                    
-                     
+
+
                     fm10000SerdesGetSignalOk(sw, serDes, NULL);
 
 
                     fm10000SerdesGetEyeHeight(sw,serDes,&pLaneExt->krExt.eyeScoreHeight, NULL);
-                    
+
+
                     if ( fmGetBoolApiProperty(FM_AAK_API_DFE_ALLOW_KR_PCAL_MODE,
                                               FM_AAD_API_DFE_ALLOW_KR_PCAL_MODE) == TRUE)
                     {
@@ -6205,16 +6360,18 @@ fm_status fm10000SerDesProcessKrTrainingTimeout(fm_smEventInfo *eventInfo,
                         *nextState = FM10000_SERDES_STATE_MISSION;
                     }
 
-
+                    fm10000SerDesSendPortKrTrainingCompleteInd(eventInfo,userInfo);
                     fm10000SerdesSaveKrTrainingDelayInfo(sw,serDes);
                 }
             }
         }
         else
         {
+
             fm10000SerDesDontSaveTransitionRecord(eventInfo,userInfo);
         }
     }
+
 
     if (*nextState ==  FM10000_SERDES_STATE_KR_COMPLETE )
     {
@@ -6227,7 +6384,7 @@ fm_status fm10000SerDesProcessKrTrainingTimeout(fm_smEventInfo *eventInfo,
 
     if (locErr != FM_OK)
     {
-        
+
         FM_LOG_ERROR_V2(FM_LOG_CAT_SERDES,
                         serDes,
                         "Cannot start timer during KR training, serdes=%d\n",
@@ -6238,7 +6395,7 @@ fm_status fm10000SerDesProcessKrTrainingTimeout(fm_smEventInfo *eventInfo,
 
     return err;
 
-}   /* end fm10000SerDesProcessKrTrainingTimeout */
+}
 
 
 
@@ -6310,7 +6467,7 @@ fm_status fm10000SerDesProcessKrTrainingSignalOk(fm_smEventInfo *eventInfo,
         }
         else if (krSignalOk == TRUE)
         {
-            
+
             if (pLaneExt->dbgLvl == FM10000_SERDES_DBG_TEST_BOARD_LVL_1)
             {
 
@@ -6340,7 +6497,7 @@ fm_status fm10000SerDesProcessKrTrainingSignalOk(fm_smEventInfo *eventInfo,
                     FM_LOG_PRINT("*> serdes=%d: KR Training Completed\n",serDes);
                 }
 
-                
+
                 if (err == FM_OK)
                 {
                     locErr = fm10000SerDesEnableParallelLoopback(eventInfo, userInfo);
@@ -6366,6 +6523,7 @@ fm_status fm10000SerDesProcessKrTrainingSignalOk(fm_smEventInfo *eventInfo,
                         *nextState = FM10000_SERDES_STATE_MISSION;
                     }
 
+                    fm10000SerDesSendPortKrTrainingCompleteInd(eventInfo,userInfo);
 
                     fm10000SerdesSaveKrTrainingDelayInfo(sw,serDes);
                 }
@@ -6384,7 +6542,7 @@ fm_status fm10000SerDesProcessKrTrainingSignalOk(fm_smEventInfo *eventInfo,
 
     if (locErr != FM_OK)
     {
-        
+
         FM_LOG_ERROR_V2(FM_LOG_CAT_SERDES,
                         serDes,
                         "Cannot start timer during KR training, serdes=%d\n",
@@ -6395,7 +6553,7 @@ fm_status fm10000SerDesProcessKrTrainingSignalOk(fm_smEventInfo *eventInfo,
 
     return err;
 
-}   /* end fm10000SerDesProcessKrTrainingSignalOk */
+}
 
 
 
@@ -6434,13 +6592,13 @@ fm_status fm10000SerDesProcessKrTrainingComplete(fm_smEventInfo *eventInfo,
 
     if (err == FM_OK)
     {
-       
+
        err = fm10000SerDesSaveTransitionRecord(eventInfo,userInfo);
     }
 
     return err;
 
-}   /* end fm10000SerDesProcessKrTrainingComplete */
+}
 
 
 
@@ -6491,7 +6649,7 @@ fm_status fm10000SerDesProcessDfeTuningTimeout(fm_smEventInfo *eventInfo,
         if (dfeTuningActive)
         {
             fm10000SerDesDontSaveTransitionRecord(eventInfo,userInfo);
-            
+
         }
         else
         {
@@ -6501,7 +6659,7 @@ fm_status fm10000SerDesProcessDfeTuningTimeout(fm_smEventInfo *eventInfo,
             {
                 if (signalOk)
                 {
-                    
+
                     err = fm10000SerDesSendDfeStartTuningReq(eventInfo,userInfo);
                 }
                 else
@@ -6512,12 +6670,12 @@ fm_status fm10000SerDesProcessDfeTuningTimeout(fm_smEventInfo *eventInfo,
         }
     }
 
-    
+
     locErr = fm10000SerDesStartTimeoutTimerShrt(eventInfo,userInfo);
 
     if (locErr != FM_OK)
     {
-        
+
         FM_LOG_ERROR_V2(FM_LOG_CAT_SERDES,
                         serDes,
                         "Cannot start timer during KR training, serdes=%d\n",
@@ -6528,7 +6686,7 @@ fm_status fm10000SerDesProcessDfeTuningTimeout(fm_smEventInfo *eventInfo,
 
     return err;
 
-}   /* end fm10000SerDesProcessDfeTuningTimeout */
+}
 
 
 
@@ -6571,15 +6729,14 @@ fm_status fm10000SerDesProcessSignalNokTimeout(fm_smEventInfo *eventInfo,
     serDes   = pLaneExt->serDes;
     sw       = ((fm10000_serDesSmEventInfo *)userInfo)->switchPtr->switchNumber;
 
-    
+
     currentState = *nextState;
 
-    
+
     err = fm10000SerdesGetSignalOk(sw, serDes, &signalOk);
 
     if (pLaneExt->eeeModeActive)
     {
-
         signalOk = TRUE;
     }
 
@@ -6588,12 +6745,12 @@ fm_status fm10000SerDesProcessSignalNokTimeout(fm_smEventInfo *eventInfo,
         switch (pLaneExt->dfeMode)
         {
             case FM_DFE_MODE_KR:
-                
+
                 err = fm10000SerDesStopKrTraining(eventInfo, userInfo);
             case FM_DFE_MODE_STATIC:
                 if (err == FM_OK)
                 {
-                    
+
                     *nextState = FM10000_SERDES_STATE_POWERED_UP;
                 }
                 break;
@@ -6607,7 +6764,7 @@ fm_status fm10000SerDesProcessSignalNokTimeout(fm_smEventInfo *eventInfo,
                 {
                     err = fm10000SerDesSendDfeStopTuningReq(eventInfo,userInfo);
                 }
-    
+
                 if ( err == FM_OK )
                 {
                     *nextState = FM10000_SERDES_STATE_POWERED_UP;
@@ -6626,13 +6783,13 @@ fm_status fm10000SerDesProcessSignalNokTimeout(fm_smEventInfo *eventInfo,
                                 serDes,
                                 "Invalid DFE mode on serdes=%d\n",
                                 serDes);
-                
+
         }
     }
     else
     {
-        
-         
+
+
 
         if (err != FM_OK)
         {
@@ -6643,8 +6800,8 @@ fm_status fm10000SerDesProcessSignalNokTimeout(fm_smEventInfo *eventInfo,
 
     }
 
-    
-     
+
+
 
 
     if (currentState != *nextState)
@@ -6655,14 +6812,14 @@ fm_status fm10000SerDesProcessSignalNokTimeout(fm_smEventInfo *eventInfo,
     {
         err = fm10000SerDesStartTimeoutTimerXLng(eventInfo,userInfo);
 
-        
+
         fm10000SerDesDontSaveTransitionRecord(eventInfo,userInfo);
 
     }
 
     return err;
 
-}   /* end fm10000SerDesProcessSignalNokTimeout */
+}
 
 
 
@@ -6706,10 +6863,10 @@ fm_status fm10000SerDesProcessSignalNokTimeoutRx(fm_smEventInfo *eventInfo,
     serDes   = pLaneExt->serDes;
     sw       = ((fm10000_serDesSmEventInfo *)userInfo)->switchPtr->switchNumber;
 
-    
+
     currentState = *nextState;
 
-    
+
     err = fm10000SerdesGetSignalOk(sw, serDes, &signalOk);
 
     if (err == FM_OK && signalOk == FALSE)
@@ -6717,7 +6874,7 @@ fm_status fm10000SerDesProcessSignalNokTimeoutRx(fm_smEventInfo *eventInfo,
         switch (pLaneExt->dfeMode)
         {
         case FM_DFE_MODE_STATIC:
-            
+
             *nextState = FM10000_SERDES_STATE_RX_ON;
             break;
         case FM_DFE_MODE_ONE_SHOT:
@@ -6751,13 +6908,13 @@ fm_status fm10000SerDesProcessSignalNokTimeoutRx(fm_smEventInfo *eventInfo,
                             serDes,
                             "Invalid DFE mode on serdes=%d\n",
                             serDes);
-            
+
         }
     }
     else
     {
-        
-         
+
+
 
         if (err != FM_OK)
         {
@@ -6766,12 +6923,12 @@ fm_status fm10000SerDesProcessSignalNokTimeoutRx(fm_smEventInfo *eventInfo,
                             serDes);
         }
 
-        
+
         fm10000SerDesDontSaveTransitionRecord(eventInfo,userInfo);
     }
 
-    
-     
+
+
 
 
     if (currentState != *nextState)
@@ -6785,7 +6942,7 @@ fm_status fm10000SerDesProcessSignalNokTimeoutRx(fm_smEventInfo *eventInfo,
 
     return err;
 
-}   /* end fm10000SerDesProcessSignalNokTimeoutRx */
+}
 
 
 
@@ -6823,7 +6980,7 @@ fm_status fm10000SerDesConfigureEthOrPcie( fm_smEventInfo *eventInfo,
     laneExt = ((fm10000_serDesSmEventInfo *)userInfo)->laneExt;
     if ( laneExt->parentPortExt->ring == FM10000_SERDES_RING_PCIE )
     {
-        
+
         *nextState = FM10000_SERDES_STATE_MISSION;
         status     = FM_OK;
     }
@@ -6837,7 +6994,7 @@ fm_status fm10000SerDesConfigureEthOrPcie( fm_smEventInfo *eventInfo,
 ABORT:
     return status;
 
-}  /* end fm10000SerDesConfigureEthOrPcie */
+}
 
 
 
@@ -6965,14 +7122,14 @@ fm_status fm10000SerDesProcessEnableBistMode(fm_smEventInfo *eventInfo,
         case FM_BIST_RX_CJPAT:
         case FM_BIST_TXRX_CJPAT:
         {
-            
+
             FM_LOG_ERROR_V2(FM_LOG_CAT_SERDES, serDes,
                             "Unsupported BIST submode: %d\n", bistSubMode );
             err = FM_ERR_UNSUPPORTED;
             break;
         }
         default:
-            
+
             FM_LOG_ERROR_V2(FM_LOG_CAT_SERDES, serDes,
                             "Invalid BIST submode: %d\n", bistSubMode );
             err = FM_ERR_INVALID_SUBMODE;
@@ -6980,7 +7137,7 @@ fm_status fm10000SerDesProcessEnableBistMode(fm_smEventInfo *eventInfo,
 
     if (err == FM_OK && configTxBist == TRUE)
     {
-        
+
         if ((pLaneExt->farLoopbackStatus & 0x01) == 0)
         {
             err = fm10000SetSerdesTxPattern(sw,
@@ -6997,16 +7154,16 @@ fm_status fm10000SerDesProcessEnableBistMode(fm_smEventInfo *eventInfo,
         {
             FM_LOG_ERROR_V2(FM_LOG_CAT_SERDES, serDes,
                             "Incompatible test mode\n");
-            
-             
+
+
             err = FM_ERR_INVALID_SUBMODE;
         }
     }
 
     if (err == FM_OK && configRxBist == TRUE)
     {
-        
-         
+
+
 
 
         err = SendDfeEventReq(eventInfo,
@@ -7015,8 +7172,8 @@ fm_status fm10000SerDesProcessEnableBistMode(fm_smEventInfo *eventInfo,
 
         if (err == FM_OK)
         {
-            
-             
+
+
             err = fm10000SetSerdesRxPattern(sw,
                                             serDes,
                                             bistSubMode,
@@ -7051,7 +7208,7 @@ fm_status fm10000SerDesProcessEnableBistMode(fm_smEventInfo *eventInfo,
 
     return err;
 
-}   /* end fm10000SerDesProcessEnableBistMode */
+}
 
 
 
@@ -7093,18 +7250,18 @@ fm_status fm10000SerDesProcessDisableBistMode(fm_smEventInfo *eventInfo,
     pLaneExt    = ((fm10000_serDesSmEventInfo *)userInfo)->laneExt;
     serDes      = pLaneExt->serDes;
 
-    
-     
 
-     
+
+
+
 
 
     switch ((pLaneExt->serDesPllStatus) & 3)
     {
         case 1:
         {
-            
-             
+
+
             err = fm10000SerdesSetTxDataSelect(sw,
                                                serDes,
                                                FM10000_SERDES_TX_DATA_SEL_CORE);
@@ -7123,11 +7280,11 @@ fm_status fm10000SerDesProcessDisableBistMode(fm_smEventInfo *eventInfo,
 
         case 2:
         {
-            
-             
 
 
-            
+
+
+
             err = SendDfeEventReq(eventInfo,
                                   userInfo,
                                   FM10000_SERDES_DFE_EVENT_STOP_TUNING_REQ);
@@ -7163,12 +7320,12 @@ fm_status fm10000SerDesProcessDisableBistMode(fm_smEventInfo *eventInfo,
 
         case 3:
         {
-            
-             
 
-             
 
-            
+
+
+
+
             err = SendDfeEventReq(eventInfo,
                                   userInfo,
                                   FM10000_SERDES_DFE_EVENT_STOP_TUNING_REQ);
@@ -7234,7 +7391,7 @@ fm_status fm10000SerDesProcessDisableBistMode(fm_smEventInfo *eventInfo,
 
     return err;
 
-}   /* end fm10000SerDesProcessDisableBistMode */
+}
 
 
 
@@ -7291,7 +7448,7 @@ fm_status fm10000SerDesProcessBistDisableLoopback(fm_smEventInfo *eventInfo,
 
     if (err == FM_OK && pLaneExt->bistTxSubMode < FM_BIST_MAX)
     {
-        
+
         err = fm10000SetSerdesTxPattern(sw,
                                         serDes,
                                         pLaneExt->bistTxSubMode,
@@ -7342,6 +7499,6 @@ fm_status fm10000SerDesProcessBistDisableLoopback(fm_smEventInfo *eventInfo,
 
     return err;
 
-}   /* end fm10000SerDesProcessBistDisableLoopback */
+}
 
 

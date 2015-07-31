@@ -29,7 +29,7 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
+ *****************************************************************************/
 
 #ifndef __FM_PLATFORM_ATTR_H
 #define __FM_PLATFORM_ATTR_H
@@ -159,7 +159,7 @@
 
 
 /** 
- * (Required) Port mapping between a logical port and a RRC
+ * (Required) Port mapping between a logical port and an FM10000
  * physical port.
  *                                                                      \lb\lb
  * The physical port represents either an EPL/LANE, a PCIE port,
@@ -239,7 +239,8 @@
  * Although this is marked as optional it becomes required when
  * the platform is managed by SWAG. 
  *                                                                      \lb\lb
- * This mapping defines internal connection between the RRC.
+ * This mapping defines an internal connection between two FM10000 
+ * switches. 
  *                                                                      \lb\lb
  * For example: 
  *                                                                      \lb\lb
@@ -350,6 +351,10 @@
  * AN-73 - ''FM_ETH_MODE_AN_73''
  *                                                  \lb
  * SGMII - ''FM_ETH_MODE_SGMII''
+ *                                                  \lb
+ * AUTODETECT - Ethernet mode will be automatically configured based on the 
+ *              transceiver type. This mode applies to SFP or QSFP port only.
+ *              See "api.platform.config.switch.%d.portIndex.%d.interfaceType"
  *                                                  \lb\lb
  * The default value is specified by the port.default.ethernet property 
  * for this switch. 
@@ -385,6 +390,41 @@
  */ 
 #define FM_AAK_API_PLATFORM_HW_PORT_SPEED                   "api.platform.config.switch.%d.portIndex.%d.speed"
 #define FM_AAT_API_PLATFORM_HW_PORT_SPEED                   FM_API_ATTR_INT
+
+
+/**
+ * (Optional) Lane termination for the given switch port.
+ *                                                  \lb\lb
+ * Value is a string specifying one of the following: 
+ *                                                  \lb\lb
+ * TERM_HIGH - ''FM_PORT_TERMINATION_HIGH''
+ *                                                  \lb
+ * TERM_LOW - ''FM_PORT_TERMINATION_LOW''
+ *                                                  \lb
+ * TERM_FLOAT - ''FM_PORT_TERMINATION_FLOAT''
+ *                                                  \lb
+ * The default value is specified by the API based on port type. 
+ */
+#define FM_AAK_API_PLATFORM_PORT_TERMINATION                "api.platform.config.switch.%d.portIndex.%d.rxTermination"
+#define FM_AAT_API_PLATFORM_PORT_TERMINATION                FM_API_ATTR_TEXT
+
+/**
+ * (Optional) Lane polarity for the given switch port and lane.
+ *                                                  \lb\lb
+ * This property format MUST be used for QSFP ports.
+ *                                                  \lb\lb
+ * Value is a string specifying one of the following: 
+ *                                                  \lb\lb
+ * TERM_HIGH - ''FM_PORT_TERMINATION_HIGH''
+ *                                                  \lb
+ * TERM_LOW - ''FM_PORT_TERMINATION_LOW''
+ *                                                  \lb
+ * TERM_FLOAT - ''FM_PORT_TERMINATION_FLOAT''
+ *                                                  \lb
+ * The default value is specified by the API based on port type. 
+ */
+#define FM_AAK_API_PLATFORM_PORT_PER_LANE_TERMINATION             "api.platform.config.switch.%d.portIndex.%d.lane.%d.rxTermination"
+#define FM_AAT_API_PLATFORM_PORT_PER_LANE_TERMINATION             FM_API_ATTR_TEXT
 
 
 /**
@@ -993,20 +1033,22 @@
 #define FM_AAD_API_PLATFORM_SHARED_LIB_DISABLE              "NONE"
 
 /**
- * (Optional) Specifies the RRC GPIO number used for port logic interrupts.  
+ * (Optional) Specifies the FM10000 GPIO number used for port logic 
+ * interrupts. 
  */
 #define FM_AAK_API_PLATFORM_PORT_INTERRUPT_GPIO             "api.platform.config.switch.%d.portIntrGpio"
 #define FM_AAT_API_PLATFORM_PORT_INTERRUPT_GPIO             FM_API_ATTR_INT
 
 /**
- * (Optional) Specifies the RRC GPIO number used for the I2C reset Control.  
+ * (Optional) Specifies the FM10000 GPIO number used for the I2C reset 
+ * Control. 
  */
 #define FM_AAK_API_PLATFORM_I2C_RESET_GPIO                  "api.platform.config.switch.%d.i2cResetGpio"
 #define FM_AAT_API_PLATFORM_I2C_RESET_GPIO                  FM_API_ATTR_INT
 
 /**
- * (Optional) Specifies the RRC GPIO number used to control the write protect 
- * pin on the SPI flash (switch's NVM).
+ * (Optional) Specifies the FM10000 GPIO number used to control the 
+ * write protect pin on the SPI flash (switch's NVM). 
  *                                                                      \lb\lb
  * Setting this property to -1 (default) indicates either the write protection 
  * is not used or the protection is done using a different method. 
@@ -1066,23 +1108,37 @@
 #define FM_AAT_API_PLATFORM_PHY_HW_RESOURCE_ID              FM_API_ATTR_INT
 
 /**
- * (Optional) Specifies the PHY number associated to this port if any. 
+ * (Optional) Specifies the PHY/RETIMER transmit equalization parameters 
+ * for the given lane on a given phy.
  *                                                                      \lb\lb
- * When used, valid values are: 0 <= phyNum < api.platform.config.numPhys
+ * The following parameters are used as argument to the GN2412 "Control 
+ * Non-KR Transmit Equalization" command (Command code 0x17). 
  *                                                                      \lb\lb
- * Default value is -1 (not used)
- */ 
-#define FM_AAK_API_PLATFORM_PORT_PHY_NUM                    "api.platform.config.switch.%d.portIndex.%d.phyNum"
-#define FM_AAT_API_PLATFORM_PORT_PHY_NUM                    FM_API_ATTR_INT
+ * Example (showing the default values): 
+ *                                                                      \lb\lb
+ * switch.%d.phy.%d.lane.%d.txEqualizer text "POL=5 PRE=0 ATT=15 POST=0" 
+ *                                                                      \lb\lb
+ * The quote " " are required and the values must decimal values. 
+ *                                                                      \lb\lb
+ * The valid range for each parameter are: 
+ *  
+ * Tx tap polarity (POL):          0 to 31
+ * Tx pre-tap coefficient (PRE):   0 to 15
+ * Tx attenuation (ATT):           0 to 15
+ * Tx post-tap coefficient (POST): 0 to 31
+ */
+#define FM_AAK_API_PLATFORM_PHY_TX_EQUALIZER                "api.platform.config.switch.%d.phy.%d.lane.%d.txEqualizer"
+#define FM_AAT_API_PLATFORM_PHY_TX_EQUALIZER                FM_API_ATTR_TEXT
 
 /**
- * (Optional) Specifies the PHY lane number associated to this port if any. 
+ * (Optional) Specifies the PHY/RETIMER application mode for the given lane 
+ * on a given phy.
  *                                                                      \lb\lb
- * Default value is -1 (not used)
- */ 
-#define FM_AAK_API_PLATFORM_PORT_PHY_LANE                   "api.platform.config.switch.%d.portIndex.%d.phyLane"
-#define FM_AAT_API_PLATFORM_PORT_PHY_LANE                   FM_API_ATTR_INT
-
+ * For the GN2412 this property is used with the "Configure Application Modes" 
+ * command (Command code 0x19). 
+ */
+#define FM_AAK_API_PLATFORM_PHY_APP_MODE                   "api.platform.config.switch.%d.phy.%d.lane.%d.appMode"
+#define FM_AAT_API_PLATFORM_PHY_APP_MODE                   FM_API_ATTR_INT
 
 /**
  * (Optional) Unique 32-bit value associated with a voltage 
@@ -1122,6 +1178,13 @@
 #define FM_AAK_API_PLATFORM_EBI_DEV_NAME        "api.platform.config.ebiDevName"
 #define FM_AAT_API_PLATFORM_EBI_DEV_NAME        FM_API_ATTR_TEXT
 #define FM_AAD_API_PLATFORM_EBI_DEV_NAME        "ebiDevName_not_set"
+
+/*
+ * (Optional) Memory offset to the switch memory via /dev/mem interface.
+ */
+#define FM_AAK_API_PLATFORM_DEVMEM_OFFSET       "api.platform.config.switch.%d.devMemOffset"
+#define FM_AAT_API_PLATFORM_DEVMEM_OFFSET       FM_API_ATTR_TEXT
+#define FM_AAD_API_PLATFORM_DEVMEM_OFFSET       "devMemOffset_not_set"
 
 /*
  * (Optional) Network device name used to communicate with the host driver 
@@ -1218,13 +1281,19 @@
 #define FM_AAT_API_PLATFORM_INT_POLL_MSEC    FM_API_ATTR_INT
 #define FM_AAD_API_PLATFORM_INT_POLL_MSEC    10
 
+/* (optional) Use as global flag to enable(1)/disable(0) the De-Emphasis
+ * configuration of the re-timer/PHY.
+ */
+#define FM_AAK_API_PLATFORM_PHY_ENABLE_DEEMPHASIS     "api.platform.config.switch.%d.phyEnableDeemphasis"
+#define FM_AAT_API_PLATFORM_PHY_ENABLE_DEEMPHASIS     FM_API_ATTR_INT
+#define FM_AAD_API_PLATFORM_PHY_ENABLE_DEEMPHASIS     0
 
 /************************************************************
  * The following attributes are used as the boot 
  * configuration when not booting from SPI Flash. 
  *  
  * NOTE: These attributes are in the NOT DOCUMENTED section 
- * because they are documented as part of the Red Rock Canyon 
+ * because they are documented as part of the FM10000
  * Boot Image Generator (rrcBig) .
  ************************************************************/
 

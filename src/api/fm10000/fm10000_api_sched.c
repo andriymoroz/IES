@@ -958,24 +958,23 @@ static fm_status DbgDumpSchedulerConfig(fm_int sw, fm_int active, fm_bool dumpQP
                 continue;
             }
 
-            if (sInfo->mode == FM10000_SCHED_MODE_STATIC)
+            quadStr = speed.isQuad == 1 ? "yes" : "-";
+
+            if (sInfo->attr.mode == FM10000_SCHED_MODE_STATIC)
             {
                 reserved = -1;
-                quadStr = sInfo->active.isQuad[physPort] == 1 ? "yes" : "-";
             }
-            else if (sInfo->mode == FM10000_SCHED_MODE_DYNAMIC)
+            else if (sInfo->attr.mode == FM10000_SCHED_MODE_DYNAMIC)
             {
                 reserved = sInfo->reservedSpeed[physPort];
-                quadStr = sInfo->reservedQuad[physPort] == 1 ? "yes" : "-";
             }
             else
             {
                 reserved = -1;
-                quadStr = "-";
-
+                
                 FM_LOG_ERROR(FM_LOG_CAT_SWITCH, 
                              "Unexpected scheduler mode %d\n", 
-                             sInfo->mode); 
+                             sInfo->attr.mode); 
             }
 
             FM_LOG_PRINT("%02d    %-6d     %6d/%-6d  %-6d     %s\n", 
@@ -989,7 +988,7 @@ static fm_status DbgDumpSchedulerConfig(fm_int sw, fm_int active, fm_bool dumpQP
             reservedTotal += sInfo->reservedSpeed[physPort];
         }
 
-        if (sInfo->mode == FM10000_SCHED_MODE_DYNAMIC)
+        if (sInfo->attr.mode == FM10000_SCHED_MODE_DYNAMIC)
         {
             FM_LOG_PRINT("                                --------\n");
             FM_LOG_PRINT("                        Total:  %06d\n", reservedTotal);
@@ -2388,9 +2387,35 @@ ABORT:
  *****************************************************************************/
 static void FreeStatEntry(void *ptr)
 {
-    fmFree(ptr);
+	if (ptr != NULL)
+	{
+		fmFree(ptr);
+	}
 
 }   /* end FreeStatEntry */
+
+
+
+
+/*****************************************************************************/
+/** FreeSchedEntryInfo
+ * \ingroup intLbg
+ *
+ * \desc            This method frees the scheduler entry info
+ *
+ * \param[in]       ptr points to the object being freed.
+ *
+ * \return          None
+ *
+ *****************************************************************************/
+static void FreeSchedEntryInfo(void *ptr)
+{
+	if (ptr != NULL)
+	{
+		fmFree(ptr);
+	}
+
+}   /* end FreeSchedEntryInfo */
 
 
 
@@ -3181,6 +3206,7 @@ fm_status fm10000InitScheduler(fm_int sw)
     fm_schedulerConfig sc;
     fm_int             i;
     fm_text            schedModeStr;
+    fm_int             fabricPort;
     
     FM_LOG_ENTRY(FM_LOG_CAT_SWITCH, "sw = %d\n", sw);
 
@@ -3195,13 +3221,17 @@ fm_status fm10000InitScheduler(fm_int sw)
     schedModeStr = fmGetTextApiProperty(FM_AAK_API_FM10000_SCHED_MODE, 
                                         FM_AAD_API_FM10000_SCHED_MODE);
 
+    sInfo->attr.updateLnkChange = fmGetBoolApiProperty(
+         FM_AAK_API_FM10000_UPD_SCHED_ON_LNK_CHANGE, 
+         FM_AAD_API_FM10000_UPD_SCHED_ON_LNK_CHANGE);
+
     if (strcmp(schedModeStr, "static") == 0)
     {
-        sInfo->mode = FM10000_SCHED_MODE_STATIC;
+        sInfo->attr.mode = FM10000_SCHED_MODE_STATIC;
     }
     else if (strcmp(schedModeStr, "dynamic") == 0)
     {
-        sInfo->mode = FM10000_SCHED_MODE_DYNAMIC;
+        sInfo->attr.mode = FM10000_SCHED_MODE_DYNAMIC;
     }
     else
     {
@@ -3213,9 +3243,10 @@ fm_status fm10000InitScheduler(fm_int sw)
     }
 
     FM_LOG_DEBUG(FM_LOG_CAT_SWITCH, 
-                 "Scheduler Mode = %s (%d)\n", 
+                 "Scheduler Mode = %s (%d), updateLnkChange = %d\n", 
                  schedModeStr, 
-                 sInfo->mode);
+                 sInfo->attr.mode,
+                 sInfo->attr.updateLnkChange);
     
     err = fmPlatformGetSchedulerConfig(sw, &sc);
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
@@ -3247,6 +3278,22 @@ fm_status fm10000InitScheduler(fm_int sw)
                 sInfo->tmp.portList[i] = sc.portList[i];
             }
 
+            /* In dynamic mode, ignore any speed assigned to ethernet ports
+             * as those will be generated on the fly. */
+            if (sInfo->attr.mode == FM10000_SCHED_MODE_DYNAMIC)
+            {
+                for (i = 0; i < sc.nbPorts; i++)
+                {
+                    fabricPort = sInfo->tmp.portList[i].fabricPort;
+
+                    if ( (fabricPort >= FM10000_FIRST_EPL_FABRIC_PORT) && 
+                         (fabricPort <= FM10000_LAST_EPL_FABRIC_PORT) )
+                    {
+                        sInfo->tmp.portList[i].speed = 0;
+                    }
+                }
+            }
+
             sInfo->tmp.nbPorts = sc.nbPorts;
 
             /*********************************************
@@ -3267,6 +3314,15 @@ fm_status fm10000InitScheduler(fm_int sw)
 
             for (i = 0; i < FM10000_SCHED_NUM_PORTS; i++)
             {
+                fabricPort = sInfo->physicalToFabricMap[i];
+
+                if ( (fabricPort >= FM10000_FIRST_EPL_FABRIC_PORT) && 
+                     (fabricPort <= FM10000_LAST_EPL_FABRIC_PORT) )
+                {
+                    /* skip, let port API to handle the reservation */
+                    continue;
+                }
+
                 sInfo->reservedSpeed[i] = sInfo->tmp.physPortSpeed[i];
                 sInfo->reservedQuad[i] = sInfo->tmp.isQuad[i];
             }
@@ -3333,7 +3389,7 @@ fm_status fm10000FreeSchedulerResources(fm_int sw)
     {
         if (fmTreeIsInitialized(&sInfo->qpcState[i]))
         {
-            fmTreeDestroy(&sInfo->qpcState[i], fmFree); 
+            fmTreeDestroy(&sInfo->qpcState[i], FreeSchedEntryInfo);
         }
     }
 
@@ -3855,6 +3911,7 @@ fm_status fm10000UpdateSchedPort(fm_int               sw,
     fm_int                  physPortTmp;
     fm_uint64               logCat;
     fm_uint64               logLvl;
+    fm_bool                 portAttrLockTaken;
     
     FM_LOG_ENTRY(FM_LOG_CAT_SWITCH, 
                  "sw=%d, physPort=%d, speed=%d, mode=%d\n", 
@@ -3865,6 +3922,13 @@ fm_status fm10000UpdateSchedPort(fm_int               sw,
     switchPtr = GET_SWITCH_PTR(sw);
     switchExt = GET_SWITCH_EXT(sw);
     sInfo     = &switchExt->schedInfo;
+
+    portAttrLockTaken = FALSE;
+
+    /* Take port attribute lock since fm10000DrainPhysPort might be 
+     * updating portExt and release lock at the end of this function
+     * to be on a safer side. */
+    FM_FLAG_TAKE_PORT_ATTR_LOCK(sw);
 
     TAKE_SCHEDULER_LOCK(sw);
 
@@ -4055,6 +4119,14 @@ fm_status fm10000UpdateSchedPort(fm_int               sw,
      ***********************************************/
     if (speed == 0)
     {
+        /* Drain non-Ethernet ports. Ethernet ports 
+         * are drained as part of Port State Machine. */
+        if ( !( fabricPort >= FM10000_FIRST_EPL_FABRIC_PORT &&
+                fabricPort <= FM10000_LAST_EPL_FABRIC_PORT ) ) 
+        {
+            err = fm10000DrainPhysPort(sw, physPort, 1, TRUE);
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
+        }
         /* Just update the QPC Tree Entries, marking them as free */
         for (fmTreeIterInit(&it, &sInfo->qpcState[qpc]);
              (err = fmTreeIterNext(&it, &treeKey, (void **) &treeValue)) == FM_OK ;)
@@ -4112,6 +4184,22 @@ fm_status fm10000UpdateSchedPort(fm_int               sw,
         for (fmTreeIterInit(&it, &sInfo->qpcState[qpc]);
              (err = fmTreeIterNext(&it, &treeKey, (void **) &treeValue)) == FM_OK ;)
         {
+            /* if going from quad mode to single mode, free up other lanes */
+            if ( (treeValue->quad == 1) &&
+                 (mode == FM_SCHED_PORT_MODE_SINGLE) )
+            {
+                if (treeValue->lane != lane)
+                {
+                    treeValue->afp = FREE_ENTRY;
+                    treeValue->app = AUTO_APP;
+                }
+                else
+                {
+                    treeValue->afp = fabricPort;
+                    treeValue->app = AUTO_APP; 
+                }
+            }
+
             treeValue->quad = (mode == FM_SCHED_PORT_MODE_QUAD);
         }
 
@@ -4234,15 +4322,36 @@ fm_status fm10000UpdateSchedPort(fm_int               sw,
                               sInfo->tmp.schedLen);
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
 
+    /* If previously no bandwidth was allocated, but now 
+     * bandwidth is allocated then enable this port in the
+     * portMask of all ports. */
+    if (speed > 0 && nbOwnedSlots == 0)
+    {
+        /* Disable drain on non-Ethernet ports and Enable portMask.
+         * fm10000DrainPhysPort enables port mask of all ports
+         * to include this port. */
+        if ( !( fabricPort >= FM10000_FIRST_EPL_FABRIC_PORT &&
+                fabricPort <= FM10000_LAST_EPL_FABRIC_PORT ) ) 
+        {
+            err = fm10000DrainPhysPort(sw, physPort, 1, FALSE);
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
+        }
+    }
+
     /* We have succeeded, store the scheduler state into the active
      * structure */
     FM_MEMCPY_S(&sInfo->active, 
                 sizeof(sInfo->active), 
                 &sInfo->tmp, 
                 sizeof(sInfo->tmp) );
-    
+
 ABORT:
     DROP_SCHEDULER_LOCK(sw);
+
+    if (portAttrLockTaken)
+    {
+        FM_DROP_PORT_ATTR_LOCK(sw);
+    }
 
     UNPROTECT_SWITCH(sw);
 
@@ -4909,6 +5018,15 @@ fm_status fm10000GetSchedPortSpeed(fm_int  sw,
     }
 
     speed->reservedSpeed = sInfo->reservedSpeed[physPort];
+
+    if (sInfo->attr.mode == FM10000_SCHED_MODE_STATIC)
+    {
+        speed->isQuad = sInfo->active.isQuad[physPort];
+    }
+    else if (sInfo->attr.mode == FM10000_SCHED_MODE_DYNAMIC)
+    {
+        speed->isQuad = sInfo->reservedQuad[physPort];
+    }
     
 ABORT:
     DROP_SCHEDULER_LOCK(sw);
@@ -4994,7 +5112,10 @@ ABORT:
  * 
  * \param[in]       physPort is the physical port.
  * 
- * \param[in]       speed is the speed to reserve of physical port.
+ * \param[in]       speed is the speed to reserve of physical port. A value
+ *                  of FM10000_SCHED_SPEED_DEFAULT may be used to default
+ *                  the speed to what was assigned at initialization (from LT
+ *                  config file). 
  * 
  * \param[in]       mode is the quad channel mode of physical port.
  * 
@@ -5032,6 +5153,19 @@ fm_status fm10000ReserveSchedBw(fm_int               sw,
     sInfo     = &switchExt->schedInfo;
 
     lastSpeed = -1;
+    
+    if (speed == FM10000_SCHED_SPEED_DEFAULT)
+    {
+        /* Grab the speed set during init (which is the LT config file defined
+         * speed */
+        for (i = 0; i < sInfo->active.nbPorts; i++)
+        {
+            if (physPort == sInfo->active.portList[i].physPort)
+            {
+                speed = sInfo->active.portList[i].speed;
+            }
+        }
+    }
 
     /* Validate / Round up the speed to the closest upper speed */
     if (speed < 0)
@@ -5078,11 +5212,18 @@ fm_status fm10000ReserveSchedBw(fm_int               sw,
     err = fm10000MapPhysicalPortToFabricPort(sw, physPort, &fabricPort);
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
 
-    basePort = (fabricPort / 4);
+    basePort = fabricPort - (fabricPort % 4);
     for (i = 0; i < NUM_PORTS_PER_QPC; i++)
     {
-        /* Populate other physical ports list */
+        /* Populate other physical ports list (if they exist) */
         err = fm10000MapFabricPortToPhysicalPort(sw, basePort + i, &opPorts[i]);
+
+        if (err == FM_ERR_INVALID_PORT)
+        {
+            err = FM_OK;
+            opPorts[i] = -1;
+        }
+
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
     }
 
@@ -5100,6 +5241,12 @@ fm_status fm10000ReserveSchedBw(fm_int               sw,
     nbMultiLane = 0;
     for (i = 0; i < NUM_PORTS_PER_QPC; i++)
     {
+        if (opPorts[i] == -1)
+        {
+            /* No port */
+            continue;
+        }
+
         totalBW += sInfo->reservedSpeed[opPorts[i]];
 
         if ( (sInfo->reservedSpeed[opPorts[i]] > FM10000_SCHED_SPEED_25G) ||
@@ -5533,12 +5680,13 @@ ABORT:
  * 
  * \param[in]       sw is the switch on which to operate.
  * 
- * \param[out]      mode is the current scheduler operating mode.
+ * \param[out]      attr is a pointer to the caller allocated storage where
+ *                  the attributes should be stored. 
  *                  
  * \return          FM_OK if successful.
  *
  *****************************************************************************/
-fm_status fm10000GetSchedMode(fm_int sw, fm_int *mode)
+fm_status fm10000GetSchedAttributes(fm_int sw, fm10000_schedAttr *attr)
 {
     fm_status err = FM_OK;
     fm_switch *         switchPtr;
@@ -5551,7 +5699,8 @@ fm_status fm10000GetSchedMode(fm_int sw, fm_int *mode)
     switchExt = GET_SWITCH_EXT(sw);
     sInfo     = &switchExt->schedInfo;
 
-    *mode = sInfo->mode;
+    attr->mode            = sInfo->attr.mode;
+    attr->updateLnkChange = sInfo->attr.updateLnkChange;
 
     DROP_SCHEDULER_LOCK(sw);
 

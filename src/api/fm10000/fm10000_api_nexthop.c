@@ -8143,6 +8143,8 @@ fm_status fm10000GetECMPGroupARPUsed(fm_int           sw,
 
     pSwitchExt = GET_SWITCH_EXT(sw);
     err = FM_OK;
+    arpIndex = 0;
+    loopCount = 0;
 
     if (pEcmpGroup == NULL)
     {

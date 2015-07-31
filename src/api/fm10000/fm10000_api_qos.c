@@ -29,7 +29,7 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
+ *****************************************************************************/
 
 #include <fm_sdk_fm10000_int.h>
 #include <common/fm_version.h>
@@ -69,7 +69,7 @@
 #define FM10000_QOS_SCALE_TOTAL_MEM     0
 #define FM10000_QOS_SCALE_GLOBAL_WM     1
 
-/* Total memory size specified in segments units*/
+/* Total memory size specified in segments units */
 #define FM10000_QOS_MAX_NUM_SEGS        FM10000_MAX_MEMORY_SEGMENTS
 #define FM10000_QOS_TOTAL_MEMORY_BYTES  (FM10000_MAX_MEMORY_SEGMENTS * \
                                          BYTES_PER_SMP_SEG)
@@ -77,14 +77,33 @@
 /* Number of reserved segments */
 #define FM10000_QOS_NUM_RESERVED_SEGS   256
 
+/* Maximum number of segments for most watermark settings */
+#define FM10000_QOS_MAX_WATERMARK_SEGS  0x7FFF
+#define FM10000_QOS_MAX_WATERMARK     SEG2BYTES(FM10000_QOS_MAX_WATERMARK_SEGS)
+
 /* Default values for some registers settings */
-#define FM10000_QOS_WATERMARK_DEFAULT   0x7FFF
+#define FM10000_QOS_WATERMARK_DEFAULT   FM10000_QOS_MAX_WATERMARK_SEGS
+
+/* Max values for Tx rate limiter*/
+#define FM10000_QOS_SHAPING_GROUP_RATE_FRAC_MAX_VAL 0xFF
+#define FM10000_QOS_SHAPING_GROUP_RATE_UNIT_MAX_VAL 0x7FF
 
 /* SMP identification  as a specific number for different watermark schema */
 #define FM10000_QOS_SMP_LOSSY           0
 #define FM10000_QOS_SMP_LOSSLESS        1
 #define FM10000_QOS_SMP_PAUSE_OFF       2
 #define FM10000_QOS_SMP_DEFAULT         FM10000_QOS_SMP_LOSSY
+
+/* Maximum values of some attributes */
+#define FM10000_QOS_SCHED_GROUP_STRICT_MAX_VAL          1
+#define FM10000_QOS_SCHED_GROUP_WEIGHT_MAX_VAL          0xFFFFFF
+#define FM10000_QOS_SHARED_PAUSE_ENABLE_MAX_VAL     \
+                                           ((1 << FM10000_MAX_SWITCH_SMPS) -1 )
+#define FM10000_QOS_SHAPING_GROUP_MAX_BURST_MAX_VAL     (0x1FFF << 13)
+#define FM10000_QOS_TC_ENABLE_MAX_VAL    ((1 << FM10000_MAX_TRAFFIC_CLASS) -1 )
+#define FM10000_QOS_SCHED_IFGPENALTY_MAX_VAL            255
+#define FM10000_QOS_SHARED_SOFT_DROP_WM_JITTER_MAX_VAL  7
+#define FM10000_QOS_SWITCH_IFG_PENALTY_MAX_VAL          0xFF
 
 /***************************************************************************/
 /* Convert from bytes to segments.
@@ -97,10 +116,36 @@
 #define SEG2BYTES(x)        ( (x) * BYTES_PER_SMP_SEG )
 
 /***************************************************************************/
+/* Goto ABORT when the val exceeds valref or is less than 0.
+ *                                                                      
+ * This macro should be used to replace the typical pattern of going to a 
+ * local ABORT label when the value exceeds specified reference value and is 
+ * less than 0.
+ *                                                                      
+ * val is the value used for verifying.
+ *                                                                      
+ * valref is the refernce value.
+ *                                                                      
+ * errcode is the value being returned by the function (typically of type
+ * fm_status - see ''Status Codes'').
+ *                                                                      
+ * errstatus is the status code returned when the val exceeds valref
+ *
+ ***************************************************************************/
+#define FM10000_QOS_ABORT_ON_EXCEED_OR_LESS_0(val, valref, errcode, errstatus) \
+    {                                                                          \
+        if ( ((val) < 0) || ((val) > (valref)) )                               \
+        {                                                                      \
+            (errcode) = (errstatus);                                           \
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_QOS, (errcode));                    \
+        }                                                                      \
+    }  
+
+/***************************************************************************/
 /* Goto ABORT when the val exceeds valref.
  *                                                                      
  * This macro should be used to replace the typical pattern of going to a 
- * local ABORT label when the value exceeeds specified reference value. 
+ * local ABORT label when the value exceeds specified reference value. 
  *                                                                      
  * val is the value used for verifying.
  *                                                                      
@@ -114,7 +159,7 @@
  ***************************************************************************/
 #define FM10000_QOS_ABORT_ON_EXCEED(val, valref, errcode, errstatus)           \
     {                                                                          \
-        if ( ((val) < 0) || ((val) > (valref)) )                               \
+        if ( (val) > (valref) )                                                \
         {                                                                      \
             (errcode) = (errstatus);                                           \
             FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_QOS, (errcode));                    \
@@ -350,6 +395,9 @@ enum _fm10000_trapClass
     FM10000_QOS_TRAP_CLASS_MTU_VIOLATION,
     /* HandlerActionMask = FM10000_TRIGGER_HA_TRAP_MTU */
 
+    FM10000_QOS_TRAP_CLASS_BCAST_FLOODING,
+    /* Use bcastFloodingTrapTrigger*/
+
     FM10000_QOS_TRAP_CLASS_MCAST_FLOODING,
     /* Use mcastFloodingTrapTrigger*/
 
@@ -465,9 +513,11 @@ static fm_status PriorityMapperApplyMapSet(fm_int sw,
 static fm_status ESchedGroupBuildActiveConfigDataStruct(fm_int  sw,
                                                         fm_int  physPort,
                                                         fm_int  grpBoundary,
-                                                        fm_int  priSetBoundary,
                                                         fm_int  strictBits,
                                                         fm_int *drrWeightPtr);
+
+static fm_status CheckGlobalWm(fm_int    sw,
+                               fm_uint32 globalWm);
 
 /*****************************************************************************
  * Local Functions
@@ -644,8 +694,6 @@ ABORT:
 /** ReadCmRegMaps
  * \ingroup intQos
  *
- * \chips           FM10000
- *
  * \desc            Read CM mapping from registers and set to local structure.
  *
  * \param[in]       sw is the switch on which to operate.
@@ -712,7 +760,7 @@ ABORT:
 
     FM_LOG_EXIT(FM_LOG_CAT_QOS, err);
 
-}   /* ReadCmRegMap s*/
+}   /* end ReadCmRegMaps */
 
 
 
@@ -720,8 +768,6 @@ ABORT:
 /*****************************************************************************/
 /** SetMappingTables
  * \ingroup intQos
- *
- * \chips           FM10000
  *
  * \desc            Set the mapping configuration into the chip registers
  *
@@ -814,8 +860,6 @@ ABORT:
 /** SetWatermarks
  * \ingroup intQos
  *
- * \chips           FM10000
- *
  * \desc            Set the watermark configuration into chip registers
  *
  * \param[in]       sw is the switch on which to operate.
@@ -838,7 +882,6 @@ static fm_status SetWatermarks(fm_int sw,
     fm_bool             regLockTaken = FALSE;
 
     FM_LOG_ENTRY(FM_LOG_CAT_QOS, "sw=%d\n", sw);
-
 
     /* Get the switch pointer */
     switchPtr = GET_SWITCH_PTR(sw);
@@ -957,8 +1000,6 @@ ABORT:
 /** SetDefaultMaps
  * \ingroup intQos
  *
- * \chips           FM10000
- *
  * \desc            Initialize the CM mapping tables to their defaults.
  *
  * \param[in]       smpId  is the SMP identification for each initialization 
@@ -1048,8 +1089,6 @@ static fm_status SetDefaultMaps(fm_int smpId,
 /*****************************************************************************/
 /** GetWmParamsDisabled
  * \ingroup intQos
- *
- * \chips           FM10000
  *
  * \desc            Get the watermark parameters for the disabled scheme.
  *
@@ -1237,8 +1276,6 @@ ABORT:
 /*****************************************************************************/
 /** GetWmParamsLossy
  * \ingroup intQos
- *
- * \chips           FM10000
  *
  * \desc            Get the watermark parameters for the lossy scheme.
  *
@@ -1499,7 +1536,7 @@ static fm_status GetWmParamsLossy(fm_int          sw,
     FM10000_QOS_LOG_INFO("CM_SOFTDROP_WM.SoftDropSegmentLimit", segLimit);
 
     /*************************************************************************/
-    /* CM_APPLY_SOFTDROP_CFG.JitterBits*/
+    /* CM_APPLY_SOFTDROP_CFG.JitterBits */
     for (i = 0 ; i < FM10000_CM_APPLY_SOFTDROP_CFG_ENTRIES ; i++)
     {
         FM_SET_FIELD(wpm->cmApplySoftDropCfg[i],
@@ -1654,8 +1691,6 @@ ABORT:
 /*****************************************************************************/
 /** GetWmParamsLossless
  * \ingroup intQos
- *
- * \chips           FM10000
  *
  * \desc            Get the watermark parameters for the lossless scheme.
  *
@@ -1997,8 +2032,6 @@ ABORT:
 /*****************************************************************************/
 /** GetWmParamsLossyLossless
  * \ingroup intQos
- *
- * \chips           FM10000
  *
  * \desc            Get the watermark parameters for the lossy and lossless
  *                  scheme.
@@ -3106,6 +3139,10 @@ static fm_status PriorityMapperTrapClassConvert(fm_int qosTrapClass,
             *internalTrapClass = FM10000_QOS_TRAP_CLASS_MTU_VIOLATION;
             break;
 
+        case FM_QOS_TRAP_CLASS_BCAST_FLOODING:
+            *internalTrapClass = FM10000_QOS_TRAP_CLASS_BCAST_FLOODING;
+            break;
+
         case FM_QOS_TRAP_CLASS_MCAST_FLOODING:
             *internalTrapClass = FM10000_QOS_TRAP_CLASS_MCAST_FLOODING;
             break;
@@ -3290,7 +3327,26 @@ static fm_status PriorityMapperApplyMapSet(fm_int sw,
 
     if (map != NULL)
     {
-        if (map->trapClass == FM10000_QOS_TRAP_CLASS_MCAST_FLOODING)
+        if (map->trapClass == FM10000_QOS_TRAP_CLASS_BCAST_FLOODING)
+        {
+            fm_bool bcastTrapState;
+
+            /* Check if trap is enabled */
+            fm10000GetStateBcastTrapFlooding(sw, &bcastTrapState);
+
+            if (bcastTrapState == TRUE)
+            {
+               /* If yes update the priority for flooding trigger, 
+                  otherwise priority will be set by enabling trap attribute */
+                if (enabled)
+                    fm10000SetTrapPriorityBcastFlooding(sw, map->priority);
+                else
+                    fm10000SetTrapPriorityBcastFlooding(sw, 
+                                                        FM_QOS_SWPRI_DEFAULT);
+            }
+
+        }
+        else if (map->trapClass == FM10000_QOS_TRAP_CLASS_MCAST_FLOODING)
         {
             fm_bool mcastTrapState;
 
@@ -3305,7 +3361,7 @@ static fm_status PriorityMapperApplyMapSet(fm_int sw,
                     fm10000SetTrapPriorityMcastFlooding(sw, map->priority);
                 else
                     fm10000SetTrapPriorityMcastFlooding(sw, 
-                                                          FM_QOS_SWPRI_DEFAULT);
+                                                        FM_QOS_SWPRI_DEFAULT);
             }
 
         }
@@ -3504,7 +3560,6 @@ static fm_status ESchedGroupVerifyConfig(fm_int sw,
                                          fm_int physPort)
 {
     fm10000_eschedConfigPerPort *eschedPtr;
-    fm_int          temp;
     fm10000_switch *switchExt;
     fm_int          on2off = 0;
     fm_int          off2on = 0;
@@ -3586,66 +3641,21 @@ static fm_status ESchedGroupVerifyConfig(fm_int sw,
         
     }   /* end for ( i = 0 ; i < FM_MAX_TRAFFIC_CLASSES ; i++ ) */
 
-    /*******************************
-     * check priority set boundary
-     *******************************/
-    for ( i = 0 ; i < eschedPtr->numGroupsNew - 1 ; i++ )
-    {
-        if ( (i == 0) && (eschedPtr->newSchedGroup[i].priSetNum != 0) )
-        {
-            FM_LOG_ERROR(FM_LOG_CAT_QOS, 
-                         "Scheduling group 0 of"
-                         " physical port %d is not mapped to priority set 0",
-                         physPort);
-            err = FM_ERR_INVALID_NEW_ESCHED_CONFIG;
-            goto ABORT;
-        }
-
-        temp = eschedPtr->newSchedGroup[i + 1].priSetNum
-                                    - eschedPtr->newSchedGroup[i].priSetNum;
-        if ( temp < 0 || temp > 1 )
-        {
-            FM_LOG_ERROR(FM_LOG_CAT_QOS, 
-                         "Priority set of scheduling"
-                         " group %d of physical port %d is not properly set",
-                         i + 1, 
-                         physPort);
-            err = FM_ERR_INVALID_NEW_ESCHED_CONFIG;
-            goto ABORT;
-        }
-        
-    }   /* end for ( i = 0 ; i < eschedPtr->numGroupsNew - 1 ; i++ ) */
-
     /******************************************************************
-     *  check strict bits.
-     *  strict bit must be set at outer scheduling groups.
-     *  groups in the same priority set must have same strict setting.
+     *  check strict bits to make sure that there is no strict
+     *  group between DRR groups.
      ******************************************************************/
      
     for ( i = 0 ; i < eschedPtr->numGroupsNew - 1 ; i++ )
     {
-        if ( ( eschedPtr->newSchedGroup[i].priSetNum
-                == eschedPtr->newSchedGroup[i + 1].priSetNum )
-                && ( eschedPtr->newSchedGroup[i].strict
-                     != eschedPtr->newSchedGroup[i + 1].strict ) )
-        {
-            FM_LOG_ERROR(FM_LOG_CAT_QOS, 
-                         "Scheduling groups in priority set %d of physical "
-                         "port %d don't have same strict setting",
-                          eschedPtr->newSchedGroup[i].priSetNum, 
-                          physPort);
-            err = FM_ERR_INVALID_NEW_ESCHED_CONFIG;
-            goto ABORT;
-        }
-
         if ( eschedPtr->newSchedGroup[i].strict > 
              eschedPtr->newSchedGroup[i + 1].strict )
         {
             if (off2on != 0)
             {
                 FM_LOG_ERROR(FM_LOG_CAT_QOS, 
-                             "Strict is not set at"
-                             " outer scheduling groups for physical port %d",
+                             "Invalid Strict bit setting for port %d; only one"
+                             " consecutive set of DDR groups is allowed.\n",
                              physPort);
                 err = FM_ERR_INVALID_NEW_ESCHED_CONFIG;
                 goto ABORT;
@@ -3664,8 +3674,8 @@ static fm_status ESchedGroupVerifyConfig(fm_int sw,
     if ( on2off > 1 || off2on > 1 )
     {
         FM_LOG_ERROR(FM_LOG_CAT_QOS, 
-                     "Strict is not set at"
-                     " outer scheduling groups for physical port %d",
+                     "Invalid Strict bit setting for port %d; only one"
+                     " consecutive set of DDR groups is allowed.\n",
                      physPort);
         err = FM_ERR_INVALID_NEW_ESCHED_CONFIG;
     }
@@ -3673,7 +3683,7 @@ static fm_status ESchedGroupVerifyConfig(fm_int sw,
 ABORT:
     FM_LOG_EXIT(FM_LOG_CAT_QOS, err)
 
-}   /* ESchedGroupVerifyConfig */
+}   /* end ESchedGroupVerifyConfig */
 
 
 
@@ -3741,19 +3751,6 @@ static void ESchedGroupGetNewConfigData(fm_int  sw,
 
         drrWeight[tcHighBoundary] = eschedPtr->newSchedGroup[i].drrWeight;
 
-        if (i != eschedPtr->numGroupsNew - 1)
-        {
-            if ( eschedPtr->newSchedGroup[i].priSetNum != 
-                 eschedPtr->newSchedGroup[i + 1].priSetNum ) 
-            {
-                priSetBoundary |= (1 << tcHighBoundary);
-            }
-        }
-        else
-        {
-            priSetBoundary |= (1 << tcHighBoundary);
-        }
-
         if (eschedPtr->newSchedGroup[i].strict == 1)
         {
             for (j = tcLowBoundary ; j <= tcHighBoundary ; j++)
@@ -3764,6 +3761,9 @@ static void ESchedGroupGetNewConfigData(fm_int  sw,
         
     }   /* end for ( i = 0 ; i < eschedPtr->numGroupsNew ; i++ ) */
     
+    /* Per hardware specification  */    
+    priSetBoundary = strictBits | (strictBits >> 1);
+
     *grpBoundaryPtr    = grpBoundary;
     *priSetBoundaryPtr = priSetBoundary;
     *strictBitsPtr     = strictBits;
@@ -3798,6 +3798,7 @@ static fm_status ESchedGroupApplyNewConfig(fm_int sw,
     fm_uint32      regValue;
     fm_int         i;
     fm_int         qid;
+    fm_int         curQid;
     fm_int         drrWeight[FM_MAX_TRAFFIC_CLASSES];
     fm_int         grpBoundary    = 0;
     fm_int         priSetBoundary = 0;
@@ -3914,10 +3915,10 @@ static fm_status ESchedGroupApplyNewConfig(fm_int sw,
 
         regValue = drrWeight[i] & FM10000_QOS_MAX_DRR_WEIGHT;
 
-        qid +=i;
+        curQid = qid + i;
 
         err = switchPtr->WriteUINT32(sw, 
-                                     FM10000_SCHED_MONITOR_DRR_Q_PERQ(qid), 
+                                     FM10000_SCHED_MONITOR_DRR_Q_PERQ(curQid), 
                                      regValue); 
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_QOS, err);
     }
@@ -3959,12 +3960,12 @@ static fm_status ESchedGroupRetrieveActiveConfig(fm_int sw,
     fm_status       err;
     fm_int          grpBoundary;
     fm_int          grpBoundary1;
-    fm_int          priSetBoundary;
     fm_int          strictBits;
     fm_int          drrWeight[FM_MAX_TRAFFIC_CLASSES] = {0};
     fm_uint32       regValue;
     fm_int          i;
     fm_int          qid;
+    fm_int          curQid;
     fm_bool         regLockTaken = FALSE;
 
     switchPtr = GET_SWITCH_PTR(sw);
@@ -3979,8 +3980,6 @@ static fm_status ESchedGroupRetrieveActiveConfig(fm_int sw,
 
     /* Get TC group boundary */
     grpBoundary = (regValue >> FM_MAX_TRAFFIC_CLASSES) & 0xff; 
-    /* Get priority set boundary */
-    priSetBoundary = regValue & 0xff;
 
     /* Get group boundary */
     err = switchPtr->ReadUINT32(sw, 
@@ -4010,9 +4009,9 @@ static fm_status ESchedGroupRetrieveActiveConfig(fm_int sw,
 
     for (i = 0 ; i < FM_MAX_TRAFFIC_CLASSES ; i++)
     {
-        qid +=i;
+        curQid = qid + i;
         err = switchPtr->ReadUINT32(sw, 
-                                    FM10000_SCHED_MONITOR_DRR_Q_PERQ(qid), 
+                                    FM10000_SCHED_MONITOR_DRR_Q_PERQ(curQid), 
                                     &regValue); 
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_QOS, err);
         
@@ -4022,7 +4021,6 @@ static fm_status ESchedGroupRetrieveActiveConfig(fm_int sw,
     err = ESchedGroupBuildActiveConfigDataStruct(sw,
                                                  physPort,
                                                  grpBoundary,
-                                                 priSetBoundary,
                                                  strictBits,
                                                  drrWeight);
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_QOS, err);
@@ -4062,9 +4060,6 @@ ABORT:
  * \param[in]       grpBoundary is the register value for group boundary
  *                  configuration
  *
- * \param[in]       priSetBoundary is the register value for priority set
- *                  configuration
- *
  * \param[in]       strictBits is the register value for strict setting
  *
  * \param[in]       drrWeightPtr is a pointer to an array storing DRR weights
@@ -4075,17 +4070,14 @@ ABORT:
 static fm_status ESchedGroupBuildActiveConfigDataStruct(fm_int  sw,
                                                         fm_int  physPort,
                                                         fm_int  grpBoundary,
-                                                        fm_int  priSetBoundary,
                                                         fm_int  strictBits,
                                                         fm_int *drrWeightPtr)
 {
     fm10000_switch *switchExt;
     fm_int          grpBoundaryBit;
-    fm_int          priSetBoundaryBit;
     fm_int          strictBit;
     fm_int          i;
     fm_int          curGroupNum   = 0;
-    fm_int          curPriSetNum  = 0;
     fm_int          tcLowBoundary = 0;
 
     FM_NOT_USED( drrWeightPtr );
@@ -4099,13 +4091,10 @@ static fm_status ESchedGroupBuildActiveConfigDataStruct(fm_int  sw,
     for (i = 0 ; i < FM_MAX_TRAFFIC_CLASSES ; i++)
     {
         grpBoundaryBit    = (grpBoundary >> i) & 0x1;
-        priSetBoundaryBit = (priSetBoundary >> i) & 0x1;
         strictBit         = (strictBits >> i) & 0x1;
 
         if (grpBoundaryBit == 1)
         {
-            switchExt->eschedConfig[physPort].activeSchedGroup[curGroupNum].priSetNum
-                                                            = curPriSetNum;
             switchExt->eschedConfig[physPort].activeSchedGroup[curGroupNum].strict
                                                             = strictBit;
             switchExt->eschedConfig[physPort].activeSchedGroup[curGroupNum].tcBoundaryA
@@ -4115,12 +4104,6 @@ static fm_status ESchedGroupBuildActiveConfigDataStruct(fm_int  sw,
             switchExt->eschedConfig[physPort].activeSchedGroup[curGroupNum].drrWeight
                                                             = drrWeightPtr[i];
             curGroupNum++;
-
-            if (priSetBoundaryBit == 1)
-            {
-                curPriSetNum++;
-            }
-            
             tcLowBoundary = i + 1;
         }
         
@@ -4131,6 +4114,99 @@ static fm_status ESchedGroupBuildActiveConfigDataStruct(fm_int  sw,
     return FM_OK;
 
 }   /* end ESchedGroupBuildActiveConfigDataStruct */
+
+
+
+
+/*****************************************************************************/
+/** CheckGlobalWm
+ * \ingroup intQos
+ *
+ * \desc            Check global watermark setting and take apropriate action.
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \param[in]       globalWm is the global watermark setting 
+ *
+ * \return          FM_OK if successful.
+ *
+ *****************************************************************************/
+static fm_status CheckGlobalWm(fm_int    sw,
+                               fm_uint32 globalWm)
+{
+
+    fm_switch *         switchPtr;
+    fm_status           err;
+    fm_text             wmScheme;
+    fm10000_wmParam *   wpm;
+    fm_int              i;
+    fm_mtuEntry         mtuEntry;
+    fm_uint32           maxMtu;
+
+    FM_LOG_ENTRY(FM_LOG_CAT_QOS, "sw=%d globalWm=%d\n", 
+                 sw, globalWm);
+
+    /* Initialize local variable */
+    err = FM_OK;
+
+    /* Get the switch pointer */
+    switchPtr = GET_SWITCH_PTR(sw);
+
+    /* Allocate memory for watermark configuration */
+    wpm = fmAlloc(sizeof(fm10000_wmParam));
+    if (wpm == NULL)
+    {
+        FM_LOG_EXIT(FM_LOG_CAT_QOS, FM_ERR_NO_MEM);
+    }
+
+    /* Get watermark schema */
+    wmScheme = fmGetTextApiProperty(FM_AAK_API_FM10000_WMSELECT,
+                                    FM_AAD_API_FM10000_WMSELECT);
+
+    /* For the disabled scheme print warning when value is less than 
+       auto mode calculation */
+    if (!strcmp(wmScheme, "disabled"))
+    {
+        /* Determine the maximum switch MTU */ 
+        maxMtu = 0;
+        for (i = 0 ; i < FM10000_MTU_TABLE_ENTRIES; i++)
+        {
+            mtuEntry.index = i;
+            err = fmGetSwitchAttribute(sw, FM_MTU_LIST, &mtuEntry);
+        
+            if ((err == FM_OK) && (mtuEntry.mtu > maxMtu))
+            {
+                maxMtu = mtuEntry.mtu;
+            }
+        }
+        
+        /* Set mtu to max size if not initialized */
+        if (maxMtu == 0)
+        {
+            maxMtu = FM10000_MAX_FRAME_SIZE;
+        }
+
+        /* Print warning */
+        if ( globalWm > FM10000_QOS_MAX_NUM_SEGS - 
+                        FM10000_QOS_NUM_RESERVED_SEGS -
+                        switchPtr->numCardinalPorts * 
+                                         BYTES2SEG( maxMtu ) )
+        {
+            FM_LOG_WARNING(FM_LOG_CAT_QOS,
+                           "Setting value for the global queue"
+                           " size (sw = %d) is greater than"
+                           " automatically calculated for the current "
+                           "watermark scheme.\n", sw);
+        }
+
+    }
+
+    /* Free memory allocated for watermark configuration */
+    fmFree(wpm);
+
+    FM_LOG_EXIT(FM_LOG_CAT_QOS, err);
+
+}   /* end CheckGlobalWm */
 
 
 
@@ -4224,9 +4300,16 @@ fm_status fm10000SetPortQOS(fm_int sw,
         case FM_QOS_L2_VPRI1_MAP:
         case FM_QOS_RX_PRIORITY_MAP:
             /* Check index  not exceeding max of VLAN PRI available*/
-            FM10000_QOS_ABORT_ON_EXCEED(index, FM10000_QOS_MAX_VLAN_PRI, 
-                                        err, FM_ERR_INVALID_ARGUMENT);
-
+            FM10000_QOS_ABORT_ON_EXCEED_OR_LESS_0(index, 
+                                                  FM10000_QOS_MAX_VLAN_PRI, 
+                                                  err, 
+                                                  FM_ERR_INVALID_ARGUMENT);
+            /* Check input value */
+            val = *(fm_uint32 *) value;
+            FM10000_QOS_ABORT_ON_EXCEED(val, 
+                                        FM10000_QOS_MAX_VLAN_PRI, 
+                                        err, 
+                                        FM_ERR_INVALID_ARGUMENT);
             /* Read the register */
             FM_FLAG_TAKE_REG_LOCK(sw);
             err = fmRegCacheReadUINT64(sw,
@@ -4234,11 +4317,8 @@ fm_status fm10000SetPortQOS(fm_int sw,
                                        physPort,
                                        &regValue64);
             FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_QOS, err);
-
             /* Update the field */
-            val = *(fm_uint32 *) value;
             FM_SET_UNNAMED_FIELD64(regValue64, (index * 4), 4, val);
-
             /* Write the register */
             err = fmRegCacheWriteUINT64(sw,
                                         &fm10000CacheRxVpriMap,
@@ -4249,9 +4329,16 @@ fm_status fm10000SetPortQOS(fm_int sw,
 
         case FM_QOS_TX_PRIORITY_MAP:
             /* Check index  not exceeding max of VLAN PRI available*/
-            FM10000_QOS_ABORT_ON_EXCEED(index, FM10000_QOS_MAX_VLAN_PRI, 
-                                        err, FM_ERR_INVALID_ARGUMENT);
-
+            FM10000_QOS_ABORT_ON_EXCEED_OR_LESS_0(index, 
+                                                  FM10000_QOS_MAX_VLAN_PRI,
+                                                  err, 
+                                                  FM_ERR_INVALID_ARGUMENT);
+            /* Check input value */
+            val = *(fm_uint32 *) value;
+            FM10000_QOS_ABORT_ON_EXCEED(val, 
+                                        FM10000_QOS_MAX_VLAN_PRI, 
+                                        err, 
+                                        FM_ERR_INVALID_ARGUMENT);
             /* Read the register */
             FM_FLAG_TAKE_REG_LOCK(sw);
             err = fmRegCacheReadUINT64(sw,
@@ -4259,11 +4346,8 @@ fm_status fm10000SetPortQOS(fm_int sw,
                                        physPort,
                                        &regValue64);
             FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_QOS, err);
-
             /* Update the field */
-            val = *(fm_uint32 *) value;
             FM_SET_UNNAMED_FIELD64(regValue64, (index * 4), 4, val);
-
             /* Write the register */
             err = fmRegCacheWriteUINT64(sw,
                                         &fm10000CacheModVpri1Map,
@@ -4274,9 +4358,16 @@ fm_status fm10000SetPortQOS(fm_int sw,
 
         case FM_QOS_TX_PRIORITY2_MAP:
             /* Check index  not exceeding max of VLAN PRI available*/
-            FM10000_QOS_ABORT_ON_EXCEED(index, FM10000_QOS_MAX_VLAN_PRI, 
-                                        err, FM_ERR_INVALID_ARGUMENT);
-
+            FM10000_QOS_ABORT_ON_EXCEED_OR_LESS_0(index, 
+                                                  FM10000_QOS_MAX_VLAN_PRI, 
+                                                  err, 
+                                                  FM_ERR_INVALID_ARGUMENT);
+            /* Check input value */
+            val = *(fm_uint32 *) value;
+            FM10000_QOS_ABORT_ON_EXCEED(val, 
+                                        FM10000_QOS_MAX_VLAN_PRI, 
+                                        err, 
+                                        FM_ERR_INVALID_ARGUMENT);
             /* Read the register */
             FM_FLAG_TAKE_REG_LOCK(sw);
             err = fmRegCacheReadUINT64(sw,
@@ -4284,11 +4375,8 @@ fm_status fm10000SetPortQOS(fm_int sw,
                                        physPort,
                                        &regValue64);
             FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_QOS, err);
-
             /* Update the field */
-            val = *(fm_uint32 *) value;
             FM_SET_UNNAMED_FIELD64(regValue64, (index * 4), 4, val);
-
             /* Write the register */
             err = fmRegCacheWriteUINT64(sw,
                                         &fm10000CacheModVpri2Map,
@@ -4299,19 +4387,22 @@ fm_status fm10000SetPortQOS(fm_int sw,
 
         case FM_QOS_PC_RXMP_MAP:
             /* Check if index not exceeding max of PC available */
-            FM10000_QOS_ABORT_ON_EXCEED(index, FM10000_QOS_MAX_PC, 
-                                        err, FM_ERR_INVALID_ARGUMENT);
+            FM10000_QOS_ABORT_ON_EXCEED_OR_LESS_0(index, 
+                                                  FM10000_QOS_MAX_PC, 
+                                                  err, 
+                                                  FM_ERR_INVALID_ARGUMENT);
             /* Check if value not exceeding max of SMP available */
-            FM10000_QOS_ABORT_ON_EXCEED(
-                               *( (fm_int *) value ), FM_MAX_MEMORY_PARTITIONS, 
-                               err, FM_ERR_INVALID_ARGUMENT);
+            val = *( fm_uint32 *) value;
+            FM10000_QOS_ABORT_ON_EXCEED(val, 
+                                        FM_MAX_MEMORY_PARTITIONS, 
+                                        err, 
+                                        FM_ERR_INVALID_ARGUMENT);
             /* Read the register */
             addr = FM10000_CM_PC_SMP_MAP(physPort);
             FM_FLAG_TAKE_REG_LOCK(sw);
             err = switchPtr->ReadUINT32(sw, addr, &regValue);
             FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_QOS, err);
             /* Update the field */
-            val = *( fm_uint32 *) value;
             FM_SET_UNNAMED_FIELD(regValue, 
                                  (index * FM10000_CM_PC_SMP_MAP_s_SMP), 
                                  FM10000_CM_PC_SMP_MAP_s_SMP, 
@@ -4323,18 +4414,26 @@ fm_status fm10000SetPortQOS(fm_int sw,
 
         case FM_QOS_PRIVATE_PAUSE_ON_WM:
             /* Check whether the watermarks are under automatic management */
-            FM10000_QOS_ABORT_ON_AUTO_PAUSE_MODE(sw, err, 
+            FM10000_QOS_ABORT_ON_AUTO_PAUSE_MODE(sw, 
+                                                 err, 
                                                  FM_ERR_INVALID_QOS_MODE);
             /* Check if index not exceeding max of SMP available */
-            FM10000_QOS_ABORT_ON_EXCEED(index, FM10000_QOS_MAX_SMP, 
-                                        err, FM_ERR_INVALID_ARGUMENT);
+            FM10000_QOS_ABORT_ON_EXCEED_OR_LESS_0(index, 
+                                                  FM10000_QOS_MAX_SMP, 
+                                                  err, 
+                                                  FM_ERR_INVALID_ARGUMENT);
+            /* Check input value */
+            FM10000_QOS_ABORT_ON_EXCEED(( *( (fm_uint32 *) value ) ), 
+                                        FM10000_QOS_MAX_WATERMARK, 
+                                        err, 
+                                        FM_ERR_INVALID_ARGUMENT);
+            val = BYTES2SEG( *( (fm_uint32 *) value ) );
             /*Read the register*/
             addr = FM10000_CM_RX_SMP_PAUSE_WM(physPort, index);
             FM_FLAG_TAKE_REG_LOCK(sw);
             err = switchPtr->ReadUINT32(sw, addr, &regValue);
             FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_QOS, err);
-            /* Update the field - convert to segments*/
-            val = BYTES2SEG( *( (fm_uint32 *) value ) );
+            /* Update the field */
             FM_SET_FIELD(regValue, FM10000_CM_RX_SMP_PAUSE_WM,
                          PauseOn, val);
             /* Write the register */
@@ -4343,18 +4442,26 @@ fm_status fm10000SetPortQOS(fm_int sw,
 
         case FM_QOS_PRIVATE_PAUSE_OFF_WM:
             /* Check whether the watermarks are under automatic management */
-            FM10000_QOS_ABORT_ON_AUTO_PAUSE_MODE(sw, err, 
+            FM10000_QOS_ABORT_ON_AUTO_PAUSE_MODE(sw, 
+                                                 err, 
                                                  FM_ERR_INVALID_QOS_MODE);
             /* Check if index not exceeding max of SMP available */
-            FM10000_QOS_ABORT_ON_EXCEED(index, FM10000_QOS_MAX_SMP, 
-                                        err, FM_ERR_INVALID_ARGUMENT);
+            FM10000_QOS_ABORT_ON_EXCEED_OR_LESS_0(index, 
+                                                  FM10000_QOS_MAX_SMP, 
+                                                  err, 
+                                                  FM_ERR_INVALID_ARGUMENT);
+            /* Check input value */
+            FM10000_QOS_ABORT_ON_EXCEED(( *( (fm_uint32 *) value ) ), 
+                                        FM10000_QOS_MAX_WATERMARK, 
+                                        err, 
+                                        FM_ERR_INVALID_ARGUMENT);
+            val = BYTES2SEG( *( (fm_uint32 *) value ) );
             /* Read the register*/
             addr = FM10000_CM_RX_SMP_PAUSE_WM(physPort, index);
             FM_FLAG_TAKE_REG_LOCK(sw);
             err = switchPtr->ReadUINT32(sw, addr, &regValue);
             FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_QOS, err);
-            /* Update the field - convert to segments*/
-            val = BYTES2SEG( *( (fm_uint32 *) value ) );
+            /* Update the field */
             FM_SET_FIELD(regValue, FM10000_CM_RX_SMP_PAUSE_WM,
                          PauseOff, val);
             /* Write the register */
@@ -4364,13 +4471,21 @@ fm_status fm10000SetPortQOS(fm_int sw,
 
         case FM_QOS_RX_HOG_WM:
             /* Check whether the watermarks are under automatic management */
-            FM10000_QOS_ABORT_ON_AUTO_PAUSE_MODE(sw, err, 
+            FM10000_QOS_ABORT_ON_AUTO_PAUSE_MODE(sw, 
+                                                 err, 
                                                  FM_ERR_INVALID_QOS_MODE);
             /* Check if index not exceeding max of SMP available */
-            FM10000_QOS_ABORT_ON_EXCEED(index, FM10000_QOS_MAX_SMP, 
-                                        err, FM_ERR_INVALID_ARGUMENT);
-            /* Convert to segments and round up*/
+            FM10000_QOS_ABORT_ON_EXCEED_OR_LESS_0(index, 
+                                                  FM10000_QOS_MAX_SMP, 
+                                                  err, 
+                                                  FM_ERR_INVALID_ARGUMENT);
+            /* Check input value */
+            FM10000_QOS_ABORT_ON_EXCEED(( *( (fm_uint32 *) value ) ), 
+                                        FM10000_QOS_MAX_WATERMARK, 
+                                        err, 
+                                        FM_ERR_INVALID_ARGUMENT);
             val = BYTES2SEG( *( (fm_uint32 *) value ) );
+            /* Set the field */
             FM_SET_FIELD(regValue, FM10000_CM_RX_SMP_HOG_WM,
                          watermark, val);
             /* Write the register */
@@ -4381,14 +4496,22 @@ fm_status fm10000SetPortQOS(fm_int sw,
             break;
 
         case FM_QOS_RX_PRIVATE_WM:
-            /* Check if index not exceeding max of SMP available */
-            FM10000_QOS_ABORT_ON_EXCEED(index, FM10000_QOS_MAX_SMP, 
-                                        err, FM_ERR_INVALID_ARGUMENT);
             /* Check whether the watermarks are under automatic management */
-            FM10000_QOS_ABORT_ON_AUTO_PAUSE_MODE(sw, err, 
+            FM10000_QOS_ABORT_ON_AUTO_PAUSE_MODE(sw, 
+                                                 err, 
                                                  FM_ERR_INVALID_QOS_MODE);
-            /* Convert bytes to segments */
+            /* Check if index not exceeding max of SMP available */
+            FM10000_QOS_ABORT_ON_EXCEED_OR_LESS_0(index, 
+                                                  FM10000_QOS_MAX_SMP, 
+                                                  err, 
+                                                  FM_ERR_INVALID_ARGUMENT);
+            /* Check input value */
+            FM10000_QOS_ABORT_ON_EXCEED(( *( (fm_uint32 *) value ) ),
+                                        FM10000_QOS_MAX_WATERMARK, 
+                                        err, 
+                                        FM_ERR_INVALID_ARGUMENT);
             val = BYTES2SEG( *( (fm_uint32 *) value ) );
+            /* Set the field */
             FM_SET_FIELD(regValue, FM10000_CM_RX_SMP_PRIVATE_WM,
                          watermark, val);
             /* Write the register */
@@ -4400,10 +4523,17 @@ fm_status fm10000SetPortQOS(fm_int sw,
 
         case FM_QOS_TX_TC_PRIVATE_WM:
             /* Check if index not exceeding max of TC available */
-            FM10000_QOS_ABORT_ON_EXCEED(index, FM10000_QOS_MAX_TC, 
-                                        err, FM_ERR_INVALID_ARGUMENT);
-            /* Convert bytes to segments */
+            FM10000_QOS_ABORT_ON_EXCEED_OR_LESS_0(index, 
+                                                  FM10000_QOS_MAX_TC, 
+                                                  err, 
+                                                  FM_ERR_INVALID_ARGUMENT);
+            /* Check input value */
+            FM10000_QOS_ABORT_ON_EXCEED(( *( (fm_uint32 *) value ) ), 
+                                        FM10000_QOS_MAX_WATERMARK, 
+                                        err, 
+                                        FM_ERR_INVALID_ARGUMENT);
             val = BYTES2SEG( *( (fm_uint32 *) value ) );
+            /* Set the field */
             FM_SET_FIELD(regValue, FM10000_CM_TX_TC_PRIVATE_WM,
                          watermark, val);
             /* Write the register */
@@ -4411,28 +4541,26 @@ fm_status fm10000SetPortQOS(fm_int sw,
             FM_FLAG_TAKE_REG_LOCK(sw);
             err = switchPtr->WriteUINT32(sw, addr, regValue);
             FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_QOS, err);
-            /* Check whether the watermarks are under automatic management */
-            err = fm10000GetSwitchQOS(sw, FM_AUTO_PAUSE_MODE, 
-                                      0, &autoPauseMode); 
-            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_QOS, err);
-            if (autoPauseMode)
-            {
-                /* recalculate the watermarks automatically */
-                // err = fm4000SetWatermarkParameters(sw);
-            }
             break;
 
         case FM_QOS_TX_SOFT_DROP_ON_PRIVATE:
             /* Check if index not exceeding max of SW PRI available */
-            FM10000_QOS_ABORT_ON_EXCEED(index, FM10000_QOS_MAX_SW_PRI, 
-                                        err, FM_ERR_INVALID_ARGUMENT);
+            FM10000_QOS_ABORT_ON_EXCEED_OR_LESS_0(index, 
+                                                  FM10000_QOS_MAX_SW_PRI,
+                                                  err, 
+                                                  FM_ERR_INVALID_ARGUMENT);
+            /* Check input value */
+            val = *( (fm_uint32 *) value );
+            FM10000_QOS_ABORT_ON_EXCEED(val, 
+                                        FM_ENABLED,
+                                        err, 
+                                        FM_ERR_INVALID_ARGUMENT);
             /* Read the register */
             addr = FM10000_CM_APPLY_TX_SOFTDROP_CFG(physPort, index);
             FM_FLAG_TAKE_REG_LOCK(sw);
             err = switchPtr->ReadUINT32(sw, addr, &regValue);
             FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_QOS, err);
             /* Update the field */
-            val = *( (fm_uint32 *) value );
             FM_SET_BIT(regValue,
                        FM10000_CM_APPLY_TX_SOFTDROP_CFG,
                        SoftDropOnPrivate,
@@ -4444,15 +4572,22 @@ fm_status fm10000SetPortQOS(fm_int sw,
 
         case FM_QOS_TX_SOFT_DROP_ON_RXMP_FREE:
             /* Check if index not exceeding max of SW PRI available */
-            FM10000_QOS_ABORT_ON_EXCEED(index, FM10000_QOS_MAX_SW_PRI, 
-                                        err, FM_ERR_INVALID_ARGUMENT);
+            FM10000_QOS_ABORT_ON_EXCEED_OR_LESS_0(index, 
+                                                  FM10000_QOS_MAX_SW_PRI,
+                                                  err, 
+                                                  FM_ERR_INVALID_ARGUMENT);
+            /* Check input value */
+            val = *( (fm_uint32 *) value );
+            FM10000_QOS_ABORT_ON_EXCEED(val, 
+                                        FM_ENABLED,
+                                        err, 
+                                        FM_ERR_INVALID_ARGUMENT);
             /* Read the register */
             FM_FLAG_TAKE_REG_LOCK(sw);
             addr = FM10000_CM_APPLY_TX_SOFTDROP_CFG(physPort, index);
             err = switchPtr->ReadUINT32(sw, addr, &regValue);
             FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_QOS, err);
             /* Update the field */
-            val = *( (fm_uint32 *) value );
             FM_SET_BIT(regValue,
                        FM10000_CM_APPLY_TX_SOFTDROP_CFG,
                        SoftDropOnSmpFree,
@@ -4464,10 +4599,17 @@ fm_status fm10000SetPortQOS(fm_int sw,
 
         case FM_QOS_TX_HOG_WM:
             /* Check if index not exceeding max of TC available */
-            FM10000_QOS_ABORT_ON_EXCEED(index, FM10000_QOS_MAX_TC, 
-                                        err, FM_ERR_INVALID_ARGUMENT);
-            /* Convert bytes to segments */
+            FM10000_QOS_ABORT_ON_EXCEED_OR_LESS_0(index, 
+                                                  FM10000_QOS_MAX_TC, 
+                                                  err, 
+                                                  FM_ERR_INVALID_ARGUMENT);
+            /* Check input value */
+            FM10000_QOS_ABORT_ON_EXCEED(( *( (fm_uint32 *) value ) ), 
+                                        FM10000_QOS_MAX_WATERMARK, 
+                                        err, 
+                                        FM_ERR_INVALID_ARGUMENT);
             val = BYTES2SEG( *( (fm_uint32 *) value ) );
+            /* Set the field */
             FM_SET_FIELD(regValue, FM10000_CM_TX_TC_HOG_WM,
                          watermark, val);
             addr = FM10000_CM_TX_TC_HOG_WM(physPort, index);
@@ -4479,8 +4621,16 @@ fm_status fm10000SetPortQOS(fm_int sw,
 
         case FM_QOS_SHAPING_GROUP_MAX_BURST:
             /* Check if index not exceeding max of SG available */
-            FM10000_QOS_ABORT_ON_EXCEED(index, FM10000_QOS_MAX_SG, 
-                                        err, FM_ERR_INVALID_ARGUMENT);
+            FM10000_QOS_ABORT_ON_EXCEED_OR_LESS_0(index, 
+                                                  FM10000_QOS_MAX_SG, 
+                                                  err, 
+                                                  FM_ERR_INVALID_ARGUMENT);
+            /* Check input value */
+            FM10000_QOS_ABORT_ON_EXCEED(
+                                   (*( (fm_uint64 *) value )), 
+                                   FM10000_QOS_SHAPING_GROUP_MAX_BURST_MAX_VAL, 
+                                   err, 
+                                   FM_ERR_INVALID_ARGUMENT);
             /* Read the register */
             addr = FM10000_TX_RATE_LIM_CFG(physPort, index);
             FM_FLAG_TAKE_REG_LOCK(sw);
@@ -4497,33 +4647,59 @@ fm_status fm10000SetPortQOS(fm_int sw,
 
         case FM_QOS_SHAPING_GROUP_RATE:
             /* Check if index not exceeding max of SG available */
-            FM10000_QOS_ABORT_ON_EXCEED(index, FM10000_QOS_MAX_SG, 
-                                        err, FM_ERR_INVALID_ARGUMENT);
-            /* Read the register */
+            FM10000_QOS_ABORT_ON_EXCEED_OR_LESS_0(index, 
+                                                  FM10000_QOS_MAX_SG, 
+                                                  err, 
+                                                  FM_ERR_INVALID_ARGUMENT);
+            /* Get input value */
+            temp2 = *( (fm_uint64 *) value );
+            /* Get the register address */
             addr = FM10000_TX_RATE_LIM_CFG(physPort, index);
             FM_FLAG_TAKE_REG_LOCK(sw);
+            /* Read the register */
             err = switchPtr->ReadUINT32(sw, addr,&regValue);
             FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_QOS, err);
-            /* Update the field, before it do some calculations */
-            /* Input value is the rate in bits per seond,  need to convert 
-             * to bytes */
-            temp2=(*( (fm_uint64 *) value ) >> 3);
-            /* The rate needs to be converted to the number of bytes in 
-             * 48 FH clocks */
-            err = fmComputeFHClockFreq(sw, &fhMhz);
-            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_QOS, err);
-            rate = ((temp2 / (fhMhz * 1e6)) * 48);
-
-            /* Update RateUnit*/
-            val = (fm_uint32) trunc(rate);
-            FM_SET_FIELD(regValue, FM10000_TX_RATE_LIM_CFG,
-                         RateUnit, val);
-            /* Update  RateFrac - fractional part in units of 1/256 */
-            rate -= trunc(rate);
-            rate /= 1.0 / 256;
-            val = (fm_uint32) round(rate);
-            FM_SET_FIELD(regValue, FM10000_TX_RATE_LIM_CFG,
-                         RateFrac, val);
+            /* Compare if input is default */
+            if (temp2 == FM_QOS_SHAPING_GROUP_RATE_DEFAULT)
+            {
+                /* Input value greater than port's speed - disable shaping */
+                /*Set register max to disable rate limiter  */
+                FM_SET_FIELD(regValue, 
+                             FM10000_TX_RATE_LIM_CFG,
+                             RateUnit, 
+                             FM10000_QOS_SHAPING_GROUP_RATE_UNIT_MAX_VAL);
+                FM_SET_FIELD(regValue, 
+                             FM10000_TX_RATE_LIM_CFG,
+                             RateFrac, 
+                             FM10000_QOS_SHAPING_GROUP_RATE_FRAC_MAX_VAL);
+            }
+            else
+            {
+                /* Check if not exceed maximum value */
+                FM10000_QOS_ABORT_ON_EXCEED(temp2, 
+                                            (fm_uint64)(100 * 1e9), 
+                                             err, 
+                                             FM_ERR_INVALID_ARGUMENT);
+                /* Update the field, before it do some calculations */
+                /* Input value is the rate in bits per seond,  need to convert 
+                 * to bytes */
+                temp2 = temp2 >> 3;
+                /* The rate needs to be converted to the number of bytes in 
+                 * 48 FH clocks */
+                err = fmComputeFHClockFreq(sw, &fhMhz);
+                FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_QOS, err);
+                rate = ((temp2 / (fhMhz * 1e6)) * 48);
+                /* Update RateUnit*/
+                val = (fm_uint32) trunc(rate);
+                FM_SET_FIELD(regValue, FM10000_TX_RATE_LIM_CFG,
+                             RateUnit, val);
+                /* Update  RateFrac - fractional part in units of 1/256 */
+                rate -= trunc(rate);
+                rate /= 1.0 / 256;
+                val = (fm_uint32) round(rate);
+                FM_SET_FIELD(regValue, FM10000_TX_RATE_LIM_CFG,
+                             RateFrac, val);
+            }
             /* Write the register */
             err = switchPtr->WriteUINT32(sw, addr, regValue);
             FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_QOS, err);
@@ -4531,15 +4707,22 @@ fm_status fm10000SetPortQOS(fm_int sw,
 
         case FM_QOS_TC_PC_MAP:
             /* Check if index not exceeding max of PC available */
-            FM10000_QOS_ABORT_ON_EXCEED(index, FM10000_QOS_MAX_PC, 
-                                        err, FM_ERR_INVALID_ARGUMENT);
+            FM10000_QOS_ABORT_ON_EXCEED_OR_LESS_0(index, 
+                                                  FM10000_QOS_MAX_TC, 
+                                                  err, 
+                                                  FM_ERR_INVALID_ARGUMENT);
+            /* Check the input */
+            val = *( ( fm_uint32 *) value);
+            FM10000_QOS_ABORT_ON_EXCEED(val, 
+                                        FM10000_QOS_MAX_PC, 
+                                        err, 
+                                        FM_ERR_INVALID_ARGUMENT);
             /* Read the register */
             addr = FM10000_CM_TC_PC_MAP(physPort);
             FM_FLAG_TAKE_REG_LOCK(sw);
             err = switchPtr->ReadUINT32(sw, addr, &regValue);
             FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_QOS, err);
             /* Update the field */
-            val = *( ( fm_uint32 *) value);
             FM_SET_UNNAMED_FIELD(regValue, 
                                  (index * FM10000_CM_TC_PC_MAP_s_PauseClass), 
                                   FM10000_CM_TC_PC_MAP_s_PauseClass, 
@@ -4550,13 +4733,18 @@ fm_status fm10000SetPortQOS(fm_int sw,
             break;
 
         case FM_QOS_TC_ENABLE:
+            /* Check the input */
+            val = *( ( fm_uint32 *) value);
+            FM10000_QOS_ABORT_ON_EXCEED(val, 
+                                        FM10000_QOS_TC_ENABLE_MAX_VAL, 
+                                        err, 
+                                        FM_ERR_INVALID_ARGUMENT);
             /* Read the register */
             addr = FM10000_SCHED_ESCHED_CFG_2(physPort);
             FM_FLAG_TAKE_REG_LOCK(sw);
             err = switchPtr->ReadUINT32(sw, addr, &regValue);
             FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_QOS, err);
             /* Update the field */
-            val = *( ( fm_uint32 *) value);
             FM_SET_FIELD(regValue, 
                          FM10000_SCHED_ESCHED_CFG_2,
                          TcEnable,
@@ -4567,13 +4755,18 @@ fm_status fm10000SetPortQOS(fm_int sw,
             break;
 
         case FM_QOS_SCHED_IFGPENALTY:
+            /* Check input value */
+            val = *( ( fm_uint32 *) value);
+            FM10000_QOS_ABORT_ON_EXCEED(val, 
+                                        FM10000_QOS_SCHED_IFGPENALTY_MAX_VAL, 
+                                        err, 
+                                        FM_ERR_INVALID_ARGUMENT);
             /* Read the DRR register */
             FM_FLAG_TAKE_REG_LOCK(sw);
             addr = FM10000_SCHED_MONITOR_DRR_CFG_PERPORT(physPort);
             err = switchPtr->ReadUINT32(sw, addr, &regValue);
             FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_QOS, err);
             /* Update the DRR  */
-            val = *( (fm_uint32 *) value );
             FM_SET_FIELD(regValue, 
                          FM10000_SCHED_MONITOR_DRR_CFG_PERPORT,
                          ifgPenalty,
@@ -4584,13 +4777,16 @@ fm_status fm10000SetPortQOS(fm_int sw,
 
         case FM_QOS_TC_SHAPING_GROUP_MAP:
             /* Check if index not exceeding max of TC available */
-            FM10000_QOS_ABORT_ON_EXCEED(index, FM10000_QOS_MAX_TC, 
-                                        err, FM_ERR_INVALID_ARGUMENT);
+            FM10000_QOS_ABORT_ON_EXCEED_OR_LESS_0(index, 
+                                                  FM10000_QOS_MAX_TC, 
+                                                  err, 
+                                                  FM_ERR_INVALID_ARGUMENT);
             /* Check if value not exceeding max of SG available */
-            FM10000_QOS_ABORT_ON_EXCEED(
-                                    *( (fm_int *) value ), FM10000_QOS_MAX_SG, 
-                                    err, FM_ERR_INVALID_ARGUMENT);
             val = *( (fm_uint32 *) value );
+            FM10000_QOS_ABORT_ON_EXCEED(val, 
+                                        FM10000_QOS_MAX_SG, 
+                                        err, 
+                                        FM_ERR_INVALID_ARGUMENT);
             /* Read the CM_BSG_MAP register */
             FM_FLAG_TAKE_REG_LOCK(sw);
             addr = FM10000_CM_BSG_MAP(physPort);
@@ -4609,7 +4805,6 @@ fm_status fm10000SetPortQOS(fm_int sw,
             /* Verify new scheduller configuration */
             err = ESchedGroupVerifyConfig(sw, physPort);
             FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_QOS, err);
-
             /* Apply new configuration */
             err = ESchedGroupApplyNewConfig(sw, physPort);
             break;
@@ -4617,7 +4812,12 @@ fm_status fm10000SetPortQOS(fm_int sw,
         case FM_QOS_NUM_SCHED_GROUPS:
             /* Verify number of groups */
             val = *( (fm_uint32 *) value );
-            if (( val > FM_MAX_TRAFFIC_CLASSES ) || ( val < 1 ))
+            FM10000_QOS_ABORT_ON_EXCEED(val, 
+                                        (FM10000_QOS_MAX_SG + 1), 
+                                        err, 
+                                        FM_ERR_INVALID_ARGUMENT);
+            /* Check additionally if number of queues is grater than 0 */
+            if ( val < 1 )
             {
                 err = FM_ERR_INVALID_ARGUMENT;
                 FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_QOS, err);
@@ -4626,41 +4826,19 @@ fm_status fm10000SetPortQOS(fm_int sw,
             switchExt->eschedConfig[physPort].numGroupsNew = val; 
             break;
 
-        case FM_QOS_SCHED_GROUP_PRISET_NUM:
-            /* Verify index */
-            if (index >= (fm_int)switchExt->eschedConfig[physPort].numGroupsNew
-                || index < 0)
-            {
-                err = FM_ERR_INVALID_ARGUMENT;
-                FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_QOS, err);
-            }
-            /* Verify priority set value */
-            val = *( (fm_uint32 *) value );
-            if ( val >= switchExt->eschedConfig[physPort].numGroupsNew )
-            {
-                err = FM_ERR_INVALID_ARGUMENT;
-                FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_QOS, err);
-            }
-            /* Set the value */
-            switchExt->eschedConfig[physPort].newSchedGroup[index].priSetNum
-                                            = val;
-            break;
-
         case FM_QOS_SCHED_GROUP_STRICT:
             /* Verify index */
-            if (index >= (fm_int) switchExt->eschedConfig[physPort].numGroupsNew
-                || index < 0)
-            {
-                err = FM_ERR_INVALID_ARGUMENT;
-                FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_QOS, err);
-            }
-            /* Verify strict propert  set value */
+            FM10000_QOS_ABORT_ON_EXCEED_OR_LESS_0(
+                   index, 
+                   (fm_int)(switchExt->eschedConfig[physPort].numGroupsNew - 1),
+                   err, 
+                   FM_ERR_INVALID_ARGUMENT);
+            /* Verify strict property set value */
             val = *( (fm_uint32 *) value );
-            if ( val > 1 )
-            {
-                err = FM_ERR_INVALID_ARGUMENT;
-                FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_QOS, err);
-            }
+            FM10000_QOS_ABORT_ON_EXCEED(val,
+                                        FM10000_QOS_SCHED_GROUP_STRICT_MAX_VAL, 
+                                        err, 
+                                        FM_ERR_INVALID_ARGUMENT);
             /* Set new trict property */
             switchExt->eschedConfig[physPort].newSchedGroup[index].strict
                                             = val;
@@ -4668,19 +4846,17 @@ fm_status fm10000SetPortQOS(fm_int sw,
 
         case FM_QOS_SCHED_GROUP_WEIGHT:
             /* Verify index */
-            if (index >= (fm_int) switchExt->eschedConfig[physPort].numGroupsNew
-                || index < 0)
-            {
-                err = FM_ERR_INVALID_ARGUMENT;
-                FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_QOS, err);
-            }
+            FM10000_QOS_ABORT_ON_EXCEED_OR_LESS_0(
+                   index, 
+                   (fm_int)(switchExt->eschedConfig[physPort].numGroupsNew - 1),
+                   err, 
+                   FM_ERR_INVALID_ARGUMENT);
             /* Verify quanta DRR value */
             val = *( (fm_uint32 *) value );
-            if ( val > FM10000_QOS_MAX_DRR_WEIGHT )
-            {
-                err = FM_ERR_INVALID_ARGUMENT;
-                FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_QOS, err);
-            }
+            FM10000_QOS_ABORT_ON_EXCEED(val,
+                                        FM10000_QOS_SCHED_GROUP_WEIGHT_MAX_VAL, 
+                                        err, 
+                                        FM_ERR_INVALID_ARGUMENT);
             /* Set new quanta DRR value */
             switchExt->eschedConfig[physPort].newSchedGroup[index].drrWeight
                                             = val;
@@ -4688,19 +4864,17 @@ fm_status fm10000SetPortQOS(fm_int sw,
 
         case FM_QOS_SCHED_GROUP_TCBOUNDARY_A:
             /* Verify index */
-            if (index >= (fm_int) switchExt->eschedConfig[physPort].numGroupsNew
-                || index < 0)
-            {
-                err = FM_ERR_INVALID_ARGUMENT;
-                FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_QOS, err);
-            }
+            FM10000_QOS_ABORT_ON_EXCEED_OR_LESS_0(
+                   index, 
+                   (fm_int)(switchExt->eschedConfig[physPort].numGroupsNew -1 ),
+                   err, 
+                   FM_ERR_INVALID_ARGUMENT);
             /* Verify boundary value */
             val = *( (fm_uint32 *) value );
-            if ( val > FM10000_MAX_TRAFFIC_CLASS )
-            {
-                err = FM_ERR_INVALID_ARGUMENT;
-                FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_QOS, err);
-            }
+            FM10000_QOS_ABORT_ON_EXCEED(val,
+                                        FM10000_QOS_MAX_TC, 
+                                        err, 
+                                        FM_ERR_INVALID_ARGUMENT);
             /* Set new boundary value */
             switchExt->eschedConfig[physPort].newSchedGroup[index].tcBoundaryA
                                             = val;
@@ -4708,19 +4882,17 @@ fm_status fm10000SetPortQOS(fm_int sw,
 
         case FM_QOS_SCHED_GROUP_TCBOUNDARY_B:
             /* Verify index */
-            if (index >= (fm_int) switchExt->eschedConfig[physPort].numGroupsNew
-                || index < 0)
-            {
-                err = FM_ERR_INVALID_ARGUMENT;
-                FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_QOS, err);
-            }
+            FM10000_QOS_ABORT_ON_EXCEED_OR_LESS_0(
+                   index, 
+                   (fm_int)(switchExt->eschedConfig[physPort].numGroupsNew - 1), 
+                   err, 
+                   FM_ERR_INVALID_ARGUMENT);
             /* Verify boundary value */
             val = *( (fm_uint32 *) value );
-            if ( val > FM10000_MAX_TRAFFIC_CLASS )
-            {
-                err = FM_ERR_INVALID_ARGUMENT;
-                FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_QOS, err);
-            }
+            FM10000_QOS_ABORT_ON_EXCEED(val,
+                                        FM10000_QOS_MAX_TC, 
+                                        err, 
+                                        FM_ERR_INVALID_ARGUMENT);
             /* Set new boundary value */
             switchExt->eschedConfig[physPort].newSchedGroup[index].tcBoundaryB
                                             = val;
@@ -4728,6 +4900,10 @@ fm_status fm10000SetPortQOS(fm_int sw,
 
         case FM_QOS_SHARED_PAUSE_ENABLE:
             val = *( ( fm_uint32 *) value);
+            FM10000_QOS_ABORT_ON_EXCEED(val,
+                                        FM10000_QOS_SHARED_PAUSE_ENABLE_MAX_VAL,
+                                        err, 
+                                        FM_ERR_INVALID_ARGUMENT);
             FM_FLAG_TAKE_REG_LOCK(sw);
             for (int i = 0; i < FM10000_CM_SHARED_SMP_PAUSE_CFG_ENTRIES; i++)
             {
@@ -4837,16 +5013,16 @@ fm_status fm10000GetPortQOS(fm_int sw,
         case FM_QOS_L2_VPRI1_MAP:
         case FM_QOS_RX_PRIORITY_MAP:
             /* Check if index not exceeding max of VLANPRI available */
-            FM10000_QOS_ABORT_ON_EXCEED(index, FM10000_QOS_MAX_VLAN_PRI, 
-                                        err, FM_ERR_INVALID_ARGUMENT);
-
+            FM10000_QOS_ABORT_ON_EXCEED_OR_LESS_0(index, 
+                                                  FM10000_QOS_MAX_VLAN_PRI, 
+                                                  err, 
+                                                  FM_ERR_INVALID_ARGUMENT);
             /* Read the register */
             err = fmRegCacheReadUINT64(sw,
                                        &fm10000CacheRxVpriMap,
                                        physPort,
                                        &regValue64);
             FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_QOS, err);
-
             /* Do some required conversions */
             *( (fm_uint32 *) value ) = 
                 (fm_uint32) FM_GET_UNNAMED_FIELD64(regValue64,
@@ -4856,16 +5032,16 @@ fm_status fm10000GetPortQOS(fm_int sw,
 
         case FM_QOS_TX_PRIORITY_MAP:
             /* Check if index not exceeding max of VLANPRI available */
-            FM10000_QOS_ABORT_ON_EXCEED(index, FM10000_QOS_MAX_VLAN_PRI, 
-                                        err, FM_ERR_INVALID_ARGUMENT);
-
+            FM10000_QOS_ABORT_ON_EXCEED_OR_LESS_0(index, 
+                                                  FM10000_QOS_MAX_VLAN_PRI, 
+                                                  err, 
+                                                  FM_ERR_INVALID_ARGUMENT);
             /* Read the register */
             err = fmRegCacheReadUINT64(sw,
                                        &fm10000CacheModVpri1Map,
                                        physPort,
                                        &regValue64);
             FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_QOS, err);
-
             /* Do some required conversions */
             *( (fm_uint32 *) value ) = 
                 (fm_uint32) FM_GET_UNNAMED_FIELD64(regValue64,
@@ -4875,16 +5051,16 @@ fm_status fm10000GetPortQOS(fm_int sw,
 
         case FM_QOS_TX_PRIORITY2_MAP:
             /* Check if index not exceeding max of VLANPRI available */
-            FM10000_QOS_ABORT_ON_EXCEED(index, FM10000_QOS_MAX_VLAN_PRI, 
-                                        err, FM_ERR_INVALID_ARGUMENT);
-
+            FM10000_QOS_ABORT_ON_EXCEED_OR_LESS_0(index, 
+                                                  FM10000_QOS_MAX_VLAN_PRI, 
+                                                  err, 
+                                                  FM_ERR_INVALID_ARGUMENT);
             /* Read the register */
             err = fmRegCacheReadUINT64(sw,
                                        &fm10000CacheModVpri2Map,
                                        physPort,
                                        &regValue64);
             FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_QOS, err);
-
             /* Do some required conversions */
             *( (fm_uint32 *) value ) = 
                 (fm_uint32) FM_GET_UNNAMED_FIELD64(regValue64,
@@ -4894,8 +5070,10 @@ fm_status fm10000GetPortQOS(fm_int sw,
 
         case FM_QOS_PC_RXMP_MAP:
             /* Check if index not exceeding max of PC  available */
-            FM10000_QOS_ABORT_ON_EXCEED(index, FM10000_QOS_MAX_PC, 
-                                        err, FM_ERR_INVALID_ARGUMENT);
+            FM10000_QOS_ABORT_ON_EXCEED_OR_LESS_0(index, 
+                                                  FM10000_QOS_MAX_PC, 
+                                                  err, 
+                                                  FM_ERR_INVALID_ARGUMENT);
             /* Read the register */
             addr = FM10000_CM_PC_SMP_MAP(physPort);
             err = switchPtr->ReadUINT32(sw, addr, &regValue);
@@ -4910,8 +5088,10 @@ fm_status fm10000GetPortQOS(fm_int sw,
 
         case FM_QOS_RX_PRIVATE_WM:
             /* Check if index not exceeding max of SMP available */
-            FM10000_QOS_ABORT_ON_EXCEED(index, FM10000_QOS_MAX_SMP, 
-                                        err, FM_ERR_INVALID_ARGUMENT);
+            FM10000_QOS_ABORT_ON_EXCEED_OR_LESS_0(index, 
+                                                  FM10000_QOS_MAX_SMP, 
+                                                  err, 
+                                                  FM_ERR_INVALID_ARGUMENT);
             /* Read the register */
             addr = FM10000_CM_RX_SMP_PRIVATE_WM(physPort, index);
             err = switchPtr->ReadUINT32(sw, addr, &regValue);
@@ -4925,8 +5105,10 @@ fm_status fm10000GetPortQOS(fm_int sw,
 
         case FM_QOS_RX_SMP_USAGE:
             /* Check if index not exceeding max of SMP available */
-            FM10000_QOS_ABORT_ON_EXCEED(index, FM10000_QOS_MAX_SMP, 
-                                        err, FM_ERR_INVALID_ARGUMENT);
+            FM10000_QOS_ABORT_ON_EXCEED_OR_LESS_0(index, 
+                                                  FM10000_QOS_MAX_SMP, 
+                                                  err, 
+                                                  FM_ERR_INVALID_ARGUMENT);
             /* Read the register */
             addr = FM10000_CM_RX_SMP_USAGE(physPort, index);
             err = switchPtr->ReadUINT32(sw, addr, &regValue);
@@ -4940,8 +5122,10 @@ fm_status fm10000GetPortQOS(fm_int sw,
 
         case FM_QOS_TX_HOG_WM:
             /* Check if index not exceeding max of TC available */
-            FM10000_QOS_ABORT_ON_EXCEED(index, FM10000_QOS_MAX_TC, 
-                                        err, FM_ERR_INVALID_ARGUMENT);
+            FM10000_QOS_ABORT_ON_EXCEED_OR_LESS_0(index, 
+                                                  FM10000_QOS_MAX_TC, 
+                                                  err, 
+                                                  FM_ERR_INVALID_ARGUMENT);
             /* Write the register */
             addr = FM10000_CM_TX_TC_HOG_WM(physPort, index);
             err = switchPtr->ReadUINT32(sw, addr, &regValue);
@@ -4954,8 +5138,10 @@ fm_status fm10000GetPortQOS(fm_int sw,
 
         case FM_QOS_SHAPING_GROUP_MAX_BURST:
             /* Check if index not exceeding max of SG available */
-            FM10000_QOS_ABORT_ON_EXCEED(index, FM10000_QOS_MAX_SG, 
-                                        err, FM_ERR_INVALID_ARGUMENT);
+            FM10000_QOS_ABORT_ON_EXCEED_OR_LESS_0(index, 
+                                                  FM10000_QOS_MAX_SG, 
+                                                  err, 
+                                                  FM_ERR_INVALID_ARGUMENT);
             /* Read the register */
             addr = FM10000_TX_RATE_LIM_CFG(physPort, index);
             err = switchPtr->ReadUINT32(sw, addr, &regValue);
@@ -4969,28 +5155,44 @@ fm_status fm10000GetPortQOS(fm_int sw,
 
         case FM_QOS_SHAPING_GROUP_RATE:
             /* Check if index not exceeding max of SG available */
-            FM10000_QOS_ABORT_ON_EXCEED(index, FM10000_QOS_MAX_SG, 
-                                        err, FM_ERR_INVALID_ARGUMENT);
+            FM10000_QOS_ABORT_ON_EXCEED_OR_LESS_0(index, 
+                                                  FM10000_QOS_MAX_SG, 
+                                                  err, 
+                                                  FM_ERR_INVALID_ARGUMENT);
             /* Read the register */
             addr = FM10000_TX_RATE_LIM_CFG(physPort, index);
             err = switchPtr->ReadUINT32(sw, addr, &regValue);
             FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_QOS, err);
-            /* Get the requested value (convert to units of bits per second ) */
-            err = fmComputeFHClockFreq(sw, &fhMhz);
-            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_QOS, err);
-            
-            rate  = 
-                ( (regValue >> FM10000_TX_RATE_LIM_CFG_l_RateUnit) & 0x7ff ) + 
-                ( ( (regValue >> FM10000_TX_RATE_LIM_CFG_l_RateFrac) & 0xff ) 
+            /* Check if shaper disabled */
+            if ( (FM10000_QOS_SHAPING_GROUP_RATE_UNIT_MAX_VAL ==
+                 ((regValue >> FM10000_TX_RATE_LIM_CFG_l_RateUnit) & 0x7ff)) &&
+                (FM10000_QOS_SHAPING_GROUP_RATE_FRAC_MAX_VAL ==
+                 ((regValue >> FM10000_TX_RATE_LIM_CFG_l_RateFrac) & 0xff)) )
+            {
+                *( (fm_uint64 *) value ) = FM_QOS_SHAPING_GROUP_RATE_DEFAULT;
+            }
+            else
+            {
+                /* Convert to units of bits per second */
+                err = fmComputeFHClockFreq(sw, &fhMhz);
+                FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_QOS, err);
+                rate  = 
+                    ( (regValue >> FM10000_TX_RATE_LIM_CFG_l_RateUnit) 
+                                                                   & 0x7ff ) + 
+                    ( ( (regValue >> FM10000_TX_RATE_LIM_CFG_l_RateFrac) 
+                                                                   & 0xff ) 
                                                                       / 256.0 );
-            rate /= ( 48.0 / (fhMhz * 1e6) );
-            *( (fm_uint64 *) value ) = ( (fm_uint64) round(rate) ) << 3;
+                rate /= ( 48.0 / (fhMhz * 1e6) );
+                *( (fm_uint64 *) value ) = ( (fm_uint64) round(rate) ) << 3;
+            }
             break;
 
         case FM_QOS_TC_PC_MAP:
             /* Check if index not exceeding max of SG available */
-            FM10000_QOS_ABORT_ON_EXCEED(index, FM10000_QOS_MAX_TC, 
-                                        err, FM_ERR_INVALID_ARGUMENT);
+            FM10000_QOS_ABORT_ON_EXCEED_OR_LESS_0(index, 
+                                                  FM10000_QOS_MAX_TC, 
+                                                  err, 
+                                                  FM_ERR_INVALID_ARGUMENT);
             /* Read the register */
             addr = FM10000_CM_TC_PC_MAP(physPort);
             err = switchPtr->ReadUINT32(sw, addr, &regValue);
@@ -5004,14 +5206,16 @@ fm_status fm10000GetPortQOS(fm_int sw,
 
         case  FM_QOS_TX_SOFT_DROP_ON_PRIVATE:
             /* Check if index not exceeding max of SW PRI available */
-            FM10000_QOS_ABORT_ON_EXCEED(index, FM10000_QOS_MAX_SW_PRI, 
-                                        err, FM_ERR_INVALID_ARGUMENT);
+            FM10000_QOS_ABORT_ON_EXCEED_OR_LESS_0(index, 
+                                                  FM10000_QOS_MAX_SW_PRI, 
+                                                  err, 
+                                                  FM_ERR_INVALID_ARGUMENT);
             /* Read the register */
             addr = FM10000_CM_APPLY_TX_SOFTDROP_CFG(physPort, index);
             err = switchPtr->ReadUINT32(sw, addr, &regValue);
             FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_QOS, err);
             /* Get the requested value */
-            ( *( (fm_int *) value ) ) = 
+            ( *( (fm_uint32 *) value ) ) = 
                 FM_GET_BIT(regValue,
                            FM10000_CM_APPLY_TX_SOFTDROP_CFG,
                            SoftDropOnPrivate);
@@ -5019,14 +5223,16 @@ fm_status fm10000GetPortQOS(fm_int sw,
 
         case  FM_QOS_TX_SOFT_DROP_ON_RXMP_FREE:
             /* Check if index not exceeding max of SW PRI available */
-            FM10000_QOS_ABORT_ON_EXCEED(index, FM10000_QOS_MAX_SW_PRI, 
-                                        err, FM_ERR_INVALID_ARGUMENT);
+            FM10000_QOS_ABORT_ON_EXCEED_OR_LESS_0(index, 
+                                                  FM10000_QOS_MAX_SW_PRI, 
+                                                  err, 
+                                                  FM_ERR_INVALID_ARGUMENT);
             /* Read the register */
             addr = FM10000_CM_APPLY_TX_SOFTDROP_CFG(physPort, index);
             err = switchPtr->ReadUINT32(sw, addr, &regValue);
             FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_QOS, err);
             /* Get the requested value */
-            ( *( (fm_int *) value ) ) = 
+            ( *( (fm_uint32 *) value ) ) = 
                 FM_GET_BIT(regValue,
                            FM10000_CM_APPLY_TX_SOFTDROP_CFG,
                            SoftDropOnSmpFree);
@@ -5034,8 +5240,10 @@ fm_status fm10000GetPortQOS(fm_int sw,
 
         case FM_QOS_TX_TC_PRIVATE_WM:
             /* Check if index not exceeding max of TC available */
-            FM10000_QOS_ABORT_ON_EXCEED(index, FM10000_QOS_MAX_TC, 
-                                        err, FM_ERR_INVALID_ARGUMENT);
+            FM10000_QOS_ABORT_ON_EXCEED_OR_LESS_0(index, 
+                                                  FM10000_QOS_MAX_TC, 
+                                                  err, 
+                                                  FM_ERR_INVALID_ARGUMENT);
             /* Read the register */
             addr = FM10000_CM_TX_TC_PRIVATE_WM(physPort, index);
             err = switchPtr->ReadUINT32(sw, addr, &regValue);
@@ -5049,8 +5257,10 @@ fm_status fm10000GetPortQOS(fm_int sw,
 
         case FM_QOS_TX_TC_USAGE:
             /* Check if index not exceeding max of TC available */
-            FM10000_QOS_ABORT_ON_EXCEED(index, FM10000_QOS_MAX_TC, 
-                                        err, FM_ERR_INVALID_ARGUMENT);
+            FM10000_QOS_ABORT_ON_EXCEED_OR_LESS_0(index, 
+                                                  FM10000_QOS_MAX_TC, 
+                                                  err, 
+                                                  FM_ERR_INVALID_ARGUMENT);
             /* Read the register */
             addr = FM10000_CM_TX_TC_USAGE(physPort, index);
             err = switchPtr->ReadUINT32(sw, addr, &regValue);
@@ -5060,13 +5270,14 @@ fm_status fm10000GetPortQOS(fm_int sw,
                 FM_GET_FIELD(regValue, 
                              FM10000_CM_TX_TC_USAGE, 
                              count)* BYTES_PER_SMP_SEG;
-
             break;
 
         case FM_QOS_PRIVATE_PAUSE_ON_WM:
             /* Check if index not exceeding max of SMP available */
-            FM10000_QOS_ABORT_ON_EXCEED(index, FM10000_QOS_MAX_SMP, 
-                                        err, FM_ERR_INVALID_ARGUMENT);
+            FM10000_QOS_ABORT_ON_EXCEED_OR_LESS_0(index, 
+                                                  FM10000_QOS_MAX_SMP, 
+                                                  err, 
+                                                  FM_ERR_INVALID_ARGUMENT);
             /* Read the register */
             addr = FM10000_CM_RX_SMP_PAUSE_WM(physPort, index);
             err = switchPtr->ReadUINT32(sw, addr, &regValue);
@@ -5080,8 +5291,10 @@ fm_status fm10000GetPortQOS(fm_int sw,
 
         case FM_QOS_PRIVATE_PAUSE_OFF_WM:
             /* Check if index not exceeding max of SMP available */
-            FM10000_QOS_ABORT_ON_EXCEED(index, FM10000_QOS_MAX_SMP, 
-                                        err, FM_ERR_INVALID_ARGUMENT);
+            FM10000_QOS_ABORT_ON_EXCEED_OR_LESS_0(index, 
+                                                  FM10000_QOS_MAX_SMP, 
+                                                  err, 
+                                                  FM_ERR_INVALID_ARGUMENT);
             /* Read the register */
             addr = FM10000_CM_RX_SMP_PAUSE_WM(physPort, index);
             err = switchPtr->ReadUINT32(sw, addr, &regValue);
@@ -5095,8 +5308,10 @@ fm_status fm10000GetPortQOS(fm_int sw,
 
         case FM_QOS_RX_HOG_WM:
             /* Check if index not exceeding max of SMP available */
-            FM10000_QOS_ABORT_ON_EXCEED(index, FM10000_QOS_MAX_SMP, 
-                                        err, FM_ERR_INVALID_ARGUMENT);
+            FM10000_QOS_ABORT_ON_EXCEED_OR_LESS_0(index, 
+                                                  FM10000_QOS_MAX_SMP, 
+                                                  err, 
+                                                  FM_ERR_INVALID_ARGUMENT);
             /* Read the register */
             addr = FM10000_CM_RX_SMP_HOG_WM(physPort, index);
             err = switchPtr->ReadUINT32(sw, addr, &regValue);
@@ -5122,8 +5337,10 @@ fm_status fm10000GetPortQOS(fm_int sw,
 
         case FM_QOS_ERL_USAGE:
             /* Check if index not exceeding max of SG available */
-            FM10000_QOS_ABORT_ON_EXCEED(index, FM10000_QOS_MAX_SG, 
-                                        err, FM_ERR_INVALID_ARGUMENT);
+            FM10000_QOS_ABORT_ON_EXCEED_OR_LESS_0(index, 
+                                                  FM10000_QOS_MAX_SG, 
+                                                  err, 
+                                                  FM_ERR_INVALID_ARGUMENT);
             /* Read the register */
             addr = FM10000_TX_RATE_LIM_USAGE(physPort, index);
             err = switchPtr->ReadUINT32(sw, addr, &regValue);
@@ -5149,8 +5366,10 @@ fm_status fm10000GetPortQOS(fm_int sw,
 
         case FM_QOS_TC_SHAPING_GROUP_MAP:
             /* Check if index not exceeding max of TC available */
-            FM10000_QOS_ABORT_ON_EXCEED(index, FM10000_QOS_MAX_TC, 
-                                        err, FM_ERR_INVALID_ARGUMENT);
+            FM10000_QOS_ABORT_ON_EXCEED_OR_LESS_0(index, 
+                                                  FM10000_QOS_MAX_TC, 
+                                                  err, 
+                                                  FM_ERR_INVALID_ARGUMENT);
             /* Read the CM_BSG_MAP register */
             addr = FM10000_CM_BSG_MAP(physPort);
             err = switchPtr->ReadUINT32(sw, addr, &regValue);
@@ -5177,26 +5396,6 @@ fm_status fm10000GetPortQOS(fm_int sw,
             /* Get the requested value */
             ( *( (fm_uint32 *) value ) ) = 
                             switchExt->eschedConfig[physPort].numGroupsActive; 
-            break;
-
-        case FM_QOS_SCHED_GROUP_PRISET_NUM:
-            /*Verify active configuration */
-            if (switchExt->eschedConfig[physPort].numGroupsActive == 0)
-            {
-                err = FM_ERR_INVALID_ACTIVE_ESCHED_CONFIG;
-                FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_QOS, err);
-            }
-            /* Verify index */
-            if (index < 0
-                || index >= 
-                    (fm_int) switchExt->eschedConfig[physPort].numGroupsActive)
-            {
-                err = FM_ERR_INVALID_ARGUMENT;
-                FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_QOS, err);
-            }
-            /* Get the requested value */
-            ( *( (fm_uint32 *) value ) ) =
-            switchExt->eschedConfig[physPort].activeSchedGroup[index].priSetNum;
             break;
 
         case FM_QOS_SCHED_GROUP_STRICT:
@@ -5381,6 +5580,11 @@ fm_status fm10000SetSwitchQOS(fm_int sw,
     switch (attr)
     {
         case FM_AUTO_PAUSE_MODE:
+            /* Check input */
+            FM10000_QOS_ABORT_ON_EXCEED(*( (fm_bool *) value ), 
+                                        FM_ENABLED, 
+                                        err, 
+                                        FM_ERR_INVALID_ARGUMENT);
             /* Set auto pause mode */
             err = SetAutoPauseMode(sw, 
                                    (index > 0) ? TRUE : FALSE, 
@@ -5390,11 +5594,18 @@ fm_status fm10000SetSwitchQOS(fm_int sw,
 
         case FM_QOS_DSCP_SWPRI_MAP:
             /* Check if index not exceeding max of DSCP available */
-            FM10000_QOS_ABORT_ON_EXCEED(index, FM10000_QOS_MAX_DSCP, 
-                                        err, FM_ERR_INVALID_ARGUMENT);
+            FM10000_QOS_ABORT_ON_EXCEED_OR_LESS_0(index, 
+                                                  FM10000_QOS_MAX_DSCP, 
+                                                  err, 
+                                                  FM_ERR_INVALID_ARGUMENT);
+            /* Check input value */
+            val = *( (fm_uint32 *) value );
+            FM10000_QOS_ABORT_ON_EXCEED(val, 
+                                        FM10000_QOS_MAX_SW_PRI, 
+                                        err, 
+                                        FM_ERR_INVALID_ARGUMENT);
             /* Write the register */
             addr = FM10000_DSCP_PRI_MAP(index);
-            val = *( (fm_uint32 *) value );
             FM_SET_FIELD(regValue, 
                          FM10000_DSCP_PRI_MAP,
                          pri,
@@ -5406,10 +5617,19 @@ fm_status fm10000SetSwitchQOS(fm_int sw,
 
         case FM_QOS_PRIV_WM:
             /* Check whether the watermarks are under automatic management */
-            FM10000_QOS_ABORT_ON_AUTO_PAUSE_MODE(sw, err, 
+            FM10000_QOS_ABORT_ON_AUTO_PAUSE_MODE(sw, 
+                                                 err, 
                                                  FM_ERR_INVALID_QOS_MODE);
-            /* Set the field */
+            /* Check input value */
+            FM10000_QOS_ABORT_ON_EXCEED((*( ( fm_uint32 *) value)), 
+                                      SEG2BYTES(FM10000_QOS_MAX_NUM_SEGS - 
+                                                FM10000_QOS_NUM_RESERVED_SEGS), 
+                                      err, 
+                                      FM_ERR_INVALID_ARGUMENT);
             val = BYTES2SEG(*( ( fm_uint32 *) value));
+            /* Perform additionally check for the global WM */
+            CheckGlobalWm(sw, val);
+            /* Set the field */
             FM_SET_FIELD(regValue, 
                          FM10000_CM_GLOBAL_WM,
                          watermark,
@@ -5423,18 +5643,26 @@ fm_status fm10000SetSwitchQOS(fm_int sw,
 
         case FM_QOS_SHARED_PAUSE_OFF_WM:
             /* Check whether the watermarks are under automatic management */
-            FM10000_QOS_ABORT_ON_AUTO_PAUSE_MODE(sw, err, 
+            FM10000_QOS_ABORT_ON_AUTO_PAUSE_MODE(sw, 
+                                                 err, 
                                                  FM_ERR_INVALID_QOS_MODE);
             /* Check if index not exceeding max of SMP  available */
-            FM10000_QOS_ABORT_ON_EXCEED(index, FM10000_QOS_MAX_SMP, 
-                                        err, FM_ERR_INVALID_ARGUMENT);
+            FM10000_QOS_ABORT_ON_EXCEED_OR_LESS_0(index, 
+                                                  FM10000_QOS_MAX_SMP, 
+                                                  err, 
+                                                  FM_ERR_INVALID_ARGUMENT);
+            /* Check input value  */
+            FM10000_QOS_ABORT_ON_EXCEED((*( ( fm_uint32 *) value)), 
+                                        FM10000_QOS_MAX_WATERMARK,
+                                        err, 
+                                        FM_ERR_INVALID_ARGUMENT);
+            val = BYTES2SEG(*( ( fm_uint32 *) value));
             /* Read the register */
             FM_FLAG_TAKE_REG_LOCK(sw);
             addr = FM10000_CM_SHARED_SMP_PAUSE_WM(index);
             err = switchPtr->ReadUINT32(sw, addr, &regValue);
             FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_QOS, err);
-            /* Update the field - convert to segments */
-            val = BYTES2SEG( *( (fm_uint32 *) value ) );
+            /* Update the field */
             FM_SET_FIELD(regValue, 
                          FM10000_CM_SHARED_SMP_PAUSE_WM,
                          PauseOff,
@@ -5446,18 +5674,26 @@ fm_status fm10000SetSwitchQOS(fm_int sw,
 
         case FM_QOS_SHARED_PAUSE_ON_WM:
             /* Check whether the watermarks are under automatic management */
-            FM10000_QOS_ABORT_ON_AUTO_PAUSE_MODE(sw, err, 
+            FM10000_QOS_ABORT_ON_AUTO_PAUSE_MODE(sw, 
+                                                 err, 
                                                  FM_ERR_INVALID_QOS_MODE);
             /* Check if index not exceeding max of SMP  available */
-            FM10000_QOS_ABORT_ON_EXCEED(index, FM10000_QOS_MAX_SMP, 
-                                        err, FM_ERR_INVALID_ARGUMENT);
+            FM10000_QOS_ABORT_ON_EXCEED_OR_LESS_0(index, 
+                                                  FM10000_QOS_MAX_SMP, 
+                                                  err, 
+                                                  FM_ERR_INVALID_ARGUMENT);
+            /* Check input value  */
+            FM10000_QOS_ABORT_ON_EXCEED((*( ( fm_uint32 *) value)), 
+                                        FM10000_QOS_MAX_WATERMARK, 
+                                        err, 
+                                        FM_ERR_INVALID_ARGUMENT);
+            val = BYTES2SEG(*( ( fm_uint32 *) value));
             /* Read the register */
             FM_FLAG_TAKE_REG_LOCK(sw);
             addr = FM10000_CM_SHARED_SMP_PAUSE_WM(index);
             err = switchPtr->ReadUINT32(sw, addr, &regValue);
             FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_QOS, err);
-            /* Update the field - convert to segments */
-            val = BYTES2SEG( *( (fm_int *) value ) );
+            /* Update the field */
             FM_SET_FIELD(regValue, 
                          FM10000_CM_SHARED_SMP_PAUSE_WM,
                          PauseOn,
@@ -5469,13 +5705,21 @@ fm_status fm10000SetSwitchQOS(fm_int sw,
 
         case FM_QOS_SHARED_PRI_WM:
             /* Check whether the watermarks are under automatic management */
-            FM10000_QOS_ABORT_ON_AUTO_PAUSE_MODE(sw, err, 
+            FM10000_QOS_ABORT_ON_AUTO_PAUSE_MODE(sw, 
+                                                 err, 
                                                  FM_ERR_INVALID_QOS_MODE);
             /* Check if index not exceeding max of SWPRI  available */
-            FM10000_QOS_ABORT_ON_EXCEED(index, FM10000_QOS_MAX_SW_PRI, 
-                                        err, FM_ERR_INVALID_ARGUMENT);
+            FM10000_QOS_ABORT_ON_EXCEED_OR_LESS_0(index, 
+                                                  FM10000_QOS_MAX_SW_PRI, 
+                                                  err, 
+                                                  FM_ERR_INVALID_ARGUMENT);
+            /* Check the input  */
+            FM10000_QOS_ABORT_ON_EXCEED(( *( (fm_uint32 *) value ) ), 
+                                        FM10000_QOS_MAX_WATERMARK, 
+                                        err, 
+                                        FM_ERR_INVALID_ARGUMENT);
+            val = BYTES2SEG( *( (fm_uint32 *) value ) );
             /* Convert to segments and write the register */
-            val = BYTES2SEG( *( (fm_int *) value ) );
             FM_SET_FIELD(regValue, 
                          FM10000_CM_SHARED_WM,
                          watermark,
@@ -5488,8 +5732,10 @@ fm_status fm10000SetSwitchQOS(fm_int sw,
 
         case FM_QOS_TC_SMP_MAP:
             /* Check if index not exceeding max of TC  available */
-            FM10000_QOS_ABORT_ON_EXCEED(index, FM10000_QOS_MAX_TC, 
-                                        err, FM_ERR_INVALID_ARGUMENT);
+            FM10000_QOS_ABORT_ON_EXCEED_OR_LESS_0(index, 
+                                                  FM10000_QOS_MAX_TC, 
+                                                  err, 
+                                                  FM_ERR_INVALID_ARGUMENT);
             /* Map attribute value to register's value */
             val = *( (fm_uint32 *) value ) & 0xf;
             switch (val)
@@ -5531,8 +5777,16 @@ fm_status fm10000SetSwitchQOS(fm_int sw,
 
         case FM_QOS_SHARED_SOFT_DROP_WM:
             /* Check if index not exceeding max of SW PRI available */
-            FM10000_QOS_ABORT_ON_EXCEED(index, FM10000_QOS_MAX_SW_PRI, 
-                                        err, FM_ERR_INVALID_ARGUMENT);
+            FM10000_QOS_ABORT_ON_EXCEED_OR_LESS_0(index, 
+                                                  FM10000_QOS_MAX_SW_PRI, 
+                                                  err, 
+                                                  FM_ERR_INVALID_ARGUMENT);
+            /* Check the input  */
+            FM10000_QOS_ABORT_ON_EXCEED(( *( (fm_uint32 *) value ) ), 
+                                        FM10000_QOS_MAX_WATERMARK, 
+                                        err, 
+                                        FM_ERR_INVALID_ARGUMENT);
+            val = BYTES2SEG( *( (fm_uint32 *) value ) );
             /* Read the register */
             FM_FLAG_TAKE_REG_LOCK(sw);
             addr = FM10000_CM_SOFTDROP_WM(index);
@@ -5551,15 +5805,22 @@ fm_status fm10000SetSwitchQOS(fm_int sw,
 
         case FM_QOS_SHARED_SOFT_DROP_WM_HOG:
             /* Check if index not exceeding max of SW PRI available */
-            FM10000_QOS_ABORT_ON_EXCEED(index, FM10000_QOS_MAX_SW_PRI, 
-                                        err, FM_ERR_INVALID_ARGUMENT);
+            FM10000_QOS_ABORT_ON_EXCEED_OR_LESS_0(index, 
+                                                  FM10000_QOS_MAX_SW_PRI, 
+                                                  err, 
+                                                  FM_ERR_INVALID_ARGUMENT);
+            /* Check the input  */
+            FM10000_QOS_ABORT_ON_EXCEED(( *( (fm_uint32 *) value ) ), 
+                                        FM10000_QOS_MAX_WATERMARK, 
+                                        err, 
+                                        FM_ERR_INVALID_ARGUMENT);
+            val = BYTES2SEG( *( (fm_uint32 *) value ) );
             /* Read the register */
             FM_FLAG_TAKE_REG_LOCK(sw);
             addr = FM10000_CM_SOFTDROP_WM(index);
             err = switchPtr->ReadUINT32(sw, addr, &regValue);
             FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_QOS, err);
             /* Update the field */
-            val = BYTES2SEG( *( (fm_uint32 *) value ) );
             FM_SET_FIELD(regValue, 
                          FM10000_CM_SOFTDROP_WM, 
                          HogSegmentLimit, 
@@ -5571,10 +5832,17 @@ fm_status fm10000SetSwitchQOS(fm_int sw,
 
         case FM_QOS_SHARED_SOFT_DROP_WM_JITTER:
             /* Check if index not exceeding max of SW PRI available */
-            FM10000_QOS_ABORT_ON_EXCEED(index, FM10000_QOS_MAX_SW_PRI, 
-                                        err, FM_ERR_INVALID_ARGUMENT);
-            /* Write the register */
+            FM10000_QOS_ABORT_ON_EXCEED_OR_LESS_0(index, 
+                                                  FM10000_QOS_MAX_SW_PRI, 
+                                                  err, 
+                                                  FM_ERR_INVALID_ARGUMENT);
+            /* Check the input */
             val = *( (fm_uint32 *) value );
+            FM10000_QOS_ABORT_ON_EXCEED(val, 
+                                FM10000_QOS_SHARED_SOFT_DROP_WM_JITTER_MAX_VAL, 
+                                err, 
+                                FM_ERR_INVALID_ARGUMENT);
+            /* Write the register */
             FM_SET_FIELD(regValue, 
                          FM10000_CM_APPLY_SOFTDROP_CFG, 
                          JitterBits, 
@@ -5587,8 +5855,16 @@ fm_status fm10000SetSwitchQOS(fm_int sw,
 
         case FM_QOS_SWPRI_TC_MAP:
             /* Check if index not exceeding max of SWPRI  available */
-            FM10000_QOS_ABORT_ON_EXCEED(index, FM10000_QOS_MAX_SW_PRI, 
-                                        err, FM_ERR_INVALID_ARGUMENT);
+            FM10000_QOS_ABORT_ON_EXCEED_OR_LESS_0(index, 
+                                                  FM10000_QOS_MAX_SW_PRI, 
+                                                  err, 
+                                                  FM_ERR_INVALID_ARGUMENT);
+            /* Check the input  */
+            val = *( (fm_uint32 *) value );
+            FM10000_QOS_ABORT_ON_EXCEED(val, 
+                                        FM10000_QOS_MAX_TC, 
+                                        err, 
+                                        FM_ERR_INVALID_ARGUMENT);
             /* Read the register - Apply module */
             addr = FM10000_CM_APPLY_SWITCH_PRI_TO_TC(0);
             FM_FLAG_TAKE_REG_LOCK(sw);
@@ -5628,10 +5904,17 @@ fm_status fm10000SetSwitchQOS(fm_int sw,
 
         case FM_QOS_VPRI_SWPRI_MAP:
             /* Check if index not exceeding max of VPRI  available */
-            FM10000_QOS_ABORT_ON_EXCEED(index, FM10000_QOS_MAX_VLAN_PRI, 
-                                        err, FM_ERR_INVALID_ARGUMENT);
-            /* Write the register */
+            FM10000_QOS_ABORT_ON_EXCEED_OR_LESS_0(index, 
+                                                  FM10000_QOS_MAX_VLAN_PRI, 
+                                                  err, 
+                                                  FM_ERR_INVALID_ARGUMENT);
+            /* Check the input */
             val = *( (fm_uint32 *) value );
+            FM10000_QOS_ABORT_ON_EXCEED(val, 
+                                        FM10000_QOS_MAX_SW_PRI, 
+                                        err, 
+                                        FM_ERR_INVALID_ARGUMENT);
+            /* Write the register */
             FM_SET_FIELD(regValue, 
                          FM10000_VPRI_PRI_MAP, 
                          pri, 
@@ -5643,7 +5926,12 @@ fm_status fm10000SetSwitchQOS(fm_int sw,
             break;
 
         case FM_QOS_SWITCH_IFG_PENALTY:
+            /* Check the input value */
             val = *( (fm_uint32 *) value );
+            FM10000_QOS_ABORT_ON_EXCEED(val, 
+                                        FM10000_QOS_SWITCH_IFG_PENALTY_MAX_VAL, 
+                                        err, 
+                                        FM_ERR_INVALID_ARGUMENT);
             /* Set ERL config - global configuration*/
             addr = FM10000_CM_GLOBAL_CFG();
             FM_FLAG_TAKE_REG_LOCK(sw);
@@ -5672,7 +5960,6 @@ ABORT:
     }
 
     FM_LOG_EXIT( FM_LOG_CAT_QOS, err )
-
 
 }   /* end fm10000SetSwitchQOS */
 
@@ -5744,8 +6031,10 @@ fm_status fm10000GetSwitchQOS(fm_int sw,
 
         case FM_QOS_DSCP_SWPRI_MAP:
             /* Check if index not exceeding max of DSCP available */
-            FM10000_QOS_ABORT_ON_EXCEED(index, FM10000_QOS_MAX_DSCP, 
-                                        err, FM_ERR_INVALID_ARGUMENT);
+            FM10000_QOS_ABORT_ON_EXCEED_OR_LESS_0(index, 
+                                                  FM10000_QOS_MAX_DSCP, 
+                                                  err, 
+                                                  FM_ERR_INVALID_ARGUMENT);
             /* Read the register */
             addr = FM10000_DSCP_PRI_MAP(index);
             err = switchPtr->ReadUINT32(sw, addr, &regValue); 
@@ -5761,10 +6050,10 @@ fm_status fm10000GetSwitchQOS(fm_int sw,
             addr = FM10000_CM_GLOBAL_USAGE();
             err = switchPtr->ReadUINT32(sw, addr, &regValue);
             FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_QOS, err);
-            /* Get the requested value - convert to bytes*/
+            /* Get the requested value - convert to bytes */
             *( (fm_uint32 *) value ) = FM_GET_FIELD(regValue, 
-                                                     FM10000_CM_GLOBAL_USAGE, 
-                                                     count) * BYTES_PER_SMP_SEG;
+                                                    FM10000_CM_GLOBAL_USAGE, 
+                                                    count) * BYTES_PER_SMP_SEG;
             break;
 
         case FM_QOS_PRIV_WM:
@@ -5772,7 +6061,7 @@ fm_status fm10000GetSwitchQOS(fm_int sw,
             addr = FM10000_CM_GLOBAL_WM();
             err = switchPtr->ReadUINT32(sw, addr, &regValue);
             FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_QOS, err);
-            /* Get the requested value - convert to bytes*/
+            /* Get the requested value - convert to bytes */
             *( (fm_uint32 *) value ) = FM_GET_FIELD(regValue, 
                                                  FM10000_CM_GLOBAL_WM, 
                                                  watermark) * BYTES_PER_SMP_SEG;
@@ -5780,13 +6069,15 @@ fm_status fm10000GetSwitchQOS(fm_int sw,
 
         case FM_QOS_SHARED_PAUSE_OFF_WM:
             /* Check if index not exceeding max of SMP available */
-            FM10000_QOS_ABORT_ON_EXCEED(index, FM10000_QOS_MAX_SMP, 
-                                        err, FM_ERR_INVALID_ARGUMENT);
+            FM10000_QOS_ABORT_ON_EXCEED_OR_LESS_0(index, 
+                                                  FM10000_QOS_MAX_SMP, 
+                                                  err, 
+                                                  FM_ERR_INVALID_ARGUMENT);
             /* Read the register */
             addr = FM10000_CM_SHARED_SMP_PAUSE_WM(index);
             err = switchPtr->ReadUINT32(sw, addr, &regValue);
             FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_QOS, err);
-            /* Get the requested value - convert to bytes*/
+            /* Get the requested value - convert to bytes */
             *( (fm_uint32 *) value ) = FM_GET_FIELD(regValue, 
                                                  FM10000_CM_SHARED_SMP_PAUSE_WM,
                                                  PauseOff) * BYTES_PER_SMP_SEG;
@@ -5794,13 +6085,15 @@ fm_status fm10000GetSwitchQOS(fm_int sw,
 
         case FM_QOS_SHARED_PAUSE_ON_WM:
             /* Check if index not exceeding max of SMP available */
-            FM10000_QOS_ABORT_ON_EXCEED(index, FM10000_QOS_MAX_SMP, 
-                                        err, FM_ERR_INVALID_ARGUMENT);
+            FM10000_QOS_ABORT_ON_EXCEED_OR_LESS_0(index, 
+                                                  FM10000_QOS_MAX_SMP, 
+                                                  err, 
+                                                  FM_ERR_INVALID_ARGUMENT);
             /* Read the register */
             addr = FM10000_CM_SHARED_SMP_PAUSE_WM(index);
             err = switchPtr->ReadUINT32(sw, addr, &regValue);
             FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_QOS, err);
-            /* Get the requested value - convert to bytes*/
+            /* Get the requested value - convert to bytes */
             *( (fm_uint32 *) value ) = FM_GET_FIELD(regValue, 
                                                  FM10000_CM_SHARED_SMP_PAUSE_WM,
                                                  PauseOn) * BYTES_PER_SMP_SEG;
@@ -5808,13 +6101,15 @@ fm_status fm10000GetSwitchQOS(fm_int sw,
 
         case FM_QOS_SHARED_PRI_WM:
             /* Check if index not exceeding max of SWPRI available */
-            FM10000_QOS_ABORT_ON_EXCEED(index, FM10000_QOS_MAX_SW_PRI, 
-                                        err, FM_ERR_INVALID_ARGUMENT);
+            FM10000_QOS_ABORT_ON_EXCEED_OR_LESS_0(index, 
+                                                  FM10000_QOS_MAX_SW_PRI, 
+                                                  err, 
+                                                  FM_ERR_INVALID_ARGUMENT);
             /* Read the register */
             addr = FM10000_CM_SHARED_WM(index);
             err = switchPtr->ReadUINT32(sw, addr, &regValue); 
             FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_QOS, err);
-            /* Get the requested value - convert to bytes*/
+            /* Get the requested value - convert to bytes */
             *( (fm_uint32 *) value ) = FM_GET_FIELD(regValue, 
                                                  FM10000_CM_SHARED_WM,
                                                  watermark) * BYTES_PER_SMP_SEG;
@@ -5822,13 +6117,15 @@ fm_status fm10000GetSwitchQOS(fm_int sw,
 
         case FM_QOS_SHARED_SOFT_DROP_WM:
             /* Check if index not exceeding max of SW PRI available */
-            FM10000_QOS_ABORT_ON_EXCEED(index, FM10000_QOS_MAX_SW_PRI, 
-                                        err, FM_ERR_INVALID_ARGUMENT);
+            FM10000_QOS_ABORT_ON_EXCEED_OR_LESS_0(index, 
+                                                  FM10000_QOS_MAX_SW_PRI, 
+                                                  err, 
+                                                  FM_ERR_INVALID_ARGUMENT);
             /* Read the register */
             addr = FM10000_CM_SOFTDROP_WM(index);
             err = switchPtr->ReadUINT32(sw, addr, &regValue);
             FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_QOS, err);
-            /* Get the requested value - convert to bytes*/
+            /* Get the requested value - convert to bytes */
             ( *( (fm_uint32 *) value ) ) =
                 FM_GET_FIELD(regValue, 
                              FM10000_CM_SOFTDROP_WM, 
@@ -5837,13 +6134,15 @@ fm_status fm10000GetSwitchQOS(fm_int sw,
 
         case FM_QOS_SHARED_SOFT_DROP_WM_HOG:
             /* Check if index not exceeding max of SW PRI available */
-            FM10000_QOS_ABORT_ON_EXCEED(index, FM10000_QOS_MAX_SW_PRI, 
-                                        err, FM_ERR_INVALID_ARGUMENT);
+            FM10000_QOS_ABORT_ON_EXCEED_OR_LESS_0(index, 
+                                                  FM10000_QOS_MAX_SW_PRI, 
+                                                  err, 
+                                                  FM_ERR_INVALID_ARGUMENT);
             /* Read the register */
             addr = FM10000_CM_SOFTDROP_WM(index);
             err = switchPtr->ReadUINT32(sw, addr, &regValue);
             FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_QOS, err);
-            /* Get the requested value - convert to bytes*/
+            /* Get the requested value - convert to bytes */
             ( *( (fm_uint32 *) value ) ) =
                 FM_GET_FIELD(regValue, 
                              FM10000_CM_SOFTDROP_WM, 
@@ -5852,8 +6151,10 @@ fm_status fm10000GetSwitchQOS(fm_int sw,
 
         case FM_QOS_SHARED_SOFT_DROP_WM_JITTER:
             /* Check if index not exceeding max of SW PRI available */
-            FM10000_QOS_ABORT_ON_EXCEED(index, FM10000_QOS_MAX_SW_PRI, 
-                                        err, FM_ERR_INVALID_ARGUMENT);
+            FM10000_QOS_ABORT_ON_EXCEED_OR_LESS_0(index, 
+                                                  FM10000_QOS_MAX_SW_PRI, 
+                                                  err, 
+                                                  FM_ERR_INVALID_ARGUMENT);
             /* Read the register */
             addr = FM10000_CM_APPLY_SOFTDROP_CFG(index);
             err = switchPtr->ReadUINT32(sw, addr, &regValue);
@@ -5867,13 +6168,15 @@ fm_status fm10000GetSwitchQOS(fm_int sw,
 
         case FM_QOS_SHARED_USAGE:
             /* Check if index not exceeding max of SMP available */
-            FM10000_QOS_ABORT_ON_EXCEED(index, FM10000_QOS_MAX_SMP, 
-                                        err, FM_ERR_INVALID_ARGUMENT);
+            FM10000_QOS_ABORT_ON_EXCEED_OR_LESS_0(index, 
+                                                  FM10000_QOS_MAX_SMP, 
+                                                  err, 
+                                                  FM_ERR_INVALID_ARGUMENT);
             /* Read the register */
             addr = FM10000_CM_SHARED_SMP_USAGE(index);
             err = switchPtr->ReadUINT32(sw, addr, &regValue);
             FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_QOS, err);
-            /* Get the requested value - convert to bytes*/
+            /* Get the requested value - convert to bytes */
             ( *( (fm_uint32 *) value ) ) =
                 FM_GET_FIELD(regValue, 
                              FM10000_CM_SHARED_SMP_USAGE, 
@@ -5882,8 +6185,10 @@ fm_status fm10000GetSwitchQOS(fm_int sw,
 
         case FM_QOS_SWPRI_TC_MAP:
             /* Check if index not exceeding max of SWPRI available */
-            FM10000_QOS_ABORT_ON_EXCEED(index, FM10000_QOS_MAX_SW_PRI, 
-                                        err, FM_ERR_INVALID_ARGUMENT);
+            FM10000_QOS_ABORT_ON_EXCEED_OR_LESS_0(index, 
+                                                  FM10000_QOS_MAX_SW_PRI, 
+                                                  err, 
+                                                  FM_ERR_INVALID_ARGUMENT);
             /* Read the register */
             addr = FM10000_CM_APPLY_SWITCH_PRI_TO_TC(0);
             err = switchPtr->ReadUINT64(sw, addr, &regValue64);
@@ -5897,8 +6202,10 @@ fm_status fm10000GetSwitchQOS(fm_int sw,
 
         case FM_QOS_TC_SMP_MAP:
             /* Check if index not exceeding max of TC available */
-            FM10000_QOS_ABORT_ON_EXCEED(index, FM10000_QOS_MAX_TC, 
-                                        err, FM_ERR_INVALID_ARGUMENT);
+            FM10000_QOS_ABORT_ON_EXCEED_OR_LESS_0(index, 
+                                                  FM10000_QOS_MAX_TC, 
+                                                  err, 
+                                                  FM_ERR_INVALID_ARGUMENT);
             /* Read the register */
             addr = FM10000_CM_APPLY_TC_TO_SMP();
             err = switchPtr->ReadUINT32(sw, addr, &regValue); 
@@ -5929,8 +6236,10 @@ fm_status fm10000GetSwitchQOS(fm_int sw,
 
         case FM_QOS_VPRI_SWPRI_MAP:
             /* Check if index not exceeding max of VLANPRI available */
-            FM10000_QOS_ABORT_ON_EXCEED(index, FM10000_QOS_MAX_VLAN_PRI, 
-                                        err, FM_ERR_INVALID_ARGUMENT);
+            FM10000_QOS_ABORT_ON_EXCEED_OR_LESS_0(index, 
+                                                  FM10000_QOS_MAX_VLAN_PRI, 
+                                                  err, 
+                                                  FM_ERR_INVALID_ARGUMENT);
             /* Read the register */
             addr = FM10000_VPRI_PRI_MAP(index);
             err = switchPtr->ReadUINT32(sw, addr, &regValue); 
@@ -5949,8 +6258,8 @@ fm_status fm10000GetSwitchQOS(fm_int sw,
              FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_QOS, err);
              /* Get the requested value */
              ( *( (fm_uint32 *) value ) ) = FM_GET_FIELD(regValue, 
-                                                          FM10000_CM_GLOBAL_CFG,
-                                                          ifgPenalty);
+                                                      FM10000_CM_GLOBAL_CFG,
+                                                      ifgPenalty);
             break;
 
         default:
@@ -6394,7 +6703,7 @@ fm_status fm10000InitializeCM(fm_int sw)
      * wm = maxNumSegs - maxInFlightSegs - 256 */
     rv = FM10000_MAX_MEMORY_SEGMENTS - 
          (FM10000_NUM_PORTS * (FM10000_MAX_FRAME_SIZE / FM10000_SEGMENT_SIZE)) -
-        256;
+        FM10000_QOS_NUM_RESERVED_SEGS;
 
     err = switchPtr->WriteUINT32(sw, FM10000_CM_GLOBAL_WM(), rv);
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_QOS, err);

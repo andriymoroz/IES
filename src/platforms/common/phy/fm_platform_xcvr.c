@@ -43,6 +43,24 @@
             FM_LOG_PRINT(name);                 \
         }
 
+/* Extended Specification Compliance Codes (SFF-8024, table 4-4)*/
+#define FM_EXT_SPEC_COMP_UNSPECIFIED        0x00
+#define FM_EXT_SPEC_COMP_100G_AOC           0x01
+#define FM_EXT_SPEC_COMP_100GBASE_SR4       0x02
+#define FM_EXT_SPEC_COMP_100GBASE_LR4       0x03
+#define FM_EXT_SPEC_COMP_100GBASE_ER4       0x04
+#define FM_EXT_SPEC_COMP_100GBASE_SR10      0x05
+#define FM_EXT_SPEC_COMP_100G_CWDM4_FEC     0x06
+#define FM_EXT_SPEC_COMP_100G_PSM4          0x07
+#define FM_EXT_SPEC_COMP_100G_ACC           0x08
+#define FM_EXT_SPEC_COMP_100G_CWDM4         0x09
+#define FM_EXT_SPEC_COMP_100GBASE_CR4       0x0B
+#define FM_EXT_SPEC_COMP_40GBASE_ER4        0x10
+#define FM_EXT_SPEC_COMP_4_10GBASE_SR       0x11
+#define FM_EXT_SPEC_COMP_40G_PSM4           0x12
+#define FM_EXT_SPEC_COMP_10GBASE_T          0x16
+#define FM_EXT_SPEC_COMP_100G_CLR4          0x17
+
 /*****************************************************************************
  * Global Variables
  *****************************************************************************/
@@ -102,12 +120,247 @@ static void PrintBytesName(fm_text name, fm_int addr, fm_byte buf[], fm_int len)
 
 
 
+/*****************************************************************************/
+/** GetXcvrTypeSfp
+ * \ingroup intPlatformXcvr
+ *
+ * \desc            Returns the SFP transceiver type given the transceiver
+ *                  eeprom. This assumes the eeprom checksum has been verified.
+ *
+ * \param[out]      eeprom points to storage where the transceiver eeprom
+ *                  is stored.
+ *
+ * \return          fm_platformXcvrType
+ *
+ *****************************************************************************/
+fm_platformXcvrType GetXcvrTypeSfp(fm_byte *eeprom)
+{
+    /* SFP, SFP+, SFP28 */
+    if ( eeprom[0] != 0x3 )
+    {
+        return FM_PLATFORM_XCVR_TYPE_UNKNOWN;
+    }
+
+    /************************************************** 
+     * Use the connector types (byte 2) field to 
+     * determine the cable type. See SFF-8024. 
+     * 07h: LC (optical)
+     * 0Bh: Optical pigtail
+     * 21h: Copper pigtail 
+     **************************************************/
+
+    if (eeprom[2] == 0x7 || eeprom[2] == 0xB)
+    {
+        return FM_PLATFORM_XCVR_TYPE_SFP_OPT;
+    }
+    else if (eeprom[2] == 0x21)
+    {
+        return FM_PLATFORM_XCVR_TYPE_SFP_DAC;
+    }
+    else
+    {
+        /* Look at the Spec. Compliance Codes (bytes 3..10) */
+
+        /* 10GBASE-SR/LR/LRM/ER (byte 3 bits 7..4) or
+           1000BASE-SX/LX/CX (byte 6 bits 2..0) */
+        if ( (eeprom[3] & 0xF0) || (eeprom[6] & 0x7) )
+        {
+            return FM_PLATFORM_XCVR_TYPE_SFP_OPT;
+        }
+        /* 1000BASE-T (byte 6 bit 3) */
+        if ( eeprom[6] & 0x8 )
+        {
+            return FM_PLATFORM_XCVR_TYPE_1000BASE_T;
+        }
+        else
+        {
+            /* Assume DAC */
+            return FM_PLATFORM_XCVR_TYPE_SFP_DAC;
+        }
+    }
+
+} /* GetXcvrTypeSfp */
+
+
+
+
+/*****************************************************************************/
+/** GetXcvrType40G
+ * \ingroup intPlatformXcvr
+ *
+ * \desc            Returns the 40G transceiver type given the transceiver
+ *                  eeprom. This assumes the eeprom checksum has been verified.
+ *
+ * \param[out]      eeprom points to storage where the transceiver eeprom
+ *                  is stored.
+ *
+ * \return          fm_platformXcvrType
+ *
+ *****************************************************************************/
+fm_platformXcvrType GetXcvrType40G(fm_byte *eeprom)
+{
+    /* QSFP28 */
+    if ( eeprom[0] != 0xC && eeprom[0] != 0xD)
+    {
+        return FM_PLATFORM_XCVR_TYPE_UNKNOWN;
+    }
+
+    /************************************************** 
+     * Use the connector types (byte 2) field to 
+     * determine the cable type. See SFF-8024. 
+     * 0Ch: 2x12 Multifiber Parallel Optic 
+     * 0Dh: 2x16 Multifiber Parallel Optic 
+     * 21h: Copper pigtail 
+     * 23h: No separable connector 
+     **************************************************/
+
+    if (eeprom[2] == 0xC || eeprom[2] == 0xD)
+    {
+        return FM_PLATFORM_XCVR_TYPE_QSFP_OPT;
+    }
+    else if (eeprom[2] == 0x21)
+    {
+        return FM_PLATFORM_XCVR_TYPE_QSFP_DAC;
+    }
+    else /* if (eeprom[2] == 0x23) */
+    {
+        /* Look at the Spec. Compliance Codes */
+
+        /* Is the Extended bit set? */
+        if ( eeprom[3] & (1 << 7) )
+        {
+            /* Yes, look at the Extended Spec. Compliance Codes */
+            switch (eeprom[64])
+            {
+                case FM_EXT_SPEC_COMP_40GBASE_ER4:
+                case FM_EXT_SPEC_COMP_4_10GBASE_SR:
+                case FM_EXT_SPEC_COMP_40G_PSM4:
+                    return FM_PLATFORM_XCVR_TYPE_QSFP_OPT;
+
+                default:
+                    /* Unknown code, lets look at byte 3 below. */
+                    break;
+            }
+        }
+
+        if ( eeprom[3] == 0 )
+        {
+            /* Amphenol QSFP loopback plug fall here. */
+            return FM_PLATFORM_XCVR_TYPE_QSFP_DAC;
+        }
+        /* 40GBASE-CR4 (bit 3) */
+        else if ( eeprom[3] & (1 << 3) )
+        {
+            return FM_PLATFORM_XCVR_TYPE_QSFP_DAC;
+        }
+        /* 40G Active Cable - XLPPI (bit 0) */
+        else if ( eeprom[3] & (1 << 0) )
+        {
+            return FM_PLATFORM_XCVR_TYPE_QSFP_AOC;
+        }
+        else
+        {
+            return FM_PLATFORM_XCVR_TYPE_QSFP28_OPT;
+        }
+    }
+
+} /* GetXcvrType40G */
+
+
+
+
+/*****************************************************************************/
+/** GetXcvrType100G
+ * \ingroup intPlatformXcvr
+ *
+ * \desc            Returns the 100G transceiver type given the transceiver
+ *                  eeprom. This assumes the eeprom checksum has been verified.
+ *
+ * \param[out]      eeprom points to storage where the transceiver eeprom
+ *                  is stored.
+ *
+ * \return          fm_platformXcvrType
+ *
+ *****************************************************************************/
+fm_platformXcvrType GetXcvrType100G(fm_byte *eeprom)
+{
+    /* QSFP28 */
+    if ( eeprom[0] != 0x11 )
+    {
+        return FM_PLATFORM_XCVR_TYPE_UNKNOWN;
+    }
+
+    /************************************************** 
+     * Use the connector types (byte 2) field to 
+     * determine the cable type. See SFF-8024. 
+     * 0Ch: 2x12 Multifiber Parallel Optic 
+     * 0Dh: 2x16 Multifiber Parallel Optic 
+     * 21h: Copper pigtail 
+     * 23h: No separable connector 
+     **************************************************/
+
+    if (eeprom[2] == 0xC || eeprom[2] == 0xD)
+    {
+        return FM_PLATFORM_XCVR_TYPE_QSFP28_OPT;
+    }
+    else if (eeprom[2] == 0x21)
+    {
+        return FM_PLATFORM_XCVR_TYPE_QSFP28_DAC;
+    }
+    else /* if (eeprom[2] == 0x23) */
+    {
+        /* Look at the Spec. Compliance Codes */
+
+        /* Is the Extended bit set? */
+        if ( eeprom[3] & (1 << 7) )
+        {
+            /* Yes, look at the Extended Spec. Compliance Codes */
+            switch (eeprom[64])
+            {
+                case FM_EXT_SPEC_COMP_100G_AOC:
+                    return FM_PLATFORM_XCVR_TYPE_QSFP28_AOC;
+
+                case FM_EXT_SPEC_COMP_100GBASE_SR4:
+                case FM_EXT_SPEC_COMP_100GBASE_LR4:
+                case FM_EXT_SPEC_COMP_100GBASE_ER4:
+                case FM_EXT_SPEC_COMP_100G_CWDM4_FEC:
+                case FM_EXT_SPEC_COMP_100G_PSM4:
+                case FM_EXT_SPEC_COMP_100G_CWDM4:
+                case FM_EXT_SPEC_COMP_100G_CLR4:
+                    return FM_PLATFORM_XCVR_TYPE_QSFP28_OPT;
+
+                case FM_EXT_SPEC_COMP_100G_ACC:
+                case FM_EXT_SPEC_COMP_100GBASE_CR4:
+                    return FM_PLATFORM_XCVR_TYPE_QSFP28_DAC;
+
+                case FM_EXT_SPEC_COMP_40GBASE_ER4:
+                case FM_EXT_SPEC_COMP_4_10GBASE_SR:
+                case FM_EXT_SPEC_COMP_40G_PSM4:
+                    return FM_PLATFORM_XCVR_TYPE_QSFP_OPT;
+
+                case FM_EXT_SPEC_COMP_UNSPECIFIED:
+                case FM_EXT_SPEC_COMP_100GBASE_SR10:
+                case FM_EXT_SPEC_COMP_10GBASE_T:
+                default:
+                    return FM_PLATFORM_XCVR_TYPE_UNKNOWN;
+            }
+        }
+        else
+        {
+            /* Assume 100G DAC */
+            return FM_PLATFORM_XCVR_TYPE_QSFP28_DAC;
+        }
+    }
+
+} /* GetXcvrType100G */
+
+
 /*****************************************************************************
  * Public Functions
  *****************************************************************************/
 
 
- /*****************************************************************************/
+/*****************************************************************************/
 /* fmPlatformXcvrTypeGetName
  * \ingroup intPlatformXcvr
  *
@@ -124,12 +377,36 @@ fm_text fmPlatformXcvrTypeGetName(fm_platformXcvrType type)
     {
         case FM_PLATFORM_XCVR_TYPE_UNKNOWN:
             return "XCVR_TYPE_UNKNOWN";
-        case FM_PLATFORM_XCVR_TYPE_OPTICAL:
-            return "XCVR_TYPE_OPTICAL";
-        case FM_PLATFORM_XCVR_TYPE_DAC:
-            return "XCVR_TYPE_DAC";
+
         case FM_PLATFORM_XCVR_TYPE_NOT_PRESENT:
             return "XCVR_TYPE_NOT_PRESENT";
+
+        case FM_PLATFORM_XCVR_TYPE_1000BASE_T:
+            return "XCVR_TYPE_1000BASE_T";
+                                         
+        case FM_PLATFORM_XCVR_TYPE_SFP_DAC:
+            return "XCVR_TYPE_SFP_DAC";
+                                         
+        case FM_PLATFORM_XCVR_TYPE_SFP_OPT:
+            return "XCVR_TYPE_SFP_OPT";
+                                         
+        case FM_PLATFORM_XCVR_TYPE_QSFP_DAC:
+            return "XCVR_TYPE_40G_QSFP_DAC";
+                                         
+        case FM_PLATFORM_XCVR_TYPE_QSFP_AOC:
+            return "XCVR_TYPE_40G_QSFP_AOC";
+                                         
+        case FM_PLATFORM_XCVR_TYPE_QSFP_OPT:
+            return "XCVR_TYPE_40G_QSFP_OPT";
+                                         
+        case FM_PLATFORM_XCVR_TYPE_QSFP28_DAC:
+            return "XCVR_TYPE_100G_QSFP28_DAC";
+                                         
+        case FM_PLATFORM_XCVR_TYPE_QSFP28_AOC:
+            return "XCVR_TYPE_100G_QSFP28_AOC";
+                                         
+        case FM_PLATFORM_XCVR_TYPE_QSFP28_OPT:
+            return "XCVR_TYPE_100G_QSFP28_OPT";
     }
 
     return "XCVR_TYPE_UNHANDLED";
@@ -219,7 +496,6 @@ fm_uint fmPlatformXcvrEepromGetLen(fm_byte *eeprom)
 
 
 
-
 /*****************************************************************************/
 /** fmPlatformXcvrEepromGetType
  * \ingroup intPlatformXcvr
@@ -235,39 +511,32 @@ fm_uint fmPlatformXcvrEepromGetLen(fm_byte *eeprom)
  *****************************************************************************/
 fm_platformXcvrType fmPlatformXcvrEepromGetType(fm_byte *eeprom)
 {
-    if (eeprom[0] == 0xC || eeprom[0] == 0xD  || eeprom[0] == 0x11)
+    fm_platformXcvrType type;
+
+    if (eeprom[0] == 0x11)
     {
-        /* QSFP */
-        /* Only bit3 at index 0 indicate non-optical */
-        if ( (eeprom[3+0] & ~(1 << 3)) ||
-             (eeprom[3+3] & (1 << 0)) )
-        {
-            return FM_PLATFORM_XCVR_TYPE_OPTICAL;
-        }
-        else
-        {
-            return FM_PLATFORM_XCVR_TYPE_DAC;
-        }
+        /* QSFP28 */
+        type = GetXcvrType100G(eeprom);
     }
-    if (eeprom[0] == 0x3)
+    else if (eeprom[0] == 0xC || eeprom[0] == 0xD)
     {
-        /* 1000BASE-SX and 10GBASE-SR */
-        if ( (eeprom[3+0] & (1 << 4)) ||
-             (eeprom[3+3] & (1 << 0)) )
-        {
-            return FM_PLATFORM_XCVR_TYPE_OPTICAL;
-        }
-        else
-        {
-            return FM_PLATFORM_XCVR_TYPE_DAC;
-        }
+        /* QSFP, QSFP+ */
+        type = GetXcvrType40G(eeprom);
+    }
+    else if (eeprom[0] == 0x3)
+    {
+        /* SFP, SFP+, SFP28 */
+        type = GetXcvrTypeSfp(eeprom);
     }
     else
     {
-        return FM_PLATFORM_XCVR_TYPE_UNKNOWN;
+        type = FM_PLATFORM_XCVR_TYPE_UNKNOWN;
     }
 
+    return type;
+
 } /* fmPlatformXcvrEepromGetType */
+
 
 
 
@@ -289,6 +558,8 @@ fm_bool fmPlatformXcvrIs1000BaseT(fm_byte *eeprom)
     return (eeprom[3+3] & (1 << 3)) ? TRUE : FALSE;
 
 } /* fmPlatformXcvrIs1000BaseT */
+
+
 
 
 /*****************************************************************************/
@@ -314,6 +585,62 @@ fm_bool fmPlatformXcvrIs10G1G(fm_byte *eeprom)
 
 
 
+
+/*****************************************************************************/
+/** fmPlatformXcvrIs1G
+ * \ingroup intPlatformXcvr
+ *
+ * \desc            Returns TRUE if the module support 1G speed only.
+ *                  This assumes the eeprom checksum has been verified.
+ *
+ * \param[out]      eeprom points to storage where the transceiver eeprom
+ *                  is stored.
+ *
+ * \return          TRUE if 1G module only.
+ *
+ *****************************************************************************/
+fm_bool fmPlatformXcvrIs1G(fm_byte *eeprom)
+{
+    /* 1000BASE-SX or 1000BASE-LX and not 10GBASE-SR or 10GBASE-LR*/
+    return ( ( (eeprom[3+3] & (1 << 0)) || eeprom[3+3] & (1 << 1)) &&
+             (!(eeprom[3+0] & (1 << 4)) && !(eeprom[3+0] & (1 << 5)) ) );
+
+} /* fmPlatformXcvrIs1G */
+
+
+
+
+/*****************************************************************************/
+/** fmPlatformXcvrIsOptical
+ * \ingroup intPlatformXcvr
+ *
+ * \desc            Return whether the transceiver type is optical.
+ *
+ * \param[in]       type is the transceiver type.
+ *
+ * \return          TRUE if optical transceiver type.
+ *
+ *****************************************************************************/
+fm_bool fmPlatformXcvrIsOptical(fm_platformXcvrType type)
+{
+    switch (type)
+    {
+        case FM_PLATFORM_XCVR_TYPE_SFP_OPT:
+        case FM_PLATFORM_XCVR_TYPE_QSFP_AOC:
+        case FM_PLATFORM_XCVR_TYPE_QSFP_OPT:
+        case FM_PLATFORM_XCVR_TYPE_QSFP28_AOC:
+        case FM_PLATFORM_XCVR_TYPE_QSFP28_OPT:
+            return TRUE;
+
+        default:
+            return FALSE;
+    }
+
+} /* fmPlatformXcvrIsOptical */
+
+
+
+
 /*****************************************************************************/
 /** fmPlatformXcvrEepromDumpSpecCompliance
  * \ingroup intPlatformXcvr
@@ -321,33 +648,72 @@ fm_bool fmPlatformXcvrIs10G1G(fm_byte *eeprom)
  * \desc            Dumps transceiver spec compliance.
  *                  This assumes the eeprom checksum has been verified.
  *
- * \param[out]      eeprom points to storage where the transceiver eeprom
+ * \param[in]       eeprom points to storage where the transceiver eeprom
  *                  is stored.
+ *
+ * \param[in]       qsfp indicates if it is a QSFP EEPROM or not.
  *
  * \return          NONE.
  *
  *****************************************************************************/
-void fmPlatformXcvrEepromDumpSpecCompliance(fm_byte *eeprom)
+void fmPlatformXcvrEepromDumpSpecCompliance(fm_byte *eeprom, fm_bool qsfp)
 {
 
     FM_LOG_PRINT("%20s[%02x]:", "Spec Comp", 3);
 
-    PRINT_BIT_NAME((eeprom[3+0] & (1 << 7)), " Extended");
+    if (qsfp)
+    {
+        PRINT_BIT_NAME((eeprom[3 + 0] & (1 << 7)), " Extended");
+    }
+    else
+    {
+        PRINT_BIT_NAME((eeprom[3 + 0] & (1 << 7)), " 10GBASE-ER");
+    }
+    
     PRINT_BIT_NAME((eeprom[3+0] & (1 << 6)), " 10GBASE-LRM");
     PRINT_BIT_NAME((eeprom[3+0] & (1 << 5)), " 10GBASE-LR");
     PRINT_BIT_NAME((eeprom[3+0] & (1 << 4)), " 10GBASE-SR");
-    PRINT_BIT_NAME((eeprom[3+0] & (1 << 3)), " 40GBASE-CR4");
-    PRINT_BIT_NAME((eeprom[3+0] & (1 << 2)), " 40GBASE-SR4");
-    PRINT_BIT_NAME((eeprom[3+0] & (1 << 1)), " 40GBASE-LR4");
-    PRINT_BIT_NAME((eeprom[3+0] & (1 << 0)), " 40G-XLPPI");
 
-    PRINT_BIT_NAME((eeprom[3+1] & (1 << 3)), " 40G-OTN");
+    if (qsfp)
+    {
+        PRINT_BIT_NAME((eeprom[3+0] & (1 << 3)), " 40GBASE-CR4");
+        PRINT_BIT_NAME((eeprom[3+0] & (1 << 2)), " 40GBASE-SR4");
+        PRINT_BIT_NAME((eeprom[3+0] & (1 << 1)), " 40GBASE-LR4");
+        PRINT_BIT_NAME((eeprom[3+0] & (1 << 0)), " 40G-ActiveCable(XLPPI)");
+    }
+    else
+    {
+        PRINT_BIT_NAME((eeprom[3+0] & (1 << 3)), " 1X SX");
+        PRINT_BIT_NAME((eeprom[3+0] & (1 << 2)), " 1X LX");
+        PRINT_BIT_NAME((eeprom[3+0] & (1 << 1)), " 1X CopperAct");
+        PRINT_BIT_NAME((eeprom[3+0] & (1 << 0)), " 1X CopperPass");
+    }
+
+    if (!qsfp)
+    {
+        PRINT_BIT_NAME((eeprom[3+1] & (1 << 7)), " ESCON-MMF");
+        PRINT_BIT_NAME((eeprom[3+1] & (1 << 6)), " ESCON-SMF");
+    }
+    PRINT_BIT_NAME((eeprom[3+1] & (1 << 5)), " OC-192-ShortReach");
     PRINT_BIT_NAME((eeprom[3+1] & (1 << 2)), " OC48-LongReach");
     PRINT_BIT_NAME((eeprom[3+1] & (1 << 1)), " OC48-IntReach");
     PRINT_BIT_NAME((eeprom[3+1] & (1 << 0)), " OC48-ShortReach");
 
-    PRINT_BIT_NAME((eeprom[3+2] & (1 << 5)), " SAS-6.0G");
-    PRINT_BIT_NAME((eeprom[3+2] & (1 << 4)), " SAS-3.0G");
+    if (qsfp)
+    {
+        PRINT_BIT_NAME((eeprom[3+2] & (1 << 6)), " SAS-12.0G");
+        PRINT_BIT_NAME((eeprom[3+2] & (1 << 5)), " SAS-6.0G");
+        PRINT_BIT_NAME((eeprom[3+2] & (1 << 4)), " SAS-3.0G");
+    }
+    else
+    {
+        PRINT_BIT_NAME((eeprom[3+2] & (1 << 6)), " OC12-LongReach");
+        PRINT_BIT_NAME((eeprom[3+2] & (1 << 5)), " OC12-IntReach");
+        PRINT_BIT_NAME((eeprom[3+2] & (1 << 4)), " OC12-ShortReach");
+        PRINT_BIT_NAME((eeprom[3+2] & (1 << 2)), " OC3-LongReach");
+        PRINT_BIT_NAME((eeprom[3+2] & (1 << 1)), " OC3-IntReach");
+        PRINT_BIT_NAME((eeprom[3+2] & (1 << 0)), " OC3-ShortReach");
+    }
 
     PRINT_BIT_NAME((eeprom[3+3] & (1 << 3)), " 1000BASE-T");
     PRINT_BIT_NAME((eeprom[3+3] & (1 << 2)), " 1000BASE-CX");
@@ -358,7 +724,8 @@ void fmPlatformXcvrEepromDumpSpecCompliance(fm_byte *eeprom)
     PRINT_BIT_NAME((eeprom[3+4] & (1 << 6)), " SD");
     PRINT_BIT_NAME((eeprom[3+4] & (1 << 5)), " ID");
     PRINT_BIT_NAME((eeprom[3+4] & (1 << 4)), " LD");
-    PRINT_BIT_NAME((eeprom[3+4] & (1 << 3)), " M");
+    PRINT_BIT_NAME((eeprom[3+4] & (1 << 3)), " MD");
+    PRINT_BIT_NAME((eeprom[3+4] & (1 << 2)), " SA");
     PRINT_BIT_NAME((eeprom[3+4] & (1 << 1)), " LC");
     PRINT_BIT_NAME((eeprom[3+4] & (1 << 0)), " EL");
 
@@ -366,6 +733,12 @@ void fmPlatformXcvrEepromDumpSpecCompliance(fm_byte *eeprom)
     PRINT_BIT_NAME((eeprom[3+5] & (1 << 6)), " SN");
     PRINT_BIT_NAME((eeprom[3+5] & (1 << 5)), " SL");
     PRINT_BIT_NAME((eeprom[3+5] & (1 << 4)), " LL");
+
+    if (!qsfp)
+    {
+        PRINT_BIT_NAME((eeprom[3+5] & (1 << 3)), " ActiveCable");
+        PRINT_BIT_NAME((eeprom[3+5] & (1 << 2)), " PassiveCable");
+    }
 
     PRINT_BIT_NAME((eeprom[3+6] & (1 << 7)), " TwinAxial(TW)");
     PRINT_BIT_NAME((eeprom[3+6] & (1 << 6)), " Shielded(TP)");
@@ -378,10 +751,10 @@ void fmPlatformXcvrEepromDumpSpecCompliance(fm_byte *eeprom)
 
     FM_LOG_PRINT("\n");
 
-    if (eeprom[3+0] & (1 << 7))
+    if (qsfp && eeprom[3+0] & (1 << 7))
     {
         /* Extended specification compliance defined in SFF-8024 */
-        FM_LOG_PRINT("%20s[%02x]: %d", "Ext Spec Comp", 64, eeprom[64]);
+        FM_LOG_PRINT("%20s[%02x]: ", "Ext Spec Comp", 64);
         switch (eeprom[64])
         {
             case 0:
@@ -393,12 +766,53 @@ void fmPlatformXcvrEepromDumpSpecCompliance(fm_byte *eeprom)
             case 2:
                 FM_LOG_PRINT("100GBASE-SR4");
                 break;
+            case 3:
+                FM_LOG_PRINT("100GBASE-LR4");
+                break;
+            case 4:
+                FM_LOG_PRINT("100GBASE-ER4");
+                break;
+            case 5:
+                FM_LOG_PRINT("100GBASE-SR10");
+                break;
+            case 6:
+                FM_LOG_PRINT("100G CWDM4 with FEC");
+                break;
+            case 7:
+                FM_LOG_PRINT("100G PSM4");
+                break;
+            case 8:
+                FM_LOG_PRINT("100G ACC - Active Copper Cable");
+                break;
+            case 9:
+                FM_LOG_PRINT("100G CWDM4 without FEC");
+                break;
+            case 0xb:
+                FM_LOG_PRINT("100GBASE-CR4");
+                break;
+            case 0x10:
+                FM_LOG_PRINT("40GBASE-ER4");
+                break;
+            case 0x11:
+                FM_LOG_PRINT("4x10GBASE-SR");
+                break;
+            case 0x12:
+                FM_LOG_PRINT("40G PSM4");
+                break;
+            case 0x16:
+                FM_LOG_PRINT("10GBASE-T SFI");
+                break;
+            case 0x17:
+                FM_LOG_PRINT("100G CLR4");
+                break;
+            default:
+                FM_LOG_PRINT("0x%x", eeprom[64]);
+                break;
         }
         FM_LOG_PRINT("\n");
     }
 
 }   /* end fmPlatformXcvrEepromDumpSpecCompliance */
-
 
 
 
@@ -410,13 +824,15 @@ void fmPlatformXcvrEepromDumpSpecCompliance(fm_byte *eeprom)
  * \desc            Dumps transceiver BASE and EEPROM eeprom.
  *                  This assumes the eeprom checksum has been verified.
  *
- * \param[out]      eeprom points to storage where the transceiver eeprom
+ * \param[in]       eeprom points to storage where the transceiver eeprom
  *                  is stored.
+ * 
+ * \param[in]       qsfp indicates if it is a QSFP EEPROM or not.
  *
  * \return          NONE.
  *
  *****************************************************************************/
-void fmPlatformXcvrEepromDumpBaseExt(fm_byte *eeprom)
+void fmPlatformXcvrEepromDumpBaseExt(fm_byte *eeprom, fm_bool qsfp)
 {
     fm_int    j;
     fm_byte   cs;
@@ -443,7 +859,38 @@ void fmPlatformXcvrEepromDumpBaseExt(fm_byte *eeprom)
             break;
     }
 
-    fmPlatformXcvrEepromDumpSpecCompliance(eeprom);
+    addr = 2;
+    FM_LOG_PRINT("%20s[%02x]: ", "Connector Type", addr);
+    switch (eeprom[addr])
+    {
+        case 0x0:
+            FM_LOG_PRINT("Unspecified(0x%02x)\n", eeprom[addr]);
+            break;
+        case 0x7:
+            FM_LOG_PRINT("LC(0x%02x)\n", eeprom[addr]);
+            break;
+        case 0xB:
+            FM_LOG_PRINT("Optical Pigtail(0x%02x)\n", eeprom[addr]);
+            break;
+        case 0xC:
+        case 0xD:
+            FM_LOG_PRINT("Multifiber Parallel Optic(0x%02x)\n", eeprom[addr]);
+            break;
+        case 0x21:
+            FM_LOG_PRINT("Copper Pigtail(0x%02x)\n", eeprom[addr]);
+            break;
+        case 0x22:
+            FM_LOG_PRINT("RJ45(0x%02x)\n", eeprom[addr]);
+            break;
+        case 0x23:
+            FM_LOG_PRINT("No separable connector(0x%02x)\n", eeprom[addr]);
+            break;
+        default:
+            FM_LOG_PRINT("0x%02x\n", eeprom[addr]);
+            break;
+    }
+
+    fmPlatformXcvrEepromDumpSpecCompliance(eeprom, qsfp);
     addr = 18;
     FM_LOG_PRINT("%20s[%02x]: %dm\n", "Length", addr, eeprom[addr]);
     addr = 20;
@@ -518,7 +965,6 @@ void fmPlatformXcvrSfppEepromDumpPage1(fm_byte *eeprom)
     }
 
 }   /* end fmPlatformSfppXcvrEepromDumpPage1 */
-
 
 
 

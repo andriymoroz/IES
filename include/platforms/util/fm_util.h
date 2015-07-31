@@ -81,6 +81,34 @@ typedef struct
 } fmUtilRegisterField;
 
 
+/**************************************************/
+/** \ingroup intPlatform
+ * Owner of the SPI peripheral lock:
+ * 0: Lock taken by switch API.
+ * 1: Lock taken by QV tools.
+ * 2: Lock taken by board manager.
+ * Used as an argument to ''fm10000UtilSpiPeripheralLock'' and
+ * ''fm10000UtilSpiPeripheralUnlock''.
+ * These enumerated values are used to configure and verify the owner
+ * of the SPI peripheral lock.
+ **************************************************/
+typedef enum
+{
+    /** Lock taken by switch API. */
+    FM_SPI_PERIPHERAL_LOCK_OWNER_SWITCH_API = 0,
+
+    /** Lock taken by QV tools. */
+    FM_SPI_PERIPHERAL_LOCK_OWNER_QV,
+
+    /** Lock taken by board manager. */
+    FM_SPI_PERIPHERAL_LOCK_OWNER_BOARD_MANAGER,
+
+    /** For internal use only. */
+    FM_SPI_PERIPHERAL_LOCK_OWNER_MAX
+
+} fm_utilSpiPeripheralLockOwner;
+
+
 #define FM_UTIL_ERROR(...)  fmLogMessage(0, FM_LOG_LEVEL_ERROR, __FILE__, __FUNCTION__, __LINE__, __VA_ARGS__);
 #define FM_UTIL_WARN(...)   fmLogMessage(0, FM_LOG_LEVEL_WARNING, __FILE__, __FUNCTION__, __LINE__, __VA_ARGS__);
 #define FM_UTIL_INFO(...)   fmLogMessage(0, FM_LOG_LEVEL_INFO, __FILE__, __FUNCTION__, __LINE__, __VA_ARGS__);

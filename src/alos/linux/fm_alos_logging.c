@@ -5,7 +5,7 @@
  * Creation Date:   June 18, 2007
  * Description:     SDK logging facility implementation.
  *
- * Copyright (c) 2005 - 2014, Intel Corporation
+ * Copyright (c) 2005 - 2015, Intel Corporation
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -29,7 +29,7 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
+ *****************************************************************************/
 
 #include <fm_sdk_int.h>
 
@@ -106,7 +106,6 @@ static fm_bool ApplyLoggingFilter(const char *haystack, const char *needle)
         if (strstr(needle, token))
         {
             found = TRUE;
-
             break;
         }
 
@@ -116,6 +115,8 @@ static fm_bool ApplyLoggingFilter(const char *haystack, const char *needle)
     return found;
 
 }   /* end ApplyLoggingFilter */
+
+
 
 
 /*****************************************************************************/
@@ -167,9 +168,10 @@ static fm_status LogMessage( fm_uint64   filteredCategoryMask,
     fm_loggingType   logType;
     fm_bool          enabled;
     fm_char          dateStr[64];
-    fm_text          threadName;
-    fm_text          threadNamePtr;
-    fm_char          thread[64];
+    fm_char          timeStampStr[64];
+    fm_timestamp     ts;
+    fm_text          threadName = NULL;
+    fm_char          threadStr[64];
     FILE *           log;
     fm_char          logLevelStr[64];
     fm_char          callBackStr[1024];
@@ -184,7 +186,7 @@ static fm_status LogMessage( fm_uint64   filteredCategoryMask,
     fm_bool          isMasterProcess = TRUE; 
     fm_status        status; 
 
-    if ( ls && LOG_INITIALIZED(ls) )
+    if ( LOG_INITIALIZED(ls) )
     {
         levelMask      = ls->levelMask;
         logType        = ls->logType;
@@ -233,12 +235,19 @@ static fm_status LogMessage( fm_uint64   filteredCategoryMask,
      * level match.
      **************************************************/
 
-    if ( enabled
-        && (filteredCategoryMask & categories)
-        && ( (levelMask & logLevel) == logLevel ) )
+    if ( enabled &&
+         (filteredCategoryMask & categories) != 0 &&
+         ( (levelMask & logLevel) == logLevel ) )
     {
 
-        if ( ls && LOG_INITIALIZED(ls) )
+        if (verbosityMask & FM_LOG_VERBOSITY_THREAD)
+        {
+            /* Get thread name before taking logging lock, to avoid possible
+             * deadly embrace between thread and logging code. */
+            threadName = fmGetCurrentThreadName();
+        }
+
+        if ( LOG_INITIALIZED(ls) )
         {
             posixErr = pthread_mutex_lock( (pthread_mutex_t *) ls->accessLock );
             if (posixErr != 0)
@@ -269,83 +278,101 @@ static fm_status LogMessage( fm_uint64   filteredCategoryMask,
              * Identify the log level at which this log message
              * was generated.
              **************************************************/
-            
-            switch (logLevel)
+             
+            if (verbosityMask & FM_LOG_VERBOSITY_LOG_LEVEL)
             {
-                case FM_LOG_LEVEL_FUNC_ENTRY:
-                case FM_LOG_LEVEL_FUNC_ENTRY_API:
-                case FM_LOG_LEVEL_FUNC_ENTRY_VERBOSE:
-                case FM_LOG_LEVEL_FUNC_ENTRY_API_VERBOSE:
-                    levelStr = "ENTRY";
-                    break;
+                switch (logLevel)
+                {
+                    case FM_LOG_LEVEL_FUNC_ENTRY:
+                    case FM_LOG_LEVEL_FUNC_ENTRY_API:
+                    case FM_LOG_LEVEL_FUNC_ENTRY_VERBOSE:
+                    case FM_LOG_LEVEL_FUNC_ENTRY_API_VERBOSE:
+                        levelStr = "ENTRY";
+                        break;
+                        
+                    case FM_LOG_LEVEL_FUNC_EXIT:
+                    case FM_LOG_LEVEL_FUNC_EXIT_API:
+                    case FM_LOG_LEVEL_FUNC_EXIT_VERBOSE:
+                    case FM_LOG_LEVEL_FUNC_EXIT_API_VERBOSE:
+                        levelStr = "EXIT";
+                        break;
+                        
+                    case FM_LOG_LEVEL_WARNING:
+                        levelStr = "WARNING";
+                        break;
                     
-                case FM_LOG_LEVEL_FUNC_EXIT:
-                case FM_LOG_LEVEL_FUNC_EXIT_API:
-                case FM_LOG_LEVEL_FUNC_EXIT_VERBOSE:
-                case FM_LOG_LEVEL_FUNC_EXIT_API_VERBOSE:
-                    levelStr = "EXIT";
-                    break;
-                    
-                case FM_LOG_LEVEL_WARNING:
-                    levelStr = "WARNING";
-                    break;
+                    case FM_LOG_LEVEL_ERROR:
+                        levelStr = "ERROR";
+                        break;
+                        
+                    case FM_LOG_LEVEL_FATAL:
+                        levelStr = "FATAL";
+                        break;
+                        
+                    case FM_LOG_LEVEL_INFO:
+                        levelStr = "INFO";
+                        break;
+                        
+                    case FM_LOG_LEVEL_DEBUG:
+                    case FM_LOG_LEVEL_DEBUG_VERBOSE:
+                        levelStr = "DEBUG";
+                        break;
+                        
+                    case FM_LOG_LEVEL_PRINT:
+                        levelStr = "PRINT";
+                        break;
+                        
+                    case FM_LOG_LEVEL_DEBUG2:
+                        levelStr = "DEBUG2";
+                        break;
+                        
+                    case FM_LOG_LEVEL_DEBUG3:
+                        levelStr = "DEBUG3";
+                        break;
+                        
+                    case FM_LOG_LEVEL_ASSERT:
+                        levelStr = "ASSERT";
+                        break;
+                        
+                    default:
+                        levelStr = "UNKNOWN_LVL";
+                        break;
+                        
+                }   /* end switch (logLevel) */
                 
-                case FM_LOG_LEVEL_ERROR:
-                    levelStr = "ERROR";
-                    break;
-                    
-                case FM_LOG_LEVEL_FATAL:
-                    levelStr = "FATAL";
-                    break;
-                    
-                case FM_LOG_LEVEL_INFO:
-                    levelStr = "INFO";
-                    break;
-                    
-                case FM_LOG_LEVEL_DEBUG:
-                case FM_LOG_LEVEL_DEBUG_VERBOSE:
-                    levelStr = "DEBUG";
-                    break;
-                    
-                case FM_LOG_LEVEL_PRINT:
-                    levelStr = "PRINT";
-                    break;
-                    
-                case FM_LOG_LEVEL_DEBUG2:
-                    levelStr = "DEBUG2";
-                    break;
-                    
-                case FM_LOG_LEVEL_DEBUG3:
-                    levelStr = "DEBUG3";
-                    break;
-                    
-                case FM_LOG_LEVEL_ASSERT:
-                    levelStr = "ASSERT";
-                    break;
-                    
-                default:
-                    levelStr = "UNKNOWN_LVL";
-                    break;
-                    
-            }   /* end switch (logLevel) */
-            
-            FM_SNPRINTF_S(logLevelStr, sizeof(logLevelStr), "%s", levelStr);
+                FM_SNPRINTF_S(logLevelStr, sizeof(logLevelStr), "%s", levelStr);
+            }
 
-            fmGetFormattedTime(dateStr);
-
-            threadNamePtr = fmGetCurrentThreadName();
-
-            if (threadNamePtr)
+            if (verbosityMask & FM_LOG_VERBOSITY_DATE_TIME)
             {
-                threadName = threadNamePtr;
+                fmGetFormattedTime(dateStr);
+            }
+
+            if (verbosityMask & FM_LOG_VERBOSITY_TIMESTAMP)
+            {
+                fmGetTime(&ts);
+                FM_SNPRINTF_S(timeStampStr, sizeof(logLevelStr),
+                              "%u.%04u",
+                              ts.sec,
+                              ts.usec / 100);
+            }
+
+
+            if (verbosityMask & FM_LOG_VERBOSITY_THREAD)
+            {
+                if (threadName == NULL)
+                {
+                    FM_SNPRINTF_S( threadStr,
+                                   sizeof(threadStr),
+                                   "<%p>",
+                                   fmGetCurrentThreadId() );
+                    threadName = threadStr;
+                }
             }
             else
             {
-                FM_SNPRINTF_S( thread,
-                               sizeof(thread),
-                               "<%p>",
-                               fmGetCurrentThreadId() );
-                threadName = thread;
+                threadStr[0] = '\0';
+                threadName = threadStr;
             }
 
             switch (logType)
@@ -355,6 +382,11 @@ static fm_status LogMessage( fm_uint64   filteredCategoryMask,
                     if (verbosityMask & FM_LOG_VERBOSITY_DATE_TIME)
                     {
                         FM_PRINTF_S("%s:", dateStr);
+                    }
+
+                    if (verbosityMask & FM_LOG_VERBOSITY_TIMESTAMP)
+                    {
+                        FM_PRINTF_S("%s:", timeStampStr);
                     }
 
                     if (verbosityMask & FM_LOG_VERBOSITY_LOG_LEVEL)
@@ -394,6 +426,11 @@ static fm_status LogMessage( fm_uint64   filteredCategoryMask,
                         if (verbosityMask & FM_LOG_VERBOSITY_DATE_TIME)
                         {
                             FM_FPRINTF_S(log, "%s:", dateStr);
+                        }
+
+                        if (verbosityMask & FM_LOG_VERBOSITY_TIMESTAMP)
+                        {
+                            FM_FPRINTF_S(log, "%s:", timeStampStr);
                         }
 
                         if (verbosityMask & FM_LOG_VERBOSITY_LOG_LEVEL)
@@ -447,6 +484,18 @@ static fm_status LogMessage( fm_uint64   filteredCategoryMask,
                                                           FM_LOG_MAX_LINE_SIZE,
                                                           "%s:",
                                                           dateStr) ) > 0 )
+                            {
+                                lineLen += elemLen;
+                            }
+
+                        }
+
+                        if (verbosityMask & FM_LOG_VERBOSITY_TIMESTAMP)
+                        {
+                            if ( (elemLen = FM_SNPRINTF_S(ls->logBuffer[ls->currentPos],
+                                                          FM_LOG_MAX_LINE_SIZE,
+                                                          "%s:",
+                                                          timeStampStr) ) > 0 )
                             {
                                 lineLen += elemLen;
                             }
@@ -555,6 +604,17 @@ static fm_status LogMessage( fm_uint64   filteredCategoryMask,
                                               ls->fmLogCookie2);
                         }
 
+                        if (verbosityMask & FM_LOG_VERBOSITY_TIMESTAMP)
+                        {
+                            FM_SNPRINTF_S(callBackStr,
+                                          sizeof(callBackStr),
+                                          "%s:",
+                                          timeStampStr);
+                            ls->fmLogCallback(callBackStr,
+                                              ls->fmLogCookie1,
+                                              ls->fmLogCookie2);
+                        }
+
                         if (verbosityMask & FM_LOG_VERBOSITY_LOG_LEVEL)
                         {
                             FM_SNPRINTF_S(callBackStr,
@@ -623,7 +683,7 @@ static fm_status LogMessage( fm_uint64   filteredCategoryMask,
 
         }   /* end if (filter) */
 
-        if ( ls && LOG_INITIALIZED(ls) )
+        if ( LOG_INITIALIZED(ls) )
         {
             posixErr = pthread_mutex_unlock( (pthread_mutex_t *) ls->accessLock );
             if (posixErr != 0)
@@ -638,6 +698,7 @@ static fm_status LogMessage( fm_uint64   filteredCategoryMask,
     return FM_OK;
 
 }   /* end fmLogMessage */
+
 
 
 
@@ -1289,12 +1350,12 @@ fm_status fmLogMessage( fm_uint64   categories,
     va_list          ap;
 
     /* get out if logging is disabled */
-    if (ls && LOG_INITIALIZED(ls) && !ls->enabled)
+    if (LOG_INITIALIZED(ls) && !ls->enabled)
     {
         return FM_OK;
     }
 
-    if ( ls && LOG_INITIALIZED(ls) )
+    if ( LOG_INITIALIZED(ls) )
     {
         /* mask out enabled categories for which legacy logging is disabled*/
         filteredCategoryMask   = ls->categoryMask & ls->legacyLoggingMask;
@@ -1801,12 +1862,12 @@ fm_status fmLogMessageV2( fm_uint64   category,
     fm_uint64   filteredCategoryMask;
     va_list     ap;
 
-    if (ls && LOG_INITIALIZED(ls) && !ls->enabled)
+    if (LOG_INITIALIZED(ls) && !ls->enabled)
     {
         return FM_OK;
     }
 
-    if ( ls && LOG_INITIALIZED(ls) )
+    if ( LOG_INITIALIZED(ls) )
     {
         filteredCategoryMask   = ls->categoryMask;
     }

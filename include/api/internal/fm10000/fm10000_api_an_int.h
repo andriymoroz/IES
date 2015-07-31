@@ -34,9 +34,9 @@
 #ifndef __FM_FM10000_API_AN_INT_H
 #define __FM_FM10000_API_AN_INT_H
 
-#define BREAK_LINK_TIMER_USEC           65000 /* From Table 73-7 */
-#define LINK_INHIBIT_TIMER_USEC        500000 /* From Table 73-7 */
-#define LINK_INHIBIT_TIMER_USEC_KX      50000 /* KX or KX4 */
+#define BREAK_LINK_TIMER_MILLISEC           65 /* From Table 73-7 */
+#define LINK_INHIBIT_TIMER_MILLISEC        500 /* From Table 73-7 */
+#define LINK_INHIBIT_TIMER_MILLISEC_KX      50 /* KX or KX4 */
 
 #define FM10000_AN37_INT_MASK (                           \
     (1U << FM10000_AN_IP_b_An37AnRestart)           |     \
@@ -98,7 +98,7 @@
 #define FM10000_AN37_LINK_TIMER_TIMEOUT_MAX        0x7F
 #define FM10000_AN73_BREAK_LINK_TIMEOUT_MAX        0x7F
 #define FM10000_AN73_LINK_FAIL_INHIBIT_TIMEOUT_MAX 0x1FF
-
+#define FM10000_AN73_LINK_FAIL_INHIBIT_TIMEOUT_DEBUG 0x3FF
 
 enum
 {
@@ -142,10 +142,10 @@ fm_status fm10000IsPortAutonegReady( fm_int     sw,
                                      fm_int    *smType );
 fm_status fm10000An73SetLinkInhibitTimer( fm_int sw, 
                                           fm_int port, 
-                                          fm_uint timeoutUsec );
+                                          fm_uint timeout );
 fm_status fm10000An73SetLinkInhibitTimerKx( fm_int  sw,
                                             fm_int  port,
-                                            fm_uint timeoutUsec );
+                                            fm_uint timeout );
 fm_status fm10000An73SetIgnoreNonce( fm_int sw, 
                                      fm_int port,
                                      fm_bool ignoreNonce );

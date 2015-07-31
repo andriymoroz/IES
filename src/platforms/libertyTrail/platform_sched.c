@@ -5,7 +5,7 @@
  * Creation Date:   June 2, 2014
  * Description:     Platform scheduler functions.
  *
- * Copyright (c) 2014, Intel Corporation
+ * Copyright (c) 2014 - 2015, Intel Corporation
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -29,7 +29,7 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
+ *****************************************************************************/
 
 #include <fm_sdk_fm10000_int.h>
 
@@ -351,7 +351,7 @@ fm_status fmPlatformGetSchedulerTokenList(fm_int sw, fm_schedulerConfig *sc)
  * \ingroup platform
  *
  * \desc            Indicates to the API how the scheduler should be
- *                  initialized for a FM10000 device.
+ *                  initialized for an FM10000 device.
  *
  * \param[in]       sw is the switch on which to operate.
  *

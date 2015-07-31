@@ -106,6 +106,9 @@
 /* Max number of switches in a SWAG supporting full glort range per PEP. */
 #define FM10000_MAILBOX_MAX_SWITCHES_WITH_FULL_GLORT_RANGE  6
 
+/* Max number of inner/outer MAC filtering rules */
+#define FM10000_MAILBOX_MAX_INN_OUT_MAC_RULES                16384
+
 fm_status fm10000PCIeMailboxInterruptHandler(fm_int sw,
                                              fm_int pepNb);
 
@@ -218,5 +221,16 @@ fm_status fm10000GetMailboxGlortRange(fm_int     sw,
                                       fm_int     pepNb,
                                       fm_uint32 *glortBase,
                                       fm_int *   numberOfGlorts);
+
+fm_status fm10000AnnounceTxTimestampMode(fm_int  sw,
+                                         fm_bool isTxTimestampEnabled);
+
+fm_status fm10000MasterClkOffsetProcess(fm_int                     sw,
+                                        fm_int                     pepNb,
+                                        fm_hostSrvMasterClkOffset *clkOffset);
+
+fm_status fm10000MailboxConfigureCounters(fm_int sw);
+
+fm_status fm10000MailboxUnconfigureCounters(fm_int sw);
 
 #endif /* __FM_FM10000_API_MAILBOX_INT_H */

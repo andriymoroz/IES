@@ -3817,6 +3817,9 @@ static fm_status DecodeCrm(fm_switch * switchPtr)
     fm_uint32           errCount;
     fm_status           retStatus;
     fm_int              sw;
+    fm_int              sliceId;
+    fm_uint32           bitMask;
+    fm_int              crmId;
 
     switchExt  = switchPtr->extension;
     parityInfo = &switchExt->parityInfo;
@@ -3842,7 +3845,7 @@ static fm_status DecodeCrm(fm_switch * switchPtr)
 
     FM_CLEAR(parityInfo->crm_ip);
 
-    FM_LOG_DEBUG(FM_LOG_CAT_PARITY,
+    FM_LOG_ERROR(FM_LOG_CAT_PARITY,
                  "crmInt=%08llx crmErr=%d\n",
                  crmInt,
                  crmErr);
@@ -3859,6 +3862,16 @@ static fm_status DecodeCrm(fm_switch * switchPtr)
         counters.errors     += errCount;
         counters.repairable += errCount;
 
+        for (sliceId = 0 ; sliceId < FM10000_FFU_SLICE_SRAM_ENTRIES_1 ; sliceId++)
+        {
+            bitMask = 1 << sliceId;
+            if(bitMask & sliceMask)
+            {
+                crmId = FM10000_FFU_SLICE_CRM_ID(sliceId);
+                FM_LOG_ERROR(FM_LOG_CAT_PARITY, "FM10000_CRM_EVENT_FAULT_IND for crmId %d\n", crmId);
+                retStatus = NotifyCRMEvent(sw,  crmId, FM10000_CRM_EVENT_FAULT_IND);
+            }
+        }
         RequestRepair(sw, FM_REPAIR_FFU_SLICE_TCAM, TRUE, sliceMask);
     }
 
@@ -3871,6 +3884,8 @@ static fm_status DecodeCrm(fm_switch * switchPtr)
         counters.errors     += 1;
         counters.repairable += 1;
 
+        FM_LOG_ERROR(FM_LOG_CAT_PARITY, "FM10000_CRM_EVENT_FAULT_IND for crmId %d\n", FM10000_CRM_EVENT_FAULT_IND);
+        retStatus = NotifyCRMEvent(sw,  FM10000_GLORT_CAM_CRM_ID, FM10000_CRM_EVENT_FAULT_IND);
         RequestRepair(sw, FM_REPAIR_GLORT_CAM, TRUE, 0);
     }
 

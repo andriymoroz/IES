@@ -1328,6 +1328,9 @@ void fmDbgDumpACLsAsC(fm_int sw, const char *fileName)
             if ((action & FM_ACL_ACTIONEXT_CAPTURE_EGRESS_TIMESTAMP) != 0)
             {
                 actionList[numActions++] = "FM_ACL_ACTIONEXT_CAPTURE_EGRESS_TIMESTAMP";
+                fprintf(dest, 
+                        "        param.captureEgressTimestamp = %d;\n", 
+                        param.captureEgressTimestamp);
             }
 
             if (numActions == 0)

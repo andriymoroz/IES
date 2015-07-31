@@ -29,7 +29,7 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
+ *****************************************************************************/
 
 #ifndef __FM_FM_ALOS_LOGGING_H
 #define __FM_FM_ALOS_LOGGING_H
@@ -771,9 +771,13 @@ typedef struct _fm_logCallBackSpec
 /** Include the line number in the logging message */
 #define FM_LOG_VERBOSITY_LINE         (1 << 5)
 
+/** Include the timestamp with sub-second resolution in the logging message */
+#define FM_LOG_VERBOSITY_TIMESTAMP    (1 << 6)
+
 /** All verbosity flags. */
 #define FM_LOG_VERBOSITY_ALL            \
     (FM_LOG_VERBOSITY_DATE_TIME |       \
+     FM_LOG_VERBOSITY_TIMESTAMP |       \
      FM_LOG_VERBOSITY_LOG_LEVEL |       \
      FM_LOG_VERBOSITY_THREAD    |       \
      FM_LOG_VERBOSITY_FILE      |       \
@@ -1370,6 +1374,31 @@ fm_status fmFaultInjection(const char *functionName);
 #define FM_LOG_ABORT(cat, errcode)                                             \
     {                                                                          \
         FM_LOG_DEBUG( (cat), "Break to abort handler: %s\n",                   \
+                      fmErrorMsg( (errcode) ) );                               \
+        goto ABORT;                                                            \
+    }
+
+/***************************************************************************/
+/** Goto ABORT.
+ *  The V2 version supports objectId-based filtering.
+ *                                                                      \lb\lb
+ * This macro should be used to replace the typical pattern of going to a
+ * local ABORT label. This also logs a debug message to indicate why.
+ *                                                                      \lb\lb
+ * cat is a bit mask that specifies the categories to which the message being
+ * generated belongs (see ''Log Categories'').
+ *                                                                      \lb\lb
+ * objectId is the value of the object ID to be used for filtering.
+ *                                                                      \lb\lb
+ * errcode is the value being returned by the function (typically of type
+ * fm_status - see ''Status Codes'').
+ *
+ ***************************************************************************/
+#define FM_LOG_ABORT_V2(cat, objectId, errcode)                                \
+    {                                                                          \
+        FM_LOG_DEBUG( (cat),                                                   \
+                      (objectId),                                              \
+                      "Break to abort handler: %s\n",                          \
                       fmErrorMsg( (errcode) ) );                               \
         goto ABORT;                                                            \
     }

@@ -501,7 +501,7 @@ fm_status fm10000WriteVlanEntryV2(fm_int    sw,
             FM_LOG_FATAL(FM_LOG_CAT_VLAN,
                          "Invalid vlan learning mode %d configured\n",
                          switchPtr->vlanLearningMode);
-            status = FM_FAIL;
+            status = FM_ERR_UNSUPPORTED;
             FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_VLAN, status);
     }
 
@@ -682,7 +682,7 @@ fm_status fm10000ConfigureVlanLearningMode(fm_int sw, fm_vlanLearningMode mode)
             FM_LOG_FATAL(FM_LOG_CAT_VLAN,
                          "Invalid vlan learning mode %d configured\n",
                          mode);
-            FM_LOG_EXIT(FM_LOG_CAT_VLAN, FM_FAIL);
+            FM_LOG_EXIT(FM_LOG_CAT_VLAN, FM_ERR_UNSUPPORTED);
     }
 
 #if (!defined(FV_CODE) && !defined(FAST_API_BOOT))
@@ -858,6 +858,7 @@ fm_status fm10000SetVlanTag(fm_int        sw,
     fm_switch *        switchPtr;
     fm10000_vlanEntry *ventryExt;
     fm_int             physPort;
+    fm_islTagFormat    islTagFormat;
 
     FM_LOG_ENTRY(FM_LOG_CAT_VLAN,
                  "sw=%d, vlanSel=%d, entry=%p, port=%d, tag=%d\n",
@@ -866,6 +867,24 @@ fm_status fm10000SetVlanTag(fm_int        sw,
                  (void *) entry,
                  port,
                  tag);
+
+    if (tag)
+    {
+        status = fm10000GetPortAttribute(sw,
+                                         port,
+                                         FM_PORT_ACTIVE_MAC,
+                                         FM_PORT_LANE_NA,
+                                         FM_PORT_ISL_TAG_FORMAT,
+                                         &islTagFormat);
+        FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_VLAN, status);
+
+        if (islTagFormat &&
+            !fmGetBoolApiProperty(FM_AAK_API_PORT_ALLOW_FTAG_VLAN_TAGGING,
+                                  FM_AAD_API_PORT_ALLOW_FTAG_VLAN_TAGGING))
+        {
+            FM_LOG_EXIT(FM_LOG_CAT_VLAN, FM_ERR_UNSUPPORTED);
+        }
+    }
 
     if ( (entry == NULL) || (entry->vlanExt == NULL) )
     {

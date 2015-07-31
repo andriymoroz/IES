@@ -381,6 +381,190 @@ void FreeVNTunnel(void *tunPtr)
 
 
 
+/*****************************************************************************/
+/** GetVNList
+ * \ingroup intVN
+ *
+ * \chips           FM6000, FM10000
+ *
+ * \desc            Returns a list of Virtual Networks.
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \param[in]       maxVNs is the size of vsidList and internalIdList, being
+ *                  the maximum number of Virtual Networks that can be
+ *                  contained inside vsidList and internalIdList.
+ *
+ * \param[out]      numVNs points to caller-provided storage into which
+ *                  will be stored the number of virtual networks stored in
+ *                  vlanList and vsidList.
+ *
+ * \param[out]      vsidList is an array, maxVNs elements in length, that this
+ *                  function will fill with the list of virtual subscriber IDs.
+ *
+ * \param[in]       descriptorList points to an array, maxVNs elements in length,
+ *                  that this function will fill with the descriptor records
+ *                  associated with each virtual network returned in vsidList.
+ *
+ * \return          FM_OK if successful.
+ * \return          FM_ERR_NO_MORE if there are no virtual networks.
+ * \return          FM_ERR_BUFFER_FULL if maxVNs was too small to accommodate
+ *                  the entire list of virtual networks.
+ *
+ *****************************************************************************/
+static fm_status GetVNList(fm_int           sw,
+                           fm_int           maxVNs,
+                           fm_int *         numVNs,
+                           fm_uint32 *      vsidList,
+                           fm_vnDescriptor *descriptorList)
+{
+    fm_switch *        switchPtr;
+    fm_status          status;
+    fm_uint64          vsid;
+    fm_virtualNetwork *vn;
+    fm_int             curVN;
+    fm_treeIterator    iter;
+
+    FM_LOG_ENTRY( FM_LOG_CAT_VN,
+                  "sw = %d, maxVNs = %d, numVNs = %p, vsidList = %p, "
+                  "descriptorList = %p\n",
+                  sw,
+                  maxVNs,
+                  (void *) numVNs,
+                  (void *) vsidList,
+                  (void *) descriptorList );
+
+    switchPtr = GET_SWITCH_PTR(sw);
+    curVN     = 0;
+
+    fmTreeIterInit(&iter, &switchPtr->virtualNetworks);
+
+    while (1)
+    {
+        status = fmTreeIterNext( &iter, &vsid, (void **) &vn );
+
+        if (status == FM_ERR_NO_MORE)
+        {
+            status = FM_OK;
+            break;
+        }
+
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_VN, status);
+
+        if (curVN >= maxVNs)
+        {
+            status = FM_ERR_BUFFER_FULL;
+            break;
+        }
+
+        vsidList[curVN]       = (fm_uint32) vsid;
+        descriptorList[curVN] = vn->descriptor;
+
+        ++curVN;
+    }
+
+ABORT:
+
+    if (numVNs != NULL)
+    {
+        *numVNs = curVN;
+    }
+
+    FM_LOG_EXIT(FM_LOG_CAT_VN, status);
+
+}   /* end GetVNList */
+
+
+
+
+/*****************************************************************************/
+/** GetVNTunnelList
+ * \ingroup intVN
+ *
+ * \chips           FM6000, FM10000
+ *
+ * \desc            Returns a list of virtual network tunnels.
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \param[in]       maxTunnels is the size of tunnelIds, being the maximum
+ *                  number of tunnels that can be contained inside the array.
+ *
+ * \param[out]      numTunnels points to caller-provided storage into which
+ *                  will be stored the number of tunnels returned.
+ *
+ * \param[out]      tunnelIds is an array, maxTunnels in length, that this
+ *                  function will fill with the IDs for each tunnel.
+ *
+ * \return          FM_OK if successful.
+ * \return          FM_ERR_NO_MORE if there are no virtual network tunnels.
+ * \return          FM_ERR_BUFFER_FULL if maxTunnels was too small to
+ *                  accomodate the entire list of virtual network tunnels.
+ *
+ *****************************************************************************/
+static fm_status GetVNTunnelList(fm_int  sw,
+                                 fm_int  maxTunnels,
+                                 fm_int *numTunnels,
+                                 fm_int *tunnelIds)
+{
+    fm_switch *     switchPtr;
+    fm_status       status;
+    fm_uint64       tunId64;
+    fm_vnTunnel *   tunnel;
+    fm_int          index;
+    fm_treeIterator iter;
+
+    FM_LOG_ENTRY( FM_LOG_CAT_VN,
+                  "sw = %d, maxTunnels = %d, numTunnels = %p, "
+                  "tunnelIds = %p\n",
+                  sw,
+                  maxTunnels,
+                  (void *) numTunnels,
+                  (void *) tunnelIds );
+
+    switchPtr = GET_SWITCH_PTR(sw);
+    index     = 0;
+
+    fmTreeIterInit(&iter, &switchPtr->vnTunnels);
+
+    while (1)
+    {
+        status = fmTreeIterNext( &iter, &tunId64, (void **) &tunnel );
+
+        if (status == FM_ERR_NO_MORE)
+        {
+            status = FM_OK;
+            break;
+        }
+
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_VN, status);
+
+        if (index >= maxTunnels)
+        {
+            status = FM_ERR_BUFFER_FULL;
+            break;
+        }
+
+        tunnelIds[index] = (fm_uint32) tunId64;
+
+        ++index;
+    }
+
+
+ABORT:
+
+    if (numTunnels != NULL)
+    {
+        *numTunnels = index;
+    }
+
+    FM_LOG_EXIT(FM_LOG_CAT_VN, status);
+
+}   /* end GetVNTunnelList */
+
+
+
+
 /*****************************************************************************
  * Public Functions
  *****************************************************************************/
@@ -1433,10 +1617,6 @@ fm_status fmGetVNList(fm_int           sw,
 {
     fm_switch *        switchPtr;
     fm_status          status;
-    fm_uint64          vsid;
-    fm_virtualNetwork *vn;
-    fm_int             curVN;
-    fm_treeIterator    iter;
     fm_bool            lockTaken;
 
     FM_LOG_ENTRY_API( FM_LOG_CAT_VN,
@@ -1451,7 +1631,6 @@ fm_status fmGetVNList(fm_int           sw,
     VALIDATE_AND_PROTECT_SWITCH(sw);
 
     switchPtr = GET_SWITCH_PTR(sw);
-    curVN     = 0;
     lockTaken = FALSE;
 
     if (switchPtr->maxVNTunnels <= 0)
@@ -1471,32 +1650,8 @@ fm_status fmGetVNList(fm_int           sw,
 
     lockTaken = TRUE;
 
-    fmTreeIterInit(&iter, &switchPtr->vnTunnels);
-
-    while (1)
-    {
-        status = fmTreeIterNext( &iter, &vsid, (void **) &vn );
-
-        if (status == FM_ERR_NO_MORE)
-        {
-            status = FM_OK;
-            break;
-        }
-
-        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_VN, status);
-
-        if (curVN >= maxVNs)
-        {
-            status = FM_ERR_BUFFER_FULL;
-            break;
-        }
-
-        vsidList[curVN]       = (fm_uint32) vsid;
-        descriptorList[curVN] = vn->descriptor;
-
-        ++curVN;
-    }
-
+    status = GetVNList(sw, maxVNs, numVNs, vsidList, descriptorList);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_VN, status);
 
 ABORT:
 
@@ -1506,11 +1661,6 @@ ABORT:
     }
 
     UNPROTECT_SWITCH(sw);
-
-    if (numVNs != NULL)
-    {
-        *numVNs = curVN;
-    }
 
     FM_LOG_EXIT_API(FM_LOG_CAT_VN, status);
 
@@ -1756,10 +1906,6 @@ fm_status fmGetVNTunnelList(fm_int  sw,
 {
     fm_switch *     switchPtr;
     fm_status       status;
-    fm_uint64       tunId64;
-    fm_vnTunnel *   tunnel;
-    fm_int          index;
-    fm_treeIterator iter;
     fm_bool         lockTaken;
 
     FM_LOG_ENTRY_API( FM_LOG_CAT_VN,
@@ -1773,7 +1919,6 @@ fm_status fmGetVNTunnelList(fm_int  sw,
     VALIDATE_AND_PROTECT_SWITCH(sw);
 
     switchPtr = GET_SWITCH_PTR(sw);
-    index     = 0;
     lockTaken = FALSE;
 
     if (switchPtr->maxVNTunnels <= 0)
@@ -1793,31 +1938,8 @@ fm_status fmGetVNTunnelList(fm_int  sw,
 
     lockTaken = TRUE;
 
-    fmTreeIterInit(&iter, &switchPtr->vnTunnels);
-
-    while (1)
-    {
-        status = fmTreeIterNext( &iter, &tunId64, (void **) &tunnel );
-
-        if (status == FM_ERR_NO_MORE)
-        {
-            status = FM_OK;
-            break;
-        }
-
-        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_VN, status);
-
-        if (index >= maxTunnels)
-        {
-            status = FM_ERR_BUFFER_FULL;
-            break;
-        }
-
-        tunnelIds[index] = (fm_uint32) tunId64;
-
-        ++index;
-    }
-
+    status = GetVNTunnelList(sw, maxTunnels, numTunnels, tunnelIds);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_VN, status);
 
 ABORT:
 
@@ -1827,11 +1949,6 @@ ABORT:
     }
 
     UNPROTECT_SWITCH(sw);
-
-    if (numTunnels != NULL)
-    {
-        *numTunnels = index;
-    }
 
     FM_LOG_EXIT_API(FM_LOG_CAT_VN, status);
 
@@ -3518,4 +3635,123 @@ ABORT:
     FM_LOG_EXIT_API(FM_LOG_CAT_VN, status);
 
 }   /* end fmDeleteVNVsi */
+
+
+
+
+/*****************************************************************************/
+/** fmDbgDumpVN
+ * \ingroup intDebug
+ *
+ * \chips           FM10000
+ *
+ * \desc            Display the virtual networks status of a switch
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \return          FM_OK if successful.
+ *
+ *****************************************************************************/
+fm_status fmDbgDumpVN(fm_int sw)
+{
+    fm_switch *        switchPtr;
+    fm_status          status;
+    fm_bool            lockTaken;
+    fm_int             numVNs;
+    fm_uint32          vsidList[FM_MAX_NUM_VNS];
+    fm_vnDescriptor    vnDescriptorList[FM_MAX_NUM_VNS];
+    fm_int             numTunnels;
+    fm_int *           tunnelIds;
+    fm_int             i;
+
+    FM_LOG_ENTRY_API(FM_LOG_CAT_VN, "sw = %d\n", sw);
+
+    VALIDATE_AND_PROTECT_SWITCH(sw);
+
+    switchPtr = GET_SWITCH_PTR(sw);
+    lockTaken = FALSE;
+    tunnelIds = NULL;
+
+    if (switchPtr->maxVNTunnels <= 0)
+    {
+        status = FM_ERR_UNSUPPORTED;
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_VN, status);
+    }
+
+    tunnelIds = fmAlloc(sizeof(fm_int) * switchPtr->maxVNTunnels);
+    if (tunnelIds == NULL)
+    {
+        status = FM_ERR_NO_MEM;
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_VN, status);
+    }
+
+    status = fmCaptureReadLock(&switchPtr->routingLock, FM_WAIT_FOREVER);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_VN, status);
+
+    lockTaken = TRUE;
+
+    FM_LOG_PRINT("\n*******************************************************************************\n");
+    FM_LOG_PRINT("***   VN API state of switch %d\n", sw);
+    FM_LOG_PRINT("*******************************************************************************\n\n");
+
+    FM_API_CALL_FAMILY(status, switchPtr->DbgDumpVN, sw);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_VN, status);
+
+
+    FM_LOG_PRINT("\nVirtual Networks\n");
+    FM_LOG_PRINT("*******************************************************************************\n\n");
+
+    status = GetVNList(sw,
+                       FM_MAX_NUM_VNS,
+                       &numVNs,
+                       vsidList,
+                       vnDescriptorList);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_VN, status);
+
+    for (i = 0; i < numVNs; i++)
+    {
+        FM_API_CALL_FAMILY(status,
+                           switchPtr->DbgDumpVirtualNetwork,
+                           sw,
+                           vsidList[i]);
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_VN, status);
+    }
+
+    FM_LOG_PRINT("\nTunnels\n");
+    FM_LOG_PRINT("*******************************************************************************\n\n");
+
+
+    status = GetVNTunnelList(sw,
+                             switchPtr->maxVNTunnels,
+                             &numTunnels,
+                             tunnelIds);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_VN, status);
+
+    for (i = 0; i < numTunnels; i++)
+    {
+        FM_API_CALL_FAMILY(status,
+                           switchPtr->DbgDumpVNTunnel,
+                           sw,
+                           tunnelIds[i]);
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_VN, status);
+    }
+
+ABORT:
+
+    if (lockTaken)
+    {
+        fmReleaseReadLock(&switchPtr->routingLock);
+    }
+
+    if (tunnelIds != NULL)
+    {
+        fmFree(tunnelIds);
+    }
+
+    UNPROTECT_SWITCH(sw);
+
+    FM_LOG_EXIT_API(FM_LOG_CAT_VN, status);
+
+}   /* end fmDbgDumpVN */
+
 

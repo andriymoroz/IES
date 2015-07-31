@@ -1247,4 +1247,9 @@ fm_status fmDbgSetPacketDefaultSourcePort(fm_int sw, fm_int sourcePort);
 
 fm_status fmDbgDumpScheduler(fm_int sw);
 
+/* BSM registers debug functions */ 
+fm_status fmDbgDumpBsmScratch(fm_int sw, fm_uint32 regMask);
+fm_status fmDbgPollBsmStatus(fm_int sw, fm_uint32 miliSec);
+fm_status fmDbgPollLtssm(fm_int sw, fm_int pep, fm_uint32 miliSec);
+
 #endif /* __FM_FM_DEBUG_H */

@@ -29,11 +29,11 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
+ *****************************************************************************/
 
 #define FM10000_SERDES_STRUCT_MAGIG_NUMBER      0xaa55abcd
 
- 
+
 #define FM10000_EPL_RING_SERDES_SBUS_BASE_ADDR  0x02
 #define FM10000_PCIE_RING_SERDES_SBUS_BASE_ADDR 0x02
 
@@ -44,43 +44,43 @@
 #define FM10000_SBM_EPL_RING_SPICO_ADDRESS      0x27
 #define FM10000_SBM_PCIE_RING_SPICO_ADDRESS     0x25
 
- 
+
 #define FM10000_SERDES_EPL_BCAST                0xFF
 #define FM10000_SERDES_PCIE_BCAST               0xFF
 
- 
+
 #define FM10000_EPL_RING_SERDES_NUM             36
 
- 
+
 #define FM10000_SERDES_SAI_ACCESS_DLY_THRESH    5
 #define FM10000_SERDES_SAI_ACCESS_LOOP_DELAY    1000
 
- 
+
 #define FM10000_SERDES_TIMESTAMPMS_MAX          1000000
 
- 
- 
+
+
 #define FM10000_SERDES_SHORT_TIMEOUT            70000
 
- 
- 
+
+
 #define FM10000_SERDES_LONG_TIMEOUT             700000
 
- 
- 
+
+
 #define FM10000_SERDES_XLONG_TIMEOUT           2000000
 
- 
- 
-#define FM10000_SERDES_DEFERRED_KR_COMPLETE    500000
 
- 
+
+#define FM10000_SERDES_DEFERRED_KR_COMPLETE    200000
+
+
 #define FM10000_SERDES_RESET_DELAY             20000
 
- 
+
 #define FM10000_SERDES_PLL_CAL_CNT_THRESHOLD    200
 
- 
+
 #define FM10000_SERDES_CTRL_TX_ENA              (1 << 0)
 #define FM10000_SERDES_CTRL_RX_ENA              (1 << 1)
 #define FM10000_SERDES_CTRL_OUTPUT_ENA          (1 << 2)
@@ -88,96 +88,96 @@
 #define FM10000_SERDES_CTRL_RX_ENA_MASK         (1 << 4)
 #define FM10000_SERDES_CTRL_OUTPUT_ENA_MASK     (1 << 5)
 
- 
+
 #define FM10000_SBM_INTERRUPT_TIMEOUT_MSEC      5000
 #define FM10000_SERDES_INTERRUPT_TIMEOUT_MSEC   3000
 #define FM10000_SERDES_BIST_TIMEOUT_MSEC        5000
 #define FM10000_SERDES_INT02_TIMEOUT_MSEC       5000
 
- 
+
 #define FM10000_SERDES_INT_FAST_TIMEOUT_CYCLES  100
 
- 
+
 #define FM10000_SERDES_DFE_DFAULT_HF            0x00;
 #define FM10000_SERDES_DFE_DFAULT_LF            0x0c;
 #define FM10000_SERDES_DFE_DFAULT_DC            0x38;
 #define FM10000_SERDES_DFE_DFAULT_BW            0x0f;
 
- 
- 
+
+
 #define FM10000_SERDES_SIGNALOK_DEBOUNCE_THRESHOLD  3
-  
- 
+
+
 #define FM10000_EYE_DIAGRAM_SAMPLE_ARRAY_NUM    8
 
- 
- 
- 
+
+
+
 #define FM10000_SERDES_EYE_SAMPLES              (64*64)
 
- 
- 
+
+
 #define FM10000_SERDES_DFE_SHORT_TIMEOUT        100000
 
- 
- 
+
+
 #define FM10000_SERDES_DFE_STOP_TUNING_TIMEOUT  200000
 
- 
+
 #define FM10000_SERDES_DFE_DFAULT_DEBOUNCE_TIME 100
 
- 
- 
- 
+
+
+
 #define FM10000_SERDES_DFE_ADAPTIVE_TIMEOUT_MIN 2
 #define FM10000_SERDES_DFE_ADAPTIVE_TIMEOUT_MAX 60
 
- 
+
 #define FM10000_SERDES_DFE_TUNING_MAX_RETRIES   5
 
- 
- 
- 
+
+
+
 #define FM10000_SERDES_ICAL_TUNING_MAX_CYCLES   100
 
- 
- 
- 
+
+
+
 #define FM10000_SERDES_DFE_TUNING_MAX_CYCLES    100
 
 
- 
- 
+
+
 #define FM10000_SERDES_DFE_DATA_LEVEL0_THRESHLD 10
 
- 
+
 #define FM10000_SERDES_DFE_STOP_CYCLE_DELAY     200000
 
- 
+
 #define FM10000_SERDES_ICAL_STOP_MAX_CYCLES     10
 
- 
+
 #define FM10000_SERDES_PCAL_STOP_MAX_CYCLES     500
 
- 
+
 #define FM10000_SERDES_DFE_PAUSE_TUNING_DELAY   100000000
 
- 
+
 #define FM10000_SERDES_DFE_PAUSE_TUNING_LOOPS   75
 
- 
+
 #define FM10000_SERDES_KR_TRAINING_MAX_WAIT     (512000 / FM10000_SERDES_SHORT_TIMEOUT + 1)
 
- 
+
 #define FM10000_SERDES_KR_WAIT_SIGNAL_OK_CYCLE_DELAY    500000
 
- 
+
 #define FM10000_SERDES_KR_WAIT_SIGNAL_OK_MAX_CYCLES     500
 
- 
- 
- 
- 
+
+
+
+
 
 #define FM10000_SERDES_DIVIDER_ETHMODE_1000X        0x08
 #define FM10000_SERDES_DIVIDER_ETHMODE_2500X        0x14
@@ -185,10 +185,10 @@
 #define FM10000_SERDES_DIVIDER_ETHMODE_10G          0x42
 #define FM10000_SERDES_DIVIDER_ETHMODE_25G          0xa5
 
- 
+
 #define FM10000_SERDES_KR_OP_MODE_START_TRNG_ENABLD 0x02
 
- 
+
 #define FM10000_SERDES_BIST_PATTERN_IDLECHAR        0x27c
 #define FM10000_SERDES_BIST_PATTERN_LOWFREQ         0x07c
 #define FM10000_SERDES_BIST_PATTERN_HIGHFREQ        0x155
@@ -199,16 +199,16 @@
 #define FM10000_SERDES_BIST_USER_PATTERN_DEFAULT    0x3333333333
 
 
- 
+
 typedef enum
 {
-    FM10000_PMD_CONTROL_FV16G           = 0,         
+    FM10000_PMD_CONTROL_FV16G           = 0,
 
-    FM10000_PMD_CONTROL_CLAUSE72,                    
+    FM10000_PMD_CONTROL_CLAUSE72,
 
-    FM10000_PMD_CONTROL_CLAUSE84,                    
+    FM10000_PMD_CONTROL_CLAUSE84,
 
-    FM10000_PMD_CONTROL_CLAUSE92,                    
+    FM10000_PMD_CONTROL_CLAUSE92,
 
     FM10000_PMD_CONTROL_MAX
 
@@ -219,28 +219,28 @@ typedef enum
 {
     FM10000_LANE_BITRATE_UNKNOWN = -1,
 
-     
+
     FM10000_LANE_BITRATE_25GBPS = 0,
 
-     
+
     FM10000_LANE_BITRATE_10GBPS,
 
-     
+
     FM10000_LANE_BITRATE_6GBPS,
 
-     
+
     FM10000_LANE_BITRATE_2500MBPS,
 
-     
+
     FM10000_LANE_BITRATE_1000MBPS,
 
-     
+
     FM10000_LANE_BITRATE_100MBPS,
 
-     
+
     FM10000_LANE_BITRATE_10MBPS,
 
-     
+
     FM10000_LANE_BITRATE_MAX,
 
 } fm10000_laneBitrate;
@@ -248,45 +248,55 @@ typedef enum
 
 typedef enum
 {
+
     FM10000_SERDES_WIDTH_10 = 0,
+
     FM10000_SERDES_WIDTH_20 = 1,
+
     FM10000_SERDES_WIDTH_40 = 3,
 
 } fm_serdesWidthMode;
 
+
+
 typedef enum
 {
+
     FM10000_SERDES_DMA_TYPE_ESB,
+
     FM10000_SERDES_DMA_TYPE_LSB,
+
     FM10000_SERDES_DMA_TYPE_LSB_DIRECT,
+
     FM10000_SERDES_DMA_TYPE_DMEM,
+
     FM10000_SERDES_DMA_TYPE_DMAREG
 } fm10000SerdesDmaType;
 
 
- 
+
 typedef enum
 {
     FM10000_SPICO_BIST_CMD_START = 1,
     FM10000_SPICO_BIST_CMD_CHECK = 2,
-    FM10000_SPICO_BIST_CMD_ALL   = 3,            
+    FM10000_SPICO_BIST_CMD_ALL   = 3,
 
 } fm10000SerdesSpicoBistCmdType;
 
 
- 
+
 typedef enum
 {
-    FM10000_SERDES_LB_OFF,                   
-    FM10000_SERDES_LB_INTERNAL_ON,           
-    FM10000_SERDES_LB_INTERNAL_OFF,          
-    FM10000_SERDES_LB_PARALLEL_ON_REFCLK,    
-    FM10000_SERDES_LB_PARALLEL_ON_RX_CLK,    
-    FM10000_SERDES_LB_PARALLEL_OFF,          
+    FM10000_SERDES_LB_OFF,
+    FM10000_SERDES_LB_INTERNAL_ON,
+    FM10000_SERDES_LB_INTERNAL_OFF,
+    FM10000_SERDES_LB_PARALLEL_ON_REFCLK,
+    FM10000_SERDES_LB_PARALLEL_ON_RX_CLK,
+    FM10000_SERDES_LB_PARALLEL_OFF,
 
 } fm10000SerdesLbMode;
 
- 
+
 typedef enum
 {
     FM10000_SERDES_POLARITY_NONE,
@@ -298,7 +308,7 @@ typedef enum
 
 
 
- 
+
 typedef enum
 {
     FM10000_SERDES_RX_CMP_DATA_OFF,
@@ -313,7 +323,7 @@ typedef enum
 } fm10000SerdesRxCmpData;
 
 
- 
+
 typedef enum
 {
     FM10000_SERDES_TX_DATA_SEL_CORE,
@@ -330,7 +340,7 @@ typedef enum
 
 
 
- 
+
 typedef enum
 {
     FM10000_SERDES_SEL_TX,
@@ -340,18 +350,18 @@ typedef enum
 } fm10000SerdesSelect;
 
 
- 
+
 typedef enum
 {
     FM10000_SERDES_EQ_SEL_PRECUR,
     FM10000_SERDES_EQ_SEL_ATTEN,
     FM10000_SERDES_EQ_SEL_POSTCUR,
-     
+
     FM10000_SERDES_EQ_SEL_ALL
 } fm10000SerdesEqSelect;
 
 
- 
+
 typedef enum
 {
     FM10000_SERDES_RX_TERM_AGND,
@@ -361,60 +371,60 @@ typedef enum
 } fm10000SerdesRxTerm;
 
 
- 
+
 typedef enum
 {
-     
+
     FM10000_SERDES_PLL_CALIBRATION_DISABLED,
 
- 
- 
- 
- 
- 
+
+
+
+
+
     FM10000_SERDES_PLL_CALIBRATION_ENABLED,
 
- 
- 
- 
+
+
+
     FM10000_SERDES_PLL_CALIBRATION_ADAPTIVE,
 
-     
+
     FM10000_SERDES_PLL_CALIBRATION_MAX
 
 } fm10000SerdesPllCal;
 
 
 
- 
+
 typedef enum
 {
-     
+
     FM10000_SERDES_KR_PCAL_MODE_STATIC,
 
-     
+
     FM10000_SERDES_KR_PCAL_MODE_ONE_SHOT,
 
-     
+
     FM10000_SERDES_KR_PCAL_MODE_CONTINUOUS,
 
-     
+
     FM10000_SERDES_KR_PCAL_MODE_MAX
 
 } fm10000SerdesKrPcalMode;
 
 
 
- 
- 
- 
- 
+
+
+
+
 #define FM10000_SERDES_DFE_PARAM_DFE_STATUS_b_CoarseInProgress  0
 #define FM10000_SERDES_DFE_PARAM_DFE_STATUS_b_FineInProgress    1
 #define FM10000_SERDES_DFE_PARAM_DFE_STATUS_b_AdaptiveEnabled   6
 
 
- 
+
 typedef enum
 {
     FM10000_SERDES_DGB_DISABLED,
@@ -423,24 +433,24 @@ typedef enum
 } fm10000_serDesDbgLvl;
 
 
- 
- 
- 
- 
+
+
+
+
 typedef enum
 {
-     
+
     FM10000_SERDES_USE_BASIC_STATE_MACHINE,
 
-     
+
     FM10000_SERDES_USE_STUB_STATE_MACHINE,
 
- 
- 
- 
+
+
+
     FM10000_SERDES_USE_TEST_MODE_STATE_MACHINE,
 
-     
+
     FM10000_SERDES_USE_STATE_MACHINE_MAX
 
 } fm10000_serDesSmMode;
@@ -453,19 +463,19 @@ typedef enum
 #define FM10000_SERDES_DFE_SM_HISTORY_SIZE  16
 #define FM10000_SERDES_DFE_SM_RECORD_SIZE   sizeof(int)
 
- 
+
 #define FM10000_SERDES_PWRUP_INTR_MASK            \
     ( (1U << FM10000_SERDES_IP_b_TxRdy)      |    \
       (1U << FM10000_SERDES_IP_b_RxRdy) )
 
- 
+
 #define FM10000_SERDES_OPSTATE_INTR_MASK          \
     ( (1U << FM10000_SERDES_IP_b_RxSignalOk)  )
 
- 
+
 #define FM10000_SERDES_INT_MASK             (FM10000_SERDES_PWRUP_INTR_MASK | FM10000_SERDES_OPSTATE_INTR_MASK)
 
- 
+
 extern fm_text fm10000LaneBitRatesMap[FM10000_LANE_BITRATE_MAX];
 
 #define VALIDATE_SERDES(serdes)                              \
@@ -477,7 +487,7 @@ extern fm_text fm10000LaneBitRatesMap[FM10000_LANE_BITRATE_MAX];
         return FM_ERR_INVALID_ARGUMENT;                      \
     }
 
- 
+
 typedef struct _fm10000_serdes              fm10000_serdes;
 typedef struct _fm10000_lane                fm10000_lane;
 typedef struct _fm10000_serDesSmEventInfo   fm10000_serDesSmEventInfo;
@@ -499,33 +509,33 @@ typedef struct
 
 } fm10000_serdesMap;
 
- 
- 
- 
+
+
+
 struct _fm10000_serdes
 {
     fm_uint32                       magicNumber;
 
- 
- 
- 
- 
- 
- 
- 
- 
+
+
+
+
+
+
+
+
     fm_status                       (*SerdesGetEyeHeight)(fm_int sw, fm_int serdes, fm_int *pEyeScore, fm_int *pHeightmV);
 
     fm_status                       (*SerdesGetEyeScore)(fm_int sw, fm_int serdes, fm_int *pHeight, fm_int *pWidth);
 
     fm_status                       (*SerdesGetEyeDiagram)(fm_int sw, fm_int serdes, fm_eyeDiagramSample *pSampleTable);
 
- 
- 
- 
- 
- 
- 
+
+
+
+
+
+
     fm_status                       (*dbgDump)(fm_int sw, fm_int serdes, fm_bool detailed);
 
     fm_status                       (*dbgDumpStatus)(fm_int sw, fm_int serdes);
@@ -578,258 +588,261 @@ struct _fm10000_serdes
 
 };
 
- 
+
 struct _fm10000_dfeSmEventInfo
 {
- 
- 
- 
-
-    fm_switch        *switchPtr;      
-    fm_lane          *lanePtr;        
-    fm10000_lane     *laneExt;        
-    fm10000_laneDfe  *laneDfe;        
-    fm_laneAttr      *laneAttr;       
-
- 
- 
- 
 
 
- 
- 
- 
+
+
+    fm_switch        *switchPtr;
+    fm_lane          *lanePtr;
+    fm10000_lane     *laneExt;
+    fm10000_laneDfe  *laneDfe;
+    fm_laneAttr      *laneAttr;
+
+
+
+
+
+
+
+
+
 };
 
 
 
- 
- 
- 
+
+
+
 struct  _fm10000_laneDfe
 {
-     
+
     fm10000_lane               *pLaneExt;
 
-     
+
     fm_smHandle                 smHandle;
 
-     
+
     fm_int                      smType;
 
-     
+
     fm_int                      transitionHistorySize;
 
-     
+
     fm_timerHandle              timerHandle;
 
-     
+
     fm10000_dfeSmEventInfo      eventInfo;
 
- 
- 
- 
- 
- 
- 
- 
+
+
+
+
+
+
+
     fm_uint32                   dfeTuningStat;
 
-     
+
     fm_int                      retryCntr;
 
-     
+
     fm_int                      cycleCntr;
 
-     
+
     fm_bool                     dfeAdaptive;
 
-     
+
     fm_bool                     sendDfeComplete;
 
-     
+
     fm_bool                     pCalKrMode;
 
- 
- 
- 
+
+
+
     fm_int                      dfeDebounceTime;
 
-     
+
     fm_uint32                   dfeDataLevThreshold;
 
-     
+
     fm_bool                     pause;
 
-     
+
     fm_int                      dfe_HF;
 
-     
+
     fm_int                      dfe_LF;
 
-     
+
     fm_int                      dfe_DC;
 
-     
+
     fm_int                      dfe_BW;
 
-     
+
     fm_int                      eyeScoreHeight;
 
-     
+
     fm_int                      eyeScoreHeightmV;
 
- 
- 
- 
+
+
+
     fm_uint32                   stopCycleCnt;
 
-     
+
     fm_uint32                   forcedStopCycleCnt;
 
- 
- 
+
+
     fm_uint32                   stopCoarseDelayAvg;
 
- 
- 
+
+
     fm_uint32                   stopCoarseDelayMax;
 
- 
- 
+
+
     fm_uint32                   stopFineDelayAvg;
 
- 
- 
+
+
     fm_uint32                   stopFineDelayMax;
 
- 
- 
+
+
     fm_uint32                   stopTuningDelayLstMs;
 
- 
- 
+
+
     fm_uint32                   stopTuningDelayAvgMs;
 
- 
- 
+
+
     fm_uint32                   stopTuningDelayMaxMs;
 
- 
- 
- 
+
+
+
     fm_uint32                   startCycleCnt;
 
- 
- 
+
+
     fm_uint32                   iCalDelayAvg;
 
- 
- 
+
+
     fm_uint32                   iCalDelayMax;
 
- 
- 
+
+
     fm_uint32                   pCalDelayAvg;
 
- 
- 
+
+
     fm_uint32                   pCalDelayMax;
 
-     
+
     fm_uint32                   refTimeMs;
 
- 
- 
+
+
     fm_uint32                   iCalDelayLastMs;
 
- 
- 
+
+
     fm_uint32                   iCalDelayAvgMs;
 
- 
- 
+
+
     fm_uint32                   iCalDelayMaxMs;
 
- 
- 
+
+
     fm_uint32                   pCalDelayLastMs;
 
- 
- 
+
+
     fm_uint32                   pCalDelayAvgMs;
 
- 
- 
+
+
     fm_uint32                   pCalDelayMaxMs;
 };
 
 
- 
- 
- 
+
+
+
 struct  _fm10000_laneKr
 {
-     
+
     fm10000_lane               *pLaneExt;
 
-     
+
     fm_bool                     invrtAdjPolarity;
 
-     
+
     fm_bool                     disaTimeout;
 
-     
+
     fm_bool                     disaTxEqAdjReq;
 
-     
+
     fm_bool                     resetParameters;
 
-     
+
     fm10000SerdesKrPcalMode     pCalMode;
 
-     
+
     fm_int                      krTrainingCtrlCnt;
 
-     
+
     fm_int                      relLane;
 
-     
+
     fm_uint32                   seed;
 
-     
+
     fm10000_pmdClauseConfig     clause;
 
-     
-    fm_bool                     opt_TT_FECreq;      
 
-     
-    fm_bool                     opt_TT_FECcap;      
+    fm_bool                     opt_TT_FECreq;
 
-     
-    fm_bool                     opt_TT_TF;          
 
-     
+    fm_bool                     opt_TT_FECcap;
+
+
+    fm_bool                     opt_TT_TF;
+
+
     fm_int                      eyeScoreHeight;
 
- 
- 
- 
+
+
+
     fm_uint32                   startKrCycleCnt;
 
-     
+
+    fm_uint32                   krTimeoutCnt;
+
+
     fm_uint32                   krErrorCnt;
 
-     
+
     fm_uint32                   refTimeMs;
 
-     
+
     fm_uint32                   krTrainingDelayLastMs;
 
-     
+
     fm_uint32                   krTrainingDelayAvgMs;
 
-     
+
     fm_uint32                   krTrainingDelayMaxMs;
 
 };
@@ -837,21 +850,21 @@ struct  _fm10000_laneKr
 
 
 
- 
+
 struct _fm10000_serDesSmEventInfo
 {
- 
- 
- 
 
-    fm_switch        *switchPtr;      
-    fm_lane          *lanePtr;        
-    fm10000_lane     *laneExt;        
-    fm_laneAttr      *laneAttr;       
 
- 
- 
- 
+
+
+    fm_switch        *switchPtr;
+    fm_lane          *lanePtr;
+    fm10000_lane     *laneExt;
+    fm_laneAttr      *laneAttr;
+
+
+
+
 
     union
     {
@@ -861,177 +874,177 @@ struct _fm10000_serDesSmEventInfo
 
     } info;
 
- 
- 
- 
+
+
+
 
 };
 
 
 
- 
- 
- 
+
+
+
 struct  _fm10000_lane
 {
-      
+
     fm_lane                    *base;
 
-     
+
     fm_int                      lane;
 
-     
+
     fm_int                      physLane;
 
-     
+
     fm_int                      epl;
 
-     
+
     fm_int                      channel;
 
-     
+
     fm_int                      serDes;
 
-     
+
     fm_smHandle                 smHandle;
 
-     
+
     fm_int                      smType;
 
-     
+
     fm_int                      transitionHistorySize;
 
-     
+
     fm10000_laneBitrate         bitRate;
 
-     
+
     fm10000_laneBitrate         prevBitRate;
 
-     
-    fm_serdesWidthMode          widthMode; 
 
-     
+    fm_serdesWidthMode          widthMode;
+
+
     fm_uint                     rateSel;
 
-     
+
     fm_dfeMode                  dfeMode;
 
- 
- 
- 
- 
+
+
+
+
     fm_uint                     eeeModeActive;
 
-     
+
     fm10000_laneDfe             dfeExt;
 
-     
+
     fm10000_laneKr              krExt;
 
-     
+
     fm_timerHandle              timerHandle;
 
-     
+
     fm_uint32                   serdesInterruptMask;
 
-     
+
     fm10000_serDesSmEventInfo   eventInfo;
 
-     
+
     fm10000_serDesDbgLvl        dbgLvl;
 
-     
+
     fm_int                      signalOkDebounce;
 
-     
+
     fm_bool                     krTrainingEn;
 
-     
+
     fm_bool                     serDesActive;
 
-     
+
     fm_uint32                   serDesEnableCache;
 
-     
+
     fm_uint32                   serDesEnableRetryCtrl;
 
- 
- 
- 
- 
+
+
+
+
     fm_uint32                   serDesPllStatus;
 
- 
- 
- 
+
+
+
     fm_bool                     nearLoopbackEn;
 
- 
- 
- 
+
+
+
     fm_uint32                   farLoopbackStatus;
 
-     
+
     fm_bool                     bistActive;
 
-     
+
     fm_int                      bistTxSubMode;
 
-     
+
     fm_int                      bistRxSubMode;
 
- 
- 
- 
- 
+
+
+
+
     fm_uint64                   bistCustomData0;
 
- 
- 
+
+
     fm_uint64                   bistCustomData1;
 
-     
-     
+
+
     fm_byte                     pllMask;
 
- 
- 
- 
- 
- 
- 
- 
+
+
+
+
+
+
+
     fm10000SerdesPllCal         pllCalibrationMode;
 
-     
+
     fm_uint32                   pllCalibrationCycleCnt ;
 
-     
+
     fm_uint32                   txPhaseSlip;
 
-     
+
     fm_uint32                   rxPhaseSlip;
 
-     
+
     fm10000SerdesRxTerm         rxTermination;
 
- 
- 
+
+
     void                       *pEyeDiagExt;
 
-     
+
     fm10000_port               *nativePortExt;
 
-     
+
     fm10000_port               *parentPortExt;
 
-     
+
     FM_DLL_DEFINE_NODE( _fm10000_lane, nextLane, prevLane );
 
-     
+
     fm_uint32                   fResetCnt;
 
-     
+
     fm_uint32                   serdesRestoredCnt;
 };
 
@@ -1064,8 +1077,8 @@ fm_status fm10000SbmSpicoIntWrite(fm_int sw, fm_serdesRing ring, fm_uint sbusAdd
 fm_status fm10000SbmSpicoIntRead(fm_int sw, fm_serdesRing ring, fm_uint sbusAddr, fm_uint32 *value);
 fm_status fm10000SerdesSpicoInt(fm_int     sw,
                                 fm_int     serdes,
-                                fm_uint    intNum, 
-                                fm_uint32  param, 
+                                fm_uint    intNum,
+                                fm_uint32  param,
                                 fm_uint32 *pResult);
 fm_status fm10000SerdesPcieSpicoInt(fm_int     sw,
                                     fm_int     serDes,
@@ -1187,10 +1200,10 @@ fm_status fm10000SbmGetBuildRevisionId(fm_int        sw,
                                        fm_serdesRing ring,
                                        fm_uint      *pValue);
 
-fm_status fm10000SerdesChckCrcVersionBuildId(fm_int           sw,
-                                             fm_int           firstSerdes,
-                                             fm_int           lastSerdes,
-                                             fm_uint32        expectedCodeVersionBuildId);
+fm_status fm10000SerdesChckCrcVersionBuildId(fm_int     sw,
+                                             fm_int     firstSerdes,
+                                             fm_int     lastSerdes,
+                                             fm_uint32  expectedCodeVersionBuildId);
 fm_status fm10000SbmChckCrcVersionBuildId(fm_int     sw,
                                           fm_int     ring,
                                           fm_uint32  expectedCodeVersionBuildId);
@@ -1371,8 +1384,8 @@ fm_status fm10000ClearSerdesRxPattern(fm_int sw,
                                       fm_int serdes);
 fm_status fm10000ResetSerdesErrorCounter(fm_int sw,
                                          fm_int serdes);
-fm_status fm10000GetSerdesErrorCounter(fm_int     sw, 
-                                       fm_int     serdes, 
+fm_status fm10000GetSerdesErrorCounter(fm_int     sw,
+                                       fm_int     serdes,
                                        fm_uint32 *counter);
 fm_status fm10000SerdesInjectErrors(fm_int              sw,
                                     fm_int              serdes,
@@ -1448,6 +1461,8 @@ fm_status fm10000SerdesSetBistUserPattern(fm_int     sw,
                                           fm_uint64 *pSerDesBistUserPatternHigh);
 fm_status fm10000SerdesSaveKrTrainingDelayInfo(fm_int       sw,
                                                fm_int       serDes);
+fm_status fm10000SerdesSaveKrTrainingTimeoutInfo(fm_int       sw,
+                                                 fm_int       serDes);
 fm_status fm10000SerdesIncrKrStatsCounter(fm_int       sw,
                                           fm_int       serDes,
                                           fm_int       counterSpec);
@@ -1525,11 +1540,12 @@ fm_status fm10000SerdesSendDfeEventReq(fm_int    sw,
 
 fm_status fm10000SerdesConfigureEeeInt(fm_int sw, fm_int serDes);
 fm_int    fm10000SerdesGetPepFromMap(fm_int serDes);
+fm_int    fm10000EnableSerDesTransitionDebugMode(fm_int debugMode);
 
- 
- 
 
- 
+
+
+
 extern const fm_uint16 fm10000_sbus_master_code_prd[];
 extern const fm_uint32 fm10000_sbus_master_code_size_prd;
 extern const fm_uint32 fm10000_sbus_master_code_versionBuildId_prd;
@@ -1550,7 +1566,7 @@ extern const fm_uint16 fm10000_serdes_swap_code_prd2[];
 extern const fm_uint32 fm10000_serdes_swap_code_size_prd2;
 extern const fm_uint32 fm10000_serdes_swap_code_versionBuildId_prd2;
 
- 
+
 extern const fm_uint16 fm10000_sbus_master_code_dev[];
 extern const fm_uint32 fm10000_sbus_master_code_size_dev;
 extern const fm_uint32 fm10000_sbus_master_code_versionBuildId_dev;

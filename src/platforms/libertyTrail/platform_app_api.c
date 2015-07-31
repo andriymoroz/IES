@@ -32,6 +32,7 @@
 *****************************************************************************/
 
 #include <fm_sdk_fm10000_int.h>
+#include <platforms/common/switch/fm10000/fm10000_voltage_scaling.h>
 
 /*****************************************************************************
  * Macros, Constants & Types
@@ -470,7 +471,8 @@ fm_status fmPlatformXcvrIsPresent(fm_int   sw,
                                                 &portCfg);
     FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
 
-    if (portCfg->intfType == FM_PLAT_INTF_TYPE_NONE)
+    if (portCfg->intfType == FM_PLAT_INTF_TYPE_NONE ||
+        portCfg->intfType == FM_PLAT_INTF_TYPE_PCIE)
     {
         /* Get xcvr state for SFPP and QSFP only */
         FM_LOG_EXIT(FM_LOG_CAT_PLATFORM, FM_ERR_UNSUPPORTED);
@@ -525,9 +527,43 @@ ABORT:
  * \return          FM_OK if successful.
  *
  *****************************************************************************/
-fm_status fmPlatformXcvrEnable(fm_int  sw,
-                               fm_int  port,
-                               fm_bool enable)
+fm_status fmPlatformXcvrEnable(fm_int sw, fm_int port, fm_bool enable)
+{
+    fm_status status;
+
+    FM_LOG_ENTRY(FM_LOG_CAT_PLATFORM,
+                 "sw = %d, port = %d, enable = %d\n",
+                 sw,
+                 port,
+                 enable);
+
+    status = fmPlatformMgmtEnableXcvr(sw, port, enable);
+
+    FM_LOG_EXIT(FM_LOG_CAT_PLATFORM, status);
+
+}   /* end fmPlatformXcvrEnable */
+
+
+
+
+/*****************************************************************************/
+/** fmPlatformXcvrEnableLpMode
+ * \ingroup freedomApp
+ *
+ * \desc            Enables/disables a transceiver low power mode.
+ *
+ * \param[in]       sw is the switch number.
+ *
+ * \param[in]       port is the logical port number.
+ *
+ * \param[out]      enable specifies enable or disable the transceiver lp mode.
+ *
+ * \return          FM_OK if successful.
+ *
+ *****************************************************************************/
+fm_status fmPlatformXcvrEnableLpMode(fm_int  sw,
+                                     fm_int  port,
+                                     fm_bool enable)
 {
     fm_status       status;
     fm_int          swNum;
@@ -549,11 +585,10 @@ fm_status fmPlatformXcvrEnable(fm_int  sw,
     portIdx = fmPlatformCfgPortGetIndex(sw, port);
     if (portIdx >= 0)
     {
-        GET_PLAT_STATE(sw)->xcvrInfo[portIdx].disabled = !enable;
-        if (FM_PLAT_GET_PORT_CFG(sw, portIdx)->intfType == 
-                                                        FM_PLAT_INTF_TYPE_NONE)
+        if (FM_PLAT_GET_PORT_CFG(sw, portIdx)->intfType != 
+                                                        FM_PLAT_INTF_TYPE_QSFP_LANE0)
         {
-            /* Does not have transceiver attached */
+            /* Only QSFP has LP mode support */
             FM_LOG_EXIT(FM_LOG_CAT_PLATFORM, FM_OK);
         }
     }
@@ -582,8 +617,8 @@ fm_status fmPlatformXcvrEnable(fm_int  sw,
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
     }
 
-    xcvrStateValid = FM_PLAT_XCVR_ENABLE;
-    xcvrState      = enable ? FM_PLAT_XCVR_ENABLE : 0;
+    xcvrStateValid = FM_PLAT_XCVR_LPMODE;
+    xcvrState      = enable ? FM_PLAT_XCVR_LPMODE : 0;
 
     status = libFunc->SetPortXcvrState(swNum, hwResId, xcvrStateValid, xcvrState);
 
@@ -593,7 +628,8 @@ ABORT:
 
     FM_LOG_EXIT(FM_LOG_CAT_PLATFORM, status);
 
-}   /* end fmPlatformXcvrEnable */
+}   /* end fmPlatformXcvrEnableLpMode */
+
 
 
 
@@ -861,11 +897,21 @@ fm_status fmPlatformXcvrMemRead(fm_int   sw,
             bytes[0] = 127;
             bytes[1] = page;
             status   = libFunc->I2cWriteRead(swNum, address, bytes, 2, 0);
-            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
 
-            /* For some modules, such as Aphenol 566570001, need a delay here */
-            fmDelay(0, 20 * 1000 * 1000);
-
+            if (status == FM_OK)
+            {
+                /* For some modules, such as Aphenol 566570001, need a delay here */
+                fmDelay(0, 20 * 1000 * 1000);
+            }
+            else
+            {
+                /* For some modules, such as the Molex/74757-1031, the write to
+                   the page register doesn't work.
+                 
+                   In that case do not return an error and most likely page 0
+                   will be selected and the read to Upper Memory Map: Page 0
+                   will work. */
+            }
         }
     }
     else
@@ -1061,7 +1107,7 @@ ABORT:
  *
  * \param[in]       vrmId is the VRM ID (VDDS, VDDF, AVDD).
  *
- * \param[in]       mVolt is the caller allocated storage where the
+ * \param[out]      mVolt is the caller allocated storage where the
  *                  function will place the voltage in milli-volt.
  *
  * \return          FM_OK if successful.
@@ -1110,6 +1156,65 @@ ABORT:
     FM_LOG_EXIT(FM_LOG_CAT_PLATFORM, status);
 
 }   /* end fmPlatformGetVrmVoltage */
+
+
+
+
+/*****************************************************************************/
+/** fmPlatformGetNominalSwitchVoltages
+ * \ingroup freedomApp
+ *
+ * \desc            Return the nominal switch voltages (VDDS and VDDF).
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \param[out]      vdds is the caller allocated storage where the
+ *                  function will place the VDDS voltage in milli-volt.
+ * 
+ * \param[out]      vddf is the caller allocated storage where the
+ *                  function will place the VDDF voltage in milli-volt.
+ *
+ * \return          FM_OK if successful.
+ * \return          Other ''Status Codes'' as appropriate in case of
+ *                  failure.
+ *
+ *****************************************************************************/
+fm_status fmPlatformGetNominalSwitchVoltages(fm_int     sw,
+                                             fm_uint32 *vdds,
+                                             fm_uint32 *vddf)
+{
+    fm_fm10000NominalVoltages voltage;
+    fm_switch *               switchPtr;
+    fm_status                 status;
+
+    VALIDATE_SWITCH_LOCK(sw);
+    PROTECT_SWITCH(sw);
+
+    switchPtr = GET_SWITCH_PTR(sw);
+
+    status = fm10000GetNominalSwitchVoltages(sw, 
+                                             &voltage,
+                                             switchPtr->ReadUINT32);
+    if ( status == FM_OK )
+    {
+        if (vdds)
+        {
+            *vdds = voltage.VDDS;
+        }
+
+        if (vddf)
+        {
+            *vddf = voltage.VDDF;
+        }
+    }
+
+    UNPROTECT_SWITCH(sw);
+
+    return status;
+
+}   /* end fmPlatformGetNominalSwitchVoltages */
+
+
 
 
 /*****************************************************************************/

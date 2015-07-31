@@ -29,7 +29,7 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
+ *****************************************************************************/
 
 #include <fm_sdk_fm10000_int.h>
 
@@ -40,9 +40,20 @@
 #define FM10000_NB_HASH_ROT                 4
 #define BITS_IN_UINT32                      32
 
+#define DEFAULT_MAX_MTU_BYTES               0x3fff
+
 /* Default FM_SWITCH_MPLS_ETHER_TYPES. */
 #define DEFAULT_MPLS_TAG_1                  0x8847
 #define DEFAULT_MPLS_TAG_2                  0x8848
+
+
+#define VALIDATE_VALUE_IS_BOOL(value)                                          \
+    if (!(*((fm_bool *) (value)) == FM_ENABLED ||                              \
+        *((fm_bool *) (value)) == FM_DISABLED))                                \
+    {                                                                          \
+        err = FM_ERR_INVALID_ARGUMENT;                                         \
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_ATTR, err);                             \
+    }
 
 /* IP Options trigger rule numbers. */
 enum
@@ -518,87 +529,6 @@ ABORT:
 
 
 /*****************************************************************************/
-/** SetBcastFlooding
- * \ingroup intSwitch
- *
- * \desc            Sets the FM_BCAST_FLOODING switch attribute.
- *
- * \param[in]       sw is the switch on which to operate.
- *
- * \param[in]       value is the attribute value.
- *
- * \return          FM_OK if successful.
- *
- *****************************************************************************/
-static fm_status SetBcastFlooding(fm_int sw, fm_int value)
-{
-    fm_status           err;
-    fm_switch *         switchPtr;
-    fm10000_switch *    switchExt;
-    fm_portmask         destMask;
-    fm_int              cpi;
-    fm_int              portNumber;
-    fm_port *           portPtr;
-    
-    FM_LOG_ENTRY(FM_LOG_CAT_ATTR, "sw=%d value=%d\n", sw, value);
-
-    switchPtr = GET_SWITCH_PTR(sw);
-    switchExt = GET_SWITCH_EXT(sw);
-
-    fmPortMaskEnableAll(&destMask, switchPtr->numCardinalPorts);
-
-    for (cpi = 0 ; cpi < switchPtr->numCardinalPorts ; cpi++)
-    {
-        /* Get logical port number and its pointer. */
-        portNumber = GET_LOGICAL_PORT(sw, cpi);
-        portPtr = GET_PORT_PTR(sw, portNumber);
-        
-        /* Now exclude the unwanted ports in destMask. */
-        if ( (portPtr->portType == FM_PORT_TYPE_TE) ||
-             (portPtr->portType == FM_PORT_TYPE_CPU_MGMT2) ||
-             (portPtr->portType == FM_PORT_TYPE_LOOPBACK) )
-        {
-            FM_PORTMASK_DISABLE_BIT(&destMask, portNumber);
-        }
-    }
-
-    switch (value)
-    {
-        case FM_BCAST_DISCARD:
-            FM_PORTMASK_DISABLE_ALL(&destMask);
-            break;
-
-        case FM_BCAST_FWD:
-            /* Nothing to do */
-            break;
-
-        case FM_BCAST_FWD_EXCPU:
-            FM_PORTMASK_DISABLE_BIT(&destMask, switchPtr->cpuPort);
-            break;
-
-        default:
-            err = FM_ERR_INVALID_VALUE;
-            goto ABORT;
-
-    }   /* end switch (value) */
-
-    err = fm10000SetLogicalPortAttribute(sw,
-                                         FM_PORT_BCAST,
-                                         FM_LPORT_DEST_MASK,
-                                         &destMask);
-    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_ATTR, err);
-
-    switchExt->bcastFlooding = value;
-
-ABORT:
-    FM_LOG_EXIT(FM_LOG_CAT_ATTR, err);
-
-}   /* end SetBcastFlooding */
-
-
-
-
-/*****************************************************************************/
 /** SetFrameAgingTime
  * \ingroup intSwitch
  *
@@ -985,6 +915,74 @@ ABORT:
 
 
 /*****************************************************************************/
+/** ValidateL2HashKeyMasks
+ * \ingroup intSwitch
+ *
+ * \desc            Validate the L2 Hashing key masks' configurations.
+ *
+ * \param[in]       l2HashKey points to the l2 hash key structure
+ *                  to validate against.
+ *
+ * \return          FM_OK if successful.
+ * \return          FM_ERR_INVALID_VALUE if the mask is not set properly
+ *
+ *****************************************************************************/
+static fm_status ValidateL2HashKeyMasks(fm_L2HashKey *l2HashKey)
+{
+    fm_status err = FM_OK;
+
+    if ( l2HashKey->DMACMask > FM_LITERAL_64(0xffffffffffff) ||
+         l2HashKey->SMACMask > FM_LITERAL_64(0xffffffffffff) ||
+         l2HashKey->etherTypeMask > 0xffff ||
+         l2HashKey->vlanPri1Mask > 0xf ||
+         l2HashKey->vlanId1Mask > 0xfff ||
+         l2HashKey->vlanPri2Mask > 0xf ||
+         l2HashKey->vlanId2Mask > 0xfff )
+    {
+        err = FM_ERR_INVALID_VALUE;
+    }
+
+    FM_LOG_EXIT(FM_LOG_CAT_ATTR, err);
+
+}   /* end ValidateL2HashKeyMasks */
+
+
+
+
+/*****************************************************************************/
+/** ValidateL3HashCfgMasks
+ * \ingroup intSwitch
+ *
+ * \desc            Validate the L3 Hashing config masks' configurations.
+ *
+ * \param[in]       l3HashCfg points to the l3 hash key structure
+ *                  to validate against.
+ *
+ * \return          FM_OK if successful.
+ * \return          FM_ERR_INVALID_VALUE if the mask is not set properly
+ *
+ *****************************************************************************/
+static fm_status ValidateL3HashCfgMasks(fm_L3HashConfig *l3HashCfg)
+{
+    fm_status err = FM_OK;
+
+    if ( l3HashCfg->DIPMask > 0xffff ||
+         l3HashCfg->SIPMask > 0xffff ||
+         l3HashCfg->L4SrcMask > 0xffff ||
+         l3HashCfg->L4DstMask > 0xffff ||
+         l3HashCfg->protocolMask > 0xff )
+    {
+        err = FM_ERR_INVALID_VALUE;
+    }
+
+    FM_LOG_EXIT(FM_LOG_CAT_ATTR, err);
+
+}   /* end ValidateL3HashCfgMasks */
+
+
+
+
+/*****************************************************************************/
 /** GetL2Hash
  * \ingroup intSwitch
  *
@@ -1165,7 +1163,7 @@ static fm_status GetL3Hash(fm_int           sw,
     l3HashCfg->ECMPRotation = FM_GET_FIELD( hashCfg, FM10000_L34_HASH_CFG, ECMP_Rotation );
 
     l3HashCfg->protocol1 = FM_GET_FIELD( hashCfg, FM10000_L34_HASH_CFG, PROT1 );
-
+  
     l3HashCfg->protocol2 = FM_GET_FIELD( hashCfg, FM10000_L34_HASH_CFG, PROT2 );
 
     l3HashCfg->useProtocol1 = FM_GET_BIT( hashCfg, FM10000_L34_HASH_CFG, UsePROT1 );
@@ -1237,6 +1235,13 @@ static fm_status SetL2Hash(fm_int        sw,
     switchPtr = GET_SWITCH_PTR(sw);
 
     TAKE_REG_LOCK(sw);
+
+    VALIDATE_VALUE_IS_BOOL(&l2HashKey->symmetrizeMAC);
+    VALIDATE_VALUE_IS_BOOL(&l2HashKey->useL3Hash);
+    VALIDATE_VALUE_IS_BOOL(&l2HashKey->useL2ifIP);
+
+    err = ValidateL2HashKeyMasks(l2HashKey);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_ATTR, err);
 
     err = switchPtr->ReadUINT32(sw, FM10000_L234_HASH_CFG(), &hashCfg);
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_LAG, err);
@@ -1316,7 +1321,7 @@ static fm_status SetL2HashRot(fm_int        sw,
 
     if (l2HashRot->hashRotation >= FM10000_NB_HASH_ROT)
     {
-        FM_LOG_EXIT(FM_LOG_CAT_ATTR, FM_ERR_INVALID_ARGUMENT);
+        FM_LOG_EXIT(FM_LOG_CAT_ATTR, FM_ERR_INVALID_VALUE);
     }
 
     switchPtr = GET_SWITCH_PTR(sw);
@@ -1328,13 +1333,29 @@ static fm_status SetL2HashRot(fm_int        sw,
 
     if (rot == FM_HASH_ROTATION_A)
     {
-        FM_SET_FIELD( hashCfg, FM10000_L234_HASH_CFG, RotationA,
-                      l2HashRot->hashRotation );
+        if ( l2HashRot->hashRotation < 4 )
+        {
+            FM_SET_FIELD( hashCfg, FM10000_L234_HASH_CFG, RotationA,
+                          l2HashRot->hashRotation );
+        }
+        else
+        {
+            err = FM_ERR_INVALID_VALUE;
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_ATTR, err);
+        }
     }
     else if (rot == FM_HASH_ROTATION_B)
     {
-        FM_SET_FIELD( hashCfg, FM10000_L234_HASH_CFG, RotationB,
+        if ( l2HashRot->hashRotation < 4 )
+        {
+            FM_SET_FIELD( hashCfg, FM10000_L234_HASH_CFG, RotationB,
                       l2HashRot->hashRotation );
+        }
+        else
+        {
+            err = FM_ERR_INVALID_VALUE;
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_ATTR, err);
+        }
     }
     else
     {
@@ -1386,9 +1407,28 @@ static fm_status SetL3Hash(fm_int           sw,
         FM_LOG_EXIT(FM_LOG_CAT_ATTR, FM_ERR_INVALID_ARGUMENT);
     }
 
+    if ( l3HashCfg->DSCPMask > 0xff )
+    {
+        FM_LOG_EXIT(FM_LOG_CAT_ATTR, FM_ERR_INVALID_VALUE);
+    }
+  
+    if ( l3HashCfg->ECMPRotation > 0x03 )
+    {
+        FM_LOG_EXIT(FM_LOG_CAT_ATTR, FM_ERR_INVALID_VALUE);
+    }
+
     switchPtr = GET_SWITCH_PTR(sw);
 
     TAKE_REG_LOCK(sw);
+
+    VALIDATE_VALUE_IS_BOOL(&l3HashCfg->useTCP);
+    VALIDATE_VALUE_IS_BOOL(&l3HashCfg->useUDP);
+    VALIDATE_VALUE_IS_BOOL(&l3HashCfg->useProtocol1);
+    VALIDATE_VALUE_IS_BOOL(&l3HashCfg->useProtocol2);
+    VALIDATE_VALUE_IS_BOOL(&l3HashCfg->symmetrizeL3Fields);
+
+    err = ValidateL3HashCfgMasks(l3HashCfg);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_ATTR, err);
 
     err = switchPtr->ReadUINT32(sw, FM10000_L34_HASH_CFG(), &hashCfg);
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_LAG, err);
@@ -1420,9 +1460,19 @@ static fm_status SetL3Hash(fm_int           sw,
     FM_SET_FIELD( hashCfg, FM10000_L34_HASH_CFG, ECMP_Rotation,
                   l3HashCfg->ECMPRotation );
 
+    if (l3HashCfg->protocol1 > 255)
+    {
+        err = FM_ERR_INVALID_VALUE;
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_LAG,err);
+    }
     FM_SET_FIELD( hashCfg, FM10000_L34_HASH_CFG, PROT1,
                   l3HashCfg->protocol1 );
 
+    if (l3HashCfg->protocol2 > 255)
+    {
+        err = FM_ERR_INVALID_VALUE;
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_LAG,err);
+    }
     FM_SET_FIELD( hashCfg, FM10000_L34_HASH_CFG, PROT2,
                   l3HashCfg->protocol2 );
 
@@ -1441,6 +1491,11 @@ static fm_status SetL3Hash(fm_int           sw,
     FM_SET_FIELD( hashCfg, FM10000_L34_FLOW_HASH_CFG_1, DiffServMask,
                   l3HashCfg->DSCPMask );
 
+    if (l3HashCfg->ISLUserMask > 0xff)
+    {
+        err = FM_ERR_INVALID_VALUE;
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_LAG,err);
+    }
     FM_SET_FIELD( hashCfg, FM10000_L34_FLOW_HASH_CFG_1, UserMask,
                   l3HashCfg->ISLUserMask );
 
@@ -1450,6 +1505,11 @@ static fm_status SetL3Hash(fm_int           sw,
     err = switchPtr->ReadUINT32(sw, FM10000_L34_FLOW_HASH_CFG_2(), &hashCfg);
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_LAG, err);
 
+    if (l3HashCfg->flowMask > 0xfffff)
+    {
+        err = FM_ERR_INVALID_VALUE;
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_LAG,err);
+    }
     FM_SET_FIELD( hashCfg, FM10000_L34_FLOW_HASH_CFG_2, FlowLabelMask,
                   l3HashCfg->flowMask );
 
@@ -2206,9 +2266,7 @@ static fm_status UpdatePerPortAttribute(fm_int sw, fm_int attr, void *value)
 
     switch (attr)
     {
-#if 0
         case FM_PORT_BCAST_FLOODING:
-#endif
         case FM_PORT_MCAST_FLOODING:
         case FM_PORT_UCAST_FLOODING:
             break;
@@ -2693,6 +2751,10 @@ fm_status fm10000GetSwitchAttribute(fm_int sw, fm_int attr, void *value)
             *( (fm_int *) value) = switchExt->ethTimestampsOwnerPort;
             break;
 
+        case FM_SWITCH_TX_TIMESTAMP_MODE:
+            *( (fm_bool *)value ) = switchExt->txTimestampMode;
+            break;
+
         default:
             err = FM_ERR_INVALID_ATTRIB;
             break;
@@ -2812,6 +2874,9 @@ fm_status fm10000SetSwitchAttribute(fm_int sw, fm_int attr, void *value)
     fm_fm10000TeTepCfg  teTepCfg;
     fm_uint32           fieldMask;
     fm_int              pepToPepTimestampTrapcodeId;
+    fm_portType         portType;
+    fm_bool             addToMcastGroup;
+    fm_int              previousValue;
 
     FM_LOG_ENTRY(FM_LOG_CAT_ATTR,
                  "sw=%d attr=%d value=%p\n",
@@ -2934,15 +2999,15 @@ fm_status fm10000SetSwitchAttribute(fm_int sw, fm_int attr, void *value)
                 FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_ATTR, err);
             }
 
-            reg32 = 0;
-            FM_SET_FIELD(reg32,
-                         FM10000_MOD_VLAN_ETYPE,
-                         TagType,
-                         vlanEtherType->etherType);
+            reg64 = 0;
+            FM_SET_FIELD64(reg64,
+                           FM10000_MOD_VLAN_ETYPE,
+                           TagType,
+                           vlanEtherType->etherType);
 
-            err = switchPtr->WriteUINT32(sw,
+            err = switchPtr->WriteUINT64(sw,
                                          FM10000_MOD_VLAN_ETYPE(vlanEtherType->index, 0),
-                                         reg32);
+                                         reg64);
             FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_ATTR, err);
 
             switchExt->modVlanEtherTypes[vlanEtherType->index] = vlanEtherType->etherType;
@@ -2965,6 +3030,12 @@ fm_status fm10000SetSwitchAttribute(fm_int sw, fm_int attr, void *value)
                 break;
             }
 
+            if (mtuEntry->mtu > DEFAULT_MAX_MTU_BYTES)
+            {
+                err = FM_ERR_INVALID_ARGUMENT;
+                break;
+            }
+
             reg32 = 0;
             FM_SET_FIELD(reg32, FM10000_MTU_TABLE, mtu, mtuEntry->mtu);
             err = switchPtr->WriteUINT32(sw,
@@ -2974,16 +3045,25 @@ fm_status fm10000SetSwitchAttribute(fm_int sw, fm_int attr, void *value)
             break;
 
         case FM_LAG_MODE:
-            switchPtr->lagInfoTable.lagMode = *( (fm_lagMode *) value );
-            
-            /* Unconditionally trap LACP frames */
-            tmpBool = TRUE;
-            err = fm10000SetSwitchAttribute(sw, FM_TRAP_IEEE_LACP, &tmpBool);
+            switch ( *( (fm_lagMode *) value ) )
+            {
+                case FM_MODE_DYNAMIC:
+                case FM_MODE_STATIC:
+                    switchPtr->lagInfoTable.lagMode = *( (fm_lagMode *) value );
+                    /* Unconditionally trap LACP frames */
+                    tmpBool = TRUE;
+                    err = fm10000SetSwitchAttribute(sw, FM_TRAP_IEEE_LACP, &tmpBool);
+                    break;
+                default:
+                    err = FM_ERR_INVALID_ARGUMENT;
+                    break;
+            }
             break;
 
         case FM_LAG_PRUNING:
             /* User input is reverse of the flag, 
              * since we want pruning enabled with zero value */
+            VALIDATE_VALUE_IS_BOOL(value);
             switchPtr->lagInfoTable.pruningDisabled = !*( (fm_bool *)value );
             err = FM_OK;
             break;
@@ -2996,7 +3076,7 @@ fm_status fm10000SetSwitchAttribute(fm_int sw, fm_int attr, void *value)
             err = SetSliceAllocations(sw, (fm_ffuSliceAllocations *) value);
             break;
 
-        case FM_L2_HASH_KEY:
+        case FM_L2_HASH_KEY:       
             err = SetL2Hash(sw, (fm_L2HashKey *) value);
             break;
 
@@ -3041,23 +3121,34 @@ fm_status fm10000SetSwitchAttribute(fm_int sw, fm_int attr, void *value)
             break;
 
         case FM_BCAST_FLOODING:
-            err = SetBcastFlooding(sw, *( (fm_int *) value ));
-            break;
-
-        case FM_MCAST_FLOODING:
             intValue = *( (fm_int *) value);
+            previousValue = switchExt->bcastFlooding;
 
             switch (intValue)
             {
-                case FM_MCAST_DISCARD:
-                    portValue = FM_PORT_MCAST_DISCARD;
+                case FM_BCAST_DISCARD:
+                    portValue = FM_PORT_BCAST_DISCARD;
+                    addToMcastGroup = FALSE;
                     break;
 
-                case FM_MCAST_FWD:
-                    portValue = FM_PORT_MCAST_FWD;
+                case FM_BCAST_FWD:
+                    /* Simulate FWD_EXCPU for port purpose in order
+                     * to disable all triggers */
+                    portValue = FM_PORT_BCAST_FWD_EXCPU;
+                    addToMcastGroup = TRUE;
                     break;
 
-                case FM_MCAST_FLOODING_PER_PORT:
+                case FM_BCAST_FWD_EXCPU:
+                    portValue = FM_PORT_BCAST_FWD_EXCPU;
+                    addToMcastGroup = FALSE;
+                    break;
+
+                case FM_BCAST_FLOODING_PER_PORT:
+                    if (previousValue == FM_BCAST_FWD)
+                    {
+                        portValue = FM_PORT_BCAST_FWD;
+                    }
+                    addToMcastGroup = FALSE;
                     break;
 
                 default:
@@ -3065,7 +3156,63 @@ fm_status fm10000SetSwitchAttribute(fm_int sw, fm_int attr, void *value)
                     goto ABORT;
             }
 
-            if (intValue != FM_MCAST_FLOODING_PER_PORT)
+            err = fmSetMgmtPepXcastModes(sw, FM_PORT_BCAST, addToMcastGroup);
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_ATTR, err);
+
+            if ( (intValue != FM_BCAST_FLOODING_PER_PORT) ||
+                 (previousValue == FM_BCAST_FWD) )
+            {
+                err = UpdatePerPortAttribute(sw, 
+                                             FM_PORT_BCAST_FLOODING,
+                                             &portValue);
+                FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_ATTR, err);
+            }
+
+            switchExt->bcastFlooding = intValue;
+            err = FM_OK;
+            break;
+
+        case FM_MCAST_FLOODING:
+            intValue = *( (fm_int *) value);
+            previousValue = switchExt->mcastFlooding;
+
+            switch (intValue)
+            {
+                case FM_MCAST_DISCARD:
+                    portValue = FM_PORT_MCAST_DISCARD;
+                    addToMcastGroup = FALSE;
+                    break;
+
+                case FM_MCAST_FWD:
+                    /* Simulate FWD_EXCPU for port purpose in order
+                     * to disable all triggers */
+                    portValue = FM_PORT_MCAST_FWD_EXCPU;
+                    addToMcastGroup = TRUE;
+                    break;
+
+                case FM_MCAST_FWD_EXCPU:
+                    portValue = FM_PORT_MCAST_FWD_EXCPU;
+                    addToMcastGroup = FALSE;
+                    break;
+
+                case FM_MCAST_FLOODING_PER_PORT:
+                    if (previousValue == FM_MCAST_FWD)
+                    {
+                        portValue = FM_PORT_MCAST_FWD;
+                    }
+                    addToMcastGroup = FALSE;
+                    break;
+
+                default:
+                    err = FM_ERR_UNSUPPORTED;
+                    goto ABORT;
+            }
+
+            err = fmSetMgmtPepXcastModes(sw, FM_PORT_MCAST, addToMcastGroup);
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_ATTR, err);
+
+            if ( (intValue != FM_MCAST_FLOODING_PER_PORT) ||
+                 (previousValue == FM_MCAST_FWD) )
             {
                 err = UpdatePerPortAttribute(sw, 
                                              FM_PORT_MCAST_FLOODING,
@@ -3079,18 +3226,33 @@ fm_status fm10000SetSwitchAttribute(fm_int sw, fm_int attr, void *value)
 
         case FM_UCAST_FLOODING:
             intValue = *( (fm_int *) value);
+            previousValue = switchExt->ucastFlooding;
 
             switch (intValue)
             {
                 case FM_UCAST_DISCARD:
                     portValue = FM_PORT_UCAST_DISCARD;
+                    addToMcastGroup = FALSE;
                     break;
 
                 case FM_UCAST_FWD:
-                    portValue = FM_PORT_UCAST_FWD;
+                    /* Simulate FWD_EXCPU for port purpose in order
+                     * to disable all triggers */
+                    portValue = FM_PORT_UCAST_FWD_EXCPU;
+                    addToMcastGroup = TRUE;
+                    break;
+
+                case FM_UCAST_FWD_EXCPU:
+                    portValue = FM_PORT_UCAST_FWD_EXCPU;
+                    addToMcastGroup = FALSE;
                     break;
 
                 case FM_UCAST_FLOODING_PER_PORT:
+                    if (previousValue == FM_UCAST_FWD)
+                    {
+                        portValue = FM_PORT_UCAST_FWD;
+                    }
+                    addToMcastGroup = FALSE;
                     break;
 
                 default:
@@ -3098,7 +3260,11 @@ fm_status fm10000SetSwitchAttribute(fm_int sw, fm_int attr, void *value)
                     goto ABORT;
             }
 
-            if (intValue != FM_UCAST_FLOODING_PER_PORT)
+            err = fmSetMgmtPepXcastModes(sw, FM_PORT_FLOOD, addToMcastGroup);
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_ATTR, err);
+
+            if ( (intValue != FM_UCAST_FLOODING_PER_PORT) ||
+                 (previousValue == FM_UCAST_FWD) )
             {
                 err = UpdatePerPortAttribute(sw, 
                                              FM_PORT_UCAST_FLOODING,
@@ -3116,6 +3282,7 @@ fm_status fm10000SetSwitchAttribute(fm_int sw, fm_int attr, void *value)
             break;
 
         case FM_TRAP_IEEE_LACP:
+            VALIDATE_VALUE_IS_BOOL(value);
             switchExt->trapLacp = *( (fm_bool *) value);
 
             tmpUint32 = (switchExt->trapLacp) ? 
@@ -3130,6 +3297,7 @@ fm_status fm10000SetSwitchAttribute(fm_int sw, fm_int attr, void *value)
             break;
 
         case FM_TRAP_IEEE_BPDU:
+            VALIDATE_VALUE_IS_BOOL(value);
             switchExt->trapBpdu = *( (fm_bool *) value);
 
             tmpUint32 = (switchExt->trapBpdu) ? 
@@ -3144,6 +3312,7 @@ fm_status fm10000SetSwitchAttribute(fm_int sw, fm_int attr, void *value)
             break;
 
         case FM_TRAP_IEEE_GARP:
+            VALIDATE_VALUE_IS_BOOL(value);
             switchExt->trapGarp = *( (fm_bool *) value);
 
             tmpUint32 = (switchExt->trapGarp) ? 
@@ -3158,6 +3327,7 @@ fm_status fm10000SetSwitchAttribute(fm_int sw, fm_int attr, void *value)
             break;
 
         case FM_TRAP_IEEE_8021X:
+            VALIDATE_VALUE_IS_BOOL(value);
             switchExt->trap8021X = *( (fm_bool *) value);
 
             tmpUint32 = (switchExt->trap8021X) ? 
@@ -3172,6 +3342,7 @@ fm_status fm10000SetSwitchAttribute(fm_int sw, fm_int attr, void *value)
             break;
 
         case FM_TRAP_MTU_VIOLATIONS:
+            VALIDATE_VALUE_IS_BOOL(value);
             tmpBool = *( (fm_bool *) value);
             
             err = switchPtr->ReadUINT32(sw,
@@ -3193,6 +3364,7 @@ fm_status fm10000SetSwitchAttribute(fm_int sw, fm_int attr, void *value)
             break;
 
         case FM_TRAP_PLUS_LOG:
+            VALIDATE_VALUE_IS_BOOL(value);
             tmpBool = *( (fm_bool *) value);
             
             err = switchPtr->ReadUINT32(sw,
@@ -3214,6 +3386,7 @@ fm_status fm10000SetSwitchAttribute(fm_int sw, fm_int attr, void *value)
             break;
 
         case FM_DROP_PAUSE:
+            VALIDATE_VALUE_IS_BOOL(value);
             tmpBool = (*( (fm_bool *) value) != 0);
             
             err = switchPtr->ReadUINT32(sw,
@@ -3245,6 +3418,7 @@ fm_status fm10000SetSwitchAttribute(fm_int sw, fm_int attr, void *value)
             break;
 
         case FM_DROP_INVALID_SMAC:
+            VALIDATE_VALUE_IS_BOOL(value);
             tmpBool = *( (fm_bool *) value);
             
             err = switchPtr->ReadUINT32(sw,
@@ -3270,11 +3444,14 @@ fm_status fm10000SetSwitchAttribute(fm_int sw, fm_int attr, void *value)
 
             if ( (customTag->index < 0) ||
                  (customTag->index > FM_MAX_CUSTOM_TAG_INDEX ) ||
-                 (customTag->customTagConfig.length > FM_MAX_CUSTOM_TAG_LENGTH))
+                 (customTag->customTagConfig.length > FM_MAX_CUSTOM_TAG_LENGTH) ||
+                 (customTag->customTagConfig.length < FM_MIN_CUSTOM_TAG_LENGTH))
             {
                 err = FM_ERR_INVALID_ARGUMENT;
                 FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_ATTR, err);
             }
+
+            VALIDATE_VALUE_IS_BOOL(&customTag->customTagConfig.captureSelect);
 
             reg32 = 0;
             FM_SET_FIELD(reg32,
@@ -3324,6 +3501,10 @@ fm_status fm10000SetSwitchAttribute(fm_int sw, fm_int attr, void *value)
                 err = FM_ERR_INVALID_ARGUMENT;
                 FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_ATTR, err);
             }
+
+            VALIDATE_VALUE_IS_BOOL(&parserDiCfg->parserDiCfgFields.enable);
+            VALIDATE_VALUE_IS_BOOL(&parserDiCfg->parserDiCfgFields.captureTcpFlags);
+            VALIDATE_VALUE_IS_BOOL(&parserDiCfg->parserDiCfgFields.l4Compare);
 
             reg64 = 0;
             FM_SET_FIELD64(reg64,
@@ -3393,6 +3574,20 @@ fm_status fm10000SetSwitchAttribute(fm_int sw, fm_int attr, void *value)
                 {
                     err = FM_ERR_INVALID_ARGUMENT;
                     goto ABORT;
+                }
+
+                VALIDATE_VALUE_IS_BOOL(&resMac->useTrapPri);
+
+                switch (resMac->action)
+                {
+                    case FM_RES_MAC_ACTION_SWITCH:
+                    case FM_RES_MAC_ACTION_TRAP:
+                    case FM_RES_MAC_ACTION_DROP:
+                    case FM_RES_MAC_ACTION_LOG:
+                        break;
+                    default:
+                        err = FM_ERR_INVALID_ARGUMENT;
+                        goto ABORT;
                 }
 
                 err = SetReservedMacCfg(sw,
@@ -3534,6 +3729,30 @@ fm_status fm10000SetSwitchAttribute(fm_int sw, fm_int attr, void *value)
                 FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_ATTR, err);
             }
 
+            if ( !((sglortVsiMap->te >= 0) && (sglortVsiMap->te <= 1)) )
+            {
+                err = FM_ERR_INVALID_VALUE;
+                FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_ATTR, err);
+            }
+
+            if ( !((sglortVsiMap->vsiLen >= 0) && (sglortVsiMap->vsiLen <= 31)) )
+            {
+                err = FM_ERR_INVALID_VALUE;
+                FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_ATTR, err);
+            }
+
+            if ( !((sglortVsiMap->vsiOffset >= 0) && (sglortVsiMap->vsiOffset <= 255)) )
+            {
+                err = FM_ERR_INVALID_VALUE;
+                FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_ATTR, err);
+            }
+
+            if ( !((sglortVsiMap->vsiStart >= 0) && (sglortVsiMap->vsiStart <= 31)) )
+            {
+                err = FM_ERR_INVALID_VALUE;
+                FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_ATTR, err);
+            }
+
             FM_CLEAR(teSglort);
 
             teSglort.glortValue = sglortVsiMap->sglortValue;
@@ -3556,6 +3775,18 @@ fm_status fm10000SetSwitchAttribute(fm_int sw, fm_int attr, void *value)
             if (vsiData == NULL)
             {
                 err = FM_ERR_INVALID_ARGUMENT;
+                FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_ATTR, err);
+            }
+
+            if ( !((vsiData->te >= 0) && (vsiData->te <= 1)) )
+            {
+                err = FM_ERR_INVALID_VALUE;
+                FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_ATTR, err);
+            }
+
+            if ( !((vsiData->vsi >= 0) && (vsiData->vsi <= 255)) )
+            {
+                err = FM_ERR_INVALID_VALUE;
                 FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_ATTR, err);
             }
 
@@ -3603,12 +3834,51 @@ fm_status fm10000SetSwitchAttribute(fm_int sw, fm_int attr, void *value)
             break;
 
         case FM_SWITCH_RX_PKT_DROP_UNKNOWN_PORT:
+            VALIDATE_VALUE_IS_BOOL(value);
             switchExt->dropPacketUnknownPort = *( (fm_bool *)value );
             err = FM_OK;
             break;
 
         case FM_SWITCH_ETH_TIMESTAMP_OWNER:
-            err = FM_ERR_READONLY_ATTRIB;
+            /* Announce Tx Timestamp Mode when Ethernet Timestamp owner 
+             * changes */
+            if (switchExt->ethTimestampsOwnerPort != *( (fm_int *) value) )
+            { 
+                if (*( (fm_int *) value) != -1)
+                {
+                    err = fm10000GetLogicalPortAttribute(sw, 
+                                                         *( (fm_int *) value), 
+                                                         FM_LPORT_TYPE, 
+                                                         (void *)&portType);
+                    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_ATTR, err);
+
+                    if (portType != FM_PORT_TYPE_VIRTUAL)
+                    {
+                        err = FM_ERR_INVALID_PORT;
+                        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_ATTR, err);
+                    }
+                }
+
+                switchExt->ethTimestampsOwnerPort = *( (fm_int *) value);
+                err = fmAnnounceTxTimestampMode(sw, switchExt->txTimestampMode);
+            }
+            else
+            {
+                err = FM_OK;
+            }
+            break;
+
+        case FM_SWITCH_TX_TIMESTAMP_MODE:
+            /* Announce Tx Timestamp Mode only when it changes */
+            if (switchExt->txTimestampMode != *( (fm_bool *)value ) )
+            {
+                switchExt->txTimestampMode = *( (fm_bool *)value );
+                err = fmAnnounceTxTimestampMode(sw, switchExt->txTimestampMode);
+            }
+            else
+            {
+                err = FM_OK;
+            }
             break;
 
         default:
@@ -3622,7 +3892,6 @@ ABORT:
     {
         DROP_REG_LOCK(sw);
     }
-
     FM_LOG_EXIT(FM_LOG_CAT_ATTR, err);
 
 }   /* end fm10000SetSwitchAttribute */
@@ -3823,6 +4092,8 @@ fm_status fm10000InitHashing(fm_int sw)
     l2HashKey.etherTypeMask = 0xffff;
     l2HashKey.vlanId1Mask = 0xfff;
     l2HashKey.vlanPri1Mask = 0xf;
+    l2HashKey.vlanId2Mask = 0xfff;
+    l2HashKey.vlanPri2Mask = 0xf;
     l2HashKey.symmetrizeMAC = FALSE;
     l2HashKey.useL3Hash = TRUE;
     l2HashKey.useL2ifIP = TRUE;
@@ -3966,8 +4237,8 @@ fm_status fm10000InitSwitchAttributes(fm_int sw)
     switchExt->dropInvalidSmac      = TRUE;
 
     switchExt->bcastFlooding        = FM_BCAST_FWD_EXCPU;
-    switchExt->mcastFlooding        = FM_MCAST_FWD;
-    switchExt->ucastFlooding        = FM_UCAST_FWD;
+    switchExt->mcastFlooding        = FM_MCAST_FWD_EXCPU;
+    switchExt->ucastFlooding        = FM_UCAST_FWD_EXCPU;
 
     switchExt->ipOptionsDisposition = FM_IP_OPTIONS_FWD;
 

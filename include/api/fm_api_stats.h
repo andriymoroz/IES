@@ -6,7 +6,7 @@
  * Description:     Structures and functions for dealing with counters
  *                  (statistics)
  *
- * Copyright (c) 2005 - 2013, Intel Corporation
+ * Copyright (c) 2005 - 2015, Intel Corporation
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -30,7 +30,7 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
+ *****************************************************************************/
 
 #ifndef __FM_FM_API_STATS_H
 #define __FM_FM_API_STATS_H
@@ -1162,7 +1162,7 @@ typedef struct _fm_portCounters
     fm_uint64 cntTxUnrepairEccPkts;
 
     /** Number of frames that were discarded due to loopback
-     *  suppression.
+     *  suppression in MODIFY (in TX).
      *  
      *  \counterGroups FM4000:Group7, FM6000:Group7, FM10000:Group7 */
     fm_uint64 cntTxLoopbackPkts;
@@ -1181,7 +1181,7 @@ typedef struct _fm_portCounters
      *  because the minimum frame size is configured to be less than
      *  the Ethernet minimum. This counter also includes errored frames
      *  that were transmitted anyway because MAC_CFG_2[Min Frame Discard]
-     *  (see Tahoe datasheet) was not set.
+     *  (see FM2000 datasheet) was not set.
      *  
      *  \counterGroups FM2000:Group8A, FM4000:Group8A,
      *                 FM6000:Group8A, FM10000:Group8A */
@@ -1262,7 +1262,7 @@ typedef struct _fm_portCounters
      *  or fewer octets because the minimum frame size is configured
      *  to be less than the Ethernet minimum. This counter also
      *  includes errored frames that were transmitted anyway because
-     *  MAC_CFG_2[Min Frame Discard] (see Tahoe datasheet) was not
+     *  MAC_CFG_2[Min Frame Discard] (see datasheet) was not
      *  set.
      *  
      *  \counterGroups FM10000:Group8B */
@@ -1456,7 +1456,7 @@ typedef struct _fm_portCounters
     fm_uint64 cntTxUnrepairEccOctets;
 
     /** Number of octets that were discarded due to loopback
-     *  suppression.
+     *  suppression in MODIFY (in TX).
      *  
      *  \counterGroups FM6000:Group9, FM10000:Group9 */
     fm_uint64 cntTxLoopbackOctets;

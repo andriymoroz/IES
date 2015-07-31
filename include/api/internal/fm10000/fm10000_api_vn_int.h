@@ -354,6 +354,11 @@ fm_status fm10000IsVNTunnelInUseByACLs(fm_int   sw,
                                        fm_int   tunnelId,
                                        fm_bool *inUse);
 fm_status fm10000FreeVNResources(fm_int sw);
+fm_status fm10000DbgDumpVN(fm_int sw);
+fm_status fm10000DbgDumpVirtualNetwork(fm_int sw,
+                                       fm_uint32 vni);
+fm_status fm10000DbgDumpVNTunnel(fm_int sw,
+                                 fm_int tunnelId);
 
 #endif      /* __FM_FM10000_API_VN_INT_H */
 

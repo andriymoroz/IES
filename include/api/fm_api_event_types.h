@@ -29,7 +29,7 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
+ *****************************************************************************/
 
 #ifndef __FM_FM_API_EVENT_TYPES_H
 #define __FM_FM_API_EVENT_TYPES_H
@@ -44,21 +44,21 @@ typedef struct _fm_eplInt
 {
     /** Bit mask indicating one or more interrupt sources on a port
      *  are active. This member shadows the EPL_INT_DETECT register
-     *  (see Tahoe datasheet) for the port. */
+     *  (see FM2000 datasheet) for the port. */
     fm_uint32 interruptDetect;
 
     /** Bit mask indicating one or more SERDES interrupt sources on a port
-     *  are active. This member shadows the SERDES_IP register (see Tahoe
+     *  are active. This member shadows the SERDES_IP register (see FM2000
      *  datasheet) for the port. */
     fm_uint32 serdes;
 
     /** Bit mask indicating one or more PCS interrupt sources on a port
-     *  are active. This member shadows the PCS_IP register (see Tahoe
+     *  are active. This member shadows the PCS_IP register (see FM2000
      *  datasheet) for the port. */
     fm_uint32 pcs;
 
     /** Bit mask indicating one or more MAC interrupt sources on a port
-     *  are active. This member shadows the MAC_IP register (see Tahoe
+     *  are active. This member shadows the MAC_IP register (see FM2000
      *  datasheet) for the port. */
     fm_uint32 mac;
 

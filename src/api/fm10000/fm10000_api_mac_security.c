@@ -29,7 +29,7 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
+ *****************************************************************************/
 
 #include <fm_sdk_fm10000_int.h>
 
@@ -1738,7 +1738,7 @@ fm_status fm10000SetPortSecurityAction(fm_int    sw,
     switchPtr = GET_SWITCH_PTR(sw);
     retVal    = FM_OK;
 
-    /* exclude CPU, INTERNAL, and TE ports */
+    /* exclude CPU port */
     if (port == switchPtr->cpuPort)
     {
         action = FM_PORT_SECURITY_ACTION_NONE;

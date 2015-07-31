@@ -34,6 +34,9 @@
 #ifndef __FM_FMSWAG_API_MAILBOX_INT_H
 #define __FM_FMSWAG_API_MAILBOX_INT_H
 
+/* Max number of inner/outer MAC filtering rules */
+#define FM_SWAG_MAILBOX_MAX_INN_OUT_MAC_RULES                16384
+
 fm_status fmSWAGWriteResponseMessage(fm_int                        sw,
                                      fm_int                        swagPepNb,
                                      fm_mailboxControlHeader *     ctrlHdr,
@@ -102,9 +105,12 @@ fm_status fmSWAGGetSchedPortSpeedForPep(fm_int  sw,
                                         fm_int *speed);
 
 fm_status fmSWAGMapGlortToPepNumber(fm_int    sw,
-                                    fm_uint32 vsiGlort,
+                                    fm_uint32 glort,
                                     fm_int *  pepNb);
 
+fm_status fmSWAGMapVirtualGlortToLogicalPort(fm_int    sw,
+                                             fm_uint32 glort,
+                                             fm_int *  port);
 fm_status fmSWAGMailboxInit(fm_int sw);
 
 fm_status fmSWAGMailboxFreeResources(fm_int sw);
@@ -124,5 +130,9 @@ fm_status fmSWAGGetMailboxGlortRange(fm_int     sw,
                                      fm_int     pepNb,
                                      fm_uint32 *glortBase,
                                      fm_int *   numberOfGlorts);
+
+fm_status fmSWAGMailboxConfigureCounters(fm_int sw);
+
+fm_status fmSWAGMailboxUnconfigureCounters(fm_int sw);
 
 #endif /* __FM_FMSWAG_API_MAILBOX_INT_H */

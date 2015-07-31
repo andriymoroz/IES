@@ -183,6 +183,7 @@ fm_status fm10000SerDesEnableEeeOpMode( fm_smEventInfo *eventInfo, void *userInf
 fm_status fm10000SerDesDisableEeeOpMode( fm_smEventInfo *eventInfo, void *userInfo );
 fm_status fm10000SerDesRstSignalOkDebounce( fm_smEventInfo *eventInfo, void *userInfo );
 fm_status fm10000SerDesConfigureEee( fm_smEventInfo *eventInfo, void *userInfo );
+fm_status fm10000SerDesSaveKrTimeoutStats( fm_smEventInfo *eventInfo, void *userInfo );
 
 
 

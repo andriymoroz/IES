@@ -39,6 +39,11 @@
 
 #define FM_GN2412_VERSION_NUM_LEN       4
 
+#define FM_GN2412_DEF_LANE_POLARITY     5
+#define FM_GN2412_DEF_LANE_PRE_TAP      0
+#define FM_GN2412_DEF_LANE_ATT          15
+#define FM_GN2412_DEF_LANE_POST_TAP     0
+
 /* Current firmware version supported by the software.
    Note: the FW_NANO_REG and FW_VARIANT_REG are not checked.
  */
@@ -87,6 +92,45 @@ typedef struct _fm_gn2412TimebaseCfg
 
 } fm_gn2412TimebaseCfg;
 
+
+typedef struct _fm_gn2412LaneCfg
+{
+    /* Tx polarity */
+    fm_int polarity;
+
+    /* Tx Pre-Tap coefficient */
+    fm_int preTap;
+
+    /* Tx attenuation */
+    fm_int attenuation;
+
+    /* Tx Post-Tap coefficient */
+    fm_int postTap;
+
+    /* Contains the Rx Port assigned as source to this Tx Port
+       (TxPort == index to this structure) */
+    fm_int rxPort;
+
+    /* Application mode for this lane */
+    fm_int appMode;
+
+} fm_gn2412LaneCfg;
+
+
+typedef struct _fm_gn2412Cfg
+{
+    /* Timebases configuration */
+    fm_gn2412TimebaseCfg timebase[FM_GN2412_NUM_TIMEBASES];
+
+    /* Lanes configuration */
+    fm_gn2412LaneCfg lane[FM_GN2412_NUM_LANES];
+
+    /* Indicate to configure TX equalization coefficients or not. */
+    fm_bool setTxEq;
+
+} fm_gn2412Cfg;
+
+
 fm_status fmUtilGN2412GetTimebaseCfg(fm_int                timebase,
                                      fm_gn2412RefClk       refClk,
                                      fm_gn2412OutFreq      outFreq,
@@ -106,6 +150,62 @@ fm_status fmUtilGN2412GetBootErrorCode(fm_uintptr                  handle,
 fm_status fmUtilGN2412Initialize(fm_uintptr                  handle,
                                  fm_utilI2cWriteReadHdnlFunc func,
                                  fm_uint                     dev,
-                                 fm_gn2412TimebaseCfg *      tbCfg);
+                                 fm_gn2412Cfg *              cfg);
+
+void fmUtilGN2412DumpConnections(fm_uintptr                  handle,
+                                 fm_utilI2cWriteReadHdnlFunc func,
+                                 fm_uint                     dev);
+
+void fmUtilGN2412DumpTxEqualization(fm_uintptr                  handle,
+                                    fm_utilI2cWriteReadHdnlFunc func,
+                                    fm_uint                     dev);
+
+fm_status fmUtilGN2412SetAppMode(fm_uintptr                  handle,
+                                 fm_utilI2cWriteReadHdnlFunc func,
+                                 fm_uint                     dev,
+                                 fm_int                      lane,
+                                 fm_int                      mode);
+
+void fmUtilGN2412DumpAppMode(fm_uintptr                  handle,
+                             fm_utilI2cWriteReadHdnlFunc func,
+                             fm_uint                     dev);
+
+void fmUtilGN2412DumpAppStatus(fm_uintptr                  handle,
+                               fm_utilI2cWriteReadHdnlFunc func,
+                               fm_uint                     dev);
+
+void fmUtilGN2412DumpAppRestartDiagCnt(fm_uintptr                  handle,
+                                       fm_utilI2cWriteReadHdnlFunc func,
+                                       fm_uint                     dev);
+
+fm_status fmUtilGN2412GetLaneTxEq(fm_uintptr                  handle,
+                                  fm_utilI2cWriteReadHdnlFunc func,
+                                  fm_uint                     dev,
+                                  fm_int                      lane,
+                                  fm_int *                    polarity,
+                                  fm_int *                    preTap,
+                                  fm_int *                    attenuation,
+                                  fm_int *                    postTap);
+
+fm_status fmUtilGN2412SetLaneTxEq(fm_uintptr                  handle,
+                                  fm_utilI2cWriteReadHdnlFunc func,
+                                  fm_uint                     dev,
+                                  fm_int                      lane,
+                                  fm_int                      polarity,
+                                  fm_int                      preTap,
+                                  fm_int                      attenuation,
+                                  fm_int                      postTap);
+
+fm_status fmUtilGN2412RegisterRead(fm_uintptr                  handle,
+                                   fm_utilI2cWriteReadHdnlFunc func,
+                                   fm_uint                     dev,
+                                   fm_uint16                   reg,
+                                   fm_byte *                   val);
+
+fm_status fmUtilGN2412RegisterWrite(fm_uintptr                  handle,
+                                    fm_utilI2cWriteReadHdnlFunc func,
+                                    fm_uint                     dev,
+                                    fm_uint16                   reg,
+                                    fm_byte                     val);
 
 #endif /* __FM_UTIL_GN2412_H */

@@ -4033,7 +4033,8 @@ fm_status fmHandleSwitchInserted(fm_int sw, fm_eventSwitchInserted *insertEvent)
         FM_LOG_EXIT(FM_LOG_CAT_SWITCH, status);
     }
 
-    if (swptr->switchModel != FM_SWITCH_MODEL_UNKNOWN)
+    if ( (swptr->switchModel != FM_SWITCH_MODEL_UNKNOWN) &&
+         (swptr->switchFamily != FM_SWITCH_FAMILY_UNKNOWN) )
     {
         goto ALREADY_IDENTIFIED;
     }

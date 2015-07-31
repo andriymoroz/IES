@@ -29,7 +29,7 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
+ *****************************************************************************/
 
 #include <fm_sdk_int.h>
 
@@ -139,6 +139,43 @@ static void PrintMessageHeader(fm_mailboxMessageHeader *msgHdr)
 
 
 /*****************************************************************************/
+/** CountBitsInMacMask
+ * \ingroup intMailbox
+ *
+ * \desc            Helper function to count the number of masked bits 
+ *                  in MAC address mask.
+ *
+ * \param[in]       macAddrMask is the MAC address mask whose masked bits
+ *                  are to be counted.
+ *
+ * \return          The number of bits set in the word.
+ *
+ *****************************************************************************/
+static fm_int CountZerosInMacMask(fm_macaddr macAddrMask)
+{
+    fm_int     i;
+    fm_int     counter;
+    fm_macaddr maskInvert;
+
+    counter    = 0;
+    maskInvert = ~macAddrMask;
+
+    for (i = 0 ; i < FM_MAC_ADDRESS_SIZE ; i++)
+    {
+        if ( (maskInvert >> i) & 0x1)
+        {
+            counter++;
+        }
+    }
+
+    return counter;
+
+}   /* end CountZerosInMacMask */
+
+
+
+
+/*****************************************************************************/
 /** AssociateMcastGroupWithFlood
  * \ingroup intMailbox
  *
@@ -221,9 +258,1204 @@ static fm_status GetMaxSupportedTxTimestampMode(fm_int                   sw,
 
 
 
+/*****************************************************************************/
+/** AddMacFilterAclRule
+ * \ingroup intMailbox
+ *
+ * \desc            Adds a inner/outer MAC filtering ACL rule.
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \param[in]       pepNb is the PEP number.
+ *
+ * \param[in]       macFilter points to a structure containing fields 
+ *                  to be filtered.
+ *
+ * \return          FM_OK if successful.
+ *
+ *****************************************************************************/
+static fm_status AddMacFilterAclRule(fm_int               sw,
+                                     fm_int               pepNb,
+                                     fm_hostSrvInnOutMac *macFilter)
+{
+    fm_mailboxInfo *       info;
+    fm_status              status;
+    fm_aclCondition        aclCond;
+    fm_aclValue            aclCondData;
+    fm_aclActionExt        aclAction;
+    fm_aclParamExt         aclActionData;
+    fm_aclArguments        aclArgs;
+    fm_mailboxResources *  mlbxResUsed;
+    fm_mailboxMcastMacVni  macVniKey;
+    fm_mailboxMcastMacVni *macVniVal;
+    fm_multicastListener   mcastListener;
+    fm_int                 logicalPort;
+    fm_int                 aclRule;
+    fm_int                 bitNum;
+    fm_uint32              allScenarios;
+    fm_char                statusText[1024];
+
+    FM_LOG_ENTRY(FM_LOG_CAT_MAILBOX,
+                 "sw = %d, macFilter = %p\n",
+                 sw,
+                 (void *) macFilter);
+
+    info         = GET_MAILBOX_INFO(sw);
+    status       = FM_OK;
+    macVniVal    = NULL;
+    allScenarios = (FM_ACL_SCENARIO_ANY_FRAME_TYPE |
+                    FM_ACL_SCENARIO_ANY_ROUTING_TYPE |
+                    FM_ACL_SCENARIO_ANY_ROUTING_GLORT_TYPE);
+
+    status = fmGetGlortLogicalPort(sw,
+                                   macFilter->glort,
+                                   &logicalPort);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+    status = fmTreeFind(&info->mailboxResourcesPerVirtualPort,
+                        logicalPort,
+                        (void **) &mlbxResUsed);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+    /* Check if we don't exceed MAC filtering entries limits. */
+
+    /* Check PEP limit */
+    if ( (info->innerOuterMacEntriesAdded[pepNb]) >=
+         (info->maxInnerOuterMacEntriesToAddPerPep) )
+    {
+        status = FM_ERR_TABLE_FULL;
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+    }
+
+    /* Check virtual port limit */
+    if ( (mlbxResUsed->innerOuterMacEntriesAdded) >=
+         (info->maxInnerOuterMacEntriesToAddPerPort) )
+    {
+        status = FM_ERR_TABLE_FULL;
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+    }
+
+    /* Create ACL if needed (with first added rule) */
+    status = fmGetACL(sw,
+                      info->aclIdForMacFiltering,
+                      &aclArgs);
+
+    if (status == FM_ERR_INVALID_ACL)
+    {
+        status = fmCreateACLInt(sw,
+                                info->aclIdForMacFiltering,
+                                allScenarios,
+                                FM_ACL_DEFAULT_PRECEDENCE,
+                                TRUE);
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+    }
+    else if (status != FM_OK)
+    {
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+    }
+
+    /* Build ACL rule condition */
+    FM_CLEAR(aclCondData);
+
+    aclCond = FM_ACL_MATCH_DST_MAC
+              | FM_ACL_MATCH_L4_DEEP_INSPECTION_EXT;
+
+    aclCondData.dst     = macFilter->outerMacAddr;
+    aclCondData.dstMask = macFilter->outerMacAddrMask;
+
+    switch (macFilter->tunnelType)
+    {
+        case FM_MAILBOX_TUNNEL_TYPE_VXLAN:
+
+            if (macFilter->outerL4Port != 0)
+            {
+                aclCond |= FM_ACL_MATCH_L4_DST_PORT_WITH_MASK;
+                aclCondData.L4DstStart = macFilter->outerL4Port;
+                aclCondData.L4DstMask  = 0xFFFF;
+            }
+            else
+            {
+                status = FM_ERR_INVALID_ARGUMENT;
+                FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+            }
+
+            if (macFilter->vni != FM_HOST_SRV_INN_OUT_MAC_VNI_NO_MATCH)
+            {
+                aclCondData.L4DeepInspectionExt[4] =
+                            (macFilter->vni & 0xFF0000) >> 16;
+                aclCondData.L4DeepInspectionExt[5] =
+                            (macFilter->vni & 0x00FF00) >> 8;
+                aclCondData.L4DeepInspectionExt[6] =
+                            (macFilter->vni & 0x0000FF);
+
+                aclCondData.L4DeepInspectionExtMask[4] = 0xFF;
+                aclCondData.L4DeepInspectionExtMask[5] = 0xFF;
+                aclCondData.L4DeepInspectionExtMask[6] = 0xFF;
+                /* Index 7 for deep inspection should be unused here, as
+                   vni is a 24-bit key. */
+            }
+
+            aclCondData.L4DeepInspectionExt[8] = 
+                        (macFilter->innerMacAddr & 0xFF0000000000) >> 40;
+            aclCondData.L4DeepInspectionExt[9] =
+                        (macFilter->innerMacAddr & 0x00FF00000000) >> 32;
+            aclCondData.L4DeepInspectionExt[10] =
+                        (macFilter->innerMacAddr & 0x0000FF000000) >> 24;
+            aclCondData.L4DeepInspectionExt[11] =
+                        (macFilter->innerMacAddr & 0x000000FF0000) >> 16;
+            aclCondData.L4DeepInspectionExt[12] =
+                        (macFilter->innerMacAddr & 0x00000000FF00) >> 8;
+            aclCondData.L4DeepInspectionExt[13] =
+                        (macFilter->innerMacAddr & 0x0000000000FF);
+            
+            aclCondData.L4DeepInspectionExtMask[8] = 
+                        (macFilter->innerMacAddrMask & 0xFF0000000000) >> 40;
+            aclCondData.L4DeepInspectionExtMask[9] =
+                        (macFilter->innerMacAddrMask & 0x00FF00000000) >> 32;
+            aclCondData.L4DeepInspectionExtMask[10] =
+                        (macFilter->innerMacAddrMask & 0x0000FF000000) >> 24;
+            aclCondData.L4DeepInspectionExtMask[11] =
+                        (macFilter->innerMacAddrMask & 0x000000FF0000) >> 16;
+            aclCondData.L4DeepInspectionExtMask[12] =
+                        (macFilter->innerMacAddrMask & 0x00000000FF00) >> 8;
+            aclCondData.L4DeepInspectionExtMask[13] =
+                        (macFilter->innerMacAddrMask & 0x0000000000FF);
+            break;
+
+        case FM_MAILBOX_TUNNEL_TYPE_NVGRE:
+
+            aclCond |= FM_ACL_MATCH_L4_DST_PORT_WITH_MASK;
+            aclCondData.L4DstStart = fmGetIntApiProperty(FM_AAK_API_VN_ENCAP_PROTOCOL,
+                                                         FM_AAD_API_VN_ENCAP_PROTOCOL);
+            aclCondData.L4DstMask  = 0xFFFF;
+
+            if (macFilter->vni != FM_HOST_SRV_INN_OUT_MAC_VNI_NO_MATCH)
+            {
+                aclCondData.L4DeepInspectionExt[0] =
+                            (macFilter->vni & 0xFF0000) >> 16;
+                aclCondData.L4DeepInspectionExt[1] =
+                            (macFilter->vni & 0x00FF00) >> 8;
+                aclCondData.L4DeepInspectionExt[2] =
+                            (macFilter->vni & 0x0000FF);
+
+                aclCondData.L4DeepInspectionExtMask[0] = 0xFF;
+                aclCondData.L4DeepInspectionExtMask[1] = 0xFF;
+                aclCondData.L4DeepInspectionExtMask[2] = 0xFF;
+                /* Index 3 for deep inspection should be unused here, as
+                   vni is a 24-bit key. */
+            }
+
+            aclCondData.L4DeepInspectionExt[4] =
+                        (macFilter->innerMacAddr & 0xFF0000000000) >> 40;
+            aclCondData.L4DeepInspectionExt[5] =
+                        (macFilter->innerMacAddr & 0x00FF00000000) >> 32;
+            aclCondData.L4DeepInspectionExt[6] =
+                        (macFilter->innerMacAddr & 0x0000FF000000) >> 24;
+            aclCondData.L4DeepInspectionExt[7] =
+                        (macFilter->innerMacAddr & 0x000000FF0000) >> 16;
+            aclCondData.L4DeepInspectionExt[8] =
+                        (macFilter->innerMacAddr & 0x00000000FF00) >> 8;
+            aclCondData.L4DeepInspectionExt[9] =
+                        (macFilter->innerMacAddr & 0x0000000000FF);
+
+            aclCondData.L4DeepInspectionExtMask[4] =
+                        (macFilter->innerMacAddrMask & 0xFF0000000000) >> 40;
+            aclCondData.L4DeepInspectionExtMask[5] =
+                        (macFilter->innerMacAddrMask & 0x00FF00000000) >> 32;
+            aclCondData.L4DeepInspectionExtMask[6] =
+                        (macFilter->innerMacAddrMask & 0x0000FF000000) >> 24;
+            aclCondData.L4DeepInspectionExtMask[7] =
+                        (macFilter->innerMacAddrMask & 0x000000FF0000) >> 16;
+            aclCondData.L4DeepInspectionExtMask[8] =
+                        (macFilter->innerMacAddrMask & 0x00000000FF00) >> 8;
+            aclCondData.L4DeepInspectionExtMask[9] =
+                        (macFilter->innerMacAddrMask & 0x0000000000FF);
+            break;
+
+        case FM_MAILBOX_TUNNEL_TYPE_GENEVE:
+
+            if (macFilter->outerL4Port != 0)
+            {
+                aclCond |= FM_ACL_MATCH_L4_DST_PORT_WITH_MASK;
+                aclCondData.L4DstStart = macFilter->outerL4Port;
+                aclCondData.L4DstMask  = 0xFFFF;
+            }
+            else
+            {
+                status = FM_ERR_INVALID_ARGUMENT;
+                FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+            }
+
+            if (macFilter->vni != FM_HOST_SRV_INN_OUT_MAC_VNI_NO_MATCH)
+            {
+                aclCondData.L4DeepInspectionExt[4] =
+                            (macFilter->vni & 0xFF0000) >> 16;
+                aclCondData.L4DeepInspectionExt[5] =
+                            (macFilter->vni & 0x00FF00) >> 8;
+                aclCondData.L4DeepInspectionExt[6] =
+                            (macFilter->vni & 0x0000FF);
+
+                aclCondData.L4DeepInspectionExtMask[4] = 0xFF;
+                aclCondData.L4DeepInspectionExtMask[5] = 0xFF;
+                aclCondData.L4DeepInspectionExtMask[6] = 0xFF;
+                /* Index 7 for deep inspection should be unused here, as
+                   vni is a 24-bit key. */
+            }
+
+            aclCondData.L4DeepInspectionExt[8] =
+                        (macFilter->innerMacAddr & 0xFF0000000000) >> 40;
+            aclCondData.L4DeepInspectionExt[9] =
+                        (macFilter->innerMacAddr & 0x00FF00000000) >> 32;
+            aclCondData.L4DeepInspectionExt[10] =
+                        (macFilter->innerMacAddr & 0x0000FF000000) >> 24;
+            aclCondData.L4DeepInspectionExt[11] =
+                        (macFilter->innerMacAddr & 0x000000FF0000) >> 16;
+            aclCondData.L4DeepInspectionExt[12] =
+                        (macFilter->innerMacAddr & 0x00000000FF00) >> 8;
+            aclCondData.L4DeepInspectionExt[13] =
+                        (macFilter->innerMacAddr & 0x0000000000FF);
+
+            aclCondData.L4DeepInspectionExtMask[8] =
+                        (macFilter->innerMacAddrMask & 0xFF0000000000) >> 40;
+            aclCondData.L4DeepInspectionExtMask[9] =
+                        (macFilter->innerMacAddrMask & 0x00FF00000000) >> 32;
+            aclCondData.L4DeepInspectionExtMask[10] =
+                        (macFilter->innerMacAddrMask & 0x0000FF000000) >> 24;
+            aclCondData.L4DeepInspectionExtMask[11] =
+                        (macFilter->innerMacAddrMask & 0x000000FF0000) >> 16;
+            aclCondData.L4DeepInspectionExtMask[12] =
+                        (macFilter->innerMacAddrMask & 0x00000000FF00) >> 8;
+            aclCondData.L4DeepInspectionExtMask[13] =
+                        (macFilter->innerMacAddrMask & 0x0000000000FF);
+            break;
+
+        default:
+            status = FM_ERR_UNSUPPORTED;
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+    }
+
+    /* Build ACL rule action */
+    FM_CLEAR(aclActionData);
+
+    aclAction = FM_ACL_ACTIONEXT_REDIRECT;
+
+    if (fmIsMulticastMacAddress(macFilter->innerMacAddr))
+    {
+        /* If inner MAC is a mcast one, ACL rule will redirect frame 
+           to a multicast group. First we need to check if such group
+           is already created. */
+        
+        macVniKey.macAddr = macFilter->innerMacAddr;
+        macVniKey.vni     = macFilter->vni;
+
+        status = fmCustomTreeFind(&info->mcastMacVni,
+                                  &macVniKey,
+                                  (void **) &macVniVal);
+
+        /* Use existing mcast group */
+        if (status == FM_OK)
+        {
+            /* Redirect frame to mcast logicalPort */
+            status = fmGetMcastGroupPort(sw,
+                                         macVniVal->mcastGroup,
+                                         &aclActionData.logicalPort);
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+            FM_CLEAR(mcastListener);
+
+            mcastListener.port = logicalPort;
+            mcastListener.vlan = 0;
+
+            status = fmAddMcastGroupListener(sw,
+                                             macVniVal->mcastGroup,
+                                             &mcastListener);
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+        }
+        /* New entry */
+        else if (status == FM_ERR_NOT_FOUND)
+        {
+            macVniVal = fmAlloc( sizeof(fm_mailboxMcastMacVni) );
+
+            if (macVniVal == NULL)
+            {
+                status = FM_ERR_NO_MEM;
+                FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+            }
+
+            FM_CLEAR(*macVniVal);
+
+            status = fmCreateMcastGroup(sw,
+                                        &macVniVal->mcastGroup);
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+            status = fmActivateMcastGroup(sw,
+                                          macVniVal->mcastGroup);
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+            FM_CLEAR(mcastListener);
+
+            mcastListener.port = logicalPort;
+            mcastListener.vlan = 0;
+
+            status = fmAddMcastGroupListener(sw,
+                                             macVniVal->mcastGroup,
+                                             &mcastListener);
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+            /* Redirect frame to mcast logicalPort */
+            status = fmGetMcastGroupPort(sw,
+                                         macVniVal->mcastGroup,
+                                         &aclActionData.logicalPort);
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+            macVniVal->macAddr = macFilter->innerMacAddr;
+            macVniVal->vni     = macFilter->vni;
+
+            status = fmCustomTreeInsert(&info->mcastMacVni,
+                                        macVniVal,
+                                        (void *) macVniVal);
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+        }
+        /* Unhandled error */
+        else
+        {
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+        }
+    }
+    /* Redirect frame to a single port */
+    else
+    {
+        aclActionData.logicalPort = logicalPort;
+    }
+
+    /* Build ACL rule ID. The rule id scheme would be:
+       ( (0b000000) |(High 12 bit) | (Low 14 bit)
+       Low part is the unique id taken from a pool.
+       High part are the numbers of masked bit:
+       (outerDmac 6bit) | (innerDmac 6bit)
+       This scheme is to make sure the mask drive the precedence. */
+    status = fmFindBitInBitArray(&info->innOutMacRuleInUse,
+                                 0,
+                                 FALSE,
+                                 &bitNum);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+    if (bitNum < 0)
+    {
+        status = FM_ERR_TABLE_FULL;
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+    }
+
+    aclRule = bitNum;
+
+    aclRule |= ( CountZerosInMacMask(macFilter->innerMacAddrMask) << 14)
+                & 0xFC000;
+
+    aclRule |= ( CountZerosInMacMask(macFilter->outerMacAddrMask) << 20)
+                & 0x3F00000;
+
+    status = fmAddACLRuleExt(sw,
+                             info->aclIdForMacFiltering,
+                             aclRule,
+                             aclCond,
+                             &aclCondData,
+                             aclAction,
+                             &aclActionData);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+    status = fmCompileACLExt(sw,
+                             statusText,
+                             sizeof(statusText),
+                             FM_ACL_COMPILE_FLAG_NON_DISRUPTIVE |
+                             FM_ACL_COMPILE_FLAG_INTERNAL,
+                             (void*) &info->aclIdForMacFiltering);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+    FM_LOG_DEBUG(FM_LOG_CAT_MAILBOX,
+                 "ACL compiled, status=%d, statusText=%s\n",
+                 status,
+                 statusText);
+
+    status = fmApplyACLExt(sw,
+                           FM_ACL_APPLY_FLAG_NON_DISRUPTIVE |
+                           FM_ACL_APPLY_FLAG_INTERNAL,
+                           (void*) &info->aclIdForMacFiltering);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status); 
+
+    status = fmSetBitArrayBit(&info->innOutMacRuleInUse,
+                              bitNum,
+                              1);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+    /* Incrementing pep counter. */
+    info->innerOuterMacEntriesAdded[pepNb]++;
+
+    /* Incrementing virtual port counter. */
+    mlbxResUsed->innerOuterMacEntriesAdded++;
+
+    macFilter->acl     = info->aclIdForMacFiltering;
+    macFilter->aclRule = aclRule;
+
+    status = fmCustomTreeInsert(&mlbxResUsed->innOutMacResource,
+                                macFilter,
+                                (void *) macFilter);
+
+    if (status == FM_ERR_ALREADY_EXISTS)
+    {
+        FM_LOG_DEBUG(FM_LOG_CAT_MAILBOX,
+                     "Given MAC filter key:\n"
+                     "Outer MAC: %012llx mask: %012llx\n"
+                     "Inner MAC: %012llx mask: %012llx\n"
+                     "VNI: 0x%x, outer L4 port: 0x%x, tunnel type: %d\n"
+                     " already tracked with port %d\n",
+                     macFilter->outerMacAddr,
+                     macFilter->outerMacAddrMask,
+                     macFilter->innerMacAddr,
+                     macFilter->innerMacAddrMask,
+                     macFilter->vni,
+                     macFilter->outerL4Port,
+                     macFilter->tunnelType,
+                     logicalPort);
+    }
+    else if (status != FM_OK)
+    {
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+    }
+
+ABORT:
+
+    if (status != FM_OK)
+    {
+        if (macVniVal != NULL)
+        {
+            fmFree(macVniVal);
+        }
+    }
+
+    FM_LOG_EXIT(FM_LOG_CAT_MAILBOX, status);
+
+}  /* end AddMacFilterAclRule */
+
+
+
+
+/*****************************************************************************/
+/** DeleteMacFilterAclRule
+ * \ingroup intMailbox
+ *
+ * \desc            Deletes a inner/outer MAC filtering ACL rule.
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \param[in]       pepNb is the PEP number.
+ *
+ * \param[in]       macFilter points to a structure containing fields 
+ *                  to be filtered.
+ *
+ * \return          FM_OK if successful.
+ *
+ *****************************************************************************/
+static fm_status DeleteMacFilterAclRule(fm_int               sw,
+                                        fm_int               pepNb,
+                                        fm_hostSrvInnOutMac *macFilter)
+{
+    fm_mailboxInfo *       info;
+    fm_status              status;
+    fm_mailboxResources *  mlbxResUsed;
+    fm_mailboxMcastMacVni  macVniKey;
+    fm_mailboxMcastMacVni *macVniVal;
+    fm_multicastListener   mcastListener;
+    fm_hostSrvInnOutMac *  macFilterUsed;
+    fm_int                 logicalPort;
+    fm_int                 aclRule;
+    fm_int                 bitNum;
+    fm_char                statusText[1024];
+    fm_aclCondition        cond;
+    fm_aclValue            value;
+    fm_aclActionExt        action;
+    fm_aclParamExt         param;
+
+    FM_LOG_ENTRY(FM_LOG_CAT_MAILBOX,
+                 "sw = %d, macFilter = %p\n",
+                 sw,
+                 (void *) macFilter);
+
+    info   = GET_MAILBOX_INFO(sw);
+    status = FM_OK;
+
+    status = fmGetGlortLogicalPort(sw,
+                                   macFilter->glort,
+                                   &logicalPort);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+    status = fmTreeFind(&info->mailboxResourcesPerVirtualPort,
+                        logicalPort,
+                        (void **) &mlbxResUsed);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+    status = fmCustomTreeFind(&mlbxResUsed->innOutMacResource,
+                              macFilter,
+                              (void *) &macFilterUsed);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+    status = fmDeleteACLRule(sw,
+                             macFilterUsed->acl,
+                             macFilterUsed->aclRule);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+    /* Remove ACL if empty */
+    status = fmGetACLRuleFirstExt(sw,
+                                  info->aclIdForMacFiltering,
+                                  &aclRule,
+                                  &cond,
+                                  &value,
+                                  &action,
+                                  &param);
+
+    if (status == FM_ERR_NO_RULES_IN_ACL)
+    {
+        status = fmDeleteACL(sw,
+                             info->aclIdForMacFiltering);
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+    }
+    else if (status != FM_OK)
+    {
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+    }
+
+    status = fmCompileACLExt(sw,
+                             statusText,
+                             sizeof(statusText),
+                             FM_ACL_COMPILE_FLAG_NON_DISRUPTIVE |
+                             FM_ACL_COMPILE_FLAG_INTERNAL,
+                             (void *) &macFilterUsed->acl);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+    FM_LOG_DEBUG(FM_LOG_CAT_MAILBOX,
+                 "ACL compiled, status=%d, statusText=%s\n",
+                 status,
+                 statusText);
+
+    status = fmApplyACLExt(sw,
+                           FM_ACL_APPLY_FLAG_NON_DISRUPTIVE |
+                           FM_ACL_APPLY_FLAG_INTERNAL,
+                           (void*) &macFilterUsed->acl);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+    /* The rule id scheme is:
+       ( (0b000000) |(High 12 bit) | (Low 14 bit)
+       where only 14 lower bits from rule id are taken from bitarray,
+       so we need to mask id before releasing it. */
+    bitNum = macFilterUsed->aclRule & 0x3FFF;
+
+    status = fmSetBitArrayBit(&info->innOutMacRuleInUse,
+                              bitNum,
+                              0);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+    if (fmIsMulticastMacAddress(macFilter->innerMacAddr))
+    {
+        /* If inner MAC is a mcast one, ACL rule should redirect frame 
+           to a multicast group. We need to remove listener
+           from such group. */
+
+        macVniKey.macAddr = macFilter->innerMacAddr;
+        macVniKey.vni     = macFilter->vni;
+
+        status = fmCustomTreeFind(&info->mcastMacVni,
+                                  &macVniKey,
+                                  (void **) &macVniVal);
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+        FM_CLEAR(mcastListener);
+
+        mcastListener.port = logicalPort;
+        mcastListener.vlan = 0;
+
+        status = fmDeleteMcastGroupListener(sw,
+                                            macVniVal->mcastGroup,
+                                            &mcastListener);
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+        /* If there is no other listeners, delete mcast group */
+        status = fmGetMcastGroupListenerFirst(sw,
+                                              macVniVal->mcastGroup,
+                                              &mcastListener);
+
+        if (status == FM_ERR_NO_MORE)
+        {
+            status = fmDeactivateMcastGroup(sw,
+                                            macVniVal->mcastGroup);
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+            status = fmDeleteMcastGroup(sw,
+                                        macVniVal->mcastGroup);
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+            status = fmCustomTreeRemoveCertain(&info->mcastMacVni,
+                                               &macVniKey,
+                                               fmFreeMcastMacVni);
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+        }
+        else if (status != FM_OK)
+        {
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+        }
+    }
+
+    fmCustomTreeRemoveCertain(&mlbxResUsed->innOutMacResource,
+                              macFilter,
+                              fmFreeSrvInnOutMac);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+ABORT:
+
+    FM_LOG_EXIT(FM_LOG_CAT_MAILBOX, status);
+
+}  /* end DeleteMacFilterAclRule */
+
+
+
+
+/*****************************************************************************/
+/** SetMgmtXcastModes
+ * \ingroup intMailbox
+ *
+ * \desc            Set the Management PEP's XCAST modes.
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \param[in]       pepNb is the PEP number.
+ *
+ * \param[in]       xcastGlort is Xcast flooding glort.
+ *
+ * \param[in]       srvXcastMode is a structure to the Xcast glort and mode.
+ *
+ * \param[in]       xcastFloodMode is the Xcast flooding mode.
+ *
+ * \return          FM_OK if successful.
+ * \return          FM_ERR_INVALID_VALUE if there are not enough queue 
+ *                  elements used to store proper message arguments.
+ *
+ *****************************************************************************/
+static fm_status SetMgmtXcastModes(fm_int              sw,
+                                   fm_int              pepNb,
+                                   fm_int              xcastGlort,
+                                   fm_hostSrvXcastMode srvXcastMode,
+                                   fm_uint16           xcastFloodMode)
+{
+    fm_switch *              switchPtr;
+    fm_status                status;
+    fm_int                   logicalPort;
+    fm_intMulticastGroup *   mcastGroupForMcastFlood;
+    fm_intMulticastGroup *   mcastGroupForUcastFlood;
+    fm_intMulticastGroup *   mcastGroupForBcastFlood;
+    fm_mailboxInfo *         info;
+    fm_uint64                listenerKey;
+    fm_intMulticastListener *intListener;
+    fm_multicastListener     listener;
+    fm_bool                  lockTaken;
+    fm_bool                  mcastHNIFlooding;
+    fm_int                   swToExecute;
+
+    FM_LOG_ENTRY(FM_LOG_CAT_MAILBOX,
+                 "sw=%d, pepNb=%d, XcastGlort=0x%x, XcastMode=0x%x\n",
+                 sw,
+                 pepNb,
+                 srvXcastMode.glort,
+                 srvXcastMode.mode);
+
+    swToExecute  = GET_SWITCH_AGGREGATE_ID_IF_EXIST(sw);
+    info         = GET_MAILBOX_INFO(swToExecute);
+    lockTaken    = FALSE;
+    status       = FM_OK;
+    listenerKey  = 0;
+    logicalPort  = 0;
+    mcastGroupForMcastFlood = NULL;
+    mcastGroupForUcastFlood = NULL;
+    mcastGroupForBcastFlood = NULL;
+    intListener             = NULL;
+
+    FM_CLEAR(listener);
+
+    switchPtr = GET_SWITCH_PTR(sw);
+
+    mcastHNIFlooding = fmGetBoolApiProperty(FM_AAK_API_MULTICAST_HNI_FLOODING,
+                                            FM_AAD_API_MULTICAST_HNI_FLOODING);
+
+    status = fmGetGlortLogicalPort(sw,
+                                   srvXcastMode.glort,
+                                   &logicalPort);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+    status = fmCaptureWriteLock(&switchPtr->routingLock, FM_WAIT_FOREVER);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+    lockTaken = TRUE;    
+
+    /* Using internal functions to avoid iterating over all listeners */
+    mcastGroupForMcastFlood = fmFindMcastGroup(sw, 
+                                               info->mcastGroupForMcastFlood);
+    if (mcastGroupForMcastFlood == NULL)
+    {
+        status = FM_ERR_INVALID_MULTICAST_GROUP;
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+    }
+
+    mcastGroupForUcastFlood = fmFindMcastGroup(sw,
+                                               info->mcastGroupForUcastFlood);
+    if (mcastGroupForUcastFlood == NULL)
+    {
+        status = FM_ERR_INVALID_MULTICAST_GROUP;
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+    }
+
+    mcastGroupForBcastFlood = fmFindMcastGroup(sw,
+                                               info->mcastGroupForBcastFlood);
+    if (mcastGroupForBcastFlood == NULL)
+    {
+        status = FM_ERR_INVALID_MULTICAST_GROUP;
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+    }
+
+    listenerKey   = GET_LISTENER_KEY(logicalPort, 
+                                     FM_MAILBOX_DEF_VLAN_FOR_FLOOD_MCAST_GROUPS);
+
+    listener.vlan = FM_MAILBOX_DEF_VLAN_FOR_FLOOD_MCAST_GROUPS;
+    listener.port = logicalPort;
+    listener.floodListener = TRUE;
+    listener.xcastGlort = xcastGlort;
+
+    switch (srvXcastMode.mode)
+    {
+        case FM_HOST_SRV_XCAST_MODE_PROMISC:
+
+            if (xcastFloodMode & FM_MAILBOX_XCAST_FLOOD_MODE_MCAST)
+            {
+                /* Search the tree of listeners for a matching entry. */
+                status = fmTreeFind(&mcastGroupForMcastFlood->listenerTree,
+                                    listenerKey,
+                                    (void **) &intListener);
+
+                if (status == FM_ERR_NOT_FOUND)
+                {
+                    status = fmAddMcastGroupListener(sw,
+                                                     info->mcastGroupForMcastFlood,
+                                                     &listener);
+                    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+                    status = AssociateMcastGroupWithFlood(sw,
+                                                          pepNb,
+                                                          FM_PORT_MCAST,
+                                                          mcastGroupForMcastFlood,
+                                                          TRUE);
+                    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+                    /* Update MCAST HNI flooding groups */
+                    if (mcastHNIFlooding)
+                    {
+                        status = fmUpdateMcastHNIFloodingGroups(sw,
+                                                                logicalPort,
+                                                                TRUE);
+                        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+                    }
+                }
+                else if (status != FM_OK)
+                {
+                    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+                }
+            }
+
+            if (xcastFloodMode & FM_MAILBOX_XCAST_FLOOD_MODE_UCAST)
+            {
+                /* Search the tree of listeners for a matching entry. */
+                status = fmTreeFind(&mcastGroupForUcastFlood->listenerTree,
+                                    listenerKey,
+                                    (void **) &intListener);
+
+                if (status == FM_ERR_NOT_FOUND)
+                {
+                    status = fmAddMcastGroupListener(sw,
+                                                     info->mcastGroupForUcastFlood,
+                                                     &listener);
+                    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+                    status = AssociateMcastGroupWithFlood(sw,
+                                                          pepNb,
+                                                          FM_PORT_FLOOD,
+                                                          mcastGroupForUcastFlood,
+                                                          TRUE);
+                    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+                }
+                else if (status != FM_OK)
+                {
+                    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+                }
+            }
+
+            if (xcastFloodMode & FM_MAILBOX_XCAST_FLOOD_MODE_BCAST)
+            {
+                /* Search the tree of listeners for a matching entry. */
+                status = fmTreeFind(&mcastGroupForBcastFlood->listenerTree,
+                                    listenerKey,
+                                    (void **) &intListener);
+
+                if (status == FM_ERR_NOT_FOUND)
+                {
+                    status = fmAddMcastGroupListener(sw,
+                                                     info->mcastGroupForBcastFlood,
+                                                     &listener);
+                    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+                    status = AssociateMcastGroupWithFlood(sw,
+                                                          pepNb,
+                                                          FM_PORT_BCAST,
+                                                          mcastGroupForBcastFlood,
+                                                          TRUE);
+                    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+                }
+                else if (status != FM_OK)
+                {
+                    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+                }
+            }
+
+            FM_API_CALL_FAMILY(status,
+                               switchPtr->SetXcastFlooding,
+                               sw,
+                               pepNb,
+                               srvXcastMode.mode,
+                               xcastFloodMode);
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+            break;
+
+        case FM_HOST_SRV_XCAST_MODE_NONE:
+
+            if (xcastFloodMode & FM_MAILBOX_XCAST_FLOOD_MODE_MCAST)
+            {
+                /* Search the tree of listeners for a matching entry. */
+                status = fmTreeFind(&mcastGroupForMcastFlood->listenerTree,
+                                    listenerKey,
+                                    (void **) &intListener);
+
+                if (status == FM_OK)
+                {
+                    status = fmDeleteMcastGroupListener(sw,
+                                                        info->mcastGroupForMcastFlood,
+                                                        &listener);
+                    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+                    status = AssociateMcastGroupWithFlood(sw,
+                                                          pepNb,
+                                                          FM_PORT_MCAST,
+                                                          mcastGroupForMcastFlood,
+                                                          FALSE);
+                    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+                    /* Update MCAST HNI flooding groups */
+                    if (mcastHNIFlooding)
+                    {
+                        status = fmUpdateMcastHNIFloodingGroups(sw,
+                                                                logicalPort,
+                                                                FALSE);
+                        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+                    }
+                }
+                else if (status != FM_ERR_NOT_FOUND)
+                {
+                    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+                }
+            }
+
+            if (xcastFloodMode & FM_MAILBOX_XCAST_FLOOD_MODE_UCAST)
+            {
+                /* Search the tree of listeners for a matching entry. */
+                status = fmTreeFind(&mcastGroupForUcastFlood->listenerTree,
+                                 listenerKey,
+                                 (void **) &intListener);
+
+                if (status == FM_OK)
+                {
+                    status = fmDeleteMcastGroupListener(sw,
+                                                        info->mcastGroupForUcastFlood,
+                                                        &listener);
+                    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+                    status = AssociateMcastGroupWithFlood(sw,
+                                                          pepNb,
+                                                          FM_PORT_FLOOD,
+                                                          mcastGroupForUcastFlood,
+                                                          FALSE);
+                    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+                }
+                else if (status != FM_ERR_NOT_FOUND)
+                {
+                    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+                }
+            }
+
+            if (xcastFloodMode & FM_MAILBOX_XCAST_FLOOD_MODE_BCAST)
+            {
+                /* Search the tree of listeners for a matching entry. */
+                status = fmTreeFind(&mcastGroupForBcastFlood->listenerTree,
+                                    listenerKey,
+                                    (void **) &intListener);
+
+                if (status == FM_OK)
+                {
+                    status = fmDeleteMcastGroupListener(sw,
+                                                        info->mcastGroupForBcastFlood,
+                                                        &listener);
+                    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+                    status = AssociateMcastGroupWithFlood(sw,
+                                                          pepNb,
+                                                          FM_PORT_BCAST,
+                                                          mcastGroupForBcastFlood,
+                                                          FALSE);
+                    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+                }
+                else if (status != FM_ERR_NOT_FOUND)
+                {
+                    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+                }
+            }
+
+            FM_API_CALL_FAMILY(status,
+                               switchPtr->SetXcastFlooding,
+                               sw,
+                               pepNb,
+                               srvXcastMode.mode,
+                               xcastFloodMode);
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status); 
+
+            break;
+
+        default:
+            status = FM_ERR_INVALID_VALUE;
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+            break;
+    }
+
+    status = FM_OK;
+
+ABORT:
+
+    if (lockTaken)
+    {
+        fmReleaseWriteLock(&switchPtr->routingLock);
+    }
+
+    FM_LOG_EXIT(FM_LOG_CAT_MAILBOX, status);
+
+}   /* end SetXcastModes */
+
+
+
+
 /*****************************************************************************
  * Public Functions
  *****************************************************************************/
+
+
+
+
+/*****************************************************************************/
+/** fmFreeMcastMacVni
+ * \ingroup intNat
+ *
+ * \desc            Free a fm_mailboxMcastMacVni structure.
+ *
+ * \param[in]       key points to the key.
+ *
+ * \param[in,out]   value points to the structure to free.
+ * 
+ * \return          Nothing.
+ *
+ *****************************************************************************/
+void fmFreeMcastMacVni(void *key, void *value)
+{
+    FM_NOT_USED(key);
+
+    fmFree(value);
+
+}   /* end fmFreeMcastMacVni */
+
+
+
+
+/*****************************************************************************/
+/** fmFreeSrvInnOutMac
+ * \ingroup intNat
+ *
+ * \desc            Free a fm_hostSrvInnOutMac structure.
+ *
+ * \param[in]       key points to the key.
+ *
+ * \param[in,out]   value points to the structure to free.
+ * 
+ * \return          Nothing.
+ *
+ *****************************************************************************/
+void fmFreeSrvInnOutMac(void *key, void *value)
+{
+    FM_NOT_USED(key);
+
+    fmFree(value);
+
+}   /* end fmFreeSrvInnOutMac */
+
+
+
+
+/*****************************************************************************/
+/** fmCompareInnerOuterMacFilters
+ * \ingroup intMailbox
+ *
+ * \desc            Compares two fm_hostSrvInnOutMac structures.
+ *
+ * \param[in]       key1 points to one of the keys.
+ *
+ * \param[in]       key2 points to the other key.
+ *
+ * \return          -1 if key1 comes before key2.
+ * \return          0  if key1 is equal to key2.
+ * \return          1  if key1 comes after key2.
+ *
+ *****************************************************************************/
+fm_int fmCompareInnerOuterMacFilters(const void *key1, const void *key2)
+{
+    const fm_hostSrvInnOutMac *filter1;
+    const fm_hostSrvInnOutMac *filter2;
+
+    filter1 = (fm_hostSrvInnOutMac *) key1;
+    filter2 = (fm_hostSrvInnOutMac *) key2;
+
+    if (filter1->outerMacAddr < filter2->outerMacAddr)
+    {
+        return -1;
+    }
+    else if (filter1->outerMacAddr > filter2->outerMacAddr)
+    {
+        return 1;
+    }
+
+    if (filter1->outerMacAddrMask < filter2->outerMacAddrMask)
+    {
+        return -1;
+    }
+    else if (filter1->outerMacAddrMask > filter2->outerMacAddrMask)
+    {
+        return 1;
+    }
+
+    if (filter1->innerMacAddr < filter2->innerMacAddr)
+    {
+        return -1;
+    }
+    else if (filter1->innerMacAddr > filter2->innerMacAddr)
+    {
+        return 1;
+    }
+
+    if (filter1->innerMacAddrMask < filter2->innerMacAddrMask)
+    {
+        return -1;
+    }
+    else if (filter1->innerMacAddrMask > filter2->innerMacAddrMask)
+    {
+        return 1;
+    }
+
+    if (filter1->vni < filter2->vni)
+    {
+        return -1;
+    }
+    else if (filter1->vni > filter2->vni)
+    {
+        return 1;
+    }
+
+    if (filter1->outerL4Port < filter2->outerL4Port)
+    {
+        return -1;
+    }
+    else if (filter1->outerL4Port > filter2->outerL4Port)
+    {
+        return 1;
+    }
+
+    if (filter1->tunnelType < filter2->tunnelType)
+    {
+        return -1;
+    }
+    else if (filter1->tunnelType > filter2->tunnelType)
+    {
+        return 1;
+    }
+
+    if (filter1->glort < filter2->glort)
+    {
+        return -1;
+    }
+    else if (filter1->glort > filter2->glort)
+    {
+        return 1;
+    }
+
+    return 0;
+
+}   /* end fmCompareInnerOuterMacFilters */
+
+
+
+
+/*****************************************************************************/
+/** fmCompareMcastMacVniKeys
+ * \ingroup intMailbox
+ *
+ * \desc            Compares two fm_mailboxMcastMacVni structures.
+ *
+ * \param[in]       key1 points to one of the keys.
+ *
+ * \param[in]       key2 points to the other key.
+ *
+ * \return          -1 if key1 comes before key2.
+ * \return          0  if key1 is equal to key2.
+ * \return          1  if key1 comes after key2.
+ *
+ *****************************************************************************/
+fm_int fmCompareMcastMacVniKeys(const void *key1, const void *key2)
+{
+    const fm_mailboxMcastMacVni *macVniKey1;
+    const fm_mailboxMcastMacVni *macVniKey2;
+
+    macVniKey1 = (fm_mailboxMcastMacVni *) key1;
+    macVniKey2 = (fm_mailboxMcastMacVni *) key2;
+
+    if (macVniKey1->macAddr < macVniKey2->macAddr)
+    {
+        return -1;
+    }
+    else if (macVniKey1->macAddr < macVniKey2->macAddr)
+    {
+        return 1;
+    }
+
+    if (macVniKey1->vni < macVniKey2->vni)
+    {
+        return -1;
+    }
+    else if (macVniKey1->vni < macVniKey2->vni)
+    {
+        return 1;
+    }
+
+    return 0;
+
+}   /* end fmCompareMcastMacVniKeys */
 
 
 
@@ -424,7 +1656,7 @@ fm_status fmNotifyPvidUpdate(fm_int sw,
 
     /* find pep number */
     FM_API_CALL_FAMILY(status,
-                       switchPtr->MapVsiGlortToPepNumber,
+                       switchPtr->MapVirtualGlortToPepNumber,
                        sw,
                        glort,
                        &pepNb);
@@ -670,12 +1902,12 @@ fm_status fmCreateLportProcess(fm_int                   sw,
     fm_uintptr              cachedPvid;
     fm_uint32               glort;
     fm_int                  i;
-    fm_mailboxMessageHeader argHdr;
     fm_hostSrvPort          srvPort;
     fm_event *              event;
     fm_eventLogicalPort *   logicalPortEvent;
-    fm_bool                 argHdrRead;
     fm_mailboxResources *   mailboxResource;
+    fm_portAttr *           portAttr;
+    fm_bool                 portAttrLockTaken;
 
     FM_LOG_ENTRY(FM_LOG_CAT_MAILBOX,
                  "sw=%d, pepNb=%d, ctrlHdr=%p, pfTrHdr=%p\n",
@@ -684,23 +1916,22 @@ fm_status fmCreateLportProcess(fm_int                   sw,
                  (void *) ctrlHdr,
                  (void *) pfTrHdr);
 
-    switchPtr        = GET_SWITCH_PTR(sw);
-    info             = GET_MAILBOX_INFO(sw);
-    status           = FM_OK;
-    abortStatus      = FM_OK;
-    bytesRead        = 0;
-    argBytesRead     = 0;
-    index            = 0;
-    rv               = 0;
-    pvid             = 0;
-    pepPort          = -1;
-    argHdrRead       = FALSE;
-    firstPort        = FM_LOGICAL_PORT_ANY;
-    event            = NULL;
-    logicalPortEvent = NULL;
-    mailboxResource  = NULL;
-
-    FM_CLEAR(argHdr);
+    switchPtr         = GET_SWITCH_PTR(sw);
+    info              = GET_MAILBOX_INFO(sw);
+    status            = FM_OK;
+    abortStatus       = FM_OK;
+    bytesRead         = 0;
+    argBytesRead      = 0;
+    index             = 0;
+    rv                = 0;
+    pvid              = 0;
+    pepPort           = -1;
+    firstPort         = FM_LOGICAL_PORT_ANY;
+    event             = NULL;
+    logicalPortEvent  = NULL;
+    mailboxResource   = NULL;
+    portAttr          = NULL;
+    portAttrLockTaken = FALSE;
 
     FM_API_CALL_FAMILY(status,
                        switchPtr->ValidateMailboxMessageLength,
@@ -769,6 +2000,11 @@ fm_status fmCreateLportProcess(fm_int                   sw,
             fmTreeInit(&mailboxResource->mailboxMacResource);
             fmTreeInit(&mailboxResource->mailboxFlowResource);
             fmTreeInit(&mailboxResource->mailboxFlowTableResource);
+            fmCustomTreeInit(&mailboxResource->innOutMacResource,
+                             fmCompareInnerOuterMacFilters);
+
+            mailboxResource->macEntriesAdded           = 0;
+            mailboxResource->innerOuterMacEntriesAdded = 0;
 
             status = fmTreeInsert(&info->mailboxResourcesPerVirtualPort,
                                   i,
@@ -784,7 +2020,17 @@ fm_status fmCreateLportProcess(fm_int                   sw,
 
             if (status == FM_OK)
             {
-                /* Do nothing. */
+                portAttr = GET_PORT_ATTR(sw, i);
+                if (portAttr->defVlan != cachedPvid)
+                {
+                    /* Set the cache port attribute value manually. The current
+                       value is invalid because of port initialization. The
+                       attribute is not changed but restored so notifying about
+                       the change is undesirable. */
+                    FM_FLAG_TAKE_PORT_ATTR_LOCK(sw);
+                    portAttr->defVlan = cachedPvid;
+                    FM_FLAG_DROP_PORT_ATTR_LOCK(sw);
+                }
             }
             else if (status == FM_ERR_NOT_FOUND)
             {
@@ -933,11 +2179,9 @@ fm_status fmDeleteLportProcess(fm_int                   sw,
     fm_int                  firstPort;
     fm_int                  numAddresses;
     fm_int                  pepPort;
-    fm_mailboxMessageHeader argHdr;
     fm_hostSrvPort          srvPort;
     fm_event *              event;
     fm_eventLogicalPort *   logicalPortEvent;
-    fm_bool                 argHdrRead;
 
     FM_LOG_ENTRY(FM_LOG_CAT_MAILBOX,
                  "sw=%d, pepNb=%d, ctrlHdr=%p, pfTrHdr=%p\n",
@@ -958,9 +2202,6 @@ fm_status fmDeleteLportProcess(fm_int                   sw,
     event            = NULL;
     logicalPortEvent = NULL;
     numAddresses     = 0;
-    argHdrRead       = FALSE;
-
-    FM_CLEAR(argHdr);
 
     FM_API_CALL_FAMILY(status,
                        switchPtr->ValidateMailboxMessageLength,
@@ -1093,7 +2334,6 @@ fm_status fmSetXcastModesProcess(fm_int                   sw,
     fm_int                   size;
     fm_int                   logicalPort;
     fm_int                   pepPort;
-    fm_mailboxMessageHeader  argHdr;
     fm_hostSrvXcastMode      srvXcastMode;
     fm_intMulticastGroup *   mcastGroupForMcastFlood;
     fm_intMulticastGroup *   mcastGroupForUcastFlood;
@@ -1102,7 +2342,6 @@ fm_status fmSetXcastModesProcess(fm_int                   sw,
     fm_uint64                listenerKey;
     fm_intMulticastListener *intListener;
     fm_multicastListener     listener;
-    fm_bool                  argHdrRead;
     fm_bool                  lockTaken;
     fm_bool                  mcastHNIFlooding;
 
@@ -1122,7 +2361,6 @@ fm_status fmSetXcastModesProcess(fm_int                   sw,
     size         = 0;
     listenerKey  = 0;
     logicalPort  = 0;
-    argHdrRead   = FALSE;
     mcastGroupForMcastFlood = NULL;
     mcastGroupForUcastFlood = NULL;
     mcastGroupForBcastFlood = NULL;
@@ -1130,7 +2368,6 @@ fm_status fmSetXcastModesProcess(fm_int                   sw,
 
     FM_CLEAR(listener);
 
-    FM_CLEAR(argHdr);
     FM_CLEAR(srvXcastMode);
 
     switchPtr = GET_SWITCH_PTR(sw);
@@ -1683,12 +2920,11 @@ fm_status fmUpdateMacFwdRuleProcess(fm_int                   sw,
     fm_int                  size;
     fm_int                  logicalPort;
     fm_int                  mcastGroup;
-    fm_mailboxMessageHeader argHdr;
     fm_hostSrvMACUpdate     srvMacUpdate;
     fm_macAddressEntry      macAddrEntry;
     fm_bool                 isDeleteAction;
     fm_bool                 isMacSecure;
-    fm_bool                 argHdrRead;
+    fm_bool                 routingLockTaken;
     fm_multicastAddress     mcastAddr;
     fm_multicastListener    listener;
     fm_mailboxResources *   mailboxResourcesUsed;
@@ -1710,10 +2946,8 @@ fm_status fmUpdateMacFwdRuleProcess(fm_int                   sw,
     mcastGroup     = -1;
     isDeleteAction = TRUE;
     isMacSecure    = TRUE;
-    argHdrRead     = FALSE;
+    routingLockTaken = FALSE;
     mailboxResourcesUsed = NULL;
-
-    FM_CLEAR(argHdr);
 
     FM_API_CALL_FAMILY(status,
                        switchPtr->ValidateMailboxMessageLength,
@@ -1826,6 +3060,8 @@ fm_status fmUpdateMacFwdRuleProcess(fm_int                   sw,
                                                 &mcastAddr);
                 FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
 
+                info->macEntriesAdded[pepNb]++;
+
                 listener.port = macAddrEntry.port;
                 listener.vlan = macAddrEntry.vlanID;
 
@@ -1895,11 +3131,14 @@ fm_status fmUpdateMacFwdRuleProcess(fm_int                   sw,
                     }
                 }
 
-                status = fmGetMcastGroupListenerFirst(sw,
-                                                      mcastGroup,
-                                                      &listener);
+                /* Take routing lock needed by fmHasMcastGroupNonFloodingListeners */
+                status = fmCaptureWriteLock(&switchPtr->routingLock, FM_WAIT_FOREVER);
+                FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
 
-                if (status  == FM_ERR_NO_MORE)
+                routingLockTaken = TRUE;
+
+                if ( !fmHasMcastGroupNonFloodingListeners(sw,
+                                                          mcastGroup) )
                 {
                     status = fmDeactivateMcastGroup(sw,
                                                     mcastGroup);
@@ -1908,11 +3147,14 @@ fm_status fmUpdateMacFwdRuleProcess(fm_int                   sw,
                     status = fmDeleteMcastGroup(sw,
                                                 mcastGroup);
                     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+                    info->macEntriesAdded[pepNb]--;
                 }
-                else if (status != FM_OK)
-                {
-                    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
-                }
+
+                status = fmReleaseWriteLock(&switchPtr->routingLock);
+                FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+                routingLockTaken = FALSE;
             }
             else
             {
@@ -1953,6 +3195,8 @@ fm_status fmUpdateMacFwdRuleProcess(fm_int                   sw,
             status = fmDeleteAddress(sw, &macAddrEntry);
             FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
 
+            info->macEntriesAdded[pepNb]--;
+
             if ( (mailboxResourcesUsed != NULL) &&
                     fmTreeIsInitialized(&mailboxResourcesUsed->mailboxMacResource))
             {
@@ -1980,6 +3224,8 @@ fm_status fmUpdateMacFwdRuleProcess(fm_int                   sw,
             status = fmAddAddress(sw, &macAddrEntry);
             FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
 
+            info->macEntriesAdded[pepNb]++;
+
             if ( (mailboxResourcesUsed != NULL) &&
                     fmTreeIsInitialized(&mailboxResourcesUsed->mailboxMacResource))
             {
@@ -2005,6 +3251,11 @@ fm_status fmUpdateMacFwdRuleProcess(fm_int                   sw,
     }
 
 ABORT:
+
+    if (routingLockTaken)
+    {
+        fmReleaseWriteLock(&switchPtr->routingLock);
+    }
 
     fmSendHostSrvErrResponse(sw,
                              pepNb,
@@ -2052,8 +3303,6 @@ fm_status fmConfigReqProcess(fm_int                   sw,
     fm_int                  size;
     fm_int                  pepPort;
     fm_bool                 value;
-    fm_bool                 argHdrRead;
-    fm_mailboxMessageHeader argHdr;
     fm_hostSrvConfig        srvConfig;
 
     FM_LOG_ENTRY(FM_LOG_CAT_MAILBOX,
@@ -2069,10 +3318,7 @@ fm_status fmConfigReqProcess(fm_int                   sw,
     rv           = 0;
     argBytesRead = 0;
     size         = 0;
-    argHdrRead   = FALSE;
     value        = FM_ENABLED;
-
-    FM_CLEAR(argHdr);
 
     FM_API_CALL_FAMILY(status,
                        switchPtr->ValidateMailboxMessageLength,
@@ -2177,11 +3423,9 @@ fm_status fmCreateFlowTableProcess(fm_int                   sw,
     fm_int                    size;
     fm_int                    logicalPort;
     fm_hostSrvLportMap        lportMap; /* Need to get glort range for given PEP*/
-    fm_mailboxMessageHeader   argHdr;
     fm_hostSrvCreateFlowTable srvCreateTable;
     fm_flowCondition          condition;
     fm_bool                   tableWithPriority;
-    fm_bool                   argHdrRead;
     fm_mailboxResources *     mailboxResourcesUsed;
     fm_uintptr                tableType;
 
@@ -2203,10 +3447,7 @@ fm_status fmCreateFlowTableProcess(fm_int                   sw,
     pfGlort           = 0;
     logicalPort       = -1;
     tableWithPriority = TRUE;
-    argHdrRead        = FALSE;
     mailboxResourcesUsed = NULL;
-
-    FM_CLEAR(argHdr);
 
     FM_API_CALL_FAMILY(status,
                        switchPtr->ValidateMailboxMessageLength,
@@ -2359,9 +3600,7 @@ fm_status fmDeleteFlowTableProcess(fm_int                   sw,
     fm_int                    logicalPort;
     fm_int                    flowId;
     fm_hostSrvLportMap        lportMap; /* Need to get glort range for given PEP*/
-    fm_mailboxMessageHeader   argHdr;
     fm_hostSrvDeleteFlowTable srvDeleteTable;
-    fm_bool                   argHdrRead;
     fm_mailboxResources *     mailboxResourcesUsed;
     fm_treeIterator           treeIterMailboxRes;
     void *                    nextValue;
@@ -2385,10 +3624,7 @@ fm_status fmDeleteFlowTableProcess(fm_int                   sw,
     flowId         = -1;
     flowTableIndex = 0;
     key            = 0;
-    argHdrRead     = FALSE;
     mailboxResourcesUsed = NULL;
-
-    FM_CLEAR(argHdr);
 
     FM_API_CALL_FAMILY(status,
                        switchPtr->ValidateMailboxMessageLength,
@@ -2571,10 +3807,9 @@ fm_status fmUpdateFlowProcess(fm_int                   sw,
     fm_uint32               argBytesRead;
     fm_int                  size;
     fm_int                  offset;
-    fm_int                  flowID;
+    fm_int                  flowId;
     fm_int                  logicalPort;
     fm_hostSrvLportMap      lportMap; /* Need to get glort range for given PEP*/
-    fm_mailboxMessageHeader argHdr;
     fm_hostSrvUpdateFlow    srvUpdateFlow;
     fm_hostSrvFlowHandle    srvFlowHandle;
     fm_flowCondition        condition;
@@ -2582,7 +3817,6 @@ fm_status fmUpdateFlowProcess(fm_int                   sw,
     fm_flowValue            condVal;
     fm_flowParam            flowParam;
     fm_macaddr              macAddr;
-    fm_bool                 argHdrRead;
     fm_mailboxResources *   mailboxResourcesUsed;
     fm_uint64               key;
 
@@ -2606,14 +3840,10 @@ fm_status fmUpdateFlowProcess(fm_int                   sw,
     macAddr      = 0;
     key          = 0;
     pfGlort      = 0;
-    argHdrRead   = FALSE;
-    flowID       = FM_MAILBOX_FLOW_ID_ADD_NEW;
     mailboxResourcesUsed = NULL;
 
     FM_CLEAR(condVal);
     FM_CLEAR(flowParam);
-
-    FM_CLEAR(argHdr);
 
     FM_API_CALL_FAMILY(status,
                        switchPtr->ValidateMailboxMessageLength,
@@ -2647,10 +3877,10 @@ fm_status fmUpdateFlowProcess(fm_int                   sw,
                            srvUpdateFlow.action,
                            &srvUpdateFlow.flowParam,
                            FM_FLOW_STATE_ENABLED,
-                           &flowID);
+                           &flowId);
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);          
 
-        srvUpdateFlow.flowID = flowID;
+        srvUpdateFlow.flowID = flowId;
 
         FM_CLEAR(lportMap);
 
@@ -2727,13 +3957,9 @@ ABORT:
     /* Prepare response */
     FM_CLEAR(srvFlowHandle);
 
-    if (argHdrRead == TRUE)
+    if (status == FM_OK)
     {
         srvFlowHandle.flowID = srvUpdateFlow.flowID;
-    }
-    else
-    {
-        srvFlowHandle.flowID = flowID;
     }
 
     FM_API_CALL_FAMILY(status,
@@ -2783,9 +4009,7 @@ fm_status fmDeleteFlowProcess(fm_int                   sw,
     fm_uint32               rv;
     fm_uint32               bytesRead;
     fm_uint32               argBytesRead;
-    fm_mailboxMessageHeader argHdr;
     fm_hostSrvDeleteFlow    srvDeleteFlow;
-    fm_bool                 argHdrRead;
     fm_mailboxResources *   mailboxResourcesUsed;
     fm_uint64               key;
     fm_int                  logicalPort;
@@ -2807,10 +4031,7 @@ fm_status fmDeleteFlowProcess(fm_int                   sw,
     key          = 0;
     pfGlort      = 0;
     logicalPort  = -1;
-    argHdrRead   = FALSE;
     mailboxResourcesUsed = NULL;
-
-    FM_CLEAR(argHdr);
 
     FM_API_CALL_FAMILY(status,
                        switchPtr->ValidateMailboxMessageLength,
@@ -2939,9 +4160,7 @@ fm_status fmSetFlowStateProcess(fm_int                   sw,
     fm_uint32               bytesRead;
     fm_uint32               argBytesRead;
     fm_int                  size;
-    fm_mailboxMessageHeader argHdr;
     fm_hostSrvFlowState     srvFlowState;
-    fm_bool                 argHdrRead;
 
     FM_LOG_ENTRY(FM_LOG_CAT_MAILBOX,
                  "sw=%d, pepNb=%d, ctrlHdr=%p, pfTrHdr=%p\n",
@@ -2956,9 +4175,6 @@ fm_status fmSetFlowStateProcess(fm_int                   sw,
     rv              = 0;
     argBytesRead    = 0;
     size            = 0;
-    argHdrRead      = FALSE;
-
-    FM_CLEAR(argHdr);
 
     FM_API_CALL_FAMILY(status,
                        switchPtr->ValidateMailboxMessageLength,
@@ -3005,10 +4221,187 @@ ABORT:
 
 
 /*****************************************************************************/
-/** fmSetTimestampModeProcess
+/** fmAnnounceTxTimestampMode
  * \ingroup intMailbox
  *
- * \desc            Process mailbox requests for TX_TIMESTAMP_MODE.
+ * \desc            Process TX_TIMESTAMP_MODE message.
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \param[in]       isTxTimestampEnabled specifies whether TX_TIMESTAMP_MODE 
+ *                  is enabled/disabled.
+ *
+ * \return          FM_OK if successful.
+ *
+ *****************************************************************************/
+fm_status fmAnnounceTxTimestampMode(fm_int  sw,
+                                    fm_bool isTxTimestampEnabled)
+{
+    fm_switch *switchPtr;
+    fm_status  status;
+    fm_bool    switchLockTaken;
+    fm_bool    mailboxLockTaken;
+
+    FM_LOG_ENTRY(FM_LOG_CAT_MAILBOX,
+                 "sw=%d, isTxTimestampEnabled=%d\n",
+                 sw,
+                 isTxTimestampEnabled);
+
+    /* Take read access to the switch lock */
+    PROTECT_SWITCH(sw);
+    switchLockTaken = TRUE;
+
+    switchPtr        = GET_SWITCH_PTR(sw);
+    status           = FM_OK;
+    mailboxLockTaken = FALSE;
+
+    /* Take mailbox lock */
+    FM_TAKE_MAILBOX_LOCK(sw);
+    mailboxLockTaken = TRUE;
+
+    FM_API_CALL_FAMILY(status,
+                       switchPtr->MailboxAnnounceTxTimestampMode,
+                       sw,
+                       isTxTimestampEnabled);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+ABORT:
+
+    if (mailboxLockTaken)
+    {
+        FM_DROP_MAILBOX_LOCK(sw);
+    }
+
+    if (switchLockTaken)
+    {
+        UNPROTECT_SWITCH(sw);
+    }
+
+    FM_LOG_EXIT(FM_LOG_CAT_MAILBOX, status);
+
+}   /* end fmAnnounceTxTimestampMode */
+
+
+
+
+/*****************************************************************************/
+/** fmMasterClkOffsetProcess
+ * \ingroup intMailbox
+ *
+ * \desc            Process MASTER_CLK_OFFSET message.
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \param[in]       pepNb is the PEP number.
+ *
+ * \param[in]       ctrlHdr points to mailbox control header structure.
+ *
+ * \param[in]       pfTrHdr points to PF transaction header structure.
+ *
+ * \return          FM_OK if successful.
+ *
+ *****************************************************************************/
+fm_status fmMasterClkOffsetProcess(fm_int                   sw,
+                                   fm_int                   pepNb,
+                                   fm_mailboxControlHeader *ctrlHdr,
+                                   fm_mailboxMessageHeader *pfTrHdr)
+{
+    fm_switch *switchPtr;
+    fm_port *  portPtr;
+    fm_status  status;
+    fm_int     logicalPort;
+    fm_int     timestampOwnerPep;
+    fm_uint32  glort;
+    fm_hostSrvMasterClkOffset clkOffset;
+
+    FM_LOG_ENTRY(FM_LOG_CAT_MAILBOX,
+                 "sw=%d, pepNb=%d, ctrlHdr=%p, pfTrHdr=%p\n",
+                 sw,
+                 pepNb,
+                 (void *) ctrlHdr,
+                 (void *) pfTrHdr);
+
+    switchPtr        = GET_SWITCH_PTR(sw);
+    status           = FM_OK;
+
+    FM_API_CALL_FAMILY(status,
+                       switchPtr->ValidateMailboxMessageLength,
+                       sw,
+                       pepNb,
+                       ctrlHdr,
+                       pfTrHdr);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+    FM_API_CALL_FAMILY(status,
+                       switchPtr->ReadMailboxRequestArguments,
+                       sw,
+                       pepNb,
+                       ctrlHdr,
+                       pfTrHdr,
+                       FM_HOST_SRV_MASTER_CLK_OFFSET_TYPE,
+                       FM_HOST_SRV_MASTER_CLK_OFFSET_TYPE_SIZE,
+                       (void *) &clkOffset);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+    status = fmGetSwitchAttribute(sw,
+                                  FM_SWITCH_ETH_TIMESTAMP_OWNER,
+                                  &logicalPort);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+    status = fmGetLogicalPortGlort(sw,
+                                   logicalPort,
+                                   &glort);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+    portPtr = GET_PORT_PTR(sw, logicalPort);
+
+    if (portPtr->portType != FM_PORT_TYPE_VIRTUAL)
+    {
+        status = FM_ERR_INVALID_PORT;
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+    }
+
+    /* find pep number */
+    FM_API_CALL_FAMILY(status,
+                       switchPtr->MapVirtualGlortToPepNumber,
+                       sw,
+                       glort,
+                       &timestampOwnerPep);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+    /* Resend the message if timestamp owner pep is the receiving one,
+     * otherwise ignore the message */
+    if (pepNb == timestampOwnerPep)
+    {
+        FM_API_CALL_FAMILY(status,
+                           switchPtr->ProcessMasterClkOffset,
+                           sw,
+                           pepNb,
+                           &clkOffset);
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+    }
+
+ABORT:
+
+    fmSendHostSrvErrResponse(sw,
+                             pepNb,
+                             status,
+                             ctrlHdr,
+                             FM_MAILBOX_MSG_MASTER_CLK_OFFSET_ID,
+                             FM_HOST_SRV_RETURN_ERR_TYPE);
+
+    FM_LOG_EXIT(FM_LOG_CAT_MAILBOX, status);
+
+}   /* end fmMasterClkOffsetProcess */
+
+
+
+
+/*****************************************************************************/
+/** fmFilterInnerOuterMacProcess
+ * \ingroup intMailbox
+ *
+ * \desc            Process mailbox requests for FILTER_INNER_OUTER_MAC.
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -3023,22 +4416,18 @@ ABORT:
  *                  elements used to store proper message arguments.
  *
  *****************************************************************************/
-fm_status fmSetTimestampModeProcess(fm_int                   sw,
-                                    fm_int                   pepNb,
-                                    fm_mailboxControlHeader *ctrlHdr,
-                                    fm_mailboxMessageHeader *pfTrHdr)
+fm_status fmFilterInnerOuterMacProcess(fm_int                   sw,
+                                       fm_int                   pepNb,
+                                       fm_mailboxControlHeader *ctrlHdr,
+                                       fm_mailboxMessageHeader *pfTrHdr)
 {
-    fm_switch *             switchPtr;
-    fm_status               status;
-    fm_uint32               bytesRead;
-    fm_uint32               argBytesRead;
-    fm_uint32               rv;
-    fm_int                  logicalPort;
-    fm_mailboxMessageHeader argHdr;
-    fm_bool                 argHdrRead;
-    fm_hostSrvTimestampModeReq  modeReq;
-    fm_hostSrvTimestampModeResp modeResp;
-    fm_portTxTimestampMode      maxTimestampMode;
+    fm_switch *          switchPtr;
+    fm_status            status;
+    fm_hostSrvInnOutMac  macFilter;
+    fm_hostSrvInnOutMac *macFilterKey;
+    fm_int               filterPep;
+    fm_int               pepPort;
+    fm_uint32            parseCfg;
 
     FM_LOG_ENTRY(FM_LOG_CAT_MAILBOX,
                  "sw=%d, pepNb=%d, ctrlHdr=%p, pfTrHdr=%p\n",
@@ -3047,17 +4436,9 @@ fm_status fmSetTimestampModeProcess(fm_int                   sw,
                  (void *) ctrlHdr,
                  (void *) pfTrHdr);
 
-    switchPtr        = GET_SWITCH_PTR(sw);
-    status           = FM_OK;
-    bytesRead        = 0;
-    argBytesRead     = 0;
-    rv               = 0;
-    logicalPort      = -1;
-    argHdrRead       = FALSE;
-    maxTimestampMode = FM_PORT_TX_TIMESTAMP_MODE_NONE;
-
-    FM_CLEAR(argHdr);
-    FM_CLEAR(modeReq);
+    switchPtr    = GET_SWITCH_PTR(sw);
+    status       = FM_OK;
+    macFilterKey = NULL;
 
     FM_API_CALL_FAMILY(status,
                        switchPtr->ValidateMailboxMessageLength,
@@ -3067,7 +4448,7 @@ fm_status fmSetTimestampModeProcess(fm_int                   sw,
                        pfTrHdr);
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
 
-    FM_CLEAR(modeReq);
+    FM_CLEAR(macFilter);
 
     FM_API_CALL_FAMILY(status,
                        switchPtr->ReadMailboxRequestArguments,
@@ -3075,57 +4456,253 @@ fm_status fmSetTimestampModeProcess(fm_int                   sw,
                        pepNb,
                        ctrlHdr,
                        pfTrHdr,
-                       FM_HOST_SRV_SET_TIMESTAMP_MODE_REQ_TYPE,
-                       FM_HOST_SRV_TMSTAMP_MODE_REQ_TYPE_SIZE,
-                       (void *) &modeReq);
+                       FM_HOST_SRV_INN_OUT_MAC_TYPE,
+                       FM_HOST_SRV_INN_OUT_MAC_TYPE_SIZE,
+                       (void *) &macFilter);
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
 
-    /* Prepare response */
-    FM_CLEAR(modeResp);
-
-    status = GetMaxSupportedTxTimestampMode(sw,
-                                            &maxTimestampMode);
+    /* Validate if glort value fit the receivers pep glort range */
+    FM_API_CALL_FAMILY(status,
+                       switchPtr->MapVirtualGlortToPepNumber,
+                       sw,
+                       macFilter.glort,
+                       &filterPep);
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
 
-    if (modeReq.mode <= maxTimestampMode)
+    if (filterPep != pepNb)
     {
-        status = fmGetGlortLogicalPort(sw,
-                                       modeReq.glort,
-                                       &logicalPort);
-        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status)
+        status = FM_ERR_INVALID_ARGUMENT;
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+    }
 
-        status = fmSetLogicalPortAttribute(sw,
-                                           logicalPort,
-                                           FM_LPORT_TX_TIMESTAMP_MODE,
-                                           (void *) &modeReq.mode);
+    /* Validate if pep port parser is set to L4. If not, just set it. */
+    FM_API_CALL_FAMILY(status,
+                       switchPtr->MapVirtualGlortToPepLogicalPort,
+                       sw,
+                       macFilter.glort,
+                       &pepPort);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+    status = fmGetPortAttribute(sw,
+                                pepPort,
+                                FM_PORT_PARSER,
+                                &parseCfg);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+    if (parseCfg != FM_PORT_PARSER_STOP_AFTER_L4)
+    {
+        parseCfg = FM_PORT_PARSER_STOP_AFTER_L4;
+
+        status = fmSetPortAttribute(sw,
+                                    pepPort,
+                                    FM_PORT_PARSER,
+                                    &parseCfg);
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+    }
+
+    if (macFilter.action == FM_HOST_SRV_INN_OUT_MAC_ACTION_TYPE_ADD)
+    {
+        /* When adding new filtering rule, allocate new structure 
+           as it will be stored in the tree. */
+        macFilterKey = fmAlloc( sizeof(fm_hostSrvInnOutMac) );
+
+        if (macFilterKey == NULL)
+        {
+            status = FM_ERR_NO_MEM;
+            FM_LOG_ABORT(FM_LOG_CAT_MAILBOX, status);
+        }
+
+        macFilterKey->outerMacAddr     = macFilter.outerMacAddr;
+        macFilterKey->outerMacAddrMask = macFilter.outerMacAddrMask;
+        macFilterKey->innerMacAddr     = macFilter.innerMacAddr;
+        macFilterKey->innerMacAddrMask = macFilter.innerMacAddrMask;
+        macFilterKey->vni              = macFilter.vni;
+        macFilterKey->outerL4Port      = macFilter.outerL4Port;
+        macFilterKey->tunnelType       = macFilter.tunnelType;
+        macFilterKey->action           = macFilter.action;
+        macFilterKey->glort            = macFilter.glort;
+
+
+        status = AddMacFilterAclRule(sw,
+                                     pepNb,
+                                     macFilterKey);
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+    }
+    else if (macFilter.action == FM_HOST_SRV_INN_OUT_MAC_ACTION_TYPE_DEL)
+    {
+        status = DeleteMacFilterAclRule(sw,
+                                        pepNb,
+                                        &macFilter);
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
     }
     else
     {
-        status = FM_FAIL;
+        status = FM_ERR_INVALID_ARGUMENT;
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
     }
 
 ABORT:
 
-    modeResp.glort = modeReq.glort;
+    if (status != FM_OK)
+    {
+        if (macFilterKey != NULL)
+        {
+            fmFree(macFilterKey);
+        }
+    }
 
-    modeResp.maxMode = maxTimestampMode;
-
-    modeResp.status = status;
-
-    FM_API_CALL_FAMILY(status,
-                       switchPtr->WriteMailboxResponseMessage,
-                       sw,
-                       pepNb,
-                       ctrlHdr,
-                       FM_MAILBOX_MSG_SET_TIMESTAMP_MODE_ID,
-                       FM_HOST_SRV_SET_TIMESTAMP_MODE_RESP_TYPE,
-                       (void *) &modeResp);
+    fmSendHostSrvErrResponse(sw,
+                             pepNb,
+                             status,
+                             ctrlHdr,
+                             FM_MAILBOX_MSG_INN_OUT_MAC_ID,
+                             FM_HOST_SRV_RETURN_ERR_TYPE);
 
     FM_LOG_EXIT(FM_LOG_CAT_MAILBOX, status);
 
-}   /* end fmSetTimestampModeProcess */
+}   /* end fmFilterInnerOuterMacProcess */
+
+
+
+
+/*****************************************************************************/
+/** fmSetInnerOuterMacFilter
+ * \ingroup intMailbox
+ *
+ * \desc            This function is created for testing purposes.
+ *                  It emulates the FILTER_INNER_OUTER_MAC message.
+ *                  User can create/delete inner/outer MAC filters.
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \param[in]       pepNb is the PEP number on which message is emulated.
+ *
+ * \param[in]       macFilter points to a structure containing fields 
+ *                  to be filtered. 
+ *
+ * \return          FM_OK if successful.
+ *
+ *****************************************************************************/
+fm_status fmSetInnerOuterMacFilter(fm_int               sw,
+                                   fm_int               pepNb,
+                                   fm_hostSrvInnOutMac *macFilter)
+{
+    fm_switch *          switchPtr;
+    fm_status            status;
+    fm_hostSrvInnOutMac *macFilterKey;
+    fm_int               filterPep;
+    fm_int               pepPort;
+    fm_uint32            parseCfg;
+
+    FM_LOG_ENTRY(FM_LOG_CAT_MAILBOX,
+                 "sw=%d, pepNb=%d, macFilter=%p\n",
+                 sw,
+                 pepNb,
+                 (void *) macFilter);
+
+    switchPtr    = GET_SWITCH_PTR(sw);
+    status       = FM_OK;
+    macFilterKey = NULL;
+
+    LOCK_SWITCH(sw);
+    FM_TAKE_MAILBOX_LOCK(sw);
+
+    /* Validate if glort value fit the receivers pep glort range */
+    FM_API_CALL_FAMILY(status,
+                       switchPtr->MapVirtualGlortToPepNumber,
+                       sw,
+                       macFilter->glort,
+                       &filterPep);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+    if (filterPep != pepNb)
+    {
+        status = FM_ERR_INVALID_ARGUMENT;
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+    }
+
+    /* Validate if pep port parser is set to L4. If not, just set it. */
+    FM_API_CALL_FAMILY(status,
+                       switchPtr->MapVirtualGlortToPepLogicalPort,
+                       sw,
+                       macFilter->glort,
+                       &pepPort);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+    status = fmGetPortAttribute(sw,
+                                pepPort,
+                                FM_PORT_PARSER,
+                                &parseCfg);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+    if (parseCfg != FM_PORT_PARSER_STOP_AFTER_L4)
+    {
+        parseCfg = FM_PORT_PARSER_STOP_AFTER_L4;
+
+        status = fmSetPortAttribute(sw,
+                                    pepPort,
+                                    FM_PORT_PARSER,
+                                    &parseCfg);
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+    }
+
+    if (macFilter->action == FM_HOST_SRV_INN_OUT_MAC_ACTION_TYPE_ADD)
+    {
+        /* When adding new filtering rule, allocate new structure 
+           as it will be stored in the tree. */
+        macFilterKey = fmAlloc( sizeof(fm_hostSrvInnOutMac) );
+
+        if (macFilterKey == NULL)
+        {
+            status = FM_ERR_NO_MEM;
+            FM_LOG_ABORT(FM_LOG_CAT_MAILBOX, status);
+        }
+
+        macFilterKey->outerMacAddr     = macFilter->outerMacAddr;
+        macFilterKey->outerMacAddrMask = macFilter->outerMacAddrMask;
+        macFilterKey->innerMacAddr     = macFilter->innerMacAddr;
+        macFilterKey->innerMacAddrMask = macFilter->innerMacAddrMask;
+        macFilterKey->vni              = macFilter->vni;
+        macFilterKey->outerL4Port      = macFilter->outerL4Port;
+        macFilterKey->tunnelType       = macFilter->tunnelType;
+        macFilterKey->action           = macFilter->action;
+        macFilterKey->glort            = macFilter->glort;
+
+
+        status = AddMacFilterAclRule(sw,
+                                     pepNb,
+                                     macFilterKey);
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+    }
+    else if (macFilter->action == FM_HOST_SRV_INN_OUT_MAC_ACTION_TYPE_DEL)
+    {
+        status = DeleteMacFilterAclRule(sw,
+                                        pepNb,
+                                        macFilter);
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+    }
+    else
+    {
+        status = FM_ERR_INVALID_ARGUMENT;
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+    }
+
+ABORT:
+
+    if (status != FM_OK)
+    {
+        if (macFilterKey != NULL)
+        {
+            fmFree(macFilterKey);
+        }
+    }
+
+    FM_DROP_MAILBOX_LOCK(sw);
+    UNLOCK_SWITCH(sw);
+
+    FM_LOG_EXIT(FM_LOG_CAT_MAILBOX, status);
+
+}   /* end fmSetInnerOuterMacFilter */
 
 
 
@@ -3327,7 +4904,18 @@ fm_status fmMailboxInit(fm_int sw)
     {
         fmTreeInit(&info->mailboxResourcesPerVirtualPort);
         fmTreeInit(&info->defaultPvidPerGlort);
+        fmCustomTreeInit(&info->mcastMacVni,
+                         fmCompareMcastMacVniKeys);
+
+        info->aclIdForMacFiltering = FM_MAILBOX_MAC_FILTER_ACL;
+
+        FM_API_CALL_FAMILY(status,
+                           switchPtr->MailboxConfigureCounters,
+                           sw);
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
     }
+
+ABORT:
 
     FM_LOG_EXIT(FM_LOG_CAT_MAILBOX, status);
 
@@ -3417,6 +5005,8 @@ fm_status fmMailboxFreeResources(fm_int sw)
                       fmFree);
         fmTreeDestroy(&info->defaultPvidPerGlort,
                       NULL);
+        fmCustomTreeDestroy(&info->mcastMacVni,
+                            fmFreeMcastMacVni);
     }
 
     FM_LOG_EXIT(FM_LOG_CAT_MAILBOX, status);
@@ -3501,7 +5091,7 @@ fm_status fmDeliverPacketTimestamp(fm_int    sw,
     else
     {
         FM_API_CALL_FAMILY(status,
-                           switchPtr->MapVsiGlortToPepNumber,
+                           switchPtr->MapVirtualGlortToPepNumber,
                            sw,
                            sglort,
                            &pepNb);
@@ -3649,6 +5239,10 @@ fm_status fmCleanupResourcesForPep(fm_int sw,
     firstDeletedPort     = -1;
     numberOfDeletedPorts = 0;
 
+    /* Reset counters */
+    info->macEntriesAdded[pepNb]           = 0;
+    info->innerOuterMacEntriesAdded[pepNb] = 0; 
+
     status = fmGetMailboxGlortRange(sw,
                                     pepNb,
                                     &glort,
@@ -3777,3 +5371,113 @@ ABORT:
     FM_LOG_EXIT(FM_LOG_CAT_MAILBOX, status);
 
 }   /* end fmFindInternalPortByMailboxGlort */
+
+
+
+
+/*****************************************************************************/
+/** fmSetMgmtPepXcastModes
+ * \ingroup intMailbox
+ *
+ * \desc            Set the management PEP XCAST modes.
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \param[in]       xCastLogPort is Xcast flooding logical port.
+ *
+ * \param[in]       addToMcastGroup is a flag to indicate if the CPU 
+ *                  port is added to (or removed from) the requested
+ *                  flooding mcast group.
+ *
+ * \return          FM_OK if successful.
+ * \return          FM_ERR_INVALID_VALUE if there are not enough queue 
+ *                  elements used to store proper message arguments.
+ *
+ *****************************************************************************/
+fm_status fmSetMgmtPepXcastModes(fm_int sw, 
+                                 fm_int xCastLogPort, 
+                                 fm_bool addToMcastGroup)
+{
+    fm_switch *         switchPtr;
+    fm_status           status;
+    fm_int              pepNb;
+    fm_hostSrvXcastMode srvXcastMode;
+    fm_uint16           xcastFloodMode;
+    fm_uint32           glort;
+    fm_int              xcastGlort;
+
+    FM_LOG_ENTRY(FM_LOG_CAT_MAILBOX,
+                 "sw=%d, xCastLogicalPort=%d, addToMcastGroup=%d\n",
+                 sw,
+                 xCastLogPort, 
+                 addToMcastGroup);
+
+    switchPtr = GET_SWITCH_PTR(sw);
+
+    FM_API_CALL_FAMILY(status,
+                       switchPtr->MapLogicalPortToPep,
+                       sw,
+                       switchPtr->cpuPort,
+                       &pepNb);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+    status = fmGetLogicalPortGlort(sw, switchPtr->cpuPort, &glort);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+    FM_API_CALL_FAMILY(status,
+                       switchPtr->GetGlortForSpecialPort,
+                       switchPtr->switchNumber,
+                       xCastLogPort,
+                       &xcastGlort);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+    FM_LOG_DEBUG(FM_LOG_CAT_MAILBOX,
+                 "cpuPort=%d, pepNb=%d, glort=0x%x\n",
+                 switchPtr->cpuPort, 
+                 pepNb,
+                 glort);
+
+    srvXcastMode.glort = glort;
+
+    if (addToMcastGroup)
+    {
+        /* Add Mgmt PEP to the requested flooding MCAST group */
+        srvXcastMode.mode = FM_HOST_SRV_XCAST_MODE_PROMISC;
+    }
+    else
+    {
+        /* Remove Mgmt PEP to the requested flooding MCAST group */
+        srvXcastMode.mode = FM_HOST_SRV_XCAST_MODE_NONE;
+    }
+
+    switch ( xCastLogPort )
+    {
+        case FM_PORT_BCAST:
+            xcastFloodMode = FM_MAILBOX_XCAST_FLOOD_MODE_BCAST;
+            break;
+
+        case FM_PORT_MCAST:
+            xcastFloodMode = FM_MAILBOX_XCAST_FLOOD_MODE_MCAST;
+            break;
+
+        case FM_PORT_FLOOD:
+            xcastFloodMode = FM_MAILBOX_XCAST_FLOOD_MODE_UCAST;
+            break;
+
+        default:
+            status = FM_ERR_INVALID_VALUE;
+            goto ABORT;
+
+    }
+
+    status = SetMgmtXcastModes(sw, 
+                               pepNb, 
+                               xcastGlort, 
+                               srvXcastMode, 
+                               xcastFloodMode);
+
+ABORT:
+
+    FM_LOG_EXIT(FM_LOG_CAT_MAILBOX, status);
+
+}   /* end fmSetMgmtPepXcastModes */

@@ -96,6 +96,7 @@ typedef enum
     FM10000_PORT_EVENT_LINK_DOWN_IND,
     FM10000_PORT_EVENT_LINK_UP_IND,
     FM10000_PORT_EVENT_DEFTIMER_EXP_IND,
+    FM10000_PORT_EVENT_POLLING_TIMER_EXP_IND,
     FM10000_PORT_EVENT_AN_CONFIG_REQ,
     FM10000_PORT_EVENT_AN_DISABLE_REQ,
     FM10000_PORT_EVENT_AN_COMPLETE_IND,
@@ -117,8 +118,10 @@ fm_status fm10000PowerUpLaneTx( fm_smEventInfo *eventInfo, void *userInfo );
 fm_status fm10000PowerDownLane( fm_smEventInfo *eventInfo, void *userInfo );
 fm_status fm10000PowerDownLaneRx( fm_smEventInfo *eventInfo, void *userInfo );
 fm_status fm10000PowerDownLaneTx( fm_smEventInfo *eventInfo, void *userInfo );
-fm_status fm10000ReleaseSchedBw( fm_smEventInfo *eventInfo, void *userInfo );
-fm_status fm10000UpdateSchedBw( fm_smEventInfo *eventInfo, void *userInfo );
+fm_status fm10000ReleaseSchedBwAdmDown( fm_smEventInfo *eventInfo, void *userInfo );
+fm_status fm10000RequestSchedBwAdmUp( fm_smEventInfo *eventInfo, void *userInfo );
+fm_status fm10000ReleaseSchedBwLnkDown( fm_smEventInfo *eventInfo, void *userInfo );
+fm_status fm10000RequestSchedBwLnkUp( fm_smEventInfo *eventInfo, void *userInfo );
 fm_status fm10000ConfigureLane( fm_smEventInfo *eventInfo, void *userInfo );
 fm_status fm10000ConfigureLaneForAn73( fm_smEventInfo *eventInfo, void *userInfo );
 fm_status fm10000NotifyApiPortUp( fm_smEventInfo *eventInfo, void *userInfo );
@@ -179,6 +182,8 @@ fm_status fm10000StopAnWatchDogTimer( fm_smEventInfo *eventInfo, void *userInfo 
 fm_status fm10000StartDeferredLpiTimer( fm_smEventInfo *eventInfo, void *userInfo );
 fm_status fm10000StopDeferredLpiTimer( fm_smEventInfo *eventInfo, void *userInfo );
 fm_status fm10000DeferredLpiMode( fm_smEventInfo *eventInfo, void *userInfo );
+fm_status fm10000StartPortStatusPollingTimer( fm_smEventInfo *eventInfo, void *userInfo );
+fm_status fm10000StopPortStatusPollingTimer( fm_smEventInfo *eventInfo, void *userInfo );
 
 
 
@@ -186,6 +191,8 @@ fm_status fm10000DeferredLpiMode( fm_smEventInfo *eventInfo, void *userInfo );
 fm_status fm10000CheckLanesReady( fm_smEventInfo *eventInfo, void *userInfo, fm_int *nextState );
 fm_status fm10000ProcessDeferralTimer( fm_smEventInfo *eventInfo, void *userInfo, fm_int *nextState );
 fm_status fm10000ProcessDeferralTimerWithAn( fm_smEventInfo *eventInfo, void *userInfo, fm_int *nextState );
+fm_status fm10000ProcessPortStatusPollingTimer( fm_smEventInfo *eventInfo, void *userInfo, fm_int *nextState );
+fm_status fm10000ProcessPortStatus( fm_smEventInfo *eventInfo, void *userInfo, fm_int *nextState );
 fm_status fm10000ConfigureDeviceAndCheckState( fm_smEventInfo *eventInfo, void *userInfo, fm_int *nextState );
 fm_status fm10000CheckPortStatus( fm_smEventInfo *eventInfo, void *userInfo, fm_int *nextState );
 fm_status fm10000AnRestart( fm_smEventInfo *eventInfo, void *userInfo, fm_int *nextState );

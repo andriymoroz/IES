@@ -111,7 +111,12 @@ typedef enum _fm_platformSwitchType
  *  space that may be mapped by the platform layer.
  * \ingroup constSystem
  **************************************************/
-#define FM_SHARED_MEMORY_SIZE               0x11000000
+
+#ifdef PLATFORM_NUM_FOCALPOINTS
+#define FM_SHARED_MEMORY_SIZE             (PLATFORM_NUM_FOCALPOINTS * 0xC000000)
+#else
+#define FM_SHARED_MEMORY_SIZE              0x11000000
+#endif
 
 
 /***************************************************/

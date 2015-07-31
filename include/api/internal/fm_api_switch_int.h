@@ -1339,8 +1339,7 @@ struct _fm_switch
                            fm_flowAction *    flowAction,
                            fm_flowParam *     flowParam,
                            fm_int *           priority,
-                           fm_int *           precedence,
-                           fm_int *           tunnelGrp);
+                           fm_int *           precedence);
     fm_status   (*ModifyFlow)(fm_int           sw, 
                               fm_int           tableIndex,
                               fm_int           flowId,
@@ -1906,6 +1905,18 @@ struct _fm_switch
     fm_status   (*DbgEnablePortEee)(fm_int sw, 
                                     fm_int port,
                                     fm_int mode);
+    
+    /* BSM Scratch debug functions */  
+    fm_status   (*DbgDumpBsmScratch)(fm_int                    sw,
+                                     fm_registerReadUINT32Func readFunc,
+                                     fm_uint32                 regMask);
+    fm_status   (*DbgPollBsmStatus)(fm_int                    sw,
+                                    fm_registerReadUINT32Func readFunc,
+                                    fm_uint32                 miliSec);
+    fm_status   (*DbgPollLtssm)(fm_int                    sw,
+                                fm_registerReadUINT32Func readFunc,
+                                fm_int                    pep,
+                                fm_uint32                 miliSec);
 
 
     /**************************************************
@@ -2147,6 +2158,8 @@ struct _fm_switch
     void *     (*RoutingMaintenanceTask)(fm_int sw);
     fm_status  (*SetRouteAction)(fm_int            sw,
                                  fm_intRouteEntry *route);
+    fm_status  (*RoutingProcessArpRedirect)(fm_int   sw,
+                                            fm_bool *plogArpRedirect);
 
 
     /**************************************************
@@ -2204,6 +2217,11 @@ struct _fm_switch
     fm_status  (*DeleteVNVsi)(fm_int             sw,
                               fm_virtualNetwork *vn,
                               fm_int             vsi);
+    fm_status  (*DbgDumpVN)(fm_int sw);
+    fm_status  (*DbgDumpVirtualNetwork)(fm_int sw,
+                                        fm_uint32 vni);
+    fm_status  (*DbgDumpVNTunnel)(fm_int sw,
+                                  fm_int tunnelId);
 
 
     /**************************************************
@@ -3055,13 +3073,13 @@ struct _fm_switch
                                      fm_int  port,
                                      fm_int *pepNb);
 
-    fm_status (*MapVsiGlortToPepNumber)(fm_int    sw,
-                                        fm_uint32 vsiGlort,
-                                        fm_int *  pepNb);
+    fm_status (*MapVirtualGlortToPepNumber)(fm_int    sw,
+                                            fm_uint32 glort,
+                                            fm_int *  pepNb);
 
-    fm_status (*MapVsiGlortToPepLogicalPort)(fm_int     sw,
-                                             fm_uint32  vsiGlort,
-                                             fm_int    *port);
+    fm_status (*MapVirtualGlortToPepLogicalPort)(fm_int    sw,
+                                                 fm_uint32 glort,
+                                                 fm_int *  port);
 
     fm_status (*MailboxAllocateDataStructures)(fm_int sw);
 
@@ -3095,6 +3113,20 @@ struct _fm_switch
                                       fm_uint32 *glortBase,
                                       fm_int *   numberOfGlorts);
 
+    fm_status (*MailboxAnnounceTxTimestampMode)(fm_int  sw,
+                                                fm_bool isTxTimestampEnabled);
+
+    fm_status (*ProcessMasterClkOffset)(fm_int                     sw,
+                                        fm_int                     pepNb,
+                                        fm_hostSrvMasterClkOffset *clkOffset);
+
+    fm_status (*FilterInnerOuterMac)(fm_int               sw,
+                                     fm_int               pepNb,
+                                     fm_hostSrvInnOutMac *macFilter);
+
+    fm_status (*MailboxConfigureCounters)(fm_int sw);
+
+    fm_status (*MailboxUnconfigureCounters)(fm_int sw);
 
 };  /* end struct _fm_switch */
 
@@ -3219,6 +3251,7 @@ struct _fm_switch
 #define ALLOW_CPU       0x01
 #define ALLOW_LAG       0x02
 #define ALLOW_REMOTE    0x04
+#define ALLOW_VIRTUAL   0x08
 
 /*
  * Validates the specified logical port. 

@@ -285,7 +285,7 @@ static fm_status InitializeGN2412(fm_int sw, fm_int phyIdx)
     fm_byte              fwVersion[FM_GN2412_VERSION_NUM_LEN];
     fm_byte              errCode0;
     fm_byte              errCode1;
-    fm_gn2412TimebaseCfg timebaseCfg[FM_GN2412_NUM_TIMEBASES];
+    fm_gn2412Cfg         cfg;
     fm_platformLib *     libFunc;
 
     FM_LOG_ENTRY(FM_LOG_CAT_PHY, "sw=%d, phyIdx=%d\n", sw, phyIdx);
@@ -293,13 +293,11 @@ static fm_status InitializeGN2412(fm_int sw, fm_int phyIdx)
     status = FM_OK;
 
     phyCfg = FM_PLAT_GET_PHY_CFG(sw, phyIdx);
-
-    /* TODO: Select BUS and take file lock */
     libFunc = FM_PLAT_GET_LIB_FUNCS_PTR(sw);
 
-    if ( !libFunc->SelectBus )
+    if ((status = fmPlatformMgmtTakeSwitchLock(sw)) != FM_OK)
     {
-        FM_LOG_EXIT(FM_LOG_CAT_PHY, FM_ERR_UNSUPPORTED);
+         FM_LOG_EXIT(FM_LOG_CAT_PLATFORM, status);
     }
 
     if (GET_PLAT_PROC_STATE(sw)->fileLock >= 0)
@@ -309,8 +307,11 @@ static fm_status InitializeGN2412(fm_int sw, fm_int phyIdx)
 
     TAKE_PLAT_I2C_BUS_LOCK(sw);
 
-    status = libFunc->SelectBus(sw, FM_PLAT_BUS_PHY, phyCfg->hwResourceId);
-    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
+    if ( libFunc->SelectBus )
+    {
+        status = libFunc->SelectBus(sw, FM_PLAT_BUS_PHY, phyCfg->hwResourceId);
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
+    }
 
     status = fmUtilGN2412GetFirmwareVersion((fm_uintptr) sw,
                                             PhyI2cWriteRead,
@@ -371,24 +372,32 @@ static fm_status InitializeGN2412(fm_int sw, fm_int phyIdx)
     status = fmUtilGN2412GetTimebaseCfg(0,
                                         FM_GN2412_REFCLK_156P25,
                                         FM_GN2412_OUTFREQ_5156P25,
-                                        &timebaseCfg[0]);
+                                        &cfg.timebase[0]);
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PHY, status);
 
     /* Get the default timebase 1 configuration for 156.25MHz / 5156,25MHz */
     status = fmUtilGN2412GetTimebaseCfg(1,
                                         FM_GN2412_REFCLK_156P25,
                                         FM_GN2412_OUTFREQ_5156P25,
-                                        &timebaseCfg[1]);
+                                        &cfg.timebase[1]);
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PHY, status);
 
     /* Select refClk_1 input pin for both timebases */
-    timebaseCfg[0].refClkSel = 1;
-    timebaseCfg[1].refClkSel = 1;
+    cfg.timebase[0].refClkSel = 1;
+    cfg.timebase[1].refClkSel = 1;
+
+    cfg.setTxEq = 
+        (FM_PLAT_GET_SWITCH_CFG(sw)->enablePhyDeEmphasis) ? TRUE : FALSE;
+
+    FM_MEMCPY_S(cfg.lane, 
+                sizeof(cfg.lane), 
+                phyCfg->gn2412Lane, 
+                sizeof(phyCfg->gn2412Lane));
 
     status = fmUtilGN2412Initialize((fm_uintptr) sw,
                                     PhyI2cWriteRead,
                                     phyCfg->addr,
-                                    timebaseCfg);
+                                    &cfg);
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PHY, status);
 
 ABORT:
@@ -398,6 +407,8 @@ ABORT:
     {
         fmUtilDeviceLockDrop(GET_PLAT_PROC_STATE(sw)->fileLock);
     }
+
+    fmPlatformMgmtDropSwitchLock(sw);
 
     FM_LOG_EXIT(FM_LOG_CAT_PHY, status);
 

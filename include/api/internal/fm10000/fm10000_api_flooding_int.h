@@ -47,8 +47,16 @@ typedef struct _fm10000_floodInfo
     /* Cached value of the api.FM10000.initMcastFloodingTriggers property. */
     fm_bool initMcastFlooding;
 
+    /* Cached value of the api.FM10000.initBcastFloodingTriggers property. */
+    fm_bool initBcastFlooding;
+
     /* Cached value of the api.FM10000.floodingTrapPriority property. */
     fm_int  trapPri;
+
+    /* Broadcast flooding trigger port sets. */
+    fm_int  bcastDropSet;
+    fm_int  bcastTrapSet;
+    fm_int  bcastLogSet;
 
     /* Multicast flooding trigger port sets. */
     fm_int  mcastDropSet;
@@ -76,6 +84,7 @@ typedef struct _fm10000_floodInfo
 fm_status fm10000InitFlooding(fm_int sw);
 fm_status fm10000FreeFlooding(fm_int sw);
 
+fm_status fm10000SetPortBcastFlooding(fm_int sw, fm_int port, fm_int value);
 fm_status fm10000SetPortMcastFlooding(fm_int sw, fm_int port, fm_int value);
 fm_status fm10000SetPortUcastFlooding(fm_int sw, fm_int port, fm_int value);
 
@@ -85,9 +94,11 @@ fm_status fm10000SetFloodDestPort(fm_int  sw,
                                   fm_bool state,
                                   fm_int  floodPort);
 
-fm_status fm10000SetTrapPriorityUcastFlooding(fm_int sw, fm_int priority);
-fm_status fm10000SetTrapPriorityMcastFlooding(fm_int sw, fm_int priority);
+fm_status fm10000SetTrapPriorityUcastFlooding(fm_int sw, fm_uint32 priority);
+fm_status fm10000SetTrapPriorityMcastFlooding(fm_int sw, fm_uint32 priority);
+fm_status fm10000SetTrapPriorityBcastFlooding(fm_int sw, fm_uint32 priority);
 
+fm_status fm10000GetStateBcastTrapFlooding(fm_int sw, fm_bool * enabled);
 fm_status fm10000GetStateMcastTrapFlooding(fm_int sw, fm_bool * enabled);
 fm_status fm10000GetStateUcastTrapFlooding(fm_int sw, fm_bool * enabled);
 

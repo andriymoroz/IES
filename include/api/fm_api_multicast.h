@@ -5,7 +5,7 @@
  * Creation Date:    February 7, 2007
  * Description:      Header file for routing services.
  *
- * Copyright (c) 2007 - 2014, Intel Corporation
+ * Copyright (c) 2007 - 2015, Intel Corporation
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -29,7 +29,7 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
+ *****************************************************************************/
 
 #ifndef __FM_FM_API_MULTICAST_H
 #define __FM_FM_API_MULTICAST_H
@@ -55,6 +55,14 @@ typedef struct _fm_multicastListener
 
     /** Logical port to which the multicast should be sent. */
     fm_int    port;
+
+    /** Whether the listener is added to a flooding multicast group.
+     *  \chips  FM10000 */
+    fm_bool   floodListener;
+
+    /** xcastGlort to use if the listener is a floodListener.
+     *  \chips  FM10000 */
+    fm_int    xcastGlort;
 
     /** Flag to let the pipeline know that this is a remote
      *  listener. Use by tunneling protocol, such TRILL, VxLan, etc.
@@ -85,15 +93,35 @@ typedef struct _fm_mcastGroupVNListener
 /****************************************************************************/
 /** \ingroup typeStruct
  *
+ * Defines a Flow API multicast listener, being a Flow Table/Id combination
+ * that should be included in a multicast.
+ ****************************************************************************/
+typedef struct _fm_mcastGroupFlowListener
+{
+    /** TE Flow table index to which the multicast should be sent. */
+    fm_int    tableIndex;
+
+    /** TE Flow id over which the multicast should be sent. */
+    fm_int    flowId;
+
+} fm_mcastGroupFlowListener;
+
+
+/****************************************************************************/
+/** \ingroup typeStruct
+ *
  * Defines a union of multicast group listeners.
  ****************************************************************************/
 typedef union _fm_mcastGroupListenerInfo
 {
     /** Local port/vlan multicast listener. */
-    fm_multicastListener    portVlanListener;
+    fm_multicastListener      portVlanListener;
 
     /** Virtual network tunnel listener. */
-    fm_mcastGroupVNListener vnListener;
+    fm_mcastGroupVNListener   vnListener;
+
+    /** Flow API tunnel listener. */
+    fm_mcastGroupFlowListener flowListener;
 
 } fm_mcastGroupListenerInfo;
 
@@ -110,6 +138,9 @@ typedef enum
 
     /** Virtual network tunnel listener. */
     FM_MCAST_GROUP_LISTENER_VN_TUNNEL,
+
+    /** Flow API tunnel listener. */
+    FM_MCAST_GROUP_LISTENER_FLOW_TUNNEL,
 
     /** UNPUBLISHED: For internal use only. */
     FM_MCAST_GROUP_LISTENER_MAX,

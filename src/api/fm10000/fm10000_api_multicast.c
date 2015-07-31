@@ -153,6 +153,10 @@ static fm_status AddListenerToGroup(fm_int                   sw,
     fm10000_MulticastGroup *groupExt;
     fm_uint16               vlan;
     fm_uint32               dglort;
+    fm_int                  tunnelEngine;
+    fm_int                  tunnelGroup;
+    fm10000_switch *        switchExt;
+    fm_tunnelGlortUser      glortUser;
 
     FM_LOG_ENTRY( FM_LOG_CAT_MULTICAST,
                   "sw=%d group=%p<%d> listener=%p\n",
@@ -219,6 +223,71 @@ static fm_status AddListenerToGroup(fm_int                   sw,
 
             FM_LOG_EXIT(FM_LOG_CAT_MULTICAST, status);
 
+        case FM_MCAST_GROUP_LISTENER_FLOW_TUNNEL:
+
+            status = fm10000GetFlowAttribute(sw,
+                                             listener->listener.info.flowListener.tableIndex,
+                                             FM_FLOW_TABLE_TUNNEL_ENGINE,
+                                             (void*)&tunnelEngine);
+            FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_MULTICAST, status);
+
+            if ( (tunnelEngine < 0) ||
+                 (tunnelEngine >= FM10000_TE_DGLORT_MAP_ENTRIES_1) )
+            {
+                status = FM_FAIL;
+                FM_LOG_EXIT(FM_LOG_CAT_MULTICAST, status);
+            }
+
+            switchExt = GET_SWITCH_EXT(sw);
+            port = switchExt->tunnelCfg->tunnelPort[tunnelEngine];
+
+            status = fm10000GetFlowAttribute(sw,
+                                             listener->listener.info.flowListener.tableIndex,
+                                             FM_FLOW_TABLE_TUNNEL_GROUP,
+                                             (void*)&tunnelGroup);
+            FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_MULTICAST, status);
+
+            status = fm10000GetTunnelAttribute(sw,
+                                               tunnelGroup,
+                                               listener->listener.info.flowListener.flowId,
+                                               FM_TUNNEL_GLORT_USER,
+                                               &glortUser);
+            FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_MULTICAST, status);
+
+            FM_CLEAR(mtableEntry);
+            mtableEntry.port         = port;
+            mtableEntry.vlan         = 0;
+            mtableEntry.vlanUpdate   = FALSE;
+            mtableEntry.dglortUpdate = TRUE;
+            mtableEntry.dglort       = glortUser.glort;
+
+            status = fm10000MTableAddListener(sw,
+                                              group->logicalPort,
+                                              group->repliGroup,
+                                              mtableEntry);
+            if (status == FM_OK)
+            {
+                listener->addedToChip = TRUE;
+
+                status = fm10000AddFlowUser(sw,
+                                            listener->listener.info.flowListener.tableIndex,
+                                            listener->listener.info.flowListener.flowId);
+                FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_MULTICAST, status);
+
+                FM_LOG_DEBUG( FM_LOG_CAT_MULTICAST,
+                              "mcast group %p (%d), flow tunnel listener "
+                              "added to mtable, tableIndex %d, flowId %d, "
+                              "port %d, update glort %X\n",
+                              (void *) group,
+                              group->handle,
+                              listener->listener.info.flowListener.tableIndex,
+                              listener->listener.info.flowListener.flowId,
+                              port,
+                              glortUser.glort );
+            }
+
+            FM_LOG_EXIT(FM_LOG_CAT_MULTICAST, status);
+
         default:
             FM_LOG_EXIT(FM_LOG_CAT_MULTICAST, FM_ERR_UNSUPPORTED);
     }
@@ -257,6 +326,12 @@ static fm_status AddListenerToGroup(fm_int                   sw,
         {
             /* We do not want to update vlan for mcast flood filtering. */
             mtableEntry.vlanUpdate = FALSE;
+            if ( portPtr != NULL )
+            {
+                mtableEntry.dglortUpdate = TRUE;
+                mtableEntry.dglort = 
+                            listener->listener.info.portVlanListener.xcastGlort;
+            }
         }
         else
         {
@@ -294,9 +369,9 @@ static fm_status AddListenerToGroup(fm_int                   sw,
             groupExt->hasPepListeners = TRUE;
         }
 
-        status = fm10000MapVsiGlortToLogicalPort(sw,
-                                                 portPtr->glort,
-                                                 &mtableEntry.port);
+        status = fm10000MapVirtualGlortToLogicalPort(sw,
+                                                     portPtr->glort,
+                                                     &mtableEntry.port);
         FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_MULTICAST, status);
 
         mtableEntry.vlan         = vlan;
@@ -356,12 +431,14 @@ static fm_status AddListenerToGroup(fm_int                   sw,
             FM_LOG_EXIT(FM_LOG_CAT_MULTICAST, status);
         }
 
-        fmEnablePortInPortMask(sw, &destMask, port);
+        status = fmEnablePortInPortMask(sw, &destMask, port);
+        FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_MULTICAST, status);
 
         status = fmSetLogicalPortAttribute(sw,
                                            group->logicalPort,
                                            FM_LPORT_DEST_MASK,
                                            &destMask);
+        FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_MULTICAST, status);
 
         FM_LOG_DEBUG( FM_LOG_CAT_MULTICAST,
                       "mcast group %p (%d) dest mask updated: %08X%08X%08X\n",
@@ -422,6 +499,10 @@ static fm_status RemoveListenerFromGroup(fm_int                   sw,
     fm_port            *portPtr;
     fm_uint16           vlan;
     fm_uint32           dglort;
+    fm_int              tunnelEngine;
+    fm_int              tunnelGroup;
+    fm10000_switch *    switchExt;
+    fm_tunnelGlortUser  glortUser;
 
     FM_LOG_ENTRY( FM_LOG_CAT_MULTICAST,
                   "sw=%d group=%p<%d> listener=%p\n",
@@ -484,6 +565,72 @@ static fm_status RemoveListenerFromGroup(fm_int                   sw,
 
             FM_LOG_EXIT(FM_LOG_CAT_MULTICAST, status);
 
+        case FM_MCAST_GROUP_LISTENER_FLOW_TUNNEL:
+
+            status = fm10000GetFlowAttribute(sw,
+                                             listener->listener.info.flowListener.tableIndex,
+                                             FM_FLOW_TABLE_TUNNEL_ENGINE,
+                                             (void*)&tunnelEngine);
+            FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_MULTICAST, status);
+
+            if ( (tunnelEngine < 0) ||
+                 (tunnelEngine >= FM10000_TE_DGLORT_MAP_ENTRIES_1) )
+            {
+                status = FM_FAIL;
+                FM_LOG_EXIT(FM_LOG_CAT_MULTICAST, status);
+            }
+
+            switchExt = GET_SWITCH_EXT(sw);
+            port = switchExt->tunnelCfg->tunnelPort[tunnelEngine];
+
+            status = fm10000GetFlowAttribute(sw,
+                                             listener->listener.info.flowListener.tableIndex,
+                                             FM_FLOW_TABLE_TUNNEL_GROUP,
+                                             (void*)&tunnelGroup);
+            FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_MULTICAST, status);
+
+            status = fm10000GetTunnelAttribute(sw,
+                                               tunnelGroup,
+                                               listener->listener.info.flowListener.flowId,
+                                               FM_TUNNEL_GLORT_USER,
+                                               &glortUser);
+            FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_MULTICAST, status);
+
+            FM_CLEAR(mtableEntry);
+            mtableEntry.port         = port;
+            mtableEntry.vlan         = 0;
+            mtableEntry.vlanUpdate   = FALSE;
+            mtableEntry.dglortUpdate = TRUE;
+            mtableEntry.dglort       = glortUser.glort;
+
+            status = fm10000MTableDeleteListener(sw,
+                                                 group->logicalPort,
+                                                 group->repliGroup,
+                                                 mtableEntry,
+                                                 TRUE);
+            if (status == FM_OK)
+            {
+                listener->addedToChip = FALSE;
+
+                status = fm10000DelFlowUser(sw,
+                                            listener->listener.info.flowListener.tableIndex,
+                                            listener->listener.info.flowListener.flowId);
+                FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_MULTICAST, status);
+
+                FM_LOG_DEBUG( FM_LOG_CAT_MULTICAST,
+                              "mcast group %p (%d), flow tunnel listener "
+                              "deleted to mtable, tableIndex %d, flowId %d, "
+                              "port %d, update glort %X\n",
+                              (void *) group,
+                              group->handle,
+                              listener->listener.info.flowListener.tableIndex,
+                              listener->listener.info.flowListener.flowId,
+                              port,
+                              glortUser.glort );
+            }
+
+            FM_LOG_EXIT(FM_LOG_CAT_MULTICAST, status);
+
         default:
             FM_LOG_EXIT(FM_LOG_CAT_MULTICAST, FM_ERR_UNSUPPORTED);
     }
@@ -516,9 +663,9 @@ static fm_status RemoveListenerFromGroup(fm_int                   sw,
 
         if ( (portPtr != NULL) && (portPtr->portType == FM_PORT_TYPE_VIRTUAL) )
         {
-            status = fm10000MapVsiGlortToLogicalPort(sw,
-                                                     portPtr->glort,
-                                                     &mtableEntry.port);
+            status = fm10000MapVirtualGlortToLogicalPort(sw,
+                                                         portPtr->glort,
+                                                         &mtableEntry.port);
             FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_MULTICAST, status);
 
             mtableEntry.dglortUpdate = TRUE;
@@ -533,6 +680,12 @@ static fm_status RemoveListenerFromGroup(fm_int                   sw,
         else if (listener->floodListener)
         {
             mtableEntry.vlanUpdate = FALSE;
+            if ( portPtr != NULL )
+            {
+                mtableEntry.dglortUpdate = TRUE;
+                mtableEntry.dglort = 
+                            listener->listener.info.portVlanListener.xcastGlort;
+            }
         }
 
         status = fm10000MTableDeleteListener(sw,
@@ -762,21 +915,21 @@ ABORT:
                                  cleanupStatus);
                 }
 
-                status = fmGetMcastGroupListenerNext(sw,
-                                                     info->mcastGroupForMcastFlood,
-                                                     &listener,
-                                                     &nextListener);
+                cleanupStatus = fmGetMcastGroupListenerNext(sw,
+                                                            info->mcastGroupForMcastFlood,
+                                                            &listener,
+                                                            &nextListener);
 
-                if (status == FM_OK)
+                if (cleanupStatus == FM_OK)
                 {
                     listener = nextListener;
                 }
-                else if (status != FM_ERR_NO_MORE)
+                else if (cleanupStatus != FM_ERR_NO_MORE)
                 {
-                    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MULTICAST, status);
+                    FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_MULTICAST, cleanupStatus);
                 }
             }
-            else if (status != FM_ERR_NO_MORE)
+            else if (cleanupStatus != FM_ERR_NO_MORE)
             {
                 FM_LOG_DEBUG(FM_LOG_CAT_MULTICAST, 
                              "Cleanup for mcastGroup = %d"
@@ -975,21 +1128,21 @@ ABORT:
                                  cleanupStatus);
                 }
 
-                status = fmGetMcastGroupListenerNext(sw,
-                                                     info->mcastGroupForMcastFlood,
-                                                     &listener,
-                                                     &nextListener);
+                cleanupStatus = fmGetMcastGroupListenerNext(sw,
+                                                            info->mcastGroupForMcastFlood,
+                                                            &listener,
+                                                            &nextListener);
 
-                if (status == FM_OK)
+                if (cleanupStatus == FM_OK)
                 {
                     listener = nextListener;
                 }
-                else if (status != FM_ERR_NO_MORE)
+                else if (cleanupStatus != FM_ERR_NO_MORE)
                 {
-                    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MULTICAST, status);
+                    FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_MULTICAST, cleanupStatus);
                 }
             }
-            else if (status != FM_ERR_NO_MORE)
+            else if (cleanupStatus != FM_ERR_NO_MORE)
             {
                 FM_LOG_DEBUG(FM_LOG_CAT_MULTICAST,
                              "Cleanup for mcastGroup = %d"

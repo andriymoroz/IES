@@ -5,7 +5,7 @@
  * Creation Date:   June 2, 2014
  * Description:     Platform functions to handle configurations.
  *
- * Copyright (c) 2014, Intel Corporation
+ * Copyright (c) 2014 - 2015, Intel Corporation
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -29,15 +29,18 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
+ *****************************************************************************/
 
 #ifndef __FM_PLATFORM_CONFIG_H
 #define __FM_PLATFORM_CONFIG_H
 
 #include <net/if.h>  
 #include <api/internal/fm10000/fm10000_api_hw_int.h>
+#include <platforms/util/fm_util.h>
+#include <platforms/util/retimer/fm_util_gn2412.h>
 
 #define FM_PLAT_UNDEFINED               -1
+#define FM_ETHMODE_AUTODETECT           0x12345678
 
 #define FM_PLAT_NUM_EPL                 FM10000_NUM_EPLS
 #define FM_PLAT_LANES_PER_EPL           FM10000_PORTS_PER_EPL
@@ -51,6 +54,9 @@
 
 /* Limit the number of PHY to the number EPL ports */
 #define FM_PLAT_MAX_NUM_PHYS            (FM_PLAT_NUM_EPL * FM_PLAT_LANES_PER_EPL)
+
+/* Limit the number of ports per PHY to 16 */
+#define FM_PLAT_PORT_PER_PHY            16
 
 #define CFG_DBG_CONFIG                  (1<<0)
 #define CFG_DBG_MOD_STATE               (1<<1)
@@ -129,6 +135,7 @@ typedef enum
     FM_PLAT_INTF_TYPE_QSFP_LANE1,
     FM_PLAT_INTF_TYPE_QSFP_LANE2,
     FM_PLAT_INTF_TYPE_QSFP_LANE3,
+    FM_PLAT_INTF_TYPE_PCIE,
 
 } fm_platIntfType;
 
@@ -240,7 +247,9 @@ typedef enum
     ( FM_PLAT_AN73_ABILITY_1000BASE_KX      | \
       FM_PLAT_AN73_ABILITY_10GBASE_KR       | \
       FM_PLAT_AN73_ABILITY_40GBASE_KR4      | \
-      FM_PLAT_AN73_ABILITY_40GBASE_CR4 )
+      FM_PLAT_AN73_ABILITY_40GBASE_CR4      | \
+      FM_PLAT_AN73_ABILITY_100GBASE_KR4     | \
+      FM_PLAT_AN73_ABILITY_100GBASE_CR4 )
 
 /* Bits to indicate if the serdes value has been set. */
 #define FM_STATE_SERDES_IN_PROGRESS     0x1
@@ -259,6 +268,9 @@ typedef struct
     /* Unique ID for the platform to identify the HW resource for this PHY */
     fm_uint32 hwResourceId;
 
+    /* GN2412 lane configuration */
+    fm_gn2412LaneCfg gn2412Lane[FM_GN2412_NUM_LANES];
+
 } fm_platformCfgPhy;
 
 typedef struct
@@ -276,6 +288,9 @@ typedef struct
 
 typedef struct
 {
+    /* Lane termination */
+    fm_int rxTermination;
+
     /* Lane polarity setting */
     fm_int lanePolarity;
 
@@ -337,6 +352,9 @@ typedef struct
     /* Unique physical port */
     fm_int              physPort;
 
+    /* Cable autodetection mode enable/disable */
+    fm_bool             autodetect;
+
     /* startup default ethMode */
     fm_ethMode          ethMode;
 
@@ -349,8 +367,11 @@ typedef struct
     /* Port capability. See constPortCapabilities */
     fm_uint32           cap;
 
-    /* AN73 Abilities */
+    /* AN73 Abilities to set in the API */
     fm_uint32           an73Ability;
+
+    /* AN73 Abilities as defined in the LT configuration file */
+    fm_uint32           an73AbilityCfg;
 
     /* DFE mode */
     fm_byte dfeMode;
@@ -358,8 +379,8 @@ typedef struct
     /* Associated PHY number, if any */
     fm_int              phyNum;
 
-    /* Associated PHY lane number, if any */
-    fm_int              phyLane;
+    /* Associated PHY port number, if any */
+    fm_int              phyPort;
 
 #ifdef FM_SUPPORT_SWAG
     /* Define the SWAG logical port to switch logical port mapping */
@@ -448,13 +469,16 @@ typedef struct
     fm_switchRole           switchRole;
 #endif
 
+    /* /dev/mem offset */
+    fm_char                 devMemOffset[FM_PLAT_MAX_CFG_STR_LEN];
+
     /* Network device name */
     fm_char                 netDevName[FM_PLAT_MAX_CFG_STR_LEN];
 
     /* UIO device name */
     fm_char                 uioDevName[FM_PLAT_MAX_CFG_STR_LEN];
 
-    /* Number of PHYs/retimers connected to the swithc */
+    /* Number of PHYs/retimers connected to the switch */
     fm_int                  numPhys;
 
     /* PHY configuration */
@@ -463,14 +487,17 @@ typedef struct
     /* Voltage regulator modules */
     fm_platformCfgVrm       vrm;
 
-    /* RRC GPIO number for SFP/QSFP module interrupt */
+    /* FM10000 GPIO number for SFP/QSFP module interrupt. */
     fm_int                  gpioPortIntr;
 
-    /* RRC GPIO number for the I2C reset Control.  */
+    /* FM10000 GPIO number for the I2C reset Control. */
     fm_int                  gpioI2cReset;
 
-    /* RRC GPIO number for the write protect pin on the RRC Flash. */
+    /* FM10000 GPIO number for the write protect pin on the FM10000 Flash. */
     fm_int                  gpioFlashWP;
+
+    /* Indicate to enable the configuration of the PHY's de-emphasis. */
+    fm_int                  enablePhyDeEmphasis;
 
 } fm_platformCfgSwitch;
 
