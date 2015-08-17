@@ -1,0 +1,4 @@
+#!/bin/bash
+
+source "@sysconfdir@/ies/environment"
+export FM_LIBERTY_TRAIL_CONFIG_FILE
