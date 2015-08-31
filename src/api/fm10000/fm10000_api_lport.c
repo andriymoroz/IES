@@ -1238,6 +1238,7 @@ fm_status fm10000WriteGlortCamEntry(fm_int            sw,
 {
     fm_status   err;
     fm_bool     regLockTaken = FALSE;
+    fm10000_switch *switchExt;
 
     FM_LOG_ENTRY(FM_LOG_CAT_PORT,
                  "sw=%d camEntry=%p mode=%d\n",
@@ -1245,14 +1246,13 @@ fm_status fm10000WriteGlortCamEntry(fm_int            sw,
                  (void *) camEntry,
                  mode);
 
+    switchExt = GET_SWITCH_EXT(sw);
 
-#if (FM10000_USE_GLORT_CAM_MONITOR)
     if (mode != FM_UPDATE_RAM_ONLY)
     {
         err = NotifyCRMEvent(sw, FM10000_GLORT_CAM_CRM_ID, FM10000_CRM_EVENT_SUSPEND_REQ);
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
     }
-#endif
 
     /* Make the Glort CAM & RAM writes atomic */
     TAKE_REG_LOCK(sw);
@@ -1261,8 +1261,7 @@ fm_status fm10000WriteGlortCamEntry(fm_int            sw,
     err = WriteGlortCamEntry(sw, camEntry, mode);
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
 
-#if (FM10000_USE_GLORT_CAM_MONITOR)
-    if (mode != FM_UPDATE_RAM_ONLY)
+    if ( switchExt->isCrmStarted && (mode != FM_UPDATE_RAM_ONLY) )
     {
         DROP_REG_LOCK(sw);
         regLockTaken = FALSE;
@@ -1270,7 +1269,6 @@ fm_status fm10000WriteGlortCamEntry(fm_int            sw,
         err = NotifyCRMEvent(sw, FM10000_GLORT_CAM_CRM_ID, FM10000_CRM_EVENT_RESUME_REQ);
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
     }
-#endif
 
 ABORT:
     if (regLockTaken)
@@ -1303,18 +1301,13 @@ fm_status fm10000InitGlortCam(fm_int sw)
     fm_switch *switchPtr;
     fm_int     i;
     fm_glortCamEntry camEntry;
-    fm_bool    regLockTaken = FALSE;
+    fm_bool    regLockTaken;
 
     switchPtr = GET_SWITCH_PTR(sw);
-
-
-
-#if (FM10000_USE_GLORT_CAM_MONITOR)
+    regLockTaken = FALSE;
 
     err = NotifyCRMEvent(sw, FM10000_GLORT_CAM_CRM_ID, FM10000_CRM_EVENT_SUSPEND_REQ);
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
-
-#endif
 
     TAKE_REG_LOCK(sw);
     regLockTaken = TRUE;
@@ -1331,15 +1324,12 @@ fm_status fm10000InitGlortCam(fm_int sw)
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
     }
 
-#if (FM10000_USE_GLORT_CAM_MONITOR)
-
     DROP_REG_LOCK(sw);
     regLockTaken = FALSE;
 
     err = NotifyCRMEvent(sw, FM10000_GLORT_CAM_CRM_ID, FM10000_CRM_EVENT_RESUME_REQ);
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
 
-#endif
 
 ABORT:
 

@@ -61,8 +61,8 @@
 /** @} (end of Doxygen group) */
 
 /**
- * \ingroup macroSynonym 
- * A legacy synonym for ''FM_VN_DECAPSULATION_VLAN2_VXLAN''. 
+ * \ingroup macroSynonym
+ * A legacy synonym for ''FM_VN_DECAPSULATION_VLAN2_VXLAN''.
  */
 #define FM_VN_DECAPSULATION_VLAN2           FM_VN_DECAPSULATION_VLAN2_VXLAN
 
@@ -94,8 +94,8 @@ typedef enum
 
 
 /**
- * \ingroup macroSynonym 
- * A legacy synonym for ''FM_VN_TUNNEL_TYPE_VXLAN_IPV4''. 
+ * \ingroup macroSynonym
+ * A legacy synonym for ''FM_VN_TUNNEL_TYPE_VXLAN_IPV4''.
  */
 #define FM_VN_TUNNEL_TYPE_VXLAN           FM_VN_TUNNEL_TYPE_VXLAN_IPV4
 
@@ -311,11 +311,11 @@ typedef struct _fm_vnConfiguration
     fm_int              deepInspectionCfgIndex;
 
     /** Encapsulation Checksum Actions for non-IP frames. Default value is
-     *  ''FM_VN_CHECKSUM_TRAP''. */
+     *  ''FM_VN_CHECKSUM_COMPUTE''. */
     fm_vnChecksumAction nonIP;
 
     /** Encapsulation Checksum Actions for non-TCP or non-UDP IP frames. Default
-     *  value is ''FM_VN_CHECKSUM_TRAP''. */
+     *  value is ''FM_VN_CHECKSUM_COMPUTE''. */
     fm_vnChecksumAction nonTcpUdp;
 
     /** Encapsulation Checksum Actions for TCP or UDP frames. Default value is
@@ -372,6 +372,8 @@ fm_status fmGetVNTunnelAttribute(fm_int              sw,
                                  fm_vnTunnelAttrType attr,
                                  void *              value);
 
+fm_status fmGetVNConfiguration(fm_int sw, fm_vnConfiguration *config);
+
 fm_status fmGetVNList(fm_int           sw,
                       fm_int           maxVNs,
                       fm_int *         numVNs,
@@ -422,13 +424,86 @@ fm_status fmDeleteVNRemoteAddressMask(fm_int        sw,
                                       fm_vnAddress *baseAddr,
                                       fm_vnAddress *addrMask);
 
+fm_status fmGetVNRemoteAddressList(fm_int        sw,
+                                   fm_uint32     vni,
+                                   fm_int        maxAddresses,
+                                   fm_int *      numAddresses,
+                                   fm_vnAddress *addrList,
+                                   fm_int *      tunnelIdList);
+
+fm_status fmGetVNRemoteAddressFirst(fm_int        sw,
+                                    fm_uint32     vni,
+                                    fm_voidptr *  searchToken,
+                                    fm_vnAddress *addr,
+                                    fm_int *      tunnelId);
+
+fm_status fmGetVNRemoteAddressNext(fm_int        sw,
+                                   fm_uint32     vni,
+                                   fm_voidptr *  searchToken,
+                                   fm_vnAddress *addr,
+                                   fm_int *      tunnelId);
+
+fm_status fmGetVNRemoteAddressMaskList(fm_int        sw,
+                                       fm_uint32     vni,
+                                       fm_int        maxAddrMasks,
+                                       fm_int *      numAddrMasks,
+                                       fm_vnAddress *baseAddrList,
+                                       fm_vnAddress *addrMaskList,
+                                       fm_int *      tunnelIdList);
+
+fm_status fmGetVNRemoteAddressMaskFirst(fm_int        sw,
+                                        fm_uint32     vni,
+                                        fm_voidptr *  searchToken,
+                                        fm_vnAddress *baseAddr,
+                                        fm_vnAddress *addrMask,
+                                        fm_int *      tunnelId);
+
+fm_status fmGetVNRemoteAddressMaskNext(fm_int        sw,
+                                       fm_uint32     vni,
+                                       fm_voidptr *  searchToken,
+                                       fm_vnAddress *baseAddr,
+                                       fm_vnAddress *addrMask,
+                                       fm_int *      tunnelId);
+
 fm_status fmAddVNLocalPort(fm_int sw, fm_uint32 vni, fm_int port);
 
 fm_status fmDeleteVNLocalPort(fm_int sw, fm_uint32 vni, fm_int port);
 
+fm_status fmGetVNLocalPortList(fm_int    sw,
+                               fm_uint32 vni,
+                               fm_int    maxPorts,
+                               fm_int *  numPorts,
+                               fm_int *  portList);
+
+fm_status fmGetVNLocalPortFirst(fm_int                 sw,
+                                fm_uint32              vni,
+                                fm_mcastGroupListener *searchToken,
+                                fm_int *               port);
+
+fm_status fmGetVNLocalPortNext(fm_int                 sw,
+                               fm_uint32              vni,
+                               fm_mcastGroupListener *searchToken,
+                               fm_int *               port);
+
 fm_status fmAddVNVsi(fm_int sw, fm_uint32 vni, fm_int vsi);
 
 fm_status fmDeleteVNVsi(fm_int sw, fm_uint32 vni, fm_int vsi);
+
+fm_status fmGetVNVsiList(fm_int    sw,
+                         fm_uint32 vni,
+                         fm_int    maxVsis,
+                         fm_int *  numVsis,
+                         fm_int *  vsiList);
+
+fm_status fmGetVNVsiFirst(fm_int    sw,
+                          fm_uint32 vni,
+                          fm_int *  searchToken,
+                          fm_int *  vsi);
+
+fm_status fmGetVNVsiNext(fm_int    sw,
+                         fm_uint32 vni,
+                         fm_int *  searchToken,
+                         fm_int *  vsi);
 
 fm_status fmDbgDumpVN(fm_int sw);
 

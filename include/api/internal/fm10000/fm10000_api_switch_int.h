@@ -120,6 +120,13 @@ typedef struct _fm10000_switch
     fm_uint32                   frameAgingTime;
 
     /***************************************************
+     * Cached PEP to logical port mapping
+     **************************************************/
+
+    /* PEP to logical port mapping */
+    fm_int              pepPortMapping[FM10000_NUM_PEPS];
+
+    /***************************************************
      * Information regarding the serdes API
      **************************************************/
 
@@ -272,6 +279,7 @@ typedef struct _fm10000_switch
      * Counter Rate Monitor (CRM) subsystem.
      **************************************************/
     fm10000_crmInfo             crmInfo;
+    fm_bool                     isCrmStarted;
 
     /**************************************************
      * Information related to the Virtual Network API.
@@ -314,6 +322,9 @@ typedef struct _fm10000_switch
 
     /* Outer TTL Value. */
     fm_int                      vnOuterTTL;
+
+    /* Parser Deep Inspection Configuration Index. */
+    fm_int                      vnDeepInspectionCfgIndex;
 
     /* Group IDs for encapsulation and decapsulation tunnels, as assigned by the raw tunnel API. */
     fm_int                      vnTunnelGroups[FM_VN_NUM_TUNNEL_GROUPS];
@@ -402,12 +413,46 @@ typedef struct _fm10000_switch
 
 
 
+/* Modes that define how the PCIeActive bit is set when changing the xRefClk
+ * mode with fm10000SetXrefClkMode */
+typedef enum
+{
+    /* PCIeReset = 1
+     * xRefClk.Mode = mode
+     * PCIeReset = 0*/
+    FM10000_PA_ACTIVE_DO_NOTHING = 0,
+
+    /* PCIeReset = 1
+     * xRefClk.Mode = mode
+     * PCIeReset = 0
+     * PCIeActive = 1 */
+    FM10000_PA_ACTIVE_SET_END,
+
+    /* PCIeReset = 1
+     * PCIeActive = 0
+     * xRefClk.Mode = mode
+     * PCIeReset = 0 */
+    FM10000_PA_ACTIVE_CLEAR_AFTER_RESET,
+
+} fm10000PaMode;
+
+
+
 /*****************************************************************************
  * Public Function Prototypes
  *****************************************************************************/
 
 fm_status fm10000TakeSoftResetLock(fm_int sw);
 fm_status fm10000DropSoftResetLock(fm_int sw);
+fm_status fm10000SetXrefClkMode(fm_int sw, 
+                                 fm_uint32 pep, 
+                                 fm_uint32 mode, 
+                                 fm10000PaMode paMode);
+fm_status fm10000GetXrefClkMode( fm_int sw, 
+                                 fm_uint32 pep, 
+                                 fm_uint32 *mode,
+                                 fm_uint32 *stat);
+
 fm_status fm10000StartPepStatusPollingTimer(fm_int sw, fm_int port);
 fm_status fm10000AllocateDataStructures(fm_switch *switchPtr);
 fm_status fm10000FreeDataStructures(fm_switch *switchPtr);

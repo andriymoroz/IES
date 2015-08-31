@@ -5,7 +5,7 @@
  * Creation Date:  June 14, 2013
  * Description:    ACL compiler for FM10000.
  *
- * Copyright (c) 2013 - 2014, Intel Corporation
+ * Copyright (c) 2013 - 2015, Intel Corporation
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -4740,13 +4740,22 @@ fm_status fmConfigureActionData(fm_int                      sw,
     if (rule->action & FM_ACL_ACTIONEXT_PUSH_VLAN)
     {
         fm10000FormatAclStatus(errReport,
-                                      TRUE,
-                                      "FM_ACL_ACTIONEXT_PUSH_VLAN is "
-                                      "unsupported in SWAG environment, "
-                                      "use FM_ACL_ACTIONEXT_SET_VLAN "
-                                      "instead\n");
-               err = FM_ERR_UNSUPPORTED;
-               FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_ACL, err);
+                               TRUE,
+                               "FM_ACL_ACTIONEXT_PUSH_VLAN is "
+                               "unsupported in SWAG environment, "
+                               "use FM_ACL_ACTIONEXT_SET_VLAN "
+                               "instead\n");
+        err = FM_ERR_UNSUPPORTED;
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_ACL, err);
+    }
+    if (rule->action & FM_ACL_ACTIONEXT_POP_VLAN)
+    {
+        fm10000FormatAclStatus(errReport,
+                               TRUE,
+                               "FM_ACL_ACTIONEXT_POP_VLAN is "
+                               "unsupported in SWAG environment\n");
+        err = FM_ERR_UNSUPPORTED;
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_ACL, err);
     }
 #endif
 

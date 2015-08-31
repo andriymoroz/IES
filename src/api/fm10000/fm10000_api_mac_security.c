@@ -1642,8 +1642,6 @@ fm_status fm10000ReportSecurityEvent(fm_int     sw,
 /** fm10000ResetSecurityStats
  * \ingroup intSecurity
  *
- * \chips           FM10000
- *
  * \desc            Resets MAC security statistics.
  *
  * \param[in]       sw is the switch on which to operate.

@@ -107,12 +107,6 @@ typedef struct
  * Local Variables
  *****************************************************************************/
 
-static fm_smHandle         crmSmHandles[FM10000_NUM_CRM_IDS];
-static fm10000_crmUserInfo crmUserInfo[FM10000_NUM_CRM_IDS];
-static fm_timerHandle      crmTimers[FM10000_NUM_CRM_IDS];
-static fm_uint64           logInfo[FM10000_NUM_CRM_IDS];
-
-
 /*****************************************************************************
  * Local function prototypes.
  *****************************************************************************/
@@ -449,6 +443,7 @@ static fm_status InitMonitors(fm_int sw, fm_bool setChk)
     fm_status        err;
     fm_bool          isValid;
     fm_char          crmTimerName[16];
+    fm10000_switch * switchExt;
 
     FM_LOG_ENTRY(FM_LOG_CAT_CRM,
                  "sw=%d setChk=%s\n",
@@ -456,9 +451,11 @@ static fm_status InitMonitors(fm_int sw, fm_bool setChk)
                  FM_BOOLSTRING(setChk));
 
     crmInfo = GET_CRM_INFO(sw);
+    switchExt = GET_SWITCH_EXT(sw);
 
     FM_CLEAR(*crmInfo);
 
+    FM_LOG_DEBUG(FM_LOG_CAT_CRM, "Initializing CRM state machines and timers for sw %d\n", sw);
     for (crmId = 0 ; crmId < FM10000_CRM_COMMAND_ENTRIES ; crmId++)
     {
         if (crmId < FM10000_GLORT_CAM_CRM_ID)
@@ -493,21 +490,17 @@ static fm_status InitMonitors(fm_int sw, fm_bool setChk)
             err = fmCreateStateMachine( crmId,
                                         FM10000_CRM_SM_HISTORY_SIZE,
                                         FM10000_CRM_SM_RECORD_SIZE,
-                                        &crmSmHandles[crmId] );
+                                        &switchExt->crmInfo.crmSmHandles[crmId] );
             FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_CRM, err);
 
             FM_SPRINTF_S( crmTimerName,
                           sizeof(crmTimerName),
-                          "crm%02dTimer",
+                          "crm%02%02dTimer",
+                          sw,
                           crmId );
             err = fmCreateTimer( crmTimerName,
                                  fmApiTimerTask,
-                                 &crmTimers[crmId] );
-            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_CRM, err);
-
-            err = fmStartStateMachine(crmSmHandles[crmId],
-                                      FM10000_BASIC_CRM_STATE_MACHINE,
-                                      FM10000_CRM_STATE_ACTIVE);
+                                 &switchExt->crmInfo.crmTimers[crmId] );
             FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_CRM, err);
 
         }
@@ -542,22 +535,19 @@ static fm_status InitMonitors(fm_int sw, fm_bool setChk)
             err = fmCreateStateMachine( crmId,
                                         FM10000_CRM_SM_HISTORY_SIZE,
                                         FM10000_CRM_SM_RECORD_SIZE,
-                                        &crmSmHandles[crmId] );
+                                        &switchExt->crmInfo.crmSmHandles[crmId] );
             FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_CRM, err);
 
             FM_SPRINTF_S( crmTimerName,
                           sizeof(crmTimerName),
-                          "crm%02dTimer",
+                          "crm%02d%02dTimer",
+                          sw,
                           crmId );
             err = fmCreateTimer( crmTimerName,
                                  fmApiTimerTask,
-                                 &crmTimers[crmId] );
+                                 &switchExt->crmInfo.crmTimers[crmId] );
             FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_CRM, err);
 
-            err = fmStartStateMachine(crmSmHandles[crmId],
-                                      FM10000_BASIC_CRM_STATE_MACHINE,
-                                      FM10000_CRM_STATE_ACTIVE);
-            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_CRM, err);
         }
         else
         {
@@ -789,6 +779,7 @@ static fm_status StartCrm(fm_int  sw,
     fm_uint32   rv;
     fm_int      i;
     fm_bool     regLockTaken;
+    fm10000_switch * switchExt;
 
     FM_LOG_ENTRY(FM_LOG_CAT_CRM,
                  "sw=%d firstIdx=%d lastIdx=%d continuous=%d\n",
@@ -798,6 +789,8 @@ static fm_status StartCrm(fm_int  sw,
                  continuous);
 
     switchPtr = GET_SWITCH_PTR(sw);
+    switchExt = switchPtr->extension;
+
     TAKE_REG_LOCK(sw);
     regLockTaken = TRUE;
 
@@ -855,9 +848,33 @@ static fm_status StartCrm(fm_int  sw,
         {
             FM_LOG_DEBUG(FM_LOG_CAT_CRM, "CRM running after %d cycles\n", i);
             err = FM_OK;
-            goto ABORT;
+            break;
         }
     }
+
+    DROP_REG_LOCK(sw);
+    regLockTaken = FALSE;
+
+    /**************************************************
+     * Start CRM state machines
+     **************************************************/
+    for (i = firstIdx ; i <= lastIdx ; i++)
+    {
+        err = fmStartStateMachine(switchExt->crmInfo.crmSmHandles[i],
+                                  FM10000_BASIC_CRM_STATE_MACHINE,
+                                  FM10000_CRM_STATE_UPDATING);
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_CRM, err);
+    }
+
+    switchExt->isCrmStarted = TRUE;
+
+    for (i = firstIdx ; i <= lastIdx ; i++)
+    {
+        err = NotifyCRMEvent(sw, i, FM10000_CRM_EVENT_RESUME_REQ);
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_CRM, err);
+    }
+
+    goto ABORT;
 
     /**************************************************
      * Error if CRM hasn't started.
@@ -865,14 +882,6 @@ static fm_status StartCrm(fm_int  sw,
 
     FM_LOG_ERROR(FM_LOG_CAT_CRM, "Timeout waiting for CRM to start!\n");
     err = FM_FAIL;
-
-    DROP_REG_LOCK(sw);
-    regLockTaken = FALSE;
-
-    for (i = firstIdx ; i <= lastIdx ; i++)
-    {
-        err = NotifyCRMEvent(sw, i, FM10000_CRM_EVENT_RESUME_REQ);
-    }
 
 ABORT:
 
@@ -902,14 +911,16 @@ ABORT:
  *****************************************************************************/
 static fm_status StopCrm(fm_int sw)
 {
-    fm_switch * switchPtr;
-    fm_status   err;
-    fm_uint32   rv;
-    fm_int      i;
+    fm_switch *      switchPtr;
+    fm_status        err;
+    fm_uint32        rv;
+    fm_int           i;
+    fm10000_switch * switchExt;
 
     FM_LOG_ENTRY(FM_LOG_CAT_CRM, "sw=%d\n", sw);
 
     switchPtr = GET_SWITCH_PTR(sw);
+    switchExt = switchPtr->extension;
 
     /**************************************************
      * Verify that CRM is running.
@@ -937,12 +948,20 @@ static fm_status StopCrm(fm_int sw)
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_CRM, err);
 
 
-    DROP_REG_LOCK(sw);
-    for (i = 0 ; i < FM10000_NUM_CRM_IDS ; i++)
+    /**************************************************
+     * Stop CRM state machines.
+     **************************************************/
+
+    if (switchExt->isCrmStarted)
     {
-        err = NotifyCRMEvent(sw, i, FM10000_CRM_EVENT_SUSPEND_REQ);
+        for (i = 0 ; i < FM10000_NUM_CRM_IDS ; i++)
+        {
+            err = fmStopStateMachine(switchExt->crmInfo.crmSmHandles[i]);
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_CRM, err);
+        }
+
+        switchExt->isCrmStarted = FALSE;
     }
-    TAKE_REG_LOCK(sw);
 
     /**************************************************
      * Wait for CRM to report that it is stopped.
@@ -1386,13 +1405,6 @@ fm_status fm10000StartCrmMonitors(fm_int sw)
      **************************************************/
 
     err = StartCrm(sw, crmInfo->firstIdx, crmInfo->lastIdx, TRUE);
-    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_CRM, err);
-
-    /***************************************************
-     * Unmask monitor interrupts.
-     **************************************************/
-
-    err = MaskInterrupts(sw, crmInfo->validMask, FALSE);
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_CRM, err);
 
 ABORT:
@@ -1899,17 +1911,20 @@ static void HandleCrmTimeout( void *arg )
     fm_int               sw;
     fm_int               crmId;
     fm_bool              notifyTimeout;
+    fm10000_switch *     switchExt;
 
     userInfo          = arg;
     sw                = userInfo->sw;
     crmId             = userInfo->crmId;
     notifyTimeout     = userInfo->notifyTimeout;
+    switchExt         = GET_SWITCH_EXT(sw);
 
     if (notifyTimeout)
     {
         FM_LOG_DEBUG_V2( FM_LOG_CAT_CRM,
                          crmId,
-                         "Notifying timeout on crmId %d\n",
+                         "Notifying timeout on sw %d crmId %d\n",
+                         sw,
                          crmId );
 
         PROTECT_SWITCH( sw );
@@ -1918,10 +1933,10 @@ static void HandleCrmTimeout( void *arg )
         eventInfo.dontSaveRecord = FALSE;
         eventInfo.lock   = FM_GET_STATE_LOCK( sw );
         eventInfo.eventId = FM10000_CRM_EVENT_TIMEOUT_IND;
-        fmNotifyStateMachineEvent( crmSmHandles[crmId],
-                                       &eventInfo,
-                                       userInfo,
-                                       &sw );
+        fmNotifyStateMachineEvent( switchExt->crmInfo.crmSmHandles[crmId],
+                                   &eventInfo,
+                                   userInfo,
+                                   &switchExt->crmInfo.logInfo );
         UNPROTECT_SWITCH( sw );
     }
 
@@ -1951,14 +1966,22 @@ static void HandleCrmTimeout( void *arg )
  *****************************************************************************/
 fm_status fm10000CrmStartTimer( fm_smEventInfo *eventInfo, void *userInfo )
 {
-    fm_status    err;
-    fm_int       crmId;
-    fm_timestamp timeout = { 0, 20000 };
+    fm_status        err;
+    fm_int           crmId;
+    fm_int           sw;
+    fm10000_switch * switchExt;
+    fm_timestamp     timeout = { 0, 20000 };
 
     crmId       = ((fm10000_crmUserInfo *)userInfo)->crmId;
+    sw = ((fm10000_crmUserInfo *)userInfo)->sw;
+
+    FM_LOG_ENTRY(FM_LOG_CAT_CRM, "sw=%d, crmId=%d\n", sw, crmId);
+
     ((fm10000_crmUserInfo *)userInfo)->notifyTimeout = TRUE;
 
-    err = fmStartTimer(crmTimers[crmId], &timeout, 1, HandleCrmTimeout, userInfo);
+    switchExt = GET_SWITCH_EXT(sw);
+
+    err = fmStartTimer(switchExt->crmInfo.crmTimers[crmId], &timeout, 1, HandleCrmTimeout, userInfo);
 
     FM_LOG_EXIT(FM_LOG_CAT_CRM, err);
 
@@ -1987,21 +2010,28 @@ fm_status fm10000CrmStartTimer( fm_smEventInfo *eventInfo, void *userInfo )
  *****************************************************************************/
 fm_status fm10000CrmCancelTimer( fm_smEventInfo *eventInfo, void *userInfo )
 {
-    fm_status err;
-    fm_int    sw;
-    fm_int    crmId;
+    fm_status          err;
+    fm_int             sw;
+    fm_int             crmId;
+    fm10000_switch *   switchExt;
 
-    err   = FM_OK;
     crmId = ((fm10000_crmUserInfo *)userInfo)->crmId;
     sw    = ((fm10000_crmUserInfo *)userInfo)->sw;
+
+    FM_LOG_ENTRY(FM_LOG_CAT_CRM, "sw=%d, crmId=%d\n", sw, crmId);
+
+    switchExt = GET_SWITCH_EXT(sw);
+
     ((fm10000_crmUserInfo *)userInfo)->notifyTimeout = FALSE;
 
     FM_LOG_DEBUG_V2( FM_LOG_CAT_CRM,
                      crmId,
-                     "NO TIMEOUT NOTIFY ON crmId %d\n",
+                     "NO TIMEOUT NOTIFY ON sw %d crmId %d\n",
+                     sw,
                      crmId );
 
-    err = fmStopTimer(crmTimers[crmId]);
+    err = fmStopTimer(switchExt->crmInfo.crmTimers[crmId]);
+
     FM_LOG_EXIT(FM_LOG_CAT_CRM, err);
 
 }    /* end fm10000CrmCancelTimer */
@@ -2038,11 +2068,11 @@ fm_status fm10000CrmCancelTimer( fm_smEventInfo *eventInfo, void *userInfo )
 fm_status NotifyCRMEvent(fm_int sw, fm_int crmId, fm_int eventId)
 {
 
-    fm_smEventInfo  eventInfo;
-    fm_status       status;
+    fm_smEventInfo   eventInfo;
+    fm_status        status;
+    fm10000_switch * switchExt;
 
-    crmUserInfo[crmId].sw = sw;
-    crmUserInfo[crmId].crmId = crmId;
+    FM_LOG_ENTRY(FM_LOG_CAT_CRM, "sw=%d, crmId=%d, eventId=%d\n", sw, crmId, eventId);
 
     if (crmId >= FM10000_NUM_CRM_IDS)
     {
@@ -2050,15 +2080,34 @@ fm_status NotifyCRMEvent(fm_int sw, fm_int crmId, fm_int eventId)
         FM_LOG_ERROR(FM_LOG_CAT_CRM, "Invalid crmId\n");
     }
 
-    eventInfo.smType = FM10000_BASIC_CRM_STATE_MACHINE;
-    eventInfo.dontSaveRecord = FALSE;
-    eventInfo.lock   = FM_GET_STATE_LOCK( sw );
-    eventInfo.eventId = eventId;
+    switchExt = GET_SWITCH_EXT(sw);
+    switchExt->crmInfo.crmUserInfo[crmId].sw = sw;
+    switchExt->crmInfo.crmUserInfo[crmId].crmId = crmId;
 
-    status = fmNotifyStateMachineEvent( crmSmHandles[crmId],
-                                       &eventInfo,
-                                       &crmUserInfo[crmId],
-                                       &logInfo[crmId] );
+
+    if ( switchExt->isCrmStarted )
+    {
+        eventInfo.smType = FM10000_BASIC_CRM_STATE_MACHINE;
+        eventInfo.dontSaveRecord = FALSE;
+        eventInfo.lock   = FM_GET_STATE_LOCK( sw );
+        eventInfo.eventId = eventId;
+
+        status = fmNotifyStateMachineEvent( switchExt->crmInfo.crmSmHandles[crmId],
+                                            &eventInfo,
+                                            &switchExt->crmInfo.crmUserInfo[crmId],
+                                            &switchExt->crmInfo.logInfo[crmId] );
+    }
+    else
+    {
+        if (eventId == FM10000_CRM_EVENT_RESUME_REQ)
+        {
+            status = UpdateChecksum(sw, crmId);
+        }
+        else
+        {
+            status = FM_OK;
+        }
+    }
 
     FM_LOG_EXIT(FM_LOG_CAT_CRM, status);
 
@@ -2123,6 +2172,8 @@ fm_status fm10000LogCrmTransition( fm_smTransitionRecord *record )
  *
  * \desc            Frees CRM allocated structures: timers and state machines.
  *
+ * \param[in]       sw is the switch on which to operate.
+ *
  * \return          FM_OK if successful.
  *
  * \return          FM_ERR_STATE_MACHINE_HANDLE if the specified handle does
@@ -2132,23 +2183,42 @@ fm_status fm10000LogCrmTransition( fm_smTransitionRecord *record )
  *                  was not valid (NULL pointer).
  *
  *****************************************************************************/
-fm_status fm10000FreeCrmStructures(void)
+fm_status fm10000FreeCrmStructures(fm_int sw)
 {
-    int i;
-    fm_status status;
+    int              i;
+    fm10000_switch * switchExt;
+    fm_status        status;
+    fm_bool          isWhiteModel;
 
-    status = FM_OK;
+    FM_LOG_ENTRY(FM_LOG_CAT_CRM, "sw=%d\n", sw);
+
+    switchExt = GET_SWITCH_EXT(sw);
+    isWhiteModel = fmGetBoolApiProperty(FM_AAK_API_PLATFORM_IS_WHITE_MODEL,
+                                        FM_AAD_API_PLATFORM_IS_WHITE_MODEL);
+
+    if (isWhiteModel)
+    {
+        status = FM_OK;
+        FM_LOG_EXIT(FM_LOG_CAT_CRM, status);
+    }
+
     for ( i = 0 ; i < FM10000_NUM_CRM_IDS; i++ )
     {
-        status = fmDeleteTimer(crmTimers[i]);
+        status = fmDeleteTimer(switchExt->crmInfo.crmTimers[i]);
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_CRM, status);
+
+        if (switchExt->isCrmStarted)
+        {
+            status = fmStopStateMachine(switchExt->crmInfo.crmSmHandles[i]);
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_CRM, status);
+        }
+
+        status = fmDeleteStateMachine(switchExt->crmInfo.crmSmHandles[i]);
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_CRM, status);
     }
-    for ( i = 0 ; i < FM10000_NUM_CRM_IDS; i++ )
-    {
-        status = fmStopStateMachine(crmSmHandles[i]);
-    }
-    for ( i = 0 ; i < FM10000_NUM_CRM_IDS; i++ )
-    {
-        status = fmDeleteStateMachine(crmSmHandles[i]);
-    }
-    return status;
+
+
+ABORT:
+    FM_LOG_EXIT(FM_LOG_CAT_CRM, status);
+
 }   /* end fm10000FreeCrmStructures */

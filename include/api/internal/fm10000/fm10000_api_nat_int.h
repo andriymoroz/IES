@@ -37,10 +37,6 @@
 /** Base ACL Position for NAT Table */
 #define FM10000_NAT_BASE_ACL         22222222
 
-#define FM10000_NAT_VXLAN_PORT           4789
-
-#define FM10000_NAT_NVGRE_PROTOCOL     0x6558
-
 typedef struct _fm_fm10000NatTunnel
 {
     /**  Encap Flow Id used to represent the tunnel */
@@ -119,7 +115,7 @@ typedef struct _fm_fm10000NatTable
 
     /**  Key is of type fm_fm10000NatRuleCond
      *   Value is a fm_fm10000NatRuleCond* type.
-     *  
+     *
      *   This is used to automatically build ECMP Group if multiple rules
      *   have the same condition but different action. This is only handled if
      *   the NAT mode used is FM_NAT_MODE_PERFORMANCE. */
@@ -130,7 +126,7 @@ typedef struct _fm_fm10000NatTable
 
     /**  Key is (Dip Prefix | Sip Prefix)
      *   Value is a fm_fm10000NatPrefix* type.
-     *  
+     *
      *   This is only used for non full mask entries. */
     fm_tree prefixs;
 
@@ -185,6 +181,6 @@ fm_status fm10000GetNatRuleCount(fm_int             sw,
                                  fm_tunnelCounters *counters);
 fm_status fm10000ResetNatRuleCount(fm_int sw, fm_int table, fm_int rule);
 
- 
+
 #endif  /* __FM_FM10000_FM_API_NAT_INT_H */
 

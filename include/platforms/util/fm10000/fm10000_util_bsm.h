@@ -63,9 +63,11 @@
                                            REG_MASK_BSM_ISR_STATUS_PCIE7    | \
                                            REG_MASK_BSM_ISR_STATUS_PCIE8)
 /* all init registers */
-#define REG_MASK_BSM_INIT_ALL             (REG_MASK_BSM_INIT_STATUS         | \
+#define REG_MASK_BSM_INIT_ALL             (REG_MASK_BSM_LOCKS               | \
+                                           REG_MASK_BSM_CONFIG              | \
+                                           REG_MASK_BSM_INIT_STATUS         | \
                                            REG_MASK_BSM_INIT_STATUS_ARCHIVE | \
-                                           REG_MASK_BSM_PCIE_ISR_STATUS     | \
+                                           REG_MASK_BSM_ISR_PCIE_ENABLED    | \
                                            REG_MASK_BSM_INIT_OOR)
 
 /* BSM Scratch dbg services */

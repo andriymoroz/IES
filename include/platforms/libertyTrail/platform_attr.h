@@ -280,33 +280,46 @@
 
 
 /**
- * (Optional) Default HW resource ID (32-bit value). Applies to all ports on 
- * the specified switch.
+ * (Optional) Default HW resource ID (32-bit value).
  *                                                                      \lb\lb
- * If not specified, the default resource identifier for the port will 
- * be the same as portIndex. 
+ * If not specified, the default resource identifier for the port will
+ * be set to -1.
  *                                                                      \lb\lb
  * See portIndex.%%d.hwResourceId property for details.
  */
-#define FM_AAK_API_PLATFORM_HW_RESOURCE_ID_DEFAULT          "api.platform.config.switch.%d.port.default.hwResourceId"
+#define FM_AAK_API_PLATFORM_HW_RESOURCE_ID_DEFAULT          "api.platform.config.default.hwResourceId"
 #define FM_AAT_API_PLATFORM_HW_RESOURCE_ID_DEFAULT           FM_API_ATTR_INT
 
 
 /**
- * (Optional) Unique 32-bit value associated with a port for the shared
- * library.
+ * (Optional) Default HW resource ID (32-bit value). Applies to all ports on
+ * the specified switch.
  *                                                                      \lb\lb
- * This id is used by the platform shared library to select the hardware
+ * If not specified, the default resource identifier for the port will
+ * be set to default.hwResourceId.
+ *                                                                      \lb\lb
+ * See portIndex.%%d.hwResourceId property for details.
+ *
+ * This attribute is DEPRECATED. Use portIndex.%d.hwResourceId instead.
+ */
+#define FM_AAK_API_PLATFORM_PORT_HW_RESOURCE_ID_DEFAULT     "api.platform.config.switch.%d.port.default.hwResourceId"
+#define FM_AAT_API_PLATFORM_PORT_HW_RESOURCE_ID_DEFAULT     FM_API_ATTR_INT
+
+
+/**
+ * Unique 32-bit value associated with a port for the shared library.
+ *                                                                      \lb\lb
+ * This ID is used by the platform shared library to select the hardware
  * resource for a given port. The platform shared library can use this 
  * field in any way it sees fit. For example, the platform shared 
  * library can encode this field as (busNo << 16) | (pcaIdx << 8) | (idx). 
  *                                                                      \lb\lb
  * The default value is specified by the port.default.hwResourceId property 
  * for this switch. If not specified, the resource identifier for the port 
- * will be the same as portIndex. 
+ * will be set to -1.
  */
-#define FM_AAK_API_PLATFORM_HW_RESOURCE_ID                  "api.platform.config.switch.%d.portIndex.%d.hwResourceId"
-#define FM_AAT_API_PLATFORM_HW_RESOURCE_ID                  FM_API_ATTR_INT
+#define FM_AAK_API_PLATFORM_PORT_HW_RESOURCE_ID             "api.platform.config.switch.%d.portIndex.%d.hwResourceId"
+#define FM_AAT_API_PLATFORM_PORT_HW_RESOURCE_ID             FM_API_ATTR_INT
 
 
 /**

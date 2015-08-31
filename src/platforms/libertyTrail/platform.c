@@ -50,6 +50,7 @@
 #define FM10000_MEMORY_SIZE 0x04000000 /* 64MB */
 
 #define MAX_BUF_SIZE        256
+
 #ifdef FM_LT_WHITE_MODEL_SUPPORT
 #define PLATFORM_MODEL_TOPOLOGY_FILE    "multi_node_topology.txt"
 #endif
@@ -1143,6 +1144,7 @@ static fm_status fmPlatformRootInit(void)
     fm_status             status = FM_OK;
     fm_int                sw;
     fm_platformState *    ps;
+    FILE                 *fp;
     fm_int                i;
     fm_int                size;
     fm_char               objName[40];
@@ -1197,7 +1199,30 @@ static fm_status fmPlatformRootInit(void)
         }
         else
         {
-            status = fmPlatformLoadAttributes(attrFile);
+            fp = fopen(attrFile, "rt");
+
+            if (!fp)
+            {
+                FM_LOG_DEBUG(FM_LOG_CAT_PLATFORM,
+                             "Unable to open file %s\n",
+                             attrFile);
+
+                FM_LOG_EXIT(FM_LOG_CAT_PLATFORM, FM_ERR_INVALID_ARGUMENT);
+            }
+
+            size = fread(objName, 1, 2, fp);
+            fclose(fp);
+
+            if (!(isprint(objName[0]) || isspace(objName[0])) || 
+                !(isprint(objName[1]) || isspace(objName[1])))
+            {
+                /* File is binary, so load TLV */
+                status = fmPlatformLoadTLV(attrFile);
+            }
+            else
+            {
+                status = fmPlatformLoadAttributes(attrFile);
+            }
         }
     }
     else
@@ -1238,9 +1263,12 @@ static fm_status fmPlatformRootInit(void)
         FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
     }
 
-    /* Load the configuration into data structure */
-    status = fmPlatformCfgLoad();
-    FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
+    /* Load the configuration into data structure, if is not loaded by TLV */
+    if (fmRootPlatform->cfg.switches == NULL)
+    {
+        status = fmPlatformCfgLoad();
+        FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
+    }
 
     /* Allocate and initialize fm_platformState */
     size = FM_PLAT_NUM_SW * sizeof(fm_platformState);
@@ -2000,10 +2028,16 @@ fm_status fmPlatformSwitchInitialize(fm_int sw)
  *****************************************************************************/
 fm_status fmPlatformSwitchInserted(fm_int sw)
 {
-    fm_platformCfgSwitch *swCfg;
-    fm_platformLib *      libFunc;
-    fm_status             status;
-    fm_platformState *    ps;
+    fm_platformCfgSwitch  *swCfg;
+    fm_platformLib        *libFunc;
+    fm_status              status;
+    fm_platformState      *ps;
+
+#ifdef FM_SUPPORT_SWAG
+    fm_platformCfg        *platCfg;
+    fm_topologySolverEvent solverEvent;
+    fm_swagTopologySolver  solver;
+#endif
 
     FM_LOG_ENTRY(FM_LOG_CAT_PLATFORM, "sw = %d\n", sw);
 
@@ -2012,6 +2046,36 @@ fm_status fmPlatformSwitchInserted(fm_int sw)
     {
         FM_LOG_EXIT(FM_LOG_CAT_PLATFORM, FM_ERR_INVALID_ARGUMENT);
     }
+
+#ifdef FM_SUPPORT_SWAG
+    if (GET_PLAT_STATE(sw)->family == FM_SWITCH_FAMILY_SWAG)
+    {
+        platCfg = FM_PLAT_GET_CFG;
+
+        if ( (platCfg->topology != FM_SWAG_TOPOLOGY_FAT_TREE) &&
+             (platCfg->topology != FM_SWAG_TOPOLOGY_MESH) )
+        {
+            /* Unsupported topology */
+            FM_LOG_EXIT(FM_LOG_CAT_PLATFORM, FM_ERR_INVALID_ARGUMENT);
+        }
+
+        /* Set swag topology */
+        status = fmSetSWAGTopology(sw, platCfg->topology);
+        FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
+
+        /* Get default solver for specified topology */
+        status = fmGetSWAGDefaultTopologySolver(platCfg->topology, &solver);
+        FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
+
+        /* Set the default swag topology solver function */
+        status = fmSetSWAGTopologySolver(sw, solver);
+        FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
+
+        /* Allow the platform to complete SWAG initialization */
+        status = fmPlatformSWAGInitialize(sw);
+        FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
+    }
+#endif
 
     /* Initialize switch GPIO before calling InitSwitch since one GPIO might
        be used to reset the I2C devices (PCA), and those I2C devices
@@ -2360,9 +2424,10 @@ fm_status fmPlatformSWAGInitialize(fm_int sw)
 {
     fm_status             status;
     fm_int                i;
-    fmSWAG_switch *       switchExt;
+    fmSWAG_switch        *switchExt;
     fm_platformCfgSwitch *swCfg;
-    fm_platformState *    ps;
+    fm_platformState     *ps;
+    fm_switch            *swPtr;
 
     FM_LOG_ENTRY(FM_LOG_CAT_PLATFORM,
                  "sw = %d\n",
@@ -2393,9 +2458,23 @@ fm_status fmPlatformSWAGInitialize(fm_int sw)
         if (swCfg->switchRole != FM_SWITCH_ROLE_SWAG)
         {
             switchExt->requiredSwitchMask |= 1 << i;
+            swPtr = fmRootApi->fmSwitchStateTable[i];
+
+            /* SWAG member is not associated to SWAG so update this
+             * information for fmAddSWAGSwitch purposes. */
+            if (swPtr != NULL)
+            {
+                swPtr->swag = -1;
+            }
 
             status = fmAddSWAGSwitch(sw, i, swCfg->switchRole);
             FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
+
+            /* SWAG member is now associated to SWAG. */
+            if (swPtr != NULL)
+            {
+                swPtr->swag = sw;
+            }
         }
     }
 
@@ -2412,6 +2491,27 @@ fm_status fmPlatformSWAGInitialize(fm_int sw)
             }
             FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
         }
+    }
+
+    swPtr = GET_SWITCH_PTR(sw);
+
+    switch (swPtr->switchModel)
+    {
+        case FM_SWITCH_MODEL_SWAG_A:
+            swPtr->vlanLearningMode   = FM_VLAN_LEARNING_MODE_SHARED;
+            swPtr->sharedLearningVlan = 1;
+            break;
+
+        case FM_SWITCH_MODEL_SWAG_B:
+        case FM_SWITCH_MODEL_SWAG_C:
+            swPtr->vlanLearningMode   = FM_VLAN_LEARNING_MODE_INDEPENDENT;
+            swPtr->sharedLearningVlan = 1;
+            break;
+
+        default:
+            status = FM_FAIL;
+            FM_LOG_EXIT(FM_LOG_CAT_SWAG, status);
+            break;
     }
 
     FM_LOG_EXIT(FM_LOG_CAT_PLATFORM, FM_OK);
@@ -2760,7 +2860,6 @@ void *fmPlatformInterruptListener(void *args)
     fm_int                msiEnabled;
     fm_int                intrTimeoutSec;
     fm_int                maxTimeoutCnt;
-    fm_char               buf[MAX_BUF_SIZE+1];
 
     intrStatus = 0;
     msiEnabled = FALSE;
@@ -2779,11 +2878,7 @@ void *fmPlatformInterruptListener(void *args)
     if (swCfg->intrPollPeriodMsec <= 0)
         swCfg->intrPollPeriodMsec = 1;
 
-    FM_SNPRINTF_S(buf, 
-                  MAX_BUF_SIZE, 
-                  FM_AAK_API_PLATFORM_MSI_ENABLED, 
-                  ps->sw);
-    msiEnabled = fmGetBoolApiProperty(buf, FM_AAD_API_PLATFORM_MSI_ENABLED);
+    msiEnabled = swCfg->msiEnabled;
     if (!msiEnabled)
         FM_LOG_PRINT("Using interrupt polling with period set to %d msec\n", 
                      swCfg->intrPollPeriodMsec);
@@ -3568,4 +3663,39 @@ fm_status fmPlatformWriteUnlockCSR(fm_int sw, fm_uint32 addr, fm_uint32 value)
     return switchPtr->WriteRawUINT32(sw,addr,value);
 
 }   /* end fmPlatformWriteUnlockCSR */
+
+
+
+
+/*****************************************************************************/
+/* fmPlatformTerminate
+ *
+ * \desc            Called as part of API termination for processes other than
+ *                  the first process that have called ''fmPlatformInitialize''.
+ *                  Performs basic platform-specific clean-up.
+ *
+ * \param[in]       None
+ *
+ * \return          FM_OK if successful.
+ *
+ *****************************************************************************/
+fm_status fmPlatformTerminate(void)
+{
+    FM_LOG_ENTRY_NOARGS(FM_LOG_CAT_PLATFORM);
+
+    if (fmPlatformProcessState != NULL)
+    {
+        fmFree(fmPlatformProcessState);
+        fmPlatformProcessState = NULL;
+    }
+
+    if (desiredMemmapAddr != NULL)
+    {
+        fmFree(desiredMemmapAddr);
+        desiredMemmapAddr = NULL;
+    }
+
+    FM_LOG_EXIT(FM_LOG_CAT_PLATFORM, FM_OK);
+
+}   /* end fmPlatformTerminate */
 

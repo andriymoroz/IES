@@ -29,7 +29,7 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
+ *****************************************************************************/
 
 #include <fm_sdk_fm10000_int.h>
 
@@ -56,6 +56,9 @@
 #define BUFFER_SIZE                     1024
 
 #define FM10000_TE_MAX_SYNC_RETRY       1000
+
+#define FM10000_TE_ENCAP_VERSION_MAX    3
+#define FM10000_TE_MODE_MAX             1
 
 #define FM_IND_PRINT(...)                                      \
     {                                                          \
@@ -118,8 +121,6 @@ static inline fm_bool fmSupportsTe(fm_int sw)
 /** PrintChecksum
  * \ingroup intlowlevTe10k
  *
- * \chips           FM10000
- *
  * \desc            Dump the checksum action for debugging purpose.
  * 
  * \param[in]       checksumAct is the checksum action to print.
@@ -159,8 +160,6 @@ static void PrintChecksum(fm_fm10000TeChecksumAction checksumAct)
 /*****************************************************************************/
 /** PrintTrap
  * \ingroup intlowlevTe10k
- *
- * \chips           FM10000
  *
  * \desc            Dump the trap action for debugging purpose.
  * 
@@ -214,8 +213,6 @@ static void PrintTrap(fm_fm10000TeTrapAction trapAct)
 /** PrintLine
  * \ingroup intlowlevTe10k
  *
- * \chips           FM10000
- *
  * \desc            Print range style debug line
  * 
  * \param[in]       start is the first limit of the range.
@@ -261,8 +258,6 @@ static void PrintLine(fm_uint start, fm_uint end, const char *line, fm_bool wide
 /*****************************************************************************/
 /** PrintTeDataBlock
  * \ingroup intlowlevTe10k
- *
- * \chips           FM10000
  *
  * \desc            Print Tunneling engine data block
  * 
@@ -772,8 +767,6 @@ fm_status fm10000TeInit(fm_int sw)
 /*****************************************************************************/
 /** fm10000SyncTeDataLookup
  * \ingroup intlowlevTe10k
- *
- * \chips           FM10000
  *
  * \desc            Sync TeData with TeLookup by making sure the tunneling
  *                  engine pipeline is empty or processed at least one frame.
@@ -2063,6 +2056,7 @@ fm_status fm10000SetTeDefaultTunnel(fm_int                 sw,
     fm_uint32              teDmac[FM10000_TE_DMAC_WIDTH] = {0};
     fm_uint32              teSmac[FM10000_TE_SMAC_WIDTH] = {0};
     fm_bool                regLockTaken = FALSE;
+    fm_uint32              chipVersion;
 
     FM_LOG_ENTRY( FM_LOG_CAT_TE,
                   "sw = %d, "
@@ -2087,6 +2081,14 @@ fm_status fm10000SetTeDefaultTunnel(fm_int                 sw,
     /* sanity check on the arguments */
     FM_API_REQUIRE(te < FM10000_TE_DEFAULT_L4DST_ENTRIES, FM_ERR_INVALID_ARGUMENT);
     FM_API_REQUIRE(teTunnelCfg != NULL, FM_ERR_INVALID_ARGUMENT);
+
+    /* NGE and GPE/NSH are mutually exclusive */
+    if ( (fieldSelectMask & FM10000_TE_DEFAULT_TUNNEL_NGE_ALL) &&
+         (fieldSelectMask & FM10000_TE_DEFAULT_TUNNEL_GPE_NSH_ALL) )
+    {
+        err = FM_ERR_INVALID_ARGUMENT;
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_TE, err);
+    }
 
     /* Only add the required register to the scatter-gather list */
     if ( (fieldSelectMask & FM10000_TE_DEFAULT_TUNNEL_L4DST_VXLAN) ||
@@ -2118,7 +2120,8 @@ fm_status fm10000SetTeDefaultTunnel(fm_int                 sw,
     }
 
     if ( (fieldSelectMask & FM10000_TE_DEFAULT_TUNNEL_PROTOCOL) ||
-         (fieldSelectMask & FM10000_TE_DEFAULT_TUNNEL_VERSION) )
+         (fieldSelectMask & FM10000_TE_DEFAULT_TUNNEL_VERSION) || 
+         (fieldSelectMask & FM10000_TE_DEFAULT_TUNNEL_MODE ) )
     {
         FM_REGS_CACHE_FILL_SGLIST(&sgList[sgIndex],
                                   &fm10000CacheTeTunHeaderCfg,
@@ -2131,7 +2134,8 @@ fm_status fm10000SetTeDefaultTunnel(fm_int                 sw,
         sgIndex++;
     }
 
-    if (fieldSelectMask & FM10000_TE_DEFAULT_TUNNEL_NGE_DATA)
+    if ( (fieldSelectMask & FM10000_TE_DEFAULT_TUNNEL_NGE_DATA) ||
+         (fieldSelectMask & FM10000_TE_DEFAULT_TUNNEL_GPE_NSH_ALL) )
     {
         FM_REGS_CACHE_FILL_SGLIST(&sgList[sgIndex],
                                   &fm10000CacheTeDefaultNgeData,
@@ -2145,7 +2149,8 @@ fm_status fm10000SetTeDefaultTunnel(fm_int                 sw,
     }
 
     if ( (fieldSelectMask & FM10000_TE_DEFAULT_TUNNEL_NGE_MASK) ||
-         (fieldSelectMask & FM10000_TE_DEFAULT_TUNNEL_NGE_TIME) )
+         (fieldSelectMask & FM10000_TE_DEFAULT_TUNNEL_NGE_TIME) ||
+         (fieldSelectMask & FM10000_TE_DEFAULT_TUNNEL_GPE_NSH_ALL) )
     {
         FM_REGS_CACHE_FILL_SGLIST(&sgList[sgIndex],
                                   &fm10000CacheTeDefaultNgeMask,
@@ -2243,13 +2248,114 @@ fm_status fm10000SetTeDefaultTunnel(fm_int                 sw,
 
     if (fieldSelectMask & FM10000_TE_DEFAULT_TUNNEL_VERSION)
     {
-        FM_API_REQUIRE(teTunnelCfg->encapVersion <=
-                           FM_FIELD_UNSIGNED_MAX(FM10000_TE_TUN_HEADER_CFG, EncapVersion),
+        /* Even if encapVersion is 3 bits, limit to a value of 3 because
+         * encapVersion[2] is used to enable GPE/NSH in B0. */
+        FM_API_REQUIRE(teTunnelCfg->encapVersion <= FM10000_TE_ENCAP_VERSION_MAX,
                        FM_ERR_INVALID_ARGUMENT);
         FM_ARRAY_SET_FIELD(teTunHeaderCfg,
                            FM10000_TE_TUN_HEADER_CFG,
                            EncapVersion,
                            teTunnelCfg->encapVersion);
+    }
+
+    if (fieldSelectMask & FM10000_TE_DEFAULT_TUNNEL_MODE)
+    {
+        err = fmReadUINT32(sw, FM10000_CHIP_VERSION(), &chipVersion);
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_TE, err);
+
+        if (chipVersion == FM10000_CHIP_VERSION_A0)
+        {
+            err = FM_ERR_UNSUPPORTED;
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_TE, err);
+        }
+
+        if (fieldSelectMask & FM10000_TE_DEFAULT_TUNNEL_PROTOCOL)
+        {
+            FM_LOG_WARNING(FM_LOG_CAT_TE, 
+                           "Tunnel Protocol should be specified along with "
+                           "Tunnel Mode.");
+        }
+
+        /* Tunnel Mode users encapVersion[2] to enable GPE/NSH in B0. */
+        FM_API_REQUIRE(teTunnelCfg->mode <= FM10000_TE_MODE_MAX,
+                       FM_ERR_INVALID_ARGUMENT);
+        FM_ARRAY_SET_UNNAMED_BIT(teTunHeaderCfg, 
+                                 FM10000_TE_TUN_HEADER_CFG_h_EncapVersion,
+                                 teTunnelCfg->mode);
+    }
+
+    if (fieldSelectMask & FM10000_TE_DEFAULT_GPE_NSH_CLEAR)
+    {
+        FM_ARRAY_SET_FIELD(teDefaultNgeMask,
+                           FM10000_TE_DEFAULT_NGE_MASK,
+                           Mask,
+                           0);
+        FM_ARRAY_SET_BIT(teDefaultNgeMask,
+                         FM10000_TE_DEFAULT_NGE_MASK,
+                         LoadTimetag,
+                         0);
+    }
+
+    if (fieldSelectMask & FM10000_TE_DEFAULT_GPE_NEXT_PROT)
+    {
+        teDefaultNgeMask[0] |= FM10000_NGE_MASK_GPE_FLAGS_NEXT_PROT;
+        teDefaultNgeData[FM10000_NGE_POS_GPE_FLAGS_NEXT_PROT * 
+                         FM10000_TE_DEFAULT_NGE_DATA_WIDTH] = 
+            (0x0C000000 | (teTunnelCfg->gpeNextProt & 0x0F));
+    }
+
+    if (fieldSelectMask & FM10000_TE_DEFAULT_GPE_VNI)
+    {
+        teDefaultNgeMask[0] |= FM10000_NGE_MASK_GPE_VNI;
+        teDefaultNgeData[FM10000_NGE_POS_GPE_VNI * 
+                         FM10000_TE_DEFAULT_NGE_DATA_WIDTH] = 
+            ( (teTunnelCfg->gpeVni & 0xFFFFFF) << 8);
+    }
+
+    if (fieldSelectMask & FM10000_TE_DEFAULT_NSH_BASE_HDR)
+    {
+        if (teTunnelCfg->nshLength > (FM10000_TE_NGE_DATA_SIZE - 
+                                      FM10000_TE_GPE_HDR_SIZE) )
+        {
+            err = FM_ERR_INVALID_ARGUMENT;
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_TE, err);
+        }
+
+        teDefaultNgeMask[0] |= FM10000_NGE_MASK_NSH_BASE_HDR;
+
+        /* NSH: Flags=0x0, NextProt=3 */
+        teDefaultNgeData[FM10000_NGE_POS_NSH_BASE_HDR * 
+                         FM10000_TE_DEFAULT_NGE_DATA_WIDTH] = 
+            ( (teTunnelCfg->nshCritical & 1) << 28 )  |
+            ( (teTunnelCfg->nshLength & 0x3F) << 16 ) |
+            ( (teTunnelCfg->nshMdType & 0xFF) << 8 ) |
+            0x3;
+    }
+
+    if (fieldSelectMask & FM10000_TE_DEFAULT_NSH_SERVICE_HDR)
+    {
+        teDefaultNgeMask[0] |= FM10000_NGE_MASK_NSH_SERVICE_HDR;
+        teDefaultNgeData[FM10000_NGE_POS_NSH_SERVICE_HDR * 
+                         FM10000_TE_DEFAULT_NGE_DATA_WIDTH] = 
+            ( ( (teTunnelCfg->nshSvcPathId & 0xFFFFFF) << 8) |
+              (teTunnelCfg->nshSvcIndex & 0xFF) ) ;
+    }
+
+    if (fieldSelectMask & FM10000_TE_DEFAULT_NSH_DATA)
+    {
+        teDefaultNgeMask[0] |= (teTunnelCfg->nshDataMask & 
+                                FM10000_TE_NSH_DATA_MASK) << 
+                                FM10000_NGE_POS_NSH_DATA;
+
+        for (i = FM10000_NGE_POS_NSH_DATA ; 
+             i < FM10000_TE_DEFAULT_NGE_DATA_ENTRIES_0 ; 
+             i++)
+        {
+            FM_ARRAY_SET_FIELD(&teDefaultNgeData[i * FM10000_TE_DEFAULT_NGE_DATA_WIDTH],
+                               FM10000_TE_DEFAULT_NGE_DATA,
+                               Data,
+                               teTunnelCfg->nshData[i-FM10000_NGE_POS_NSH_DATA]);
+        }
     }
 
     if (fieldSelectMask & FM10000_TE_DEFAULT_TUNNEL_NGE_DATA)
@@ -2500,6 +2606,55 @@ fm_status fm10000GetTeDefaultTunnel(fm_int                 sw,
                                              FM10000_TE_SMAC,
                                              SMAC);
 
+    teTunnelCfg->mode = FM_ARRAY_GET_UNNAMED_BIT(teTunHeaderCfg, 
+                                                 FM10000_TE_TUN_HEADER_CFG_h_EncapVersion);
+
+    teTunnelCfg->gpeNextProt = 0;
+    teTunnelCfg->gpeVni = 0;
+    teTunnelCfg->nshLength = 0;
+    teTunnelCfg->nshCritical = 0;
+    teTunnelCfg->nshMdType = 0;
+    teTunnelCfg->nshSvcPathId = 0;
+    teTunnelCfg->nshSvcIndex = 0;
+    teTunnelCfg->nshDataMask = 0;
+
+    for (i = 0; i < FM10000_TE_NSH_DATA_SIZE; i++)
+    {
+        teTunnelCfg->nshData[i] = 0; 
+    }
+
+    if (teTunnelCfg->mode == FM10000_TE_MODE_VXLAN_GPE_NSH)
+    {
+        if (teTunnelCfg->ngeMask & FM10000_NGE_MASK_GPE_FLAGS_NEXT_PROT)
+        {
+            teTunnelCfg->gpeNextProt = teTunnelCfg->ngeData[FM10000_NGE_POS_GPE_FLAGS_NEXT_PROT] >> 24;
+        }
+        
+        if (teTunnelCfg->ngeMask & FM10000_NGE_MASK_GPE_VNI)
+        {
+            teTunnelCfg->gpeVni = teTunnelCfg->ngeData[FM10000_NGE_POS_GPE_VNI] & 0xFFFFFF;
+        }
+
+        if (teTunnelCfg->ngeMask & FM10000_NGE_MASK_NSH_BASE_HDR)
+        {
+            teTunnelCfg->nshLength   = (teTunnelCfg->ngeData[FM10000_NGE_POS_NSH_BASE_HDR] >> 10) & 0x3F;
+            teTunnelCfg->nshCritical = (teTunnelCfg->ngeData[FM10000_NGE_POS_NSH_BASE_HDR] >> 3) & 0x1;
+            teTunnelCfg->nshMdType   = (teTunnelCfg->ngeData[FM10000_NGE_POS_NSH_BASE_HDR] >> 16) & 0xFF;
+        }
+
+        if (teTunnelCfg->ngeMask & FM10000_NGE_MASK_NSH_SERVICE_HDR)
+        {
+            teTunnelCfg->nshSvcPathId = teTunnelCfg->ngeData[FM10000_NGE_POS_NSH_SERVICE_HDR] & 0xFFFFFF;
+            teTunnelCfg->nshSvcIndex = (teTunnelCfg->ngeData[FM10000_NGE_POS_NSH_SERVICE_HDR] >> 24) & 0xFF;
+        }
+
+        teTunnelCfg->nshDataMask = teTunnelCfg->ngeMask >> FM10000_NGE_POS_NSH_DATA;
+
+        for (i = 0; i < FM10000_TE_NSH_DATA_SIZE; i++)
+        {
+            teTunnelCfg->nshData[i] = teTunnelCfg->ngeData[i+FM10000_NGE_POS_NSH_DATA];
+        }
+    }
 
 ABORT:
     UNPROTECT_SWITCH(sw);
@@ -6551,8 +6706,13 @@ void fm10000DbgDumpTe(fm_int sw, fm_int te)
     FM_LOG_PRINT("DMAC:0x%012llx  SMAC:0x%012llx\n",
                  teTunnelCfg.dmac, teTunnelCfg.smac);
 
-    FM_LOG_PRINT("NVGRE Protocol:%d  NVGRE Version:%d\n",
+    FM_LOG_PRINT("NVGRE Protocol:0x%04x  NVGRE/NGE Version:0x%x\n",
                  teTunnelCfg.encapProtocol, teTunnelCfg.encapVersion);
+
+    FM_LOG_PRINT("Tunnel Mode: %d (%s)\n",
+                 teTunnelCfg.mode,
+                 teTunnelCfg.mode == FM10000_TE_MODE_VXLAN_NVGRE_NGE ? 
+                 "VXLAN_NVGRE_NGE" : "VXLAN_GPE_NSH");
 
     FM_LOG_PRINT("NGE Time?:%d  NGE Mask:0x%04x\n",
                  teTunnelCfg.ngeTime, teTunnelCfg.ngeMask);

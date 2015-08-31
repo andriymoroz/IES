@@ -71,43 +71,43 @@
     GetStringValue(str, ledTypeMap, FM_NENTRIES(ledTypeMap), (fm_int*)type)
 
 #define LedTypeToStr(type) \
-    GetStrMap(type, ledTypeMap, FM_NENTRIES(ledTypeMap), FALSE)
+    GetStrMap(type, ledTypeMap, FM_NENTRIES(ledTypeMap), FALSE, tmpStr, sizeof(tmpStr))
 
 #define LedUsageStrToValue(str, usage) \
     GetStringValue(str, ledUsageMap, FM_NENTRIES(ledUsageMap), (fm_int*)usage)
 
 #define LedUsageToStr(usage) \
-    GetStrMap(usage, ledUsageMap, FM_NENTRIES(ledUsageMap), FALSE)
+    GetStrMap(usage, ledUsageMap, FM_NENTRIES(ledUsageMap), FALSE, tmpStr, sizeof(tmpStr))
 
 #define BusSelTypeStrToValue(str, type) \
     GetStringValue(str, busSelTypeMap, FM_NENTRIES(busSelTypeMap), (fm_int*)type)
 
 #define BusSelTypeToStr(type) \
-    GetStrMap(type, busSelTypeMap, FM_NENTRIES(busSelTypeMap), FALSE)
+    GetStrMap(type, busSelTypeMap, FM_NENTRIES(busSelTypeMap), FALSE, tmpStr, sizeof(tmpStr))
 
 #define PcaMuxModelStrToValue(str, type) \
     GetStringValue(str, pcaMuxModelMap, FM_NENTRIES(pcaMuxModelMap), (fm_int*)type)
 
 #define PcaMuxModelToStr(type) \
-    GetStrMap(type, pcaMuxModelMap, FM_NENTRIES(pcaMuxModelMap), FALSE)
+    GetStrMap(type, pcaMuxModelMap, FM_NENTRIES(pcaMuxModelMap), FALSE, tmpStr, sizeof(tmpStr))
 
 #define PcaIoModelStrToValue(str, type) \
     GetStringValue(str, pcaIoModelMap, FM_NENTRIES(pcaIoModelMap), (fm_int*)type)
 
 #define PcaIoModelToStr(type) \
-    GetStrMap(type, pcaIoModelMap, FM_NENTRIES(pcaIoModelMap), FALSE)
+    GetStrMap(type, pcaIoModelMap, FM_NENTRIES(pcaIoModelMap), FALSE, tmpStr, sizeof(tmpStr))
 
 #define IntfTypeStrToValue(str, type) \
     GetStringValue(str, intfTypeMap, FM_NENTRIES(intfTypeMap), (fm_int*)type)
 
 #define IntfTypeToStr(type) \
-    GetStrMap(type, intfTypeMap, FM_NENTRIES(intfTypeMap), FALSE)
+    GetStrMap(type, intfTypeMap, FM_NENTRIES(intfTypeMap), FALSE, tmpStr, sizeof(tmpStr))
 
 #define HwResourceStrToValue(str, type) \
     GetStringValue(str, hwResourceTypeMap, FM_NENTRIES(hwResourceTypeMap), (fm_int*)type)
 
 #define HwResourceToStr(type) \
-    GetStrMap(type, hwResourceTypeMap, FM_NENTRIES(hwResourceTypeMap), FALSE)
+    GetStrMap(type, hwResourceTypeMap, FM_NENTRIES(hwResourceTypeMap), FALSE, tmpStr, sizeof(tmpStr))
 
 #define SET_BIT(lvalue, bit, bitvalue)    \
     ( lvalue = ( lvalue & ~(1 << bit) ) | \
@@ -115,23 +115,11 @@
 
 #define GET_BIT(lvalue, bit)  (((lvalue) >> bit) & 0x1)
 
-/* Use bits 7..0 for HW resource ID
- * Use bits 11..8 to store the LED number
- */
-#define HW_RESOURCE_ID_TO_IDX(x)        (x & 0xFF)
-#define HW_RESOURCE_ID_SET_IDX(x)       (x & 0xFF)
-#define HW_RESOURCE_ID_TO_LEDNUM(x)     ((x & 0xF00) >> 8)
-#define HW_RESOURCE_ID_SET_LEDNUM(x)    ((x & 0xF) << 8)
-#define HW_RESOURCE_ID_TO_VRMSUBCHAN(x) ((x & 0xF00) >> 8)
-
 #define LIB_MAX_STR_LEN             128
 
 /* Max number of I2C buses supported */
 /* Should be at least equal to the number of switch */
 #define NUM_I2C_BUS                 12
-
-/* Max number of hw ports supported */
-#define NUM_HW_RES_ID               72
 
 /* Max number of PCA mux supported */
 #define NUM_PCA_MUX                 16
@@ -509,7 +497,7 @@ typedef struct
     fm_uint         numResId;
 
     /* Hardware resource ID configuration */
-    fm_hwResId      hwResId[NUM_HW_RES_ID];
+    fm_hwResId      hwResId[FM_NUM_HW_RES_ID];
 
     /* Default bus selection type */
     fm_busSelType   defBusSelType;
@@ -1281,7 +1269,8 @@ static fm_status SwitchI2cWriteRead(fm_uintptr handle,
                                     fm_uint    device,
                                     fm_byte   *data,
                                     fm_uint    wl,
-                                    fm_uint    rl)
+                                    fm_uint    rl,
+                                    fm_bool    i2cWrRdEn)
 {
     fm_status status;
     fm_int    i;
@@ -1307,9 +1296,8 @@ static fm_status SwitchI2cWriteRead(fm_uintptr handle,
         }
     }
 
-    if (hwCfg.i2c[sw].i2cWrRdEn)
+    if (i2cWrRdEn)
     {
-        printf("Using i2cWrRd\n");
         status = fmI2cWriteRead(sw, device, data, wl, rl);
     }
     else
@@ -1347,6 +1335,25 @@ static fm_status SwitchI2cWriteRead(fm_uintptr handle,
     return status;
 
 }   /* end SwitchI2cWriteRead */
+
+
+static fm_status SwitchI2cWriteRead1(fm_uintptr handle,
+                                     fm_uint    device,
+                                     fm_byte   *data,
+                                     fm_uint    wl,
+                                     fm_uint    rl)
+{
+    return SwitchI2cWriteRead(handle, device, data, wl, rl, TRUE);
+}
+
+static fm_status SwitchI2cWriteRead2(fm_uintptr handle,
+                                     fm_uint    device,
+                                     fm_byte   *data,
+                                     fm_uint    wl,
+                                     fm_uint    rl)
+{
+    return SwitchI2cWriteRead(handle, device, data, wl, rl, FALSE);
+}
 
 
 /*****************************************************************************/
@@ -1411,33 +1418,37 @@ static void DropLock(void)
  *
  * \param[in]       hexVal is whether to display value in hex format.
  *
- * \return          string representation of the value or UNKNOWN.
+ * \param[out]      strBuf is the pointer to the buffer where the out is stored.
+ *
+ * \param[in]       strLen is the length of the strBuf.
+ *
+ * \return          strBuf, string representation of the value or UNKNOWN.
  *
  *****************************************************************************/
 static fm_text GetStrMap(fm_int             value,
                          fm_platformStrMap *strMap,
                          fm_int             size,
-                         fm_bool            hexVal)
+                         fm_bool            hexVal,
+                         fm_text            strBuf,
+                         fm_int             strLen)
 {
     fm_int         cnt;
-    static fm_char strBuf[LIB_MAX_STR_LEN+1]; /* No multi-thread nor
-                                                 multi-calls in printf */
 
     for (cnt = 0 ; cnt < size ; cnt++)
     {
         if (value == strMap[cnt].value)
         {
 #if 0
-            FM_SNPRINTF_S(strBuf, LIB_MAX_STR_LEN, hexVal?"%s(0x%x)":"%s(%d)",
+            FM_SNPRINTF_S(strBuf, strLen, hexVal?"%s(0x%x)":"%s(%d)",
                           strMap[cnt].desc, value);
 #else
-            FM_SNPRINTF_S(strBuf, LIB_MAX_STR_LEN, "%s", strMap[cnt].desc);
+            FM_SNPRINTF_S(strBuf, strLen, "%s", strMap[cnt].desc);
 #endif
             return strBuf;
         }
     }
 
-    FM_SNPRINTF_S(strBuf, LIB_MAX_STR_LEN, "UNKNOWN(%d)", value);
+    FM_SNPRINTF_S(strBuf, strLen, "UNKNOWN(%d)", value);
     return strBuf;
 
 }   /* end GetStrMap */
@@ -1459,30 +1470,38 @@ static fm_text GetStrMap(fm_int             value,
  *
  * \param[in]       size is the size of the strMap array.
  *
+ * \param[out]      strBuf is the pointer to the buffer where the out is stored.
+ *
+ * \param[in]       strLen is the length of the strBuf.
+ *
  * \return          string representation of the bit mask separated by commas.
  *
  *****************************************************************************/
 static fm_text GetStrBitMap(fm_int             value,
                             fm_platformStrMap *strMap,
-                            fm_int             size)
+                            fm_int             size,
+                            fm_text            strBuf,
+                            fm_int             strLen)
 {
     fm_int         cnt;
-    static fm_char strBuf[LIB_MAX_STR_LEN+1]; /* No multi-thread nor
-                                            * multi-calls in printf */
+    fm_int         len;
 
     /* Empty string if no bit is set */
     strBuf[0] = '\0';
 
+    len = strLen;
     for (cnt = 0 ; cnt < size ; cnt++)
     {
         if (value & strMap[cnt].value)
         {
             if (strBuf[0] != '\0')
             {
-                FM_STRCAT_S(strBuf, sizeof(strBuf), ",");
+                FM_STRCAT_S(strBuf, len, ",");
+                len = strLen - strlen(strBuf);
             }
 
-            FM_STRCAT_S(strBuf, sizeof(strBuf), strMap[cnt].desc);
+            FM_STRCAT_S(strBuf, len, strMap[cnt].desc);
+            len = strLen - strlen(strBuf);
         }
     }
 
@@ -1753,6 +1772,7 @@ static fm_status GetConfigStrBitMap(fm_text            name,
     fm_char *tokptr;
     fm_uint  strSize;
     fm_char  tmpText[LIB_MAX_STR_LEN+1];
+    fm_char  tmpStr[LIB_MAX_STR_LEN+1];
     fm_int   strLen;
 
     valText = fmGetTextApiProperty(name, "UNDEF");
@@ -1801,7 +1821,7 @@ static fm_status GetConfigStrBitMap(fm_text            name,
         FM_LOG_PRINT("Invalid value '%s' for '%s'. Defaulting to %s\n", 
                      token,
                      name,
-                     GetStrBitMap(defVal, strMap, size));
+                     GetStrBitMap(defVal, strMap, size, tmpStr, sizeof(tmpStr)));
         FM_LOG_EXIT(FM_LOG_CAT_PLATFORM, FM_ERR_INVALID_ARGUMENT);
     }
 
@@ -1824,7 +1844,7 @@ static fm_status GetConfigStrBitMap(fm_text            name,
             FM_LOG_PRINT("Invalid value '%s' for '%s'. Defaulting to %s\n", 
                          token,
                          name,
-                         GetStrBitMap(defVal, strMap, size));
+                         GetStrBitMap(defVal, strMap, size, tmpStr, sizeof(tmpStr)));
             FM_LOG_EXIT(FM_LOG_CAT_PLATFORM, FM_ERR_INVALID_ARGUMENT);
         }
     }
@@ -1922,6 +1942,34 @@ static fm_status GetAndValidateBusNumber(fm_text name, fm_uint *busNum)
     return status;
 
 }   /*  end GetAndValidateBusNumber */
+
+
+
+
+/*****************************************************************************/
+/* IsPcaIoLedDriver
+ * \ingroup intPlatform
+ *
+ * \desc             This function determines if the given model
+ *                   support LED driver.
+ *
+ * \param[in]        model is the PCA IO model
+ *
+ * \return           true if the model support LED driver
+ *
+ *****************************************************************************/
+static fm_bool IsPcaIoLedDriver(fm_pcaIoModel model)
+{
+    switch (model)
+    {
+        case PCA_IO_9634:
+        case PCA_IO_9635:
+        case PCA_IO_9551:
+            return TRUE;
+        default:
+            return FALSE;
+    }
+}
 
 
 
@@ -2216,6 +2264,7 @@ static fm_status LoadPortLedConfig(fm_uint hwId)
     fm_status   status;
     fm_text     inputText;
     fm_char     buf[LIB_MAX_STR_LEN];
+    fm_char     tmpStr[LIB_MAX_STR_LEN];
     fm_int      pin;
     fm_int      maxPin;
     fm_uint     led;
@@ -2341,6 +2390,7 @@ static fm_status LoadConfig(void)
     fm_uint    cnt;
     fm_text    inputText;
     fm_char    buf[LIB_MAX_STR_LEN];
+    fm_char    tmpStr[LIB_MAX_STR_LEN];
     fm_int     valInt;
     fm_phyI2C *phyI2C;
     fm_vrmI2C *vrmI2c;
@@ -2667,7 +2717,7 @@ static fm_status LoadConfig(void)
                                   (fm_int *)&hwCfg.numResId,
                                   0,
                                   0,
-                                  NUM_HW_RES_ID);
+                                  FM_NUM_HW_RES_ID);
     FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
 
     /**************************************************
@@ -3067,6 +3117,7 @@ static void DumpConfig(void)
     fm_uint     led;
     fm_uint     subLed;
     fm_char     buf[LIB_MAX_STR_LEN];
+    fm_char     tmpStr[LIB_MAX_STR_LEN];
 
 #define PRINT_STR(name, string) \
     FM_SNPRINTF_S(buf, LIB_MAX_STR_LEN, name, cnt); \
@@ -3224,7 +3275,9 @@ static void DumpConfig(void)
                            "  hwResId.%d.led.%d.%d.usage", 
                            GetStrBitMap( portLed->subLed[subLed].usage,
                                       ledUsageMap,
-                                      FM_NENTRIES(ledUsageMap) ) );
+                                      FM_NENTRIES(ledUsageMap),
+                                      tmpStr,
+                                      sizeof(tmpStr) ) );
 
                     }
                 }
@@ -3643,7 +3696,7 @@ static fm_status InitPca(void)
             if (portLed->type == LED_TYPE_PCA)
             {
                 ioDev = &hwCfg.pcaIo[portLed->ioIdx].dev;
-                if ( !(ioDev->model & FM_PCA_LED_DRIVER_BIT_MASK) )
+                if ( !(IsPcaIoLedDriver(ioDev->model)) )
                 {
                     for (subLed = 0 ; subLed < NUM_SUB_LED ; subLed++)
                     {
@@ -3766,7 +3819,7 @@ fm_status GetVrmVoltageInt(fm_int     sw,
 
     FM_NOT_USED(sw);
 
-    if ( HW_RESOURCE_ID_TO_IDX(hwResourceId) >= NUM_HW_RES_ID )
+    if ( HW_RESOURCE_ID_TO_IDX(hwResourceId) >= FM_NUM_HW_RES_ID )
     {
         status = FM_ERR_INVALID_ARGUMENT;
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
@@ -3948,7 +4001,8 @@ fm_status fmPlatformLibInit(void)
 
         if (strstr(i2c->devName, "switchI2C") != NULL)
         {
-            i2c->writeReadFunc = SwitchI2cWriteRead;
+            i2c->writeReadFunc = i2c->i2cWrRdEn ? SwitchI2cWriteRead1 :
+                                                  SwitchI2cWriteRead2;
             i2c->setDebugFunc  = NULL;
             i2c->handle = 0; /* handle is the switch number */
             i2c->i2cBlockSupported = 0; /* Bob: to test with 1 */
@@ -4220,6 +4274,7 @@ fm_status fmPlatformLibSelectBus(fm_int    sw,
     fm_uint     muxIdx;
     fm_uint     muxValue;
     fm_uint     ioIdx;
+    fm_uint     lastIoIdx;
     fm_uint     offset;
     fm_uint     byteIdx;
     fm_uint     bitIdx;
@@ -4316,6 +4371,7 @@ fm_status fmPlatformLibSelectBus(fm_int    sw,
             /* Enable I2C select bit only on the one selected
              * and disable the rest */
             lastId = UINT_NOT_USED;
+            lastIoIdx = 0;
             for (cnt = 0 ; cnt < hwCfg.numResId; cnt++)
             {
                 if (hwCfg.hwResId[cnt].type == HWRESOURCE_TYPE_PORT)
@@ -4334,16 +4390,24 @@ fm_status fmPlatformLibSelectBus(fm_int    sw,
                                     bitIdx,
                                     (cnt == hwIdx) ? xcvrI2cBus->ioPinPolarity :
                                         !xcvrI2cBus->ioPinPolarity);
+                            
                             id = byteIdx | (ioIdx << 8);
                             /* Only update HW only when change to different byte */
                             if ((lastId != UINT_NOT_USED && (id != lastId)) ||
                                  (cnt == (hwCfg.numResId - 1)))
                             {
-                                status = fmUtilPcaIoWriteRegs(&hwCfg.pcaIo[ioIdx].dev,
+                                /* because the pcaIos could be on different mux paths*/
+                                /* we need to set the mux path here before we try to */
+                                /* set the IO pins state */
+                                status = SetupMuxPath(hwCfg.pcaIo[lastIoIdx].parentMuxIdx,
+                                                      hwCfg.pcaIo[lastIoIdx].parentMuxValue);
+
+                                status = fmUtilPcaIoWriteRegs(&hwCfg.pcaIo[lastIoIdx].dev,
                                                               PCA_IO_REG_TYPE_OUTPUT,
                                                               byteIdx,
                                                               1);
                             }
+                            lastIoIdx = ioIdx;
                             lastId = id;
                         }
                     }
@@ -4995,7 +5059,7 @@ fm_status fmPlatformLibSetPortLed(fm_int     sw,
 
                     ledState = GetLedState(ledStateList[cnt], usage);
 
-                    if (ioDev->model & FM_PCA_LED_DRIVER_BIT_MASK)
+                    if (IsPcaIoLedDriver(ioDev->model))
                     {
                         if ( ledState == LED_STATE_ON )
                         {
@@ -5262,7 +5326,7 @@ fm_status fmPlatformLibSetVrmVoltage(fm_int     sw,
     status = TakeLock();
     FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
 
-    if ( HW_RESOURCE_ID_TO_IDX(hwResourceId) >= NUM_HW_RES_ID )
+    if ( HW_RESOURCE_ID_TO_IDX(hwResourceId) >= FM_NUM_HW_RES_ID )
     {
         status = FM_ERR_INVALID_ARGUMENT;
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PLATFORM, status);

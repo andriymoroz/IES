@@ -46,7 +46,7 @@
 #define CSR_LOG_EXIT(cat, status) return (status)
 #endif
 
-#define ALTA_I2C_ADDR 0x40
+#define FM6000_I2C_ADDR 0x40
 
 /*****************************************************************************
  * Global Variables
@@ -110,7 +110,7 @@ fm_status fmPlatformI2cReadCSR(fm_int sw, fm_uint32 addr, fm_uint32 *value)
     *value = addr;
     err    = fmPlatformI2cWriteRead(sw,    /*  sw              */
                                     0,     /*  bus             */
-                                    ALTA_I2C_ADDR,  /* I2C address */
+                                    FM6000_I2C_ADDR,  /* I2C address */
                                     value, /*  pass reg address, will get reg value */
                                     3,     /*  write length    */
                                     4);    /*  read length     */
@@ -164,7 +164,7 @@ fm_status fmPlatformI2cWriteCSR(fm_int sw, fm_uint32 addr, fm_uint32 value)
 
     err = fmPlatformI2cWriteLong(sw,    /*  sw              */
                                  0,     /*  bus             */
-                                 ALTA_I2C_ADDR,  /* I2C address */
+                                 FM6000_I2C_ADDR,  /* I2C address */
                                  data,  /*  reg_addr and reg_data */
                                  7);    /*  write length    */
 
@@ -226,7 +226,7 @@ fm_status fmPlatformI2cMaskCSR(fm_int    sw,
 
     /* Perform I2C accesses */
     value = reg;
-    err   = fmPlatformI2cWriteRead(sw, 0, ALTA_I2C_ADDR, &value, 3, 4);
+    err   = fmPlatformI2cWriteRead(sw, 0, FM6000_I2C_ADDR, &value, 3, 4);
 
     if (err == FM_OK)
     {
@@ -240,7 +240,7 @@ fm_status fmPlatformI2cMaskCSR(fm_int    sw,
         }
 
         data = ( ( (fm_uint64) (reg) ) << 32) | value;
-        err  = fmPlatformI2cWriteLong(sw, 0, ALTA_I2C_ADDR, data, 7);
+        err  = fmPlatformI2cWriteLong(sw, 0, FM6000_I2C_ADDR, data, 7);
     }
 
     DROP_PLAT_LOCK(sw, FM_MEM_TYPE_CSR);
@@ -294,7 +294,7 @@ fm_status fmPlatformI2cReadCSRMult(fm_int     sw,
     for (i = 0 ; i < n ; i++)
     {
         value[i] = addr + i;
-        err      = fmPlatformI2cWriteRead(sw, 0, ALTA_I2C_ADDR, &value[i], 3, 4);
+        err      = fmPlatformI2cWriteRead(sw, 0, FM6000_I2C_ADDR, &value[i], 3, 4);
 
         if (err != FM_OK)
         {
@@ -359,7 +359,7 @@ fm_status fmPlatformI2cWriteCSRMult(fm_int     sw,
     for (i = 0 ; i < n ; i++)
     {
         data = ( ( ((fm_uint64)addr + i) ) << 32) | value[i];
-        err  = fmPlatformI2cWriteLong(sw, 0, ALTA_I2C_ADDR, data, 7);
+        err  = fmPlatformI2cWriteLong(sw, 0, FM6000_I2C_ADDR, data, 7);
 
         if (err != FM_OK)
         {
@@ -409,12 +409,12 @@ fm_status fmPlatformI2cReadCSR64(fm_int sw, fm_uint32 addr, fm_uint64 *value)
 
     /* Perform I2C access */
     lo  = addr + 0;
-    err = fmPlatformI2cWriteRead(sw, 0, ALTA_I2C_ADDR, &lo, 3, 4);
+    err = fmPlatformI2cWriteRead(sw, 0, FM6000_I2C_ADDR, &lo, 3, 4);
 
     if (err == FM_OK)
     {
         hi  = addr + 1;
-        err = fmPlatformI2cWriteRead(sw, 0, ALTA_I2C_ADDR, &hi, 3, 4);
+        err = fmPlatformI2cWriteRead(sw, 0, FM6000_I2C_ADDR, &hi, 3, 4);
 
         *value = ( (fm_uint64) hi << 32 ) | lo;
     }
@@ -469,12 +469,12 @@ fm_status fmPlatformI2cWriteCSR64(fm_int sw, fm_uint32 addr, fm_uint64 value)
     hi = (value >> 32);
 
     data = ( ( ((fm_uint64)addr + 0) ) << 32 ) | lo;
-    err  = fmPlatformI2cWriteLong(sw, 0, ALTA_I2C_ADDR, data, 7);
+    err  = fmPlatformI2cWriteLong(sw, 0, FM6000_I2C_ADDR, data, 7);
 
     if (err == FM_OK)
     {
         data = ( ( ((fm_uint64)addr + 1) ) << 32 ) | hi;
-        err  = fmPlatformI2cWriteLong(sw, 0, ALTA_I2C_ADDR, data, 7);
+        err  = fmPlatformI2cWriteLong(sw, 0, FM6000_I2C_ADDR, data, 7);
     }
 
     DROP_PLAT_LOCK(sw, FM_MEM_TYPE_CSR);
@@ -529,12 +529,12 @@ fm_status fmPlatformI2cReadCSRMult64(fm_int     sw,
     {
         /* Perform I2C access */
         lo  = addr + (i * 2) + 0;
-        err = fmPlatformI2cWriteRead(sw, 0, ALTA_I2C_ADDR, &lo, 3, 4);
+        err = fmPlatformI2cWriteRead(sw, 0, FM6000_I2C_ADDR, &lo, 3, 4);
 
         if (err == FM_OK)
         {
             hi  = addr + (i * 2) + 1;
-            err = fmPlatformI2cWriteRead(sw, 0, ALTA_I2C_ADDR, &hi, 3, 4);
+            err = fmPlatformI2cWriteRead(sw, 0, FM6000_I2C_ADDR, &hi, 3, 4);
 
             value[i] = ( (fm_uint64) hi << 32 ) | lo;
         }
@@ -605,12 +605,12 @@ fm_status fmPlatformI2cWriteCSRMult64(fm_int     sw,
         hi = (value[i] >> 32);
 
         data = ( ( (fm_uint64) addr + (i * 2) + 0) << 32 ) | lo;
-        err  = fmPlatformI2cWriteLong(sw, 0, ALTA_I2C_ADDR, data, 7);
+        err  = fmPlatformI2cWriteLong(sw, 0, FM6000_I2C_ADDR, data, 7);
 
         if (err == FM_OK)
         {
             data = ( ( (fm_uint64) addr + (i * 2) + 1) << 32 ) | hi;
-            err  = fmPlatformI2cWriteLong(sw, 0, ALTA_I2C_ADDR, data, 7);
+            err  = fmPlatformI2cWriteLong(sw, 0, FM6000_I2C_ADDR, data, 7);
         }
 
         if (err != FM_OK)
@@ -661,7 +661,7 @@ fm_status fmPlatformI2cReadPreBootCSR(fm_int sw, fm_uint32 addr, fm_uint32 *valu
     *value = addr;
     err    = fmPlatformI2cWriteRead(sw,    /*  sw              */
                                     0,     /*  bus             */
-                                    ALTA_I2C_ADDR,  /* I2C address */
+                                    FM6000_I2C_ADDR,  /* I2C address */
                                     value, /*  pass reg address, will get reg value */
                                     3,     /*  write length    */
                                     4);    /*  read length     */
@@ -710,7 +710,7 @@ fm_status fmPlatformI2cReadPreBootCSR64(fm_int sw, fm_uint32 addr, fm_uint64 *va
     if (err == FM_OK)
     {
         hi  = addr + 1;
-        err = fmPlatformI2cWriteRead(sw, 0, ALTA_I2C_ADDR, &hi, 3, 4);
+        err = fmPlatformI2cWriteRead(sw, 0, FM6000_I2C_ADDR, &hi, 3, 4);
 
         *value = ( (fm_uint64) hi << 32 ) | lo;
     }
@@ -755,7 +755,7 @@ fm_status fmPlatformI2cWritePreBootCSR(fm_int sw, fm_uint32 addr, fm_uint32 valu
 
     err = fmPlatformI2cWriteLong(sw,    /*  sw              */
                                  0,     /*  bus             */
-                                 ALTA_I2C_ADDR,  /* I2C address */
+                                 FM6000_I2C_ADDR,  /* I2C address */
                                  data,  /*  reg_addr and reg_data */
                                  7);    /*  write length    */
 

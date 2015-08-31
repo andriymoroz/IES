@@ -69,6 +69,7 @@
 
 #define NVM_LT_CFG_FILE_FORMAT_NOT_PRESENT    0
 #define NVM_LT_CFG_FILE_FORMAT_RAW            1
+#define NVM_LT_CFG_FILE_FORMAT_TLV            2
 
 #define NVM_LT_CFG_VERSION_SUPPORTED          0
 
@@ -352,6 +353,71 @@ static fm_bool ReadLineFromNvmLtCfg(fm_uint32 *switchMem,
 
 
 
+/*****************************************************************************/
+/** ReadTlvFromNvmLtCfg
+ * \ingroup intPlatform
+ *
+ * \desc            Read a TLV from Liberty Trail Config in NVM image.
+ *
+ * \param[in]       switchMem is pointer to mapped memory
+ *
+ * \param[in,out]   addr is the start address of the TLV.
+ *
+ * \param[out]      tlv is an array of bytes storing the TLV.
+ *
+ * \param[in]       tlvSize is the size of tlv array.
+ *
+ * \return          TRUE if successfully read line from Liberty Trail Config in
+ *                  NVM image.
+ * \return          FALSE otherwise.
+ *
+ *****************************************************************************/
+static fm_status ReadTlvFromNvmLtCfg(fm_uint32 *switchMem,
+                                     fm_uint    addr,
+                                     fm_byte   *tlv,
+                                     fm_int     tlvSize)
+{
+    fm_status   err;
+    fm_int      tlvLen;
+
+    FM_LOG_ENTRY(FM_LOG_CAT_PLATFORM, 
+                 "switchMem %p addr 0x%x tlv %p tlvSize %d\n",
+                 (void*)switchMem,
+                 addr,
+                 (void*)tlv,
+                 tlvSize);
+
+
+    err = fm10000UtilSpiReadFlash((fm_uintptr)switchMem,
+                                  RegRead32,
+                                  RegWrite32,
+                                  addr,
+                                  tlv,
+                                  3,
+                                  SPI_FREQ_KHZ);
+    FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_PLATFORM, err);
+
+    tlvLen = tlv[2] + 3;
+    if (tlvLen > tlvSize)
+    {
+        err = FM_ERR_INVALID_ARGUMENT;
+        FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_PLATFORM, err);
+    }
+
+    err = fm10000UtilSpiReadFlash((fm_uintptr)switchMem,
+                                  RegRead32,
+                                  RegWrite32,
+                                  addr + 3,
+                                  tlv + 3,
+                                  tlvLen,
+                                  SPI_FREQ_KHZ);
+    FM_LOG_EXIT(FM_LOG_CAT_PLATFORM, err);
+
+
+}   /* ReadTlvFromNvmLtCfg */
+
+
+
 
 /*****************************************************************************
  * Public Functions
@@ -405,6 +471,9 @@ fm_status fmPlatformLoadPropertiesFromNVM(fm_text devName)
     int          lineNumAttr;
     fm_bool      disabledBsmInterrupts;
     fm_int       size;
+    fm_byte      tlv[256 + 3];
+    fm_uint      bytesCnt;
+    fm_uint32    tlvImageSize;
 
     FM_LOG_ENTRY(FM_LOG_CAT_PLATFORM, "%p\n", (void*)devName);
 
@@ -474,7 +543,8 @@ fm_status fmPlatformLoadPropertiesFromNVM(fm_text devName)
     version       = FM_GET_FIELD(value, NVM_LT_CFG, Version);
     lengthInWords = FM_GET_FIELD(value, NVM_LT_CFG, LengthInWords);
 
-    if (fileFmt != NVM_LT_CFG_FILE_FORMAT_RAW)
+    if (!(fileFmt == NVM_LT_CFG_FILE_FORMAT_RAW || 
+          fileFmt == NVM_LT_CFG_FILE_FORMAT_TLV))
     {
         err = FM_FAIL;
         FM_LOG_FATAL(FM_LOG_CAT_PLATFORM,
@@ -492,48 +562,95 @@ fm_status fmPlatformLoadPropertiesFromNVM(fm_text devName)
         FM_LOG_ABORT(FM_LOG_CAT_PLATFORM, err);
     } 
 
-    if ( (lengthInWords * sizeof(fm_uint32)) < NVM_LT_CFG_HEADER_LEN )
-    {
-        err = FM_FAIL;
-        FM_LOG_FATAL(FM_LOG_CAT_PLATFORM,
-                     "FAIL: LibertyTrail Config length %d is too small\n",
-                     lengthInWords);
-        FM_LOG_ABORT(FM_LOG_CAT_PLATFORM, err);
-    }
-
     dataAddr = NVM_LT_CFG_HEADER_LEN;
 
-    while (ReadLineFromNvmLtCfg((fm_uint32 *)switchMem,
-                                headerLtCfgBase,
-                                lengthInWords,
-                                &dataAddr,
-                                line,
-                                &value))
+    if (fileFmt == NVM_LT_CFG_FILE_FORMAT_TLV)
     {
-        lineNo++;
-        lineNumAttr = 0;
-        
-        err = fmPlatformLoadAttributeFromLine(line, lineNo, &lineNumAttr);
+        tlvImageSize = lengthInWords; /* Actually in bytes for this format */
+        bytesCnt = 0;
+
+        while (bytesCnt < tlvImageSize)
+        {
+            err = ReadTlvFromNvmLtCfg((fm_uint32 *)switchMem,
+                                       headerLtCfgBase + dataAddr,
+                                       tlv,
+                                       sizeof(tlv));
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PLATFORM, err);
+
+            err = fmPlatformCfgParseTlv(tlv);
+            if (err != FM_OK)
+            {
+                FM_LOG_ERROR(FM_LOG_CAT_PLATFORM,
+                    "Unable to decode TLV type [%02x%02x] at offset 0x%x\n",
+                    tlv[0], tlv[1], dataAddr);
+            }
+            else
+            {
+                numAttr++;
+            }
+
+            bytesCnt  += tlv[2] + 3; /* Total TLV size */
+            dataAddr += tlv[2] + 3;
+
+            err =
+                fm10000UtilsPollBsmInterrupts((fm_uintptr)switchMem,
+                                              RegRead32,
+                                              RegWrite32,
+                                              bsmIntMask,
+                                              &start,
+                                              &pollCnt,
+                                              &disabledBsmInterrupts);
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PLATFORM, err);
+        }
+
         if (err == FM_OK)
         {
-            numAttr += lineNumAttr;
+            err = fmPlatformCfgVerifyAndUpdate();
         }
-        else
+    }
+    else
+    {
+        if ( (lengthInWords * sizeof(fm_uint32)) < NVM_LT_CFG_HEADER_LEN )
         {
+            err = FM_FAIL;
             FM_LOG_FATAL(FM_LOG_CAT_PLATFORM,
-                         "Error reading from line %d\n",
-                         err);
+                         "FAIL: LibertyTrail Config length %d is too small\n",
+                         lengthInWords);
+            FM_LOG_ABORT(FM_LOG_CAT_PLATFORM, err);
         }
-        
-        err =
-            fm10000UtilsPollBsmInterrupts((fm_uintptr)switchMem,
-                                          RegRead32,
-                                          RegWrite32,
-                                          bsmIntMask,
-                                          &start,
-                                          &pollCnt,
-                                          &disabledBsmInterrupts);
-        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PLATFORM, err);
+
+        while (ReadLineFromNvmLtCfg((fm_uint32 *)switchMem,
+                                    headerLtCfgBase,
+                                    lengthInWords,
+                                    &dataAddr,
+                                    line,
+                                    &value))
+        {
+            lineNo++;
+            lineNumAttr = 0;
+            
+            err = fmPlatformLoadAttributeFromLine(line, lineNo, &lineNumAttr);
+            if (err == FM_OK)
+            {
+                numAttr += lineNumAttr;
+            }
+            else
+            {
+                FM_LOG_FATAL(FM_LOG_CAT_PLATFORM,
+                             "Error reading from line %d\n",
+                             err);
+            }
+            
+            err =
+                fm10000UtilsPollBsmInterrupts((fm_uintptr)switchMem,
+                                              RegRead32,
+                                              RegWrite32,
+                                              bsmIntMask,
+                                              &start,
+                                              &pollCnt,
+                                              &disabledBsmInterrupts);
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PLATFORM, err);
+        }
     }
 
     FM_LOG_DEBUG(FM_LOG_CAT_PLATFORM,

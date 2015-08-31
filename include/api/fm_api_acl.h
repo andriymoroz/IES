@@ -642,6 +642,10 @@ typedef enum
  *  paired with ''FM_ACL_ACTIONEXT_SET_VLAN'' to specify the new VLAN that
  *  would be used for filtering.
  *
+ *  This action is not supported in the SWAG environment due to the
+ *  possibility of not removing the tag when passing a frame from
+ *  one switch to another.
+ *
  *  \chips FM6000, FM10000 */
 #define FM_ACL_ACTIONEXT_POP_VLAN               (FM_LITERAL_U64(1) << 31)
 
@@ -819,7 +823,8 @@ typedef struct _fm_aclParamExt
     fm_uint16 srcGlort;
 
     /** Assigned Distribution Tree value, for use with
-     *  ''FM_ACL_ACTIONEXT_SET_TRILL_DIST_TREE''. */
+     *  ''FM_ACL_ACTIONEXT_SET_TRILL_DIST_TREE''.
+     *  \chips  FM6000 */
     fm_int    distTree;
 
     /** Tunnel ID value, for use with ''FM_ACL_ACTIONEXT_SET_INGRESS_TUNNEL_ID''
@@ -927,48 +932,89 @@ typedef enum
     /** For FM3000 and FM4000 devices this matches on the VLAN tag
      *  defined by ''FM_PORT_PARSER_CVLAN_TAG''.
      *                                                                  \lb\lb
-     *  For FM6000 and FM10000 devices this matches on the VLAN tag defined by
-     *  ''FM_SWITCH_VLAN1_ETHERTYPE_A'' or ''FM_SWITCH_VLAN1_ETHERTYPE_B''.
+     *  For FM6000 devices this matches on the VLAN tag defined by
+     *  FM_SWITCH_VLAN1_ETHERTYPE_A or FM_SWITCH_VLAN1_ETHERTYPE_B.
+     *  
+     *  For FM10000 devices this matches on the VLAN tag defined by 
+     *  ''FM_SWITCH_PARSER_VLAN_ETYPES'' and selected by 
+     *  ''FM_PORT_PARSER_VLAN1_TAG''.
+     *  
      *  \chips  FM3000, FM4000, FM6000, FM10000 */
     FM_ACL_VLAN_TAG_TYPE_STANDARD,
 
-    /** Match on the VLAN tag defined by ''FM_PORT_PARSER_VLAN_TAG_A''
+    /** Match on the VLAN tag defined by ''FM_PORT_PARSER_VLAN_TAG_A''.
      *  \chips  FM3000, FM4000 */
     FM_ACL_VLAN_TAG_TYPE_USER_A,
 
-    /** Match on the VLAN tag defined by ''FM_PORT_PARSER_VLAN_TAG_B''
+    /** Match on the VLAN tag defined by ''FM_PORT_PARSER_VLAN_TAG_B''.
      *  \chips  FM3000, FM4000 */
     FM_ACL_VLAN_TAG_TYPE_USER_B,
 
-    /** Match on single or double tagged frame with VLAN tag defined by
-     *  ''FM_SWITCH_VLAN1_ETHERTYPE_A'' or ''FM_SWITCH_VLAN1_ETHERTYPE_B''.
+    /** Match on singly or doubly tagged frame.
+     *  
+     *  For FM6000, the VLAN tag is defined by FM_SWITCH_VLAN1_ETHERTYPE_A
+     *  or FM_SWITCH_VLAN1_ETHERTYPE_B.
+     *  
+     *  For FM10000, the VLAN tag is defined by switch attribute
+     *  ''FM_SWITCH_PARSER_VLAN_ETYPES'' and selected by port attribute
+     *  ''FM_PORT_PARSER_VLAN1_TAG''.
+     *  
      *  \chips  FM6000, FM10000 */
     FM_ACL_VLAN_TAG_TYPE_VLAN1,
 
-    /** Match on single or double tagged frame with VLAN tag defined by
-     *  ''FM_SWITCH_VLAN2_ETHERTYPE_A'' or ''FM_SWITCH_VLAN2_ETHERTYPE_B''.
+    /** Match on singly or doubly tagged frame.
+     *  
+     *  For FM6000, the VLAN tag is defined by FM_SWITCH_VLAN2_ETHERTYPE_A
+     *  or FM_SWITCH_VLAN2_ETHERTYPE_B.
+     *  
+     *  For FM10000, the VLAN tag is defined by switch attribute
+     *  ''FM_SWITCH_PARSER_VLAN_ETYPES'' and selected by port attribute
+     *  ''FM_PORT_PARSER_VLAN2_TAG''.
+     *  
      *  \chips  FM6000, FM10000 */
     FM_ACL_VLAN_TAG_TYPE_VLAN2,
 
-    /** Match on single tagged frame with VLAN tag defined by
-     *  ''FM_SWITCH_VLAN1_ETHERTYPE_A'' or ''FM_SWITCH_VLAN1_ETHERTYPE_B''.
+    /** Match on singly tagged frame.
+     *  
+     *  For FM6000, the VLAN tag is defined by FM_SWITCH_VLAN1_ETHERTYPE_A
+     *  or FM_SWITCH_VLAN1_ETHERTYPE_B.
+     *  
+     *  For FM10000, the VLAN tag is defined by switch attribute
+     *  ''FM_SWITCH_PARSER_VLAN_ETYPES'' and selected by port attribute
+     *  ''FM_PORT_PARSER_VLAN1_TAG''.
+     *  
      *  \chips  FM6000, FM10000 */
     FM_ACL_VLAN_TAG_TYPE_ONLY_VLAN1,
 
-    /** Match on single tagged frame with VLAN tag defined by
-     *  ''FM_SWITCH_VLAN2_ETHERTYPE_A'' or ''FM_SWITCH_VLAN2_ETHERTYPE_B''.
+    /** Match on singly tagged frame.
+     *  
+     *  For FM6000, the VLAN tag is defined by FM_SWITCH_VLAN2_ETHERTYPE_A
+     *  or FM_SWITCH_VLAN2_ETHERTYPE_B.
+     *  
+     *  For FM10000, the VLAN tag is defined by switch attribute
+     *  ''FM_SWITCH_PARSER_VLAN_ETYPES'' and selected by port attribute
+     *  ''FM_PORT_PARSER_VLAN2_TAG''.
+     *  
      *  \chips  FM6000, FM10000 */
     FM_ACL_VLAN_TAG_TYPE_ONLY_VLAN2,
 
-    /** Match on double tagged frame with CVLAN tag defined by
-     *  ''FM_SWITCH_VLAN1_ETHERTYPE_A'' or ''FM_SWITCH_VLAN1_ETHERTYPE_B'' and
-     *  SVLAN tag defined by ''FM_SWITCH_VLAN2_ETHERTYPE_A'' or
-     *  ''FM_SWITCH_VLAN2_ETHERTYPE_B''.
+    /** Match on doubly tagged frame.
+     *  
+     *  For FM6000, the CVLAN tag is defined by FM_SWITCH_VLAN1_ETHERTYPE_A
+     *  or FM_SWITCH_VLAN1_ETHERTYPE_B, and the SVLAN tag is defined by
+     *  FM_SWITCH_VLAN2_ETHERTYPE_A or FM_SWITCH_VLAN2_ETHERTYPE_B.
+     *  
+     *  For FM10000, the VLAN tags are defined by switch attribute
+     *  ''FM_SWITCH_PARSER_VLAN_ETYPES''. The CVLAN tag is selected by port
+     *  attributes ''FM_PORT_PARSER_VLAN1_TAG'', and the SVLAN tag is
+     *  selected by ''FM_PORT_PARSER_VLAN2_TAG''.
+     *  
      *  \chips  FM6000, FM10000 */
     FM_ACL_VLAN_TAG_TYPE_VLAN1_VLAN2,
 
     /** Match on untagged VLAN2 frames or unrecognized tag types defined by
-     *  ''FM_SWITCH_VLAN2_ETHERTYPE_A'' or ''FM_SWITCH_VLAN2_ETHERTYPE_B''.
+     *  FM_SWITCH_VLAN2_ETHERTYPE_A or FM_SWITCH_VLAN2_ETHERTYPE_B.
+     *  
      *  \chips  FM6000, FM10000 */
     FM_ACL_VLAN_TAG_TYPE_VLAN2_UNTAG
 
@@ -2432,30 +2478,37 @@ typedef struct _fm_aclValue
     fm_aclFrameType frameType;
 
     /** TRILL Source MAC address for the ''FM_ACL_MATCH_TRILL_SRC_MAC''
-     *  condition. */
+     *  condition.
+     *  \chips  FM6000 */
     fm_macaddr trillSrc;
 
     /** TRILL Source MAC address mask for the ''FM_ACL_MATCH_TRILL_SRC_MAC''
-     *  condition. */
+     *  condition.
+     *  \chips  FM6000 */
     fm_macaddr trillSrcMask;
 
     /** TRILL Source RBridge Nickname for the ''FM_ACL_MATCH_TRILL_SRB''
-     *  condition. */
+     *  condition.
+     *  \chips  FM6000 */
     fm_uint16 trillSRB;
 
     /** TRILL Source RBridge Nickname mask for the ''FM_ACL_MATCH_TRILL_SRB''
-     *  condition. */
+     *  condition.
+     *  \chips  FM6000 */
     fm_uint16 trillSRBMask;
 
     /** TRILL Remote RBridge Nickname for the ''FM_ACL_MATCH_TRILL_RRB''
-     *  condition. */
+     *  condition.
+     *  \chips  FM6000 */
     fm_uint16 trillRRB;
 
     /** TRILL Remote RBridge Nickname mask for the ''FM_ACL_MATCH_TRILL_RRB''
-     *  condition. */
+     *  condition.
+     *  \chips  FM6000 */
     fm_uint16 trillRRBMask;
 
-    /** TRILL Type for the ''FM_ACL_MATCH_TRILL_TYPE'' condition. */
+    /** TRILL Type for the ''FM_ACL_MATCH_TRILL_TYPE'' condition.
+     *  \chips  FM6000 */
     fm_aclTrillType trillType;
 
     /** Multi-Stage ACL Value for the ''FM_ACL_MATCH_TABLE1_CONDITION''

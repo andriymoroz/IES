@@ -428,6 +428,9 @@ typedef struct
     /* Management PEP */
     fm_int                  mgmtPep;
 
+    /* MSI enabled */
+    fm_bool                 msiEnabled;
+
     /* Switch boot mode (SPI FLASH, EBI, I2C) */
     fm_platBootMode         bootMode;
 
@@ -529,6 +532,7 @@ typedef struct
 
 
 fm_status fmPlatformCfgLoad(void);
+void fmPlatformCfgDump(void);
 fm_status fmPlatformCfgReloadSpeed(fm_int sw);
 fm_platformCfgSwitch *fmPlatformCfgSwitchGet(fm_int sw);
 fm_int fmPlatformCfgPortGetIndex(fm_int sw, fm_int port);

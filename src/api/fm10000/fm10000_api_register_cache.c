@@ -30,7 +30,7 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
+ *****************************************************************************/
 
 #include <fm_sdk_fm10000_int.h>
 
@@ -1759,30 +1759,27 @@ static fm_uint32 fm10000GetCacheTeGlortMapDefault(fm_uint32 addr)
 
 #endif
 
+
 /*****************************************************************************
  * Public Functions
  *****************************************************************************/
+
 
 /*****************************************************************************/
 /** fm10000InitRegisterCache
  * \ingroup intRegCache
  *
- * \chips           FM10000
- *
- * \desc            Function performs FM10000-specific register cache in
- *                  initialization steps, before invoking the generic
- *                  register cache initialization process
+ * \desc            FM10000-specific register cache initialization.
  * 
- * \param[in]       sw is the ID of the switch whose cache is being 
- *                  initialized
+ * \param[in]       sw is the switch whose cache is being initialized.
  * 
- * \return          FM_OK: if successful
- *                  FM_ERR_INVALID_SWITCH: if the switch ID is invalid
- *                  FM_ERR_NO_MEM: if there's no memory for the initialization
- *                  FM_ERR_INVALID_ARGUMENT: if the word count in any register
- *                                           description is wrong
- *                  FM_ERR_BAD_IOCTL: driver error during the first read
- *                  FM_FAIL: any other error
+ * \return          FM_OK if successful.
+ * \return          FM_ERR_INVALID_SWITCH if the switch is invalid.
+ * \return          FM_ERR_NO_MEM if there's no memory for the initialization.
+ * \return          FM_ERR_INVALID_ARGUMENT if the word count in any register
+ *                  description is wrong.
+ * \return          FM_ERR_BAD_IOCTL driver error during the first read.
+ * \return          FM_FAIL any other error.
  *
  *****************************************************************************/
 fm_status fm10000InitRegisterCache(fm_int sw)

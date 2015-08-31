@@ -48,8 +48,9 @@
 
 #define FM10000_PORT_ALL_SAF_ENABLED 0xFFFFFFFFFFFF
 
-#define FM10000_PCIE_MAX_FRAME_SIZE 15358
-#define FM10000_PCIE_MIN_FRAME_SIZE 15
+#define FM10000_PCIE_INVALID_LOGICAL_PORT -1
+#define FM10000_PCIE_MAX_FRAME_SIZE       15358
+#define FM10000_PCIE_MIN_FRAME_SIZE       15
 
 /* PCS Modes */
 typedef enum
@@ -178,6 +179,9 @@ enum
 #define FM10000_EEE_DBG_DISABLE_TX     0x20
 #define FM10000_EEE_DBG_DISABLE_RXTX   0x30
 
+/* PCIe recovery flag base offset */
+#define PCIE_RECOVERY_FLAG_BASE               0x1
+
 
 /**************************************************
  * Port Attribute Entry table Structure
@@ -192,6 +196,7 @@ typedef struct _fm10000_portAttrEntryTable
     fm_portAttrEntry autoNegPartnerBasePage;
     fm_portAttrEntry autoNegNextPages;
     fm_portAttrEntry autoNegPartnerNextPages;
+    fm_portAttrEntry autoNeg25GNxtPgOui;
     fm_portAttrEntry bcastFlooding;
     fm_portAttrEntry bcastPruning;
     fm_portAttrEntry enableTxCutThrough;
@@ -694,10 +699,12 @@ fm_status fm10000IsPciePort( fm_int sw, fm_int port, fm_bool *isPciePort );
 fm_status fm10000IsSpecialPort( fm_int sw, fm_int port, fm_bool *isSpecialPort );
 fm_status fm10000ConfigurePepMode( fm_int sw, fm_int port );
 
+fm_status fm10000PepRecoveryHandler( fm_int sw, 
+                                     fm_int port );
+
 fm_status fm10000PepEventHandler( fm_int sw, 
                                   fm_int pep, 
-                                  fm_uint32 pepIp, 
-                                  fm_bool *sendLinkDownEvent );
+                                  fm_uint32 pepIp );
 
 fm_status fm10000LinkEventHandler( fm_int    sw, 
                                    fm_int    epl, 
@@ -788,6 +795,11 @@ fm_status fm10000DbgReadFecUncorrectedErrReg(fm_int      sw,
                                              fm_bool     clearReg);
 
 fm_status fm10000NotifyEeeModeChange( fm_int sw, fm_int port, fm_bool eeeMode );
+
+fm_status fm10000GetMultiLaneCapabilities(fm_int   sw,
+                                          fm_int   port,
+                                          fm_bool *is40GCapable,
+                                          fm_bool *is100GCapable);
 
 #endif /* __FM_FM10000_API_PORT_INT_H */
 

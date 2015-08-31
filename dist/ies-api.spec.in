@@ -44,19 +44,30 @@ that uses the ies-api package.
 %install
 %make_install
 
-%post -p /sbin/ldconfig
+%post
+cd %{_sysconfdir}/ies/platforms
+if [ ! -h "default" ]; then
+    ln -sf boulderRapids default
+fi
+/sbin/ldconfig
 
 %postun -p /sbin/ldconfig
 
 %files
 %{_libdir}/libFocalpointSDK-%{version}.so
 %{_libdir}/libLTStdPlatform-%{version}.so
+%{_libdir}/libLTStdPlatform.so
+%{_sysconfdir}/ies/environment
+%{_sysconfdir}/ies/platforms/atwoodChannel
+%{_sysconfdir}/ies/platforms/boulderRapids
+%{_sysconfdir}/ies/platforms/rubyRapids
+%{_sysconfdir}/profile.d/ies.sh
+%exclude %{_sysconfdir}/ies/platforms/default
 
 %files devel
 %{_includedir}/*
 %{_libdir}/*.a
 %{_libdir}/libFocalpointSDK.so
-%{_libdir}/libLTStdPlatform.so
 %{_libdir}/pkgconfig/*.pc
 %exclude %{_libdir}/*.la
 

@@ -1670,7 +1670,7 @@ fm_status fmGetVlanFirst(fm_int sw, fm_int *firstID)
 
     /* No lock required. */
     /* For FM2000, even if vlan 0 is created internally we will not return it here.
-     * For FM6000, Vlan 0 is not used */
+     * For FM4000, FM6000, FM10000 Vlan 0 is not used */
     for (*firstID = 1 ; (*firstID < switchPtr->vlanTableSize) ; (*firstID)++)
     {
         if ( ( switchPtr->vidTable[*firstID].valid ) &&

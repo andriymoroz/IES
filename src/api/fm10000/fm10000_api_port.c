@@ -225,6 +225,17 @@ static fm10000_portAttrEntryTable portAttributeTable =
         .excludedPhyPortTypes = ( EXCLUDE_PCIE | EXCLUDE_TE | EXCLUDE_LPBK ),
     },
 
+    .autoNeg25GNxtPgOui =
+    {
+        .attr                 = FM_PORT_AUTONEG_25G_NEXTPAGE_OUI,
+        .str                  = "FM_PORT_AUTONEG_25G_NEXTPAGE_OUI",
+        .type                 = FM_TYPE_UINT32,
+        .perLag               = FALSE,
+        .attrType             = FM_PORT_ATTR_GENERIC,
+        .offset               = offsetof(fm_portAttr, autoNeg25GNxtPgOui),
+        .excludedPhyPortTypes = ( EXCLUDE_PCIE | EXCLUDE_TE | EXCLUDE_LPBK ),
+    },
+
     .bcastFlooding =
     {
         .attr                 = FM_PORT_BCAST_FLOODING,
@@ -499,7 +510,7 @@ static fm10000_portAttrEntryTable portAttributeTable =
         .perLag               = TRUE,
         .attrType             = FM_PORT_ATTR_GENERIC,
         .offset               = offsetof(fm_portAttr, maxFrameSize),
-        .excludedPhyPortTypes = ( EXCLUDE_PCIE_WR ),
+        .excludedPhyPortTypes = ( EXCLUDE_PCIE_WR | EXCLUDE_TE_WR ),
     },
 
     .mcastFlooding  =
@@ -532,7 +543,7 @@ static fm10000_portAttrEntryTable portAttributeTable =
         .perLag               = TRUE,
         .attrType             = FM_PORT_ATTR_GENERIC,
         .offset               = offsetof(fm_portAttr, minFrameSize),
-        .excludedPhyPortTypes = ( EXCLUDE_PCIE_WR ),
+        .excludedPhyPortTypes = ( EXCLUDE_PCIE_WR | EXCLUDE_TE_WR ),
     },
 
     .parser  =
@@ -617,7 +628,7 @@ static fm10000_portAttrEntryTable portAttributeTable =
         .attr                 = FM_PORT_RX_PAUSE,
         .str                  = "FM_PORT_RX_PAUSE",
         .type                 = FM_TYPE_BOOL,
-        .perLag               = FALSE,
+        .perLag               = TRUE,
         .attrType             = FM_PORT_ATTR_GENERIC,
         .offset               = offsetof(fm_portAttr, rxPause),
         .excludedPhyPortTypes = 0,
@@ -3266,6 +3277,8 @@ static fm_status ConfigureFabricLoopback(fm_int     sw,
                                          reg64);
             FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
 
+            portAttrExt->fabricLoopback = loopbackMode;
+
             FM_FLAG_DROP_REG_LOCK(sw); 
         }
         else
@@ -3456,7 +3469,9 @@ static fm_status ConfigureAnMode( fm_int     sw,
                                                 port,
                                                 portExt->smType, 
                                                 newPortSmType );
-                if (err == FM_OK)
+                if ( ( err == FM_OK ) && 
+                     ( (portAttrExt->ethMode == FM_ETH_MODE_SGMII) ||
+                       (newAnMode != FM_PORT_AUTONEG_NONE) ) )
                 {
                     FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
         
@@ -6086,6 +6101,7 @@ fm_status fm10000SetPortAttributeInt(fm_int sw,
     fm_int                  nextVlan;
     fm_vlanEntry           *ventry;
     fm_bool                 isMember;
+    fm_bool                 toDelete;
 
     FM_LOG_ENTRY_V2( FM_LOG_CAT_PORT, 
                      port,
@@ -6104,6 +6120,7 @@ fm_status fm10000SetPortAttributeInt(fm_int sw,
     isLagAttr         = FALSE;
     switchPtr         = GET_SWITCH_PTR(sw);
     switchExt         = GET_SWITCH_EXT(sw);
+    toDelete          = FALSE;
 
     if ( (lane != FM_PORT_LANE_NA) && (lane != FM_PORT_LANE_ALL) )
     {
@@ -6134,27 +6151,34 @@ fm_status fm10000SetPortAttributeInt(fm_int sw,
         err = fmCreateBitArray(&portMaskBitArray, switchPtr->numCardinalPorts);
         FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
 
+        toDelete = TRUE;
+
         err = fmPortMaskToBitArray(&portAttr->portMask,
                                    &portMaskBitArray,
                                    switchPtr->numCardinalPorts);
         FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
 
-            err = fmSetBitArrayBit(&portMaskBitArray,
-                                   switchExt->tunnelCfg->tunnelPort[0],
-                                   allowTeAccess);
-            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+        err = fmSetBitArrayBit(&portMaskBitArray,
+                               switchExt->tunnelCfg->tunnelPort[0],
+                               allowTeAccess);
+        FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
 
-            err = fmSetBitArrayBit(&portMaskBitArray,
-                                   switchExt->tunnelCfg->tunnelPort[1],
-                                   allowTeAccess);
-            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+        err = fmSetBitArrayBit(&portMaskBitArray,
+                               switchExt->tunnelCfg->tunnelPort[1],
+                               allowTeAccess);
+        FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
 
-            err = fm10000SetPortAttributeInt(sw,
-                                             port,
-                                             lane,
-                                             FM_PORT_MASK_WIDE,
-                                             &portMaskBitArray);
-            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+        err = fm10000SetPortAttributeInt(sw,
+                                         port,
+                                         lane,
+                                         FM_PORT_MASK_WIDE,
+                                         &portMaskBitArray);
+        FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+
+        err = fmDeleteBitArray(&portMaskBitArray);
+        FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+
+        toDelete = FALSE;
     }
 
     if ( fmIsCardinalPort(sw, port) )
@@ -6958,7 +6982,11 @@ fm_status fm10000SetPortAttributeInt(fm_int sw,
             err = switchPtr->WriteUINT32(sw, FM10000_CM_PAUSE_CFG(physPort), reg32);
             FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
 
-            portAttr->rxPause = tmpBool;
+            portAttr->rxPause      = tmpBool;
+            portAttr->rxClassPause = 
+                        tmpBool ?
+                        FM_FIELD_UNSIGNED_MAX(FM10000_CM_PAUSE_CFG, PauseMask) :
+                        0; 
         }
     }
     else if (attr == FM_PORT_ETHERNET_INTERFACE_MODE)
@@ -7390,6 +7418,15 @@ fm_status fm10000SetPortAttributeInt(fm_int sw,
             FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
 
             portAttr->rxClassPause = tmpUint32;
+            if (portAttr->rxClassPause == 
+                        FM_FIELD_UNSIGNED_MAX(FM10000_CM_PAUSE_CFG, PauseMask) )
+            {
+                portAttr->rxPause = TRUE; 
+            }
+            else
+            {
+                portAttr->rxPause = FALSE;
+            }
         }
     }
     else if (attr == FM_PORT_TX_CLASS_PAUSE)
@@ -7825,6 +7862,49 @@ fm_status fm10000SetPortAttributeInt(fm_int sw,
                 change */
             nextPages = (fm_anNextPages *) value;
 
+            /* Validate extended tech ability next page */
+            if (nextPages->numPages > 0)
+            {
+                if (fm10000AnGetNextPageExtTechAbilityIndex(sw,
+                        port,
+                        nextPages->nextPages,
+                        nextPages->numPages,
+                        &i,
+                        "Tx") == FM_OK)
+                {
+                    if (FM_GET_UNNAMED_BIT64(nextPages->nextPages[i], 24))
+                    {
+                        FM_LOG_WARNING(FM_LOG_CAT_PORT_AUTONEG,
+                                       "Port does not support 50GBase-KR2\n");
+                    }
+                    if (FM_GET_UNNAMED_BIT64(nextPages->nextPages[i], 25))
+                    {
+                        FM_LOG_WARNING(FM_LOG_CAT_PORT_AUTONEG,
+                                       "Port does not support 50GBase-CR2\n");
+                    }
+                    if (FM_GET_UNNAMED_BIT64(nextPages->nextPages[i], 40))
+                    {
+                        FM_LOG_WARNING(FM_LOG_CAT_PORT_AUTONEG,
+                                       "Port cannot advertise Clause 91 FEC Ability\n");
+                    }
+                    if (FM_GET_UNNAMED_BIT64(nextPages->nextPages[i], 41))
+                    {
+                        FM_LOG_WARNING(FM_LOG_CAT_PORT_AUTONEG,
+                                       "Port cannot advertise Clause 74 FEC Ability\n");
+                    }
+                    if (FM_GET_UNNAMED_BIT64(nextPages->nextPages[i], 42))
+                    {
+                        FM_LOG_WARNING(FM_LOG_CAT_PORT_AUTONEG,
+                                       "Port cannot request Clause 91 FEC\n");
+                    }
+                    if (FM_GET_UNNAMED_BIT64(nextPages->nextPages[i], 43))
+                    {
+                        FM_LOG_WARNING(FM_LOG_CAT_PORT_AUTONEG,
+                                       "Port cannot request Clause 74 FEC\n");
+                    }
+                }
+            }            
+            
             if ( portExt->smType == FM10000_AN_PORT_STATE_MACHINE )
             {
                 err = fm10000AnSendConfigEvent( sw,
@@ -7832,7 +7912,7 @@ fm_status fm10000SetPortAttributeInt(fm_int sw,
                                                 FM10000_PORT_EVENT_AN_CONFIG_REQ,
                                                 portAttr->autoNegMode,
                                                 portAttr->autoNegBasePage,
-                                                *(fm_anNextPages *)value );
+                                                *nextPages );
             }
             else
             {
@@ -7868,6 +7948,23 @@ fm_status fm10000SetPortAttributeInt(fm_int sw,
                                  sizeof(fm_uint64) * nextPages->numPages );
                 }
             }
+        }
+    }
+    else if (attr == FM_PORT_AUTONEG_25G_NEXTPAGE_OUI)
+    {
+        VALIDATE_ATTRIBUTE_WRITE_ACCESS(&portAttributeTable.autoNeg25GNxtPgOui);
+        VALIDATE_PORT_ATTRIBUTE(&portAttributeTable.autoNeg25GNxtPgOui);
+
+        if (isLagAttr)
+        {
+            err = SetLAGPortAttribute(sw, port, lane, attr, value);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+        }
+        else
+        {
+            /* OUI has only 24 bits, so mask out unused bits */
+            portAttr->autoNeg25GNxtPgOui = (*( (fm_uint32 *) value )) & 0x00ffffff;
+            err = FM_OK;
         }
     }
     else if ( attr == FM_PORT_AUTONEG_LINK_INHB_TIMER )
@@ -8841,7 +8938,9 @@ fm_status fm10000SetPortAttributeInt(fm_int sw,
             err = fm10000IsPciePort( sw, port, &isPciePort );
             FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
 
-            if (isPciePort && (tmpBool != FM_DISABLED) )
+            if ( ( isPciePort && (tmpBool != FM_DISABLED) ) ||
+                 (portPtr->portType == FM_PORT_TYPE_TE &&
+                 (tmpBool == FM_DISABLED) ) )
             {
                 err = FM_ERR_INVALID_VALUE;
                 FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
@@ -9859,6 +9958,16 @@ fm_status fm10000SetPortAttributeInt(fm_int sw,
     }
 
 ABORT:
+    if (toDelete)
+    {
+        err = fmDeleteBitArray(&portMaskBitArray);
+        if (err != FM_OK)
+        {
+            FM_LOG_WARNING( FM_LOG_CAT_PORT,
+                            "%s", fmErrorMsg(err) );
+        }
+    }
+
     if (regLockTaken)
     {
         DROP_REG_LOCK(sw);
@@ -10765,6 +10874,11 @@ fm_status fm10000GetPortAttribute(fm_int sw,
             }
             break;
 
+        case FM_PORT_AUTONEG_25G_NEXTPAGE_OUI:
+            VALIDATE_ATTRIBUTE_READ_ACCESS(&portAttributeTable.autoNeg25GNxtPgOui);
+            *( (fm_uint32 *) value ) = portAttr->autoNeg25GNxtPgOui;
+            break;
+
         case FM_PORT_AUTONEG_LINK_INHB_TIMER:
             VALIDATE_ATTRIBUTE_READ_ACCESS(&portAttributeTable.autoNegLinkInhbTimer);
             *( (fm_uint32 *) value ) = portAttrExt->autoNegLinkInhbTimer;
@@ -11521,6 +11635,7 @@ fm_status fm10000GetNumEthLanes(fm_ethMode ethMode, fm_int *numLanes)
         case FM_ETH_MODE_10GBASE_SR:
         case FM_ETH_MODE_25GBASE_SR:
         case FM_ETH_MODE_25GBASE_KR:
+        case FM_ETH_MODE_25GBASE_CR:
         case FM_ETH_MODE_AN_73:
             *numLanes    =  1;
             break;
@@ -11681,6 +11796,7 @@ fm_int fm10000GetPortSpeed(fm_ethMode ethMode)
 
         case FM_ETH_MODE_25GBASE_SR:
         case FM_ETH_MODE_25GBASE_KR:
+        case FM_ETH_MODE_25GBASE_CR:
             return 25000;
 
         case FM_ETH_MODE_100GBASE_KR4:
@@ -11751,6 +11867,8 @@ fm_text fm10000GetEthModeStr(fm_ethMode ethMode)
             return "25GBASE_SR";
         case FM_ETH_MODE_25GBASE_KR:
             return "25GBASE_KR";
+        case FM_ETH_MODE_25GBASE_CR:
+            return "25GBASE_CR";
         case FM_ETH_MODE_100GBASE_KR4:
             return "100GBASE_KR4";
         case FM_ETH_MODE_100GBASE_CR4:
@@ -14345,29 +14463,73 @@ ABORT:
 }   /* end fm10000ConfigurePepMode */
 
 
+
+
+/*****************************************************************************/
+/** fm10000PepRecoveryHandler
+ * \ingroup intPort
+ *
+ * \desc            Sends the link down event to the port state machine in case
+ *                  of a stuck interrupt for a given pep
+ *
+ * \param[in]       sw is the switch on which to operate.
+ * 
+ * \param[in]       port is the logical port of the pep on
+ *                  which we need to send link down event
+ * 
+ * \return          FM_OK if successful
+ * 
+ *****************************************************************************/
+fm_status fm10000PepRecoveryHandler( fm_int sw, 
+                                     fm_int port )
+{
+    fm_status      status;
+    fm10000_port * portExt;
+    fm_smEventInfo eventInfo;
+
+    FM_CLEAR(eventInfo);
+
+    /* Notify the port state machine of a PCIE port going down */
+    portExt = GET_PORT_EXT(sw, port);
+    eventInfo.smType         = portExt->smType;
+    eventInfo.lock           = FM_GET_STATE_LOCK( sw );
+    eventInfo.dontSaveRecord = FALSE;
+    eventInfo.eventId        = FM10000_PORT_EVENT_LINK_DOWN_IND;
+
+    portExt->eventInfo.regLockTaken = FALSE;
+    FM_TAKE_MAILBOX_LOCK( sw );
+    status = fmNotifyStateMachineEvent( portExt->smHandle,
+                                        &eventInfo,
+                                        &portExt->eventInfo,
+                                        &port );
+    FM_DROP_MAILBOX_LOCK( sw );
+
+    return status;
+
+}    /* end fm10000PepRecoveryHandler */
+
+
+
+
 /*****************************************************************************/
 /** fm10000PepEventHandler
  * \ingroup intPort
  *
- * \desc            Process interrupt events for a given PEP
+ * \desc            Process interrupt events for a given PEP.
  *
  * \param[in]       sw is the switch on which to operate.
  *
- * \param[in]       pep is the PEP ID
+ * \param[in]       port is the logical port number.
  * 
  * \param[in]       pepIp is a snapshot of the current Interrupt Pending
- *                  register for this PEP
+ *                  register for this PEP.
  * 
- * \param[in]       sendLinkDownEvent specifies if link down event has to be
- *                  sent to pcie state machine because of a stuck interrupt
- *                  detection
+ * \return          FM_OK if successful.
  * 
- * \return          FM_OK if successful
  *****************************************************************************/
 fm_status fm10000PepEventHandler( fm_int sw, 
-                                  fm_int pep, 
-                                  fm_uint32 pepIp, 
-                                  fm_bool *sendLinkDownEvent )
+                                  fm_int port, 
+                                  fm_uint32 pepIp )
 {
     fm_switch      *switchPtr;
     fm_status       status;
@@ -14375,22 +14537,15 @@ fm_status fm10000PepEventHandler( fm_int sw,
     fm_uint32       reg;
     fm_smEventInfo  eventInfo;
     fm10000_port   *portExt;
-    fm_int          port;
+    fm_int          pep;
 
     status = FM_OK;
 
-    if ( sendLinkDownEvent == NULL ) 
-    {
-        status = FM_ERR_INVALID_ARGUMENT;
-        FM_LOG_ABORT(FM_LOG_CAT_EVENT_INTR, status);
-    }
+    /* Map the logical port to its pep */
+    status = fm10000MapLogicalPortToPep(sw, port, &pep);
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
 
-    /* map the PEP to its logical port */
-    status = fm10000MapPepToLogicalPort( sw, pep, &port );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_EVENT_INTR, port, status );
-
-    if ( FM_GET_BIT( pepIp, FM10000_PCIE_IP, DeviceStateChange ) &&
-         *sendLinkDownEvent == FALSE )
+    if ( FM_GET_BIT( pepIp, FM10000_PCIE_IP, DeviceStateChange ) )
     {
         switchPtr = GET_SWITCH_PTR( sw );
 
@@ -14423,32 +14578,12 @@ fm_status fm10000PepEventHandler( fm_int sw,
                                             &port );
         FM_DROP_MAILBOX_LOCK( sw );
     }
-    else if ( *sendLinkDownEvent == TRUE ) 
-    {
-        /* Start PEP status polling timer */
-        status = fm10000StartPepStatusPollingTimer(sw, port);
-        FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_EVENT_INTR, port, status );
-
-        portExt = GET_PORT_EXT(sw, port);
-        eventInfo.smType         = portExt->smType;
-        eventInfo.lock           = FM_GET_STATE_LOCK( sw );
-        eventInfo.dontSaveRecord = FALSE;
-        eventInfo.eventId        = FM10000_PORT_EVENT_LINK_DOWN_IND;
-
-        portExt->eventInfo.regLockTaken = FALSE;
-        FM_TAKE_MAILBOX_LOCK( sw );
-        status = fmNotifyStateMachineEvent( portExt->smHandle,
-                                            &eventInfo,
-                                            &portExt->eventInfo,
-                                            &port );
-        FM_DROP_MAILBOX_LOCK( sw );
-
-        *sendLinkDownEvent = FALSE;
-    }
 ABORT:
     return status;
 
 }   /* end fm10000PepEventHandler */
+
+
 
 
 /*****************************************************************************/
@@ -14727,6 +14862,7 @@ fm_status fm10000MapEthModeToDfeMode( fm_int      sw,
         /* Negotiated Ethernet Modes for which DFE can only be KR-based */
         case FM_ETH_MODE_10GBASE_KR:
         case FM_ETH_MODE_25GBASE_KR:
+        case FM_ETH_MODE_25GBASE_CR:
         case FM_ETH_MODE_40GBASE_KR4:
         case FM_ETH_MODE_40GBASE_CR4:
         case FM_ETH_MODE_100GBASE_CR4:
@@ -15699,6 +15835,7 @@ fm10000_pcsTypes fm10000GetPcsType( fm_ethMode ethMode, fm_uint32 speed )
         case FM_ETH_MODE_10GBASE_KR:
         case FM_ETH_MODE_25GBASE_SR:
         case FM_ETH_MODE_25GBASE_KR:
+        case FM_ETH_MODE_25GBASE_CR:
             pcsType = FM10000_PCS_SEL_10GBASER;
             break;
 
@@ -16090,6 +16227,7 @@ fm_status fm10000ConfigureEthMode( fm_int      sw,
         case FM_ETH_MODE_6GBASE_CR:
         case FM_ETH_MODE_10GBASE_KR:
         case FM_ETH_MODE_25GBASE_KR:
+        case FM_ETH_MODE_25GBASE_CR:
         case FM_ETH_MODE_XAUI:
         case FM_ETH_MODE_10GBASE_KX4:
         case FM_ETH_MODE_10GBASE_CX4:
@@ -16689,3 +16827,112 @@ ABORT:
 
 
 
+/*****************************************************************************/
+/** fm10000GetMultiLaneCapabilities
+ * \ingroup intPort
+ *
+ * \desc            Determine whether a given port is capable to function as
+ *                  40G and/or 100G.
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \param[in]       port is the port to be checked for the multi-lane 
+ *                  possibility.
+ *
+ * \param[out]      is40GCapable returns whether port is 40G capable. 
+ *
+ * \param[out]      is100GCapable returns whether port is 100G capable. 
+ *
+ * \return          FM_OK if successful.
+ *
+ *****************************************************************************/
+fm_status fm10000GetMultiLaneCapabilities(fm_int   sw,
+                                          fm_int   port,
+                                          fm_bool *is40GCapable,
+                                          fm_bool *is100GCapable)
+{
+    fm_status              status;
+    fm_int                 epl;
+    fm_int                 lane;
+    fm_int                 masterEplLane;
+    fm_int                 logPort;
+    fm10000_portAttr *     portAttrExt;
+    fm_int                 physSw;
+    fm_int                 physPort;
+    fm_uint32              capabilities;
+
+    FM_LOG_ENTRY_V2( FM_LOG_CAT_PORT,
+                     port,
+                     "sw%d, port=%d is40GCapable=%p, is100GCapable=%p\n",
+                     sw,
+                     port,
+                     (void *)is40GCapable,
+                     (void *)is100GCapable);
+    lane = -1;
+
+    status = fmPlatformMapLogicalPortToPhysical(sw, port, &physSw, &physPort);
+    FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, status);
+
+    status = fmPlatformGetPortCapabilities(sw, physPort, &capabilities);
+    FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, status);
+
+    if ( (capabilities & FM_PORT_CAPABILITY_SPEED_40G) ||
+         (capabilities & FM_PORT_CAPABILITY_SPEED_100G) )
+    {
+        /* Find the Master Lane (Port Lane 0) which drive the autoneg. This
+         * is to cover the lane reversal or lane remapping case. */
+        status = fm10000MapPhysicalPortToEplLane(sw,
+                                                 physPort,
+                                                 &epl,
+                                                 &lane);
+        FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, status);
+
+        masterEplLane = -1;
+        status = fmPlatformMapPortLaneToEplLane(sw, port, 0, &masterEplLane);
+        FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, status);
+
+        if ( lane == masterEplLane )
+        {
+           /* Validate that all lanes are available */
+            for ( lane = 0 ; lane < 4 ; lane++ )
+            {
+                if ( lane != masterEplLane )
+                {
+                    status = fm10000MapEplLaneToLogicalPort(sw,
+                                                            epl,
+                                                            lane,
+                                                            &logPort);
+                    FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, status);
+
+                    portAttrExt = GET_FM10000_PORT_ATTR(sw, logPort);
+                    if ( portAttrExt->ethMode != FM_ETH_MODE_DISABLED )
+                    {
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    if (lane == 4)
+    {
+        /* MultiLane is Possible. Now find out multilane speed capabilities.*/
+        if (capabilities & FM_PORT_CAPABILITY_SPEED_100G)
+        {
+            *is100GCapable = TRUE;
+        }
+        if (capabilities & FM_PORT_CAPABILITY_SPEED_40G)
+        {
+            *is40GCapable  = TRUE;
+        }
+    }
+    else
+    {
+        *is100GCapable = FALSE;
+        *is40GCapable  = FALSE;
+    }
+
+ABORT:
+    FM_LOG_EXIT_V2( FM_LOG_CAT_PORT, port, status);
+
+}   /* end fm10000GetMultiLaneCapabilities */

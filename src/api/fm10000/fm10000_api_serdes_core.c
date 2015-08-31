@@ -5399,14 +5399,25 @@ fm_status fm10000SerdesResetSpico(fm_int sw,
                 if (err == FM_OK)
                 {
 
-                    FM_SET_BIT(val, FM10000_SERDES_REG_07, BIT_0, 0);
+                    val = 0;
+                    FM_SET_BIT(val, FM10000_SERDES_REG_0B, BIT_18, 1);
+                    FM_SET_BIT(val, FM10000_SERDES_REG_0B, BIT_19, 1);
+                    err = fm10000SerdesWrite(sw, serDes, FM10000_SERDES_REG_0B, val);
+                }
+
+                if (err == FM_OK)
+                {
+
+                    val = 0;
+                    FM_SET_BIT(val, FM10000_SERDES_REG_07, BIT_4, 1);
                     err = fm10000SerdesWrite(sw, serDes, FM10000_SERDES_REG_07, val);
                     fmDelay(0, FM10000_SERDES_RESET_DELAY);
                 }
 
-
                 if (err == FM_OK)
                 {
+
+                    val = 0;
                     FM_SET_BIT(val, FM10000_SERDES_REG_07, BIT_1, 1);
                     err = fm10000SerdesWrite(sw, serDes, FM10000_SERDES_REG_07, val);
                     fmDelay(0, FM10000_SERDES_RESET_DELAY);
@@ -9889,14 +9900,20 @@ fm_status fm10000SerdesConfigureEeeInt(fm_int sw, fm_int serDes)
     VALIDATE_SWITCH_INDEX(sw);
     VALIDATE_SERDES(serDes);
 
+    err = FM_OK;
 
-    data = 0;
-    FM_SET_BIT(data, FM10000_SPICO_SERDES_INTR_0X27, BIT_1, 1);
 
-    err = fm10000SerdesSpicoWrOnlyInt(sw,
-                                      serDes,
-                                      FM10000_SPICO_SERDES_INTR_0X27,
-                                      data);
+    if (fmGetBoolApiProperty(FM_AAK_API_FM10000_ENABLE_EEE_SPICO_INTR,
+                             FM_AAD_API_FM10000_ENABLE_EEE_SPICO_INTR) == TRUE)
+    {
+        data = 0;
+        FM_SET_BIT(data, FM10000_SPICO_SERDES_INTR_0X27, BIT_1, 1);
+
+        err = fm10000SerdesSpicoWrOnlyInt(sw,
+                                          serDes,
+                                          FM10000_SPICO_SERDES_INTR_0X27,
+                                          data);
+    }
 
     return err;
 

@@ -5,7 +5,7 @@
  * Creation Date:   June 2, 2014
  * Description:     Platform-specific timestamp support.
  *
- * Copyright (c) 2014, Intel Corporation
+ * Copyright (c) 2014 - 2015, Intel Corporation
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -29,9 +29,10 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
+ *****************************************************************************/
 
 #include <fm_sdk_fm10000_int.h>
+
 
 /*****************************************************************************
  * Macros, Constants & Types
@@ -61,6 +62,7 @@
 /*****************************************************************************
  * Public Functions
  *****************************************************************************/
+
 
 /*****************************************************************************/
 /* fmPlatformInitializeClock
@@ -98,4 +100,4 @@ fm_status fmPlatformInitializeClock(fm_int sw, fm_int step)
 ABORT:
     FM_LOG_EXIT(FM_LOG_CAT_PLATFORM, status);
 
-} /* fmPlatformStartClock */
+}   /* end fmPlatformInitializeClock */

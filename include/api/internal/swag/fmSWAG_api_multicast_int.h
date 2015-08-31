@@ -6,7 +6,7 @@
  * Description:     Contains functions dealing with the state of
  *                  switch-aggregate multicast groups
  *
- * Copyright (c) 2008 - 2011, Intel Corporation
+ * Copyright (c) 2008 - 2015, Intel Corporation
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -129,5 +129,7 @@ fm_status fmGetMcastGroupForSWAGGroup(fm_int                sw,
 fm_status fmSWAGConfigureMcastGroupAsHNIFlooding(fm_int  sw,
                                                  fm_int  mcastGroup,
                                                  fm_bool isHNIFlooding);
+
+fm_status fmSWAGCreateSWAGMcastGroupsForSwitch(fm_int swArrayId, fm_int sw);
 
 #endif /* __FM_FMSWAG_API_MULTICAST_INT_H */

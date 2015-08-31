@@ -5,7 +5,7 @@
  * Creation Date:   January 14, 2014
  * Description:     Tunnel API
  *
- * Copyright (c) 2014, Intel Corporation
+ * Copyright (c) 2014 - 2015, Intel Corporation
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -29,13 +29,24 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
+ *****************************************************************************/
 
 #ifndef __FM_FM_API_TUNNEL_H
 #define __FM_FM_API_TUNNEL_H
 
 /* Size of the NGE Data array. */
 #define FM_TUNNEL_NGE_DATA_SIZE                 16
+
+/* Size of GPE header in 4-byte words */
+#define FM_TUNNEL_GPE_HDR_SIZE                  2
+
+/* Size of NSH header in 4-byte words */
+#define FM_TUNNEL_NSH_HDR_SIZE                  2
+
+/* Size available for NSH data in 4-byte words */
+#define FM_TUNNEL_NSH_DATA_SIZE                 (FM_TUNNEL_NGE_DATA_SIZE -\
+                                                 FM_TUNNEL_GPE_HDR_SIZE  -\
+                                                 FM_TUNNEL_NSH_HDR_SIZE)
 
 /* Number of Tunnel Group that can be created */
 #define FM_MAX_TUNNEL_GROUP                     16
@@ -211,6 +222,27 @@ typedef enum
     /** Whether the time tag should be loaded into NGE in words[14:15]. */
     FM_TUNNEL_ENCAP_FLOW_NGE_TIME = (1 << 7),
 
+    /** Defines the GPE header's VNI field for this tunnel.  */
+    FM_TUNNEL_ENCAP_FLOW_GPE_VNI = (1 << 8),
+
+    /** Defines the NSH Base Header fields (Critical Flag, Length
+     *  and MD Type) for this tunnel. */
+    FM_TUNNEL_ENCAP_FLOW_NSH_BASE_HDR = (1 << 9),
+
+    /** Defines the NSH Service Header fields for this tunnel. */
+    FM_TUNNEL_ENCAP_FLOW_NSH_SERVICE_HDR = (1 << 10),
+
+    /** Defines the NSH header's data bytes field for this
+     *  tunnel. */
+    FM_TUNNEL_ENCAP_FLOW_NSH_DATA = (1 << 11),
+
+    /** Defines whether all the NSH fields are provided (Base
+     *  Header, Service Header and data.) */
+    FM_TUNNEL_ENCAP_FLOW_GPE_NSH_ALL = FM_TUNNEL_ENCAP_FLOW_GPE_VNI         |
+                                       FM_TUNNEL_ENCAP_FLOW_NSH_BASE_HDR    |
+                                       FM_TUNNEL_ENCAP_FLOW_NSH_SERVICE_HDR |
+                                       FM_TUNNEL_ENCAP_FLOW_NSH_DATA,
+
 } fm_tunnelEncapActionMask;
 
 
@@ -228,6 +260,12 @@ typedef enum
 
     /** Encapsulate using NVGRE type of tunnel */
     FM_TUNNEL_TYPE_NVGRE,
+
+    /** Encapsulate using VXLAN-GPE type of tunnel */
+    FM_TUNNEL_TYPE_GPE,
+
+    /** Encapsulate using VXLAN-GPE/NSH type of tunnel */
+    FM_TUNNEL_TYPE_GPE_NSH,
 
     /** UNPUBLISHED: For internal use only. */
     FM_TUNNEL_TYPE_MAX
@@ -289,6 +327,49 @@ typedef struct _fm_tunnelEncapFlowParam
     /** Must be set to the proper value if ''FM_TUNNEL_ENCAP_FLOW_NGE'' is
      *  set. This is the value to set based on each word set in the mask.  */
     fm_uint32  ngeData[FM_TUNNEL_NGE_DATA_SIZE];
+
+    /** Must be set to the proper value if
+     *  ''FM_TUNNEL_ENCAP_FLOW_GPE_VNI'' is set. This is the VNI
+     *  that will be stored in the VXLAN-GPE header. */
+    fm_uint32  gpeVni;
+
+    /** Must be set to the proper value if
+     *  ''FM_TUNNEL_ENCAP_FLOW_NSH_BASE_HDR'' is set. This is length
+     *  of the NSH header in 4-byte words including the Base Header,
+     *  Service Path Header and Context Data.  */
+    fm_byte    nshLength;
+
+    /** Must be set to the proper value if
+     *  ''FM_TUNNEL_ENCAP_FLOW_NSH_BASE_HDR'' is set. This bit
+     *  should be set if there are critical TLV that are included in
+     *  the NSH data. */
+    fm_bool    nshCritical;
+
+    /** Must be set to the proper value if
+     *  ''FM_TUNNEL_ENCAP_FLOW_NSH_BASE_HDR'' is set. This field
+     *  should contain the MD Type. */
+    fm_byte    nshMdType;
+
+    /** Must be set to the proper value if
+     *  ''FM_TUNNEL_ENCAP_FLOW_NSH_SERVICE_HDR'' is set. This field
+     *  should contain the Service Path ID. */
+    fm_uint32  nshSvcPathId;
+
+    /** Must be set to the proper value if
+     *  ''FM_TUNNEL_ENCAP_FLOW_NSH_SERVICE_HDR'' is set. This field
+     *  should contain the Service Index. */
+    fm_byte    nshSvcIndex;
+
+    /** Must be set to the proper value if
+     *  ''FM_TUNNEL_ENCAP_FLOW_NSH_DATA'' is set. This field should
+     *  contain the NSH context data that follows the service
+     *  header. */
+    fm_uint32  nshData[FM_TUNNEL_NSH_DATA_SIZE];
+
+    /** Must be set to the proper value if
+     *  ''FM_TUNNEL_ENCAP_FLOW_NSH_DATA'' is set. This field is a
+     *  bitmask of the valid 32-bit words in nshData. */
+    fm_uint16  nshDataMask;
 
 } fm_tunnelEncapFlowParam;
 
@@ -421,6 +502,26 @@ typedef enum
      *  parallel with ''FM_TUNNEL_DECAP_KEEP_OUTER_HDR''. */
     FM_TUNNEL_DECAP_MOVE_OUTER_HDR = (1 << 15),
 
+    /** Defines the GPE header's VNI field */
+    FM_TUNNEL_SET_GPE_VNI = (1 << 16),
+
+    /** Defines the NSH Base Header fields (Critical Flag, Length
+     *  and MD Type) */
+    FM_TUNNEL_SET_NSH_BASE_HDR = (1 << 17),
+
+    /** Defines the NSH Service Header fields. */
+    FM_TUNNEL_SET_NSH_SERVICE_HDR = (1 << 18),
+
+    /** Defines the NSH header's data bytes field */
+    FM_TUNNEL_SET_NSH_DATA = (1 << 19),
+
+    /** Defines whether all the NSH fields are provided (Base
+     *  Header, Service Header and data.) */
+    FM_TUNNEL_SET_GPE_NSH_ALL = FM_TUNNEL_SET_GPE_VNI         | 
+                                FM_TUNNEL_SET_NSH_BASE_HDR    |
+                                FM_TUNNEL_SET_NSH_SERVICE_HDR |
+                                FM_TUNNEL_SET_NSH_DATA,
+
 } fm_tunnelActionMask;
 
 
@@ -500,6 +601,49 @@ typedef struct _fm_tunnelActionParam
     /** Must be set to the proper tunnel encap flow if
      *  ''FM_TUNNEL_ENCAP_FLOW'' is set. */
     fm_int     encapFlow;
+
+    /** Must be set to the proper value if
+     *  ''FM_TUNNEL_SET_GPE_VNI'' is set. This is the VNI
+     *  that will be stored in the VXLAN-GPE header. */
+    fm_uint32  gpeVni;
+
+    /** Must be set to the proper value if
+     *  ''FM_TUNNEL_SET_NSH_BASE_HDR'' is set. This is length
+     *  of the NSH header in 4-byte words including the Base Header,
+     *  Service Path Header and Context Data.  */
+    fm_byte    nshLength;
+
+    /** Must be set to the proper value if
+     *  ''FM_TUNNEL_SET_NSH_BASE_HDR'' is set. This bit
+     *  should be set if there are critical TLV that are included in
+     *  the NSH data. */
+    fm_bool    nshCritical;
+
+    /** Must be set to the proper value if
+     *  ''FM_TUNNEL_SET_NSH_BASE_HDR'' is set. This field
+     *  should contain the MD Type. */
+    fm_byte    nshMdType;
+
+    /** Must be set to the proper value if
+     *  ''FM_TUNNEL_SET_NSH_SERVICE_HDR'' is set. This field should
+     *  contain the Service Path ID. */
+    fm_uint32  nshSvcPathId;
+
+    /** Must be set to the proper value if
+     *  ''FM_TUNNEL_SET_NSH_SERVICE_HDR'' is set. This field should
+     *  contain the Service Index. */
+    fm_byte    nshSvcIndex;
+
+    /** Must be set to the proper value if
+     *  ''FM_TUNNEL_SET_NSH_DATA'' is set. This field should
+     *  contain the NSH context data that follows the service
+     *  header. */
+    fm_uint32  nshData[FM_TUNNEL_NSH_DATA_SIZE];
+
+    /** Must be set to the proper value if
+     *  ''FM_TUNNEL_SET_NSH_DATA'' is set. This field is a
+     *  bitmask of the valid 32-bit words in nshData. */
+    fm_uint16  nshDataMask;
 
 } fm_tunnelActionParam;
 
@@ -631,6 +775,65 @@ enum _fm_tunnelAttr
 };  /* end enum _fm_tunnelAttr */
 
 
+/**************************************************/
+/** \ingroup typeEnum
+ *  Tunnel Engine Mode. Specifies which protocols
+ *  are supported for a given tunnel engine.  
+ **************************************************/
+typedef enum
+{
+    /** Support the VXLAN, NVGRE and NGE protocols. */
+    FM_TUNNEL_API_MODE_VXLAN_NVGRE_NGE = 0,
+
+    /** Support the VXLAN, GPE and NSH protocols. */
+    FM_TUNNEL_API_MODE_VXLAN_GPE_NSH,
+
+    /** UNPUBLISHED: For internal use only. */
+    FM_TUNNEL_API_MODE_MAX,
+
+} fm_teMode;
+
+
+/**************************************************/
+/** \ingroup typeStruct
+ * Tunnel API Mode. Used as an argument to the 
+ * ''FM_TUNNEL_API_MODE'' Tunnel API Attribute.
+ **************************************************/
+typedef struct _fm_tunnelModeAttr
+{
+    /** Te on which the mode should get set/get. */
+    fm_byte   te;
+
+    /** Tunnel Engine Mode. */
+    fm_teMode mode;
+
+} fm_tunnelModeAttr;
+
+
+/**************************************************/
+/** \ingroup typeEnum 
+ *  Tunnel API Attributes. 
+ *
+ *  Used as an argument to ''fmSetTunnelApiAttribute''
+ *  and ''fmGetTunnelApiAttribute''.
+ *
+ *  For each attribute, the data type of the
+ *  corresponding attribute value is specified.
+ **************************************************/
+typedef enum
+{
+    /** Type fm_int: Defines which set of protocols the tunnel
+     *  engine should operate with. See ''fm_teMode''. This
+     *  attribute may only be changed while there are no tunnel
+     *  groups/rules in the tunnel engine. */
+    FM_TUNNEL_API_MODE = 0,
+
+    /** UNPUBLISHED: For internal use only. */
+    FM_TUNNEL_API_ATTRIBUTE_MAX
+
+} fm_tunnelApiAttr;
+
+
 /*****************************************************************************
  * Function prototypes.
  *****************************************************************************/
@@ -739,6 +942,12 @@ fm_status fmGetTunnelAttribute(fm_int sw,
                                fm_int rule,
                                fm_int attr,
                                void * value);
+fm_status fmSetTunnelApiAttribute(fm_int sw,
+                                  fm_int attr,
+                                  void * value);
+fm_status fmGetTunnelApiAttribute(fm_int sw,
+                                  fm_int attr,
+                                  void * value);
 
 fm_status fmDbgDumpTunnel(fm_int sw);
 

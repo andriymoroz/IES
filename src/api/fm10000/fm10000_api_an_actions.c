@@ -5,7 +5,7 @@
  * Creation Date:   April 09, 2014
  * Description:     Action callbacks for the FM10000 AN state machine
  *
- * Copyright (c) 2007 - 2014, Intel Corporation
+ * Copyright (c) 2007 - 2015, Intel Corporation
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -29,7 +29,7 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
+ *****************************************************************************/
 
 #include <fm_sdk_fm10000_int.h>
 
@@ -95,8 +95,6 @@ static fm_status ConfigureAn37NextPages( fm_smEventInfo *eventInfo,
 /** SendPortAnEventInd
  * \ingroup intPort
  *
- * \chips           FM10000
- *
  * \desc            Send the port state machine an auto-negotiation related
  *                  event notification
  * 
@@ -111,7 +109,6 @@ static fm_status ConfigureAn37NextPages( fm_smEventInfo *eventInfo,
  * 
  * \return          FM_OK if successful
  * 
- * \return          Other ''Status Codes'' as appropriate in case of failure.
  *****************************************************************************/
 static fm_status SendPortAnEventInd( fm_smEventInfo *eventInfo, 
                                      void           *userInfo, 
@@ -135,14 +132,12 @@ static fm_status SendPortAnEventInd( fm_smEventInfo *eventInfo,
                                       userInfo,
                                       &portExt->base->portNumber );
 
-}   /* end SendPortAnEventInd() */
+}   /* end SendPortAnEventInd */
 
 
 /*****************************************************************************/
 /** ConfigureAn37Timers
  * \ingroup intPort
- *
- * \chips           FM10000
  *
  * \desc            Action callback that configures Clause 37 timers in
  *                  the context of a state machine event notification
@@ -156,7 +151,6 @@ static fm_status SendPortAnEventInd( fm_smEventInfo *eventInfo,
  * 
  * \return          FM_OK if successful
  * 
- * \return          Other ''Status Codes'' as appropriate in case of failure.
  *****************************************************************************/
 static fm_status ConfigureAn37Timers( fm_smEventInfo *eventInfo, 
                                       void           *userInfo )
@@ -234,15 +228,13 @@ static fm_status ConfigureAn37Timers( fm_smEventInfo *eventInfo,
 ABORT:
     return status;
 
-}   /* end ConfigureAn37Timers() */
+}   /* end ConfigureAn37Timers */
 
 
 
 /*****************************************************************************/
 /** ConfigureAn73Timers
  * \ingroup intPort
- *
- * \chips           FM10000
  *
  * \desc            Action callback that configures Clause 73 timers in
  *                  the context of a state machine event notification
@@ -256,7 +248,6 @@ ABORT:
  * 
  * \return          FM_OK if successful
  * 
- * \return          Other ''Status Codes'' as appropriate in case of failure.
  *****************************************************************************/
 static fm_status ConfigureAn73Timers( fm_smEventInfo *eventInfo, 
                                       void           *userInfo )
@@ -319,7 +310,7 @@ static fm_status ConfigureAn73Timers( fm_smEventInfo *eventInfo,
 
     return status;
 
-}   /* end ConfigureAn73Timers() */
+}   /* end ConfigureAn73Timers */
 
 
 /*****************************************************************************/
@@ -415,7 +406,7 @@ static fm_status An73UpdateBreakLinkTimer( fm_int  sw,
                                      timerCfg );
     return status;
 
-} /* end An73UpdateBreakLinkTimer */
+}   /* end An73UpdateBreakLinkTimer */
 
 
 /*****************************************************************************/
@@ -494,7 +485,7 @@ static fm_status An73UpdateLinkInhibitTimer( fm_int  sw,
                                      timerCfg );
     return status;
 
-} /* end fm10000An73UpdateLinkInhibitTimer */
+}   /* end fm10000An73UpdateLinkInhibitTimer */
 
 
 /*****************************************************************************/
@@ -511,11 +502,7 @@ static fm_status An73UpdateLinkInhibitTimer( fm_int  sw,
 static fm_int An73AbilityToHCD(fm_uint ability)
 {
 
-    if (ability & FM10000_AN73_ABILITY_25GBASE_KR )
-    {
-        return AN73_HCD_25_KR;
-    }
-    else if (ability & FM10000_AN73_ABILITY_100GBASE_CR4 )
+    if (ability & FM10000_AN73_ABILITY_100GBASE_CR4 )
     {
         return AN73_HCD_100_CR4;
     }
@@ -531,6 +518,14 @@ static fm_int An73AbilityToHCD(fm_uint ability)
     {
         return AN73_HCD_40_KR4;
     }
+    if (ability & FM10000_AN73_ABILITY_25GBASE_CR )
+    {
+        return AN73_HCD_25_CR;
+    }
+    if (ability & FM10000_AN73_ABILITY_25GBASE_KR )
+    {
+        return AN73_HCD_25_KR;
+    }
     else if (ability & FM10000_AN73_ABILITY_10GBASE_KR)
     {
         return AN73_HCD_10_KR;
@@ -542,7 +537,7 @@ static fm_int An73AbilityToHCD(fm_uint ability)
 
     return AN73_HCD_INCOMPATIBLE_LINK;
 
-} /* end An73AbilityToHCD */
+}   /* end An73AbilityToHCD */
 
 
 
@@ -626,14 +621,12 @@ static fm_status SendApiAutoNegEvent( fm_int            sw,
 
     FM_LOG_EXIT_V2( FM_LOG_CAT_PORT_AUTONEG, logPort, FM_OK);
 
-} /* end SendApiAutoNegEvent */
+}   /* end SendApiAutoNegEvent */
 
 
 /*****************************************************************************/
 /** FilterAn73Ability
  * \ingroup intPort
- *
- * \chips           FM10000
  *
  * \desc            Filter Clause 73 base page ability based on the actual
  *                  scheduler configuration.
@@ -646,21 +639,16 @@ static fm_status SendApiAutoNegEvent( fm_int            sw,
  *
  * \return          FM_OK if successful
  * 
- * \return          Other ''Status Codes'' as appropriate in case of failure.
  *****************************************************************************/
 static fm_status FilterAn73Ability( fm_int sw, fm_int port, fm_uint64 *txMsg )
 {
     fm_status              status;
     fm10000_schedSpeedInfo speed;
-    fm_int                 epl;
-    fm_int                 lane;
-    fm_int                 masterEplLane;
-    fm_int                 logPort;
-    fm10000_portAttr *     portAttrExt;
     fm_int                 physSw;
     fm_int                 physPort;
     fm_uint32              ability;
-    fm_uint32              capabilities;
+    fm_bool                is40GCapable;
+    fm_bool                is100GCapable;
 
     /* Only update the ability field of the base page */
     ability = FM_GET_FIELD64( *txMsg, FM10000_AN_73_BASE_PAGE_TX, A );
@@ -690,85 +678,49 @@ static fm_status FilterAn73Ability( fm_int sw, fm_int port, fm_uint64 *txMsg )
                                       &speed);
     FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT_AUTONEG, port, status);
 
-    /* Need to know if this port is Multi-Lane capable */
-    status = fmPlatformGetPortCapabilities(sw, physPort, &capabilities);
+    status = fm10000GetMultiLaneCapabilities(sw, 
+                                             port, 
+                                             &is40GCapable, 
+                                             &is100GCapable);
     FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT_AUTONEG, port, status);
 
-    if ( (capabilities & FM_PORT_CAPABILITY_SPEED_40G) ||
-         (capabilities & FM_PORT_CAPABILITY_SPEED_100G) )
+    /* Multi-Lane is possible */
+    if (is40GCapable || is100GCapable)
     {
-        /* Find the Master Lane (Port Lane 0) which drive the autoneg. This
-         * is to cover the lane reversal or lane remapping case. */
-        status = fm10000MapPhysicalPortToEplLane(sw, 
-                                                 physPort, 
-                                                 &epl,
-                                                 &lane);
-        FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT_AUTONEG, port, status);
-
-        masterEplLane = -1;
-        status = fmPlatformMapPortLaneToEplLane(sw, port, 0, &masterEplLane);
-        FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT_AUTONEG, port, status);
-
-        if ( lane == masterEplLane )
+        /* Filter out any mode that can't be supported based on current
+         * scheduler token allocation and port capabilities. */
+        if ( ( (speed.multiLaneSpeed < 100000)  &&
+               (speed.assignedSpeed < 100000) ) ||
+             (!is100GCapable) )
         {
-            /* Validate that all lanes are available */
-            for ( lane = 0 ; lane < 4 ; lane++ )
-            {
-                if ( lane != masterEplLane )
-                {
-                    status = fm10000MapEplLaneToLogicalPort(sw,
-                                                            epl,
-                                                            lane,
-                                                            &logPort);
-                    FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT_AUTONEG, port, status);
-
-                    portAttrExt = GET_FM10000_PORT_ATTR(sw, logPort);
-                    if ( portAttrExt->ethMode != FM_ETH_MODE_DISABLED )
-                    {
-                        break;
-                    }
-                }
-            }
-
-            /* Multi-Lane is possible */
-            if ( lane == 4 )
-            {
-                /* Filter out any mode that can't be supported based on current
-                 * scheduler token allocation. */
-                if ( (speed.multiLaneSpeed < 100000) &&
-                     (speed.assignedSpeed < 100000) )
-                {
-                    ability &= ~(FM10000_AN73_ABILITY_100GBASE_KR4 |
-                                 FM10000_AN73_ABILITY_100GBASE_CR4);
-                }
-
-                if ( (speed.multiLaneSpeed < 40000) &&
-                     (speed.assignedSpeed < 40000) )
-                {
-                    ability &= ~(FM10000_AN73_ABILITY_40GBASE_KR4 |
-                                 FM10000_AN73_ABILITY_40GBASE_CR4);
-                }
-
-                if ( (speed.singleLaneSpeed < 10000) &&
-                     (speed.assignedSpeed < 10000) )
-                {
-                    ability &= ~FM10000_AN73_ABILITY_10GBASE_KR;
-                }
-
-                if ( (speed.singleLaneSpeed < 2500) &&
-                     (speed.assignedSpeed < 2500) )
-                {
-                    ability = 0LL;
-                    status = FM_FAIL;
-                }
-
-                /* Update the ability field of the base page */
-                FM_SET_FIELD64( *txMsg, FM10000_AN_73_BASE_PAGE_TX, A, ability );
-
-                /* Exit */
-                FM_LOG_EXIT_V2( FM_LOG_CAT_PORT_AUTONEG, port, status);
-            }
+            ability &= ~FM10000_AN73_ABILITIES_100G;
         }
+
+        if ( ( (speed.multiLaneSpeed < 40000)  &&
+               (speed.assignedSpeed < 40000) ) ||
+             (!is40GCapable) )
+        {
+            ability &= ~FM10000_AN73_ABILITIES_40G;
+        }
+
+        if ( (speed.singleLaneSpeed < 10000) &&
+             (speed.assignedSpeed < 10000) )
+        {
+            ability &= ~FM10000_AN73_ABILITY_10GBASE_KR;
+        }
+
+        if ( (speed.singleLaneSpeed < 2500) &&
+             (speed.assignedSpeed < 2500) )
+        {
+            ability = 0LL;
+            status = FM_FAIL;
+        }
+
+        /* Update the ability field of the base page */
+        FM_SET_FIELD64( *txMsg, FM10000_AN_73_BASE_PAGE_TX, A, ability );
+
+        /* Exit */
+        FM_LOG_EXIT_V2( FM_LOG_CAT_PORT_AUTONEG, port, status);
     }
 
     /* Single Lane AN */
@@ -796,14 +748,12 @@ ABORT:
 
     FM_LOG_EXIT_V2( FM_LOG_CAT_PORT_AUTONEG, port, status);
 
-} /* end FilterAn73Ability */
+}   /* end FilterAn73Ability */
 
 
 /*****************************************************************************/
 /** ConfigureAn73BasePage
  * \ingroup intPort
- *
- * \chips           FM10000
  *
  * \desc            Configure Clause 73 base page when the auto-negotiation 
  *                  mode is configured or when auto-negotiation is restarted     
@@ -817,7 +767,6 @@ ABORT:
  * 
  * \return          FM_OK if successful
  * 
- * \return          Other ''Status Codes'' as appropriate in case of failure.
  *****************************************************************************/
 static fm_status ConfigureAn73BasePage( fm_smEventInfo *eventInfo, 
                                         void           *userInfo )
@@ -919,14 +868,12 @@ static fm_status ConfigureAn73BasePage( fm_smEventInfo *eventInfo,
 ABORT:
     return status;
 
-}   /* end ConfigureAn73BasePage() */
+}   /* end ConfigureAn73BasePage */
 
 
 /*****************************************************************************/
 /** ConfigureAn37BasePage
  * \ingroup intPort
- *
- * \chips           FM10000
  *
  * \desc            Configure Clause 37 base page when the auto-negotiation
  *                  mode is configured or when auto-negotiation is restarted     
@@ -940,7 +887,6 @@ ABORT:
  * 
  * \return          FM_OK if successful
  * 
- * \return          Other ''Status Codes'' as appropriate in case of failure.
  *****************************************************************************/
 static fm_status ConfigureAn37BasePage( fm_smEventInfo *eventInfo, 
                                         void           *userInfo )
@@ -995,14 +941,12 @@ static fm_status ConfigureAn37BasePage( fm_smEventInfo *eventInfo,
 ABORT:
     return status;
 
-}   /* end ConfigureAn37BasePage() */
+}   /* end ConfigureAn37BasePage */
 
 
 /*****************************************************************************/
 /** ConfigureSgmiiBasePage
  * \ingroup intPort
- *
- * \chips           FM10000
  *
  * \desc            Configure SGMII base page when the auto-negotiation mode is
  *                  configured or when auto-negotiation is restarted     
@@ -1016,7 +960,6 @@ ABORT:
  * 
  * \return          FM_OK if successful
  * 
- * \return          Other ''Status Codes'' as appropriate in case of failure.
  *****************************************************************************/
 static fm_status ConfigureSgmiiBasePage( fm_smEventInfo *eventInfo, 
                                          void           *userInfo )
@@ -1073,15 +1016,13 @@ static fm_status ConfigureSgmiiBasePage( fm_smEventInfo *eventInfo,
 ABORT:            
     return status;
 
-}   /* end ConfigureSgmiiBasePage() */
+}   /* end ConfigureSgmiiBasePage */
 
 
 
 /*****************************************************************************/
 /** ConfigureAn73NextPages
  * \ingroup intPort
- *
- * \chips           FM10000
  *
  * \desc            Configure Clause 73 next page when needed
  * 
@@ -1094,7 +1035,6 @@ ABORT:
  * 
  * \return          FM_OK if successful
  * 
- * \return          Other ''Status Codes'' as appropriate in case of failure.
  *****************************************************************************/
 static fm_status ConfigureAn73NextPages( fm_smEventInfo *eventInfo, 
                                          void           *userInfo )
@@ -1127,6 +1067,15 @@ static fm_status ConfigureAn73NextPages( fm_smEventInfo *eventInfo,
                                &rxPage );
     FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT_AUTONEG, port, status);
 
+    FM_LOG_DEBUG2_V2( FM_LOG_CAT_PORT_AUTONEG,
+                      port,
+                      "Sw#%d Port %d: An73CompleteAck "
+                      "PageRx#%d=0x%llx\n",
+                      sw,
+                      port,
+                      portAttr->autoNegPartnerNextPages.numPages, 
+                      rxPage);
+
     if( portAttr->autoNegPartnerBasePage == 0)
     {
         /* store it for later access */
@@ -1149,14 +1098,14 @@ static fm_status ConfigureAn73NextPages( fm_smEventInfo *eventInfo,
         doNextPage = ( FM_GET_BIT(rxPage, FM10000_AN_73_BASE_PAGE_RX, NP) ||
                        (pageNum+1) < portAttr->autoNegNextPages.numPages );
 
-        FM_LOG_DEBUG_V2( FM_LOG_CAT_PORT_AUTONEG,
-                         port,
-                         "Port %d: An73CompleteAck "
-                         "NextPageRx#%d=0x%llx.%s\n",
-                         port, 
-                         pageNum, 
-                         rxPage, 
-                         doNextPage ? " Do nextPage" : "");
+        FM_LOG_DEBUG2_V2( FM_LOG_CAT_PORT_AUTONEG,
+                          port,
+                          "Port %d: An73CompleteAck "
+                          "NextPageRx#%d=0x%llx.%s\n",
+                          port, 
+                          pageNum, 
+                          rxPage, 
+                          doNextPage ? " Do nextPage" : "");
 
         if (!portAttr->autoNegPartnerNextPages.nextPages)
         {
@@ -1235,14 +1184,12 @@ static fm_status ConfigureAn73NextPages( fm_smEventInfo *eventInfo,
 ABORT:
     return status;
 
-}   /* end ConfigureAn73NextPages() */
+}   /* end ConfigureAn73NextPages */
 
 
 /*****************************************************************************/
 /** ConfigureAn37NextPages
  * \ingroup intPort
- *
- * \chips           FM10000
  *
  * \desc            Configure Clause 37 next page when the auto-negotiation
  *                  mode is configured or when auto-negotiation is restarted     
@@ -1256,7 +1203,6 @@ ABORT:
  * 
  * \return          FM_OK if successful
  * 
- * \return          Other ''Status Codes'' as appropriate in case of failure.
  *****************************************************************************/
 static fm_status ConfigureAn37NextPages( fm_smEventInfo *eventInfo, 
                                          void           *userInfo )
@@ -1289,6 +1235,15 @@ static fm_status ConfigureAn37NextPages( fm_smEventInfo *eventInfo,
                                &rxPage );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
 
+    FM_LOG_DEBUG2_V2( FM_LOG_CAT_PORT_AUTONEG,
+                      port,
+                      "Sw#%d Port %d: An37CompleteAck "
+                      "PageRx#%d=0x%x\n",
+                      sw,
+                      port,
+                      portAttr->autoNegPartnerNextPages.numPages, 
+                      rxPage);
+
     if (portAttr->autoNegPartnerBasePage == 0)
     {
         /* store it for later access */
@@ -1317,14 +1272,14 @@ static fm_status ConfigureAn37NextPages( fm_smEventInfo *eventInfo,
         doNextPage = ( FM_GET_BIT(rxPage, FM10000_AN_37_BASE_PAGE_RX, NP) ||
                        (pageNum+1) < portAttr->autoNegNextPages.numPages );
 
-        FM_LOG_DEBUG_V2( FM_LOG_CAT_PORT_AUTONEG,
-                         port,
-                         "Port %d: An37CompleteAck "
-                         "NextPageRx#%d=0x%x.%s\n",
-                         port, 
-                         pageNum, 
-                         rxPage, 
-                         doNextPage ? " Do nextPage" : "");
+        FM_LOG_DEBUG2_V2( FM_LOG_CAT_PORT_AUTONEG,
+                          port,
+                          "Port %d: An37CompleteAck "
+                          "NextPageRx#%d=0x%x.%s\n",
+                          port, 
+                          pageNum, 
+                          rxPage, 
+                          doNextPage ? " Do nextPage" : "");
 
         if ( !portAttr->autoNegPartnerNextPages.nextPages )
         {
@@ -1404,7 +1359,7 @@ static fm_status ConfigureAn37NextPages( fm_smEventInfo *eventInfo,
 ABORT:
     return status;
 
-}   /* end ConfigureAn37NextPages() */
+}   /* end ConfigureAn37NextPages */
 
 
 
@@ -1415,8 +1370,6 @@ ABORT:
 /*****************************************************************************/
 /** fm10000TakeRegLock
  * \ingroup intPort
- *
- * \chips           FM10000
  *
  * \desc            Action callback to take the register lock for the switch
  *                  a given port belongs to
@@ -1440,14 +1393,12 @@ fm_status fm10000TakeRegLock( fm_smEventInfo *eventInfo, void *userInfo )
     ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken = TRUE;
     return FM_OK;
 
-}   /* end fm10000TakeRegLock() */
+}   /* end fm10000TakeRegLock */
 
 
 /*****************************************************************************/
 /** fm10000DropRegLock
  * \ingroup intPort
- *
- * \chips           FM10000
  *
  * \desc            Action callback to take the register lock for the switch
  *                  a given port belongs to
@@ -1469,14 +1420,12 @@ fm_status fm10000DropRegLock( fm_smEventInfo *eventInfo, void *userInfo )
     DROP_SCHEDULER_LOCK( ((fm10000_portSmEventInfo *)userInfo)->switchPtr->switchNumber );
     return FM_OK;
 
-}   /* end fm10000DropRegLock() */
+}   /* end fm10000DropRegLock */
 
 
 /*****************************************************************************/
 /** fm10000EnableAn
  * \ingroup intPort
- *
- * \chips           FM10000
  *
  * \desc            Action enabling auto-negotiation in the context of a state
  *                  machine event notification
@@ -1490,7 +1439,6 @@ fm_status fm10000DropRegLock( fm_smEventInfo *eventInfo, void *userInfo )
  * 
  * \return          FM_OK if successful
  * 
- * \return          Other ''Status Codes'' as appropriate in case of failure.
  *****************************************************************************/
 fm_status fm10000EnableAn( fm_smEventInfo *eventInfo, void *userInfo )
 {
@@ -1564,14 +1512,12 @@ fm_status fm10000EnableAn( fm_smEventInfo *eventInfo, void *userInfo )
 ABORT:
     return status;
 
-}   /* end fm10000EnableAn() */
+}   /* end fm10000EnableAn */
 
 
 /*****************************************************************************/
 /** fm10000DisableAn
  * \ingroup intPort
- *
- * \chips           FM10000
  *
  * \desc            Action disabling auto-negotiation in the context of a state
  *                  machine event notification
@@ -1585,7 +1531,6 @@ ABORT:
  * 
  * \return          FM_OK if successful
  * 
- * \return          Other ''Status Codes'' as appropriate in case of failure.
  *****************************************************************************/
 fm_status fm10000DisableAn( fm_smEventInfo *eventInfo, void *userInfo )
 {
@@ -1616,7 +1561,7 @@ fm_status fm10000DisableAn( fm_smEventInfo *eventInfo, void *userInfo )
 
     return switchPtr->WriteUINT32( sw, addr, anCfg );
 
-}   /* end fm10000DisableAn() */
+}   /* end fm10000DisableAn */
 
 
 
@@ -1636,7 +1581,6 @@ fm_status fm10000DisableAn( fm_smEventInfo *eventInfo, void *userInfo )
  * 
  * \return          FM_OK if successful
  *
- * \return          Other ''Status Codes'' as appropriate in case of failure.
  *****************************************************************************/
 fm_status fm10000EnableAnInterrupts( fm_smEventInfo *eventInfo, void *userInfo )
 {
@@ -1683,7 +1627,7 @@ fm_status fm10000EnableAnInterrupts( fm_smEventInfo *eventInfo, void *userInfo )
 
     return status;
 
-}   /* end fm10000EnableAnInterrupts() */
+}   /* end fm10000EnableAnInterrupts */
 
 
 
@@ -1703,7 +1647,6 @@ fm_status fm10000EnableAnInterrupts( fm_smEventInfo *eventInfo, void *userInfo )
  * 
  * \return          FM_OK if successful
  *
- * \return          Other ''Status Codes'' as appropriate in case of failure.
  *****************************************************************************/
 fm_status fm10000DisableAnInterrupts( fm_smEventInfo *eventInfo, void *userInfo )
 {
@@ -1731,15 +1674,13 @@ fm_status fm10000DisableAnInterrupts( fm_smEventInfo *eventInfo, void *userInfo 
 
     return status;
 
-}   /* end fm10000DisableAnInterrupts() */
+}   /* end fm10000DisableAnInterrupts */
 
 
 
 /*****************************************************************************/
 /** fm10000ConfigureBasePage
  * \ingroup intPort
- *
- * \chips           FM10000
  *
  * \desc            Configure Clause 73 or Clause 37 base page when the auto-
  *                  negotiation mode is configured or when auto-negotiation is
@@ -1754,7 +1695,6 @@ fm_status fm10000DisableAnInterrupts( fm_smEventInfo *eventInfo, void *userInfo 
  * 
  * \return          FM_OK if successful
  * 
- * \return          Other ''Status Codes'' as appropriate in case of failure.
  *****************************************************************************/
 fm_status fm10000ConfigureBasePage( fm_smEventInfo *eventInfo, void *userInfo )
 {
@@ -1811,15 +1751,13 @@ fm_status fm10000ConfigureBasePage( fm_smEventInfo *eventInfo, void *userInfo )
     
     return status;
 
-}   /* end fm10000ConfigureBasePage() */
+}   /* end fm10000ConfigureBasePage */
 
 
 
 /*****************************************************************************/
 /** fm10000ConfigureNextPages
  * \ingroup intPort
- *
- * \chips           FM10000
  *
  * \desc            Setup next pages if and when needed
  * 
@@ -1832,7 +1770,6 @@ fm_status fm10000ConfigureBasePage( fm_smEventInfo *eventInfo, void *userInfo )
  * 
  * \return          FM_OK if successful
  * 
- * \return          Other ''Status Codes'' as appropriate in case of failure.
  *****************************************************************************/
 fm_status fm10000ConfigureNextPages( fm_smEventInfo *eventInfo, 
                                      void           *userInfo )
@@ -1865,15 +1802,13 @@ fm_status fm10000ConfigureNextPages( fm_smEventInfo *eventInfo,
 
     return status;
 
-}   /* end fm10000ConfigureNextPages() */
+}   /* end fm10000ConfigureNextPages */
 
 
 
 /*****************************************************************************/
 /** fm10000NotifyApiAutonegCompleteOrFault
  * \ingroup intPort
- *
- * \chips           FM10000
  *
  * \desc            Notify the API user that autonegotiation is complete or
  *                  that there is a remote fault
@@ -1887,7 +1822,6 @@ fm_status fm10000ConfigureNextPages( fm_smEventInfo *eventInfo,
  * 
  * \return          FM_OK if successful
  * 
- * \return          Other ''Status Codes'' as appropriate in case of failure.
  *****************************************************************************/
 fm_status fm10000NotifyApiAutonegCompleteOrFault( fm_smEventInfo *eventInfo, 
                                                   void           *userInfo )
@@ -2044,14 +1978,12 @@ fm_status fm10000NotifyApiAutonegCompleteOrFault( fm_smEventInfo *eventInfo,
 ABORT:
     return status;
 
-}   /* end fm10000NotifyApiAutonegCompleteOrFault() */
+}   /* end fm10000NotifyApiAutonegCompleteOrFault */
 
 
 /*****************************************************************************/
 /** fm10000NotifyApiAutonegFailed
  * \ingroup intPort
- *
- * \chips           FM10000
  *
  * \desc            Notify the API user that autonegotiation failed and most
  *                  likely the AN state machine is being restarted.
@@ -2065,7 +1997,6 @@ ABORT:
  * 
  * \return          FM_OK if successful
  * 
- * \return          Other ''Status Codes'' as appropriate in case of failure.
  *****************************************************************************/
 fm_status fm10000NotifyApiAutonegFailed( fm_smEventInfo *eventInfo, 
                                          void           *userInfo )
@@ -2078,14 +2009,12 @@ fm_status fm10000NotifyApiAutonegFailed( fm_smEventInfo *eventInfo,
 
     return SendApiAutoNegEvent( sw, port, FM_PORT_STATUS_AUTONEG_FAILED, 0);
 
-}   /* end fm10000NotifyApiAutonegFailed() */
+}   /* end fm10000NotifyApiAutonegFailed */
 
 
 /*****************************************************************************/
 /** fm10000NotifyApiAutonegStarted
  * \ingroup intPort
- *
- * \chips           FM10000
  *
  * \desc            Notify the API user that autonegotiation started
  * 
@@ -2098,7 +2027,6 @@ fm_status fm10000NotifyApiAutonegFailed( fm_smEventInfo *eventInfo,
  * 
  * \return          FM_OK if successful
  * 
- * \return          Other ''Status Codes'' as appropriate in case of failure.
  *****************************************************************************/
 fm_status fm10000NotifyApiAutonegStarted( fm_smEventInfo *eventInfo, 
                                           void           *userInfo )
@@ -2111,15 +2039,13 @@ fm_status fm10000NotifyApiAutonegStarted( fm_smEventInfo *eventInfo,
 
     return SendApiAutoNegEvent( sw, port, FM_PORT_STATUS_AUTONEG_STARTED, 0);
 
-}   /* end fm10000NotifyApiAutonegStarted() */
+}   /* end fm10000NotifyApiAutonegStarted */
 
 
 
 /*****************************************************************************/
 /** fm10000EnablePhyAutoneg
  * \ingroup intPort
- *
- * \chips           FM10000
  *
  * \desc            Function that enables autonegotiation on on a given port's
  *                  PHY
@@ -2154,14 +2080,12 @@ fm_status fm10000EnablePhyAutoneg( fm_smEventInfo *eventInfo, void *userInfo )
 
     return status;
 
-}   /* end fm10000EnablePhyAutoneg() */
+}   /* end fm10000EnablePhyAutoneg */
 
 
 /*****************************************************************************/
 /** fm10000DisablePhyAutoneg
  * \ingroup intPort
- *
- * \chips           FM10000
  *
  * \desc            Function that disables autonegotiation on on a given port's
  *                  PHY
@@ -2196,14 +2120,12 @@ fm_status fm10000DisablePhyAutoneg( fm_smEventInfo *eventInfo, void *userInfo )
 
     return FM_OK;
 
-}   /* end fm10000DisablePhyAutoneg() */
+}   /* end fm10000DisablePhyAutoneg */
 
 
 /*****************************************************************************/
 /** fm10000ConfigureAnTimers
  * \ingroup intPort
- *
- * \chips           FM10000
  *
  * \desc            Action callback that configures auto-negotiation timers in
  *                  the context of a state machine event notification
@@ -2217,7 +2139,6 @@ fm_status fm10000DisablePhyAutoneg( fm_smEventInfo *eventInfo, void *userInfo )
  * 
  * \return          FM_OK if successful
  * 
- * \return          Other ''Status Codes'' as appropriate in case of failure.
  *****************************************************************************/
 fm_status fm10000ConfigureAnTimers( fm_smEventInfo *eventInfo, 
                                     void           *userInfo )
@@ -2256,7 +2177,7 @@ fm_status fm10000ConfigureAnTimers( fm_smEventInfo *eventInfo,
 
     return status;
 
-}   /* end fm10000ConfigureAnTimers() */
+}   /* end fm10000ConfigureAnTimers */
 
 
 /*****************************************************************************/
@@ -2277,7 +2198,6 @@ fm_status fm10000ConfigureAnTimers( fm_smEventInfo *eventInfo,
  * 
  * \return          FM_OK if successful
  * 
- * \return          Other ''Status Codes'' as appropriate in case of failure.
  *****************************************************************************/
 fm_status fm10000NotifyPortAutonegComplete( fm_smEventInfo *eventInfo, 
                                             void           *userInfo )
@@ -2287,14 +2207,12 @@ fm_status fm10000NotifyPortAutonegComplete( fm_smEventInfo *eventInfo,
                                userInfo, 
                                FM10000_PORT_EVENT_AN_COMPLETE_IND );
 
-}   /* end fm10000NotifyPortAutonegComplete() */
+}   /* end fm10000NotifyPortAutonegComplete */
 
 
 /*****************************************************************************/
 /** fm10000NotifyPortAutonegRestarted
  * \ingroup intPort
- *
- * \chips           FM10000
  *
  * \desc            Send the port state machine an event notification
  *                  indicating Autonegotiation has just restarted
@@ -2308,7 +2226,6 @@ fm_status fm10000NotifyPortAutonegComplete( fm_smEventInfo *eventInfo,
  * 
  * \return          FM_OK if successful
  * 
- * \return          Other ''Status Codes'' as appropriate in case of failure.
  *****************************************************************************/
 fm_status fm10000NotifyPortAutonegRestarted( fm_smEventInfo *eventInfo, 
                                              void           *userInfo )
@@ -2323,14 +2240,12 @@ fm_status fm10000NotifyPortAutonegRestarted( fm_smEventInfo *eventInfo,
                                userInfo, 
                                FM10000_PORT_EVENT_AN_RESTARTED_IND );
 
-}   /* end fm10000NotifyPortAutonegRestarted() */
+}   /* end fm10000NotifyPortAutonegRestarted */
 
 
 /*****************************************************************************/
 /** fm10000DoAbilityMatch
  * \ingroup intPort
- *
- * \chips           FM10000
  *
  * \desc            Perform ability matching between the local port and the
  *                  the link parrner
@@ -2349,28 +2264,130 @@ fm_status fm10000DoAbilityMatch( fm_smEventInfo *eventInfo, void *userInfo )
 {
     fm_portAttr   *portAttr;
     fm10000_port  *portExt;
+    fm_int         sw;
+    fm_int         port;
     fm_uint64      txPage;
     fm_uint64      rxPage;
     fm_int         hcd;
     fm_uint        ability;
+    fm_int         basepage_hcd;
+    fm_uint64      page;
+    fm_uint        idx;
 
     portAttr = ( ( fm10000_portSmEventInfo *)userInfo )->portAttr;
     portExt  = ( ( fm10000_portSmEventInfo *)userInfo )->portExt;
-    txPage = portExt->basePage;
-    rxPage = portAttr->autoNegPartnerBasePage;
+    sw       = (( fm10000_portSmEventInfo *)userInfo)->switchPtr->switchNumber;
+    port     = portExt->base->portNumber;
+    txPage   = portExt->basePage;
+    rxPage   = portAttr->autoNegPartnerBasePage;
+
+    hcd = AN73_HCD_INCOMPATIBLE_LINK;
 
     /* look for the highest common denominator with the link partner */
     ability = FM_GET_FIELD64( rxPage, FM10000_AN_73_BASE_PAGE_RX, A ) &
               FM_GET_FIELD64( txPage, FM10000_AN_73_BASE_PAGE_TX, A );
 
-    hcd = An73AbilityToHCD(ability);
+    /* determine the HCD using only the base page */
+    basepage_hcd = An73AbilityToHCD(ability);
 
-    FM_LOG_DEBUG_V2( FM_LOG_CAT_PORT_AUTONEG, 
-                     portExt->base->portNumber,
-                     "txPage=0x%016llx rxPage=0x%016llx hcd=%s\n",
-                     txPage,
-                     rxPage,
-                     fm10000An73HCDStr( hcd ) );
+    FM_LOG_DEBUG2_V2( FM_LOG_CAT_PORT_AUTONEG, 
+                      port,
+                      "Port %d basepage only HCD= %s\n",
+                      port,
+                      fm10000An73HCDStr( basepage_hcd ));
+    /* only explore next pages if priority of the HCD is lower than 25G KR.
+     * Note that IEEE 25G KR/CR have higher priority than consortium 25G AN */
+    if (basepage_hcd < AN73_HCD_25_CR)
+    {
+        txPage = 0;
+        rxPage = 0;
+        /* Go thru next pages to see if there is extended tech ability there */
+        if (fm10000AnGetNextPageExtTechAbilityIndex(sw,
+                port,
+                portAttr->autoNegNextPages.nextPages,
+                portAttr->autoNegNextPages.numPages,
+                &idx,
+                "Tx") == FM_OK)
+        {
+            txPage = portAttr->autoNegNextPages.nextPages[idx];
+        }
+        if (fm10000AnGetNextPageExtTechAbilityIndex(sw,
+                port,
+                portAttr->autoNegPartnerNextPages.nextPages,
+                portAttr->autoNegPartnerNextPages.numPages,
+                &idx,
+                "Rx") == FM_OK)
+        {
+            rxPage = portAttr->autoNegPartnerNextPages.nextPages[idx];
+        }
+
+        /* Resolve HCD */
+        page = rxPage & txPage;
+
+        /* We only support 25G and non-FEC, then we only need 
+         *to check for whether to use KR1 or CR1 */
+
+        if (FM_GET_UNNAMED_BIT64(page, 21))
+        {
+            hcd = AN73_HCD_25_CR;
+            FM_LOG_DEBUG2_V2( FM_LOG_CAT_PORT_AUTONEG, 
+                              port,
+                              "Port %d HCD= 25G-Consortium CR\n",
+                              port);
+        }
+        else if (FM_GET_UNNAMED_BIT64(page, 20))
+        {
+            hcd = AN73_HCD_25_KR;
+            FM_LOG_DEBUG2_V2( FM_LOG_CAT_PORT_AUTONEG, 
+                              port,
+                              "Port %d HCD= 25G-Consortium KR\n",
+                              port);
+        }
+        else
+        {
+            FM_LOG_DEBUG2_V2( FM_LOG_CAT_PORT_AUTONEG, 
+                              port,
+                              "Port %d HCD= 25G-Consortium. No abiltiy bit is set\n",
+                              port);
+        }
+
+        if (hcd != AN73_HCD_INCOMPATIBLE_LINK)
+        {
+            FM_LOG_DEBUG2_V2(FM_LOG_CAT_PORT_AUTONEG,
+                             port,
+                             "Sw#%d Port %d: UM ExtTechAbility "
+                             "TxNextPage=0x%016llx RxNextPage=0x%016llx HCD=%s\n",
+                             sw,
+                             port,
+                             txPage,
+                             rxPage,
+                             fm10000An73HCDStr( hcd ) );
+        }
+    }
+
+    /* If not resolved via next page exchange */
+    if (hcd == AN73_HCD_INCOMPATIBLE_LINK)
+    {
+        txPage   = portExt->basePage;
+        rxPage   = portAttr->autoNegPartnerBasePage;
+
+        /* look for the highest common denominator with the link partner */
+        ability = FM_GET_FIELD64( rxPage, FM10000_AN_73_BASE_PAGE_RX, A ) &
+                  FM_GET_FIELD64( txPage, FM10000_AN_73_BASE_PAGE_TX, A );
+
+        hcd = An73AbilityToHCD(ability);
+
+        FM_LOG_DEBUG2_V2(FM_LOG_CAT_PORT_AUTONEG,
+                         port,
+                         "Sw#%d Port %d: TxPage=0x%016llx RxPage=0x%016llx HCD=%s\n",
+                         sw,
+                         port,
+                         txPage,
+                         rxPage,
+                         fm10000An73HCDStr( hcd ) );
+
+    }
+
 
     /* save the HCD in the event structure so that it can be picked up by
        the following action callbacks */
@@ -2378,7 +2395,9 @@ fm_status fm10000DoAbilityMatch( fm_smEventInfo *eventInfo, void *userInfo )
 
     return FM_OK;
 
-}   /* end fm10000DoAbilityMatch() */
+}   /* end fm10000DoAbilityMatch */
+
+
 
 
 /*****************************************************************************/
@@ -2394,7 +2413,6 @@ fm_status fm10000DoAbilityMatch( fm_smEventInfo *eventInfo, void *userInfo )
  * 
  * \return          FM_OK if successful
  *
- * \return          Other ''Status Codes'' as appropriate in case of failure.
  *****************************************************************************/
 fm_status fm10000LogAnStateTransition( fm_smTransitionRecord *record )
 {
@@ -2429,7 +2447,7 @@ fm_status fm10000LogAnStateTransition( fm_smTransitionRecord *record )
 
     return FM_OK;
 
-}   /* end fm10000LogAnStateTransition() */
+}   /* end fm10000LogAnStateTransition */
 
 
 /*****************************************************************************/
@@ -2462,4 +2480,4 @@ fm_status fm10000Dummy( fm_smEventInfo *eventInfo,
 
     return FM_OK;
 
-}   /* end fm10000Dummy() */
+}   /* end fm10000Dummy */

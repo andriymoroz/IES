@@ -43,12 +43,16 @@
 #define FM10000_GLORT_CAM_CRM_ID        32
 #define FM10000_NUM_CRM_IDS             (FM10000_GLORT_CAM_CRM_ID + 1)
 
-#define FM10000_USE_FFU_SLICE_MONITOR   TRUE
-#define FM10000_USE_GLORT_CAM_MONITOR   TRUE
-
 #define GET_CRM_INFO(sw) \
     &(((fm10000_switch *)GET_SWITCH_EXT(sw))->crmInfo)
 
+
+typedef struct _fm10000_crmUserInfo
+{
+    fm_int    crmId;
+    fm_int    sw;
+    fm_bool   notifyTimeout;
+} fm10000_crmUserInfo;
 
 /******************************************
  * CRM information.
@@ -58,28 +62,27 @@
 typedef struct _fm10000_crmInfo
 {
     /** CRM monitors that have been initialized and are in use. */
-    fm_uint64   validMask;
+    fm_uint64            validMask;
 
     /** CRM monitors that are masked due to TCAM checksum error. */
-    fm_uint64   errorMask;
+    fm_uint64            errorMask;
 
     /** CRM monitors that are masked because the API is updating TCAM. */
-    fm_uint64   updateMask;
+    fm_uint64            updateMask;
 
     /** First CRM monitor index. */
-    fm_int      firstIdx;
+    fm_int               firstIdx;
 
     /** Last CRM monitor index. */
-    fm_int      lastIdx;
+    fm_int               lastIdx;
+
+    fm_smHandle         crmSmHandles[FM10000_NUM_CRM_IDS];
+    fm10000_crmUserInfo crmUserInfo[FM10000_NUM_CRM_IDS];
+    fm_timerHandle      crmTimers[FM10000_NUM_CRM_IDS];
+    fm_uint64           logInfo[FM10000_NUM_CRM_IDS];
+
 
 } fm10000_crmInfo;
-
-typedef struct _fm10000_crmUserInfo
-{
-    fm_int    crmId;
-    fm_int    sw;
-    fm_bool   notifyTimeout;
-} fm10000_crmUserInfo;
 
 /*****************************************************************************
  * Function prototypes.
@@ -90,7 +93,7 @@ fm_status fm10000EnableCrmMonitor(fm_int sw, fm_int crmId);
 fm_status fm10000InitCrm(fm_int sw);
 fm_status fm10000StartCrmMonitors(fm_int sw);
 fm_status fm10000CrmUpdateChecksum(fm_smEventInfo *eventInfo, void *userInfo);
-fm_status fm10000FreeCrmStructures(void);
+fm_status fm10000FreeCrmStructures(fm_int sw);
 
 fm_status fmDbgDisableCrmInterrupts(fm_int sw);
 fm_status fmDbgEnableCrmInterrupts(fm_int sw);

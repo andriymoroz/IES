@@ -710,6 +710,11 @@ typedef enum
 #define FM_AAT_API_PLATFORM_MODEL_DEVICE_CFG        FM_API_ATTR_INT
 #define FM_AAD_API_PLATFORM_MODEL_DEVICE_CFG        0x0000FF80
 
+/* Specifies the value of the CHIP_VERSION register for the White Model. */
+#define FM_AAK_API_PLATFORM_MODEL_CHIP_VERSION      "api.platform.model.chipVersion"
+#define FM_AAT_API_PLATFORM_MODEL_CHIP_VERSION      FM_API_ATTR_INT
+#define FM_AAD_API_PLATFORM_MODEL_CHIP_VERSION      0
+
 /* Specifies the TCP where the SERDES SBUS Server is listening on.
  * A non-zero value will enable the SBUS Server thread. This simulates
  * the aacs server for aapl utilities program to control the SERDES. */
@@ -788,7 +793,7 @@ typedef enum
 /* Indicates whether to pCal on KR modes is enabled or not */
 #define FM_AAK_API_DFE_ALLOW_KR_PCAL_MODE               "api.dfe.allowKrPcal"
 #define FM_AAT_API_DFE_ALLOW_KR_PCAL_MODE               FM_API_ATTR_BOOL
-#define FM_AAD_API_DFE_ALLOW_KR_PCAL_MODE               FALSE
+#define FM_AAD_API_DFE_ALLOW_KR_PCAL_MODE               TRUE
 
 /* Indicates whether signalOk debouncing is enabled or not */
 #define FM_AAK_API_DFE_ENABLE_SIGNALOK_DEBOUNCING       "api.dfe.enableSigOkDebounce"

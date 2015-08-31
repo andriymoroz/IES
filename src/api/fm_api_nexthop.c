@@ -2784,6 +2784,7 @@ fm_int fmBasicTreeCompare(const void *first, const void *second)
  * \return          FM_ERR_TABLE_FULL if all available ECMP groups are in use.
  * \return          FM_ERR_NO_MEM if memory cannot be allocated.
  * \return          FM_ERR_TABLE_FULL if the hardware ARP table is full.
+ * \return          FM_ERR_INVALID_ARGUMENT if an argument is invalid.
  *
  *****************************************************************************/
 fm_status fmCreateECMPGroup(fm_int      sw,
@@ -2893,6 +2894,11 @@ fm_status fmCreateECMPGroup(fm_int      sw,
  * \return          FM_ERR_TABLE_FULL if all available ECMP groups are in use.
  * \return          FM_ERR_NO_MEM if memory cannot be allocated.
  * \return          FM_ERR_TABLE_FULL if the hardware ARP table is full.
+ * \return          FM_ERR_INVALID_ARGUMENT if an argument is invalid.
+ * \return          FM_ERR_INVALID_VALUE if the number of next-hop entries is
+ *                  invalid for a fixed size ECMP group. Valid values for fixed
+ *                  size ECMP groups are: (1..16,32,64,128,256,512,1024,2048,
+ *                  4096).
  *
  *****************************************************************************/
 fm_status fmCreateECMPGroupV2(fm_int            sw,
@@ -2949,6 +2955,11 @@ fm_status fmCreateECMPGroupV2(fm_int            sw,
  * \return          FM_ERR_TABLE_FULL if all available ECMP groups are in use.
  * \return          FM_ERR_NO_MEM if memory cannot be allocated.
  * \return          FM_ERR_TABLE_FULL if the hardware ARP table is full.
+ * \return          FM_ERR_INVALID_ARGUMENT if an argument is invalid.
+ * \return          FM_ERR_INVALID_VALUE if the number of next-hop entries is
+ *                  invalid for a fixed size ECMP group. Valid values for fixed
+ *                  size ECMP groups are: (1..16,32,64,128,256,512,1024,2048,
+ *                  4096).
  *
  *****************************************************************************/
 fm_status fmCreateECMPGroupInternal(fm_int                sw,

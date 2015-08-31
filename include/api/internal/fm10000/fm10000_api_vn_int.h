@@ -309,7 +309,6 @@ fm_status fm10000GetVNTunnelGroupAndRule(fm_int              sw,
                                          fm_int *            group,
                                          fm_int *            rule,
                                          fm_tunnelGlortUser *glort);
-fm_status fm10000UpdateTunnelUdpPort(fm_int sw);
 fm_status fm10000AddVNRemoteAddress(fm_int             sw,
                                     fm_virtualNetwork *vn,
                                     fm_vnTunnel *      tunnel,
@@ -327,7 +326,43 @@ fm_status fm10000DeleteVNRemoteAddressMask(fm_int             sw,
                                            fm_virtualNetwork *vn,
                                            fm_vnAddress *     baseAddr,
                                            fm_vnAddress *     addrMask);
+fm_status fm10000GetVNRemoteAddressList(fm_int             sw,
+                                        fm_virtualNetwork *vn,
+                                        fm_int             maxAddresses,
+                                        fm_int *           numAddresses,
+                                        fm_vnAddress *     addrList,
+                                        fm_int *           tunnelIdList);
+fm_status fm10000GetVNRemoteAddressFirst(fm_int             sw,
+                                         fm_virtualNetwork *vn,
+                                         fm_voidptr *       searchToken,
+                                         fm_vnAddress *     addr,
+                                         fm_int *           tunnelId);
+fm_status fm10000GetVNRemoteAddressNext(fm_int             sw,
+                                        fm_virtualNetwork *vn,
+                                        fm_voidptr *       searchToken,
+                                        fm_vnAddress *     addr,
+                                        fm_int *           tunnelId);
+fm_status fm10000GetVNRemoteAddressMaskList(fm_int             sw,
+                                            fm_virtualNetwork *vn,
+                                            fm_int             maxAddrMasks,
+                                            fm_int *           numAddrMasks,
+                                            fm_vnAddress *     addrList,
+                                            fm_vnAddress *     addrMaskList,
+                                            fm_int *           tunnelIdList);
+fm_status fm10000GetVNRemoteAddressMaskFirst(fm_int             sw,
+                                             fm_virtualNetwork *vn,
+                                             fm_voidptr *       searchToken,
+                                             fm_vnAddress *     addr,
+                                             fm_vnAddress *     addrMask,
+                                             fm_int *           tunnelId);
+fm_status fm10000GetVNRemoteAddressMaskNext(fm_int             sw,
+                                            fm_virtualNetwork *vn,
+                                            fm_voidptr *       searchToken,
+                                            fm_vnAddress *     addr,
+                                            fm_vnAddress *     addrMask,
+                                            fm_int *           tunnelId);
 fm_status fm10000ConfigureVN(fm_int sw, fm_vnConfiguration *config);
+fm_status fm10000GetVNConfiguration(fm_int sw, fm_vnConfiguration *config);
 fm_status fm10000AddVNDirectTunnelRule(fm_int     sw,
                                        fm_int     tunnelId,
                                        fm_uint32  vni,
@@ -344,12 +379,38 @@ fm_status fm10000AddVNLocalPort(fm_int             sw,
 fm_status fm10000DeleteVNLocalPort(fm_int             sw,
                                    fm_virtualNetwork *vn,
                                    fm_int             port);
+fm_status fm10000GetVNLocalPortList(fm_int             sw,
+                                    fm_virtualNetwork *vn,
+                                    fm_int             maxPorts,
+                                    fm_int *           numPorts,
+                                    fm_int *           portList);
+fm_status fm10000GetVNLocalPortFirst(fm_int                 sw,
+                                     fm_virtualNetwork *    vn,
+                                     fm_mcastGroupListener *searchToken,
+                                     fm_int *               port);
+fm_status fm10000GetVNLocalPortNext(fm_int                 sw,
+                                    fm_virtualNetwork *    vn,
+                                    fm_mcastGroupListener *searchToken,
+                                    fm_int *               port);
 fm_status fm10000AddVNVsi(fm_int             sw,
                           fm_virtualNetwork *vn,
                           fm_int             vsi);
 fm_status fm10000DeleteVNVsi(fm_int             sw,
                              fm_virtualNetwork *vn,
                              fm_int             vsi);
+fm_status fm10000GetVNVsiList(fm_int    sw,
+                              fm_uint32 vni,
+                              fm_int    maxVsis,
+                              fm_int *  numVsis,
+                              fm_int *  vsiList);
+fm_status fm10000GetVNVsiFirst(fm_int    sw,
+                               fm_uint32 vni,
+                               fm_int *  searchToken,
+                               fm_int *  vsi);
+fm_status fm10000GetVNVsiNext(fm_int    sw,
+                              fm_uint32 vni,
+                              fm_int *  searchToken,
+                              fm_int *  vsi);
 fm_status fm10000IsVNTunnelInUseByACLs(fm_int   sw,
                                        fm_int   tunnelId,
                                        fm_bool *inUse);

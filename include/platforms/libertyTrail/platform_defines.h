@@ -600,6 +600,13 @@ typedef enum _fm_platformSwitchType
  *  \chips  FM2000, FM4000 */ 
 #define FM_EBI_MHZ                          0
 
+/* Max number of hw ports supported */
+#define FM_NUM_HW_RES_ID                    72
+
+/* Default HW_RES_IS, used only if api.platform.config.default.hwResourceId is
+ * not defined */
+#define FM_DEFAULT_HW_RES_ID                0xFFFFFFFF
+
 
 /*****************************************************************************
  * Per-Switch Routing Support Constants
@@ -714,7 +721,7 @@ typedef enum _fm_platformSwitchType
  *  sw is the switch number for the model instance whose state structure
  *  is to be retrieved.
  *                                                                      \lb\lb
- *  This sample implementation is from the altaWhiteModel platform where
+ *  This sample implementation is from the FM6000 WhiteModel platform where
  *  the pointer to the model state is kept in the platform's own state
  *  structure, but there is no requirement for this to be the case. For
  *  example, this macro could be implemented to call a function which

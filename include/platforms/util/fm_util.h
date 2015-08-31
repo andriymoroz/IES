@@ -34,7 +34,7 @@
 #ifndef __FM_UTIL_H
 #define __FM_UTIL_H
 
-#define ALTA_I2C_ADDR       0x40
+#define FM6000_I2C_ADDR       0x40
 
 typedef fm_status (*fm_utilI2cWriteReadFunc)(int      fd,
                                              fm_int   dev,

@@ -46,14 +46,8 @@
  *  \ingroup constSystem */
 #define FM10000_MAX_RULE_PER_FLOW_TE_TABLE 16384
 
-/* The maximum number of mapped portsets */ 
+/* The maximum number of mapped portsets */
 #define FM10000_FLOW_PORTSET_NUM    4
-
-/* Tunnel Engine default configuration values. */
-#define FM10000_FLOW_VXLAN_PORT     4789
-#define FM10000_FLOW_NGE_PORT       6081
-#define FM10000_FLOW_NVGRE_PROTOCOL 0x6558
-#define FM10000_FLOW_NVGRE_VERSION  0
 
 /* Base ACL position for Flow tables. */
 #define FM10000_FLOW_BASE_ACL       21000000
@@ -158,28 +152,28 @@ typedef struct _fm10000_flowInfo
  * Internal Function Prototypes.
  *****************************************************************************/
 
-fm_status fm10000CreateFlowTCAMTable(fm_int           sw, 
-                                     fm_int           tableIndex, 
+fm_status fm10000CreateFlowTCAMTable(fm_int           sw,
+                                     fm_int           tableIndex,
                                      fm_flowCondition condition,
                                      fm_uint32        maxEntries,
                                      fm_uint32        maxAction);
 
-fm_status fm10000DeleteFlowTCAMTable(fm_int           sw, 
+fm_status fm10000DeleteFlowTCAMTable(fm_int           sw,
                                      fm_int           tableIndex);
 
-fm_status fm10000CreateFlowTETable(fm_int           sw, 
-                                   fm_int           tableIndex, 
+fm_status fm10000CreateFlowTETable(fm_int           sw,
+                                   fm_int           tableIndex,
                                    fm_flowCondition condition,
                                    fm_uint32        maxEntries,
                                    fm_uint32        maxAction);
 
-fm_status fm10000DeleteFlowTETable(fm_int           sw, 
+fm_status fm10000DeleteFlowTETable(fm_int           sw,
                                    fm_int           tableIndex);
 
-fm_status fm10000AddFlow(fm_int           sw, 
+fm_status fm10000AddFlow(fm_int           sw,
                          fm_int           tableIndex,
                          fm_uint16        priority,
-                         fm_uint32        precedence, 
+                         fm_uint32        precedence,
                          fm_flowCondition condition,
                          fm_flowValue *   condVal,
                          fm_flowAction    action,
@@ -187,7 +181,7 @@ fm_status fm10000AddFlow(fm_int           sw,
                          fm_flowState     flowState,
                          fm_int *         flowId);
 
-fm_status fm10000GetFlow(fm_int             sw, 
+fm_status fm10000GetFlow(fm_int             sw,
                          fm_int             tableIndex,
                          fm_int             flowId,
                          fm_flowCondition * flowCond,
@@ -197,11 +191,11 @@ fm_status fm10000GetFlow(fm_int             sw,
                          fm_int *           priority,
                          fm_int *           precedence);
 
-fm_status fm10000ModifyFlow(fm_int           sw, 
+fm_status fm10000ModifyFlow(fm_int           sw,
                             fm_int           tableIndex,
                             fm_int           flowId,
                             fm_uint16        priority,
-                            fm_uint32        precedence, 
+                            fm_uint32        precedence,
                             fm_flowCondition condition,
                             fm_flowValue *   condVal,
                             fm_flowAction    action,
@@ -229,22 +223,22 @@ fm_status fm10000GetFlowRuleNext(fm_int   sw,
 
 fm_status fm10000DeleteFlow(fm_int sw, fm_int tableIndex, fm_int flowId);
 
-fm_status fm10000SetFlowState(fm_int       sw, 
-                              fm_int       tableIndex, 
-                              fm_int       flowId, 
+fm_status fm10000SetFlowState(fm_int       sw,
+                              fm_int       tableIndex,
+                              fm_int       flowId,
                               fm_flowState flowState);
 
-fm_status fm10000GetFlowCount(fm_int           sw, 
-                              fm_int           tableIndex, 
+fm_status fm10000GetFlowCount(fm_int           sw,
+                              fm_int           tableIndex,
                               fm_int           flowId,
                               fm_flowCounters *counters);
 
-fm_status fm10000ResetFlowCount(fm_int sw, 
-                                fm_int tableIndex, 
+fm_status fm10000ResetFlowCount(fm_int sw,
+                                fm_int tableIndex,
                                 fm_int flowId);
 
-fm_status fm10000GetFlowUsed(fm_int   sw, 
-                             fm_int   tableIndex, 
+fm_status fm10000GetFlowUsed(fm_int   sw,
+                             fm_int   tableIndex,
                              fm_int   flowId,
                              fm_bool  clear,
                              fm_bool *used);

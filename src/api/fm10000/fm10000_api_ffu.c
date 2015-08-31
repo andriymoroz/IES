@@ -107,9 +107,6 @@ typedef fm_status (*fm_writeReg32Seq)(fm_int     sw,
  * Local Functions
  *****************************************************************************/
 
-
-#if (FM10000_USE_FFU_SLICE_MONITOR)
-
 /*****************************************************************************/
 /** SuspendTcamMonitor
  * \ingroup intLowlevFFU10k
@@ -182,8 +179,6 @@ static fm_status ResumeTcamMonitor(fm_int sw, const fm_ffuSliceInfo *slice)
     return FM_OK;
 
 }   /* end ResumeTcamMonitor */
-
-#endif  /* FM10000_USE_FFU_SLICE_MONITOR */
 
 
 
@@ -1416,8 +1411,8 @@ fm_status fm10000MoveFFURules(fm_int                 sw,
     fm_uint32     addrArray[(FM10000_FFU_SLICE_TCAM_ENTRIES_1 + 1) * FM10000_FFU_SLICE_TCAM_WIDTH * 2];
     fm_uint32     valueArray[(FM10000_FFU_SLICE_TCAM_ENTRIES_1 + 1) * FM10000_FFU_SLICE_TCAM_WIDTH * 2];
     fm_int        addrCount;
-    fm_writeReg32Seq WriteReg32Seq;
     fm_bool       regLockTaken;
+    fm_writeReg32Seq WriteReg32Seq;
 
     /* declare all what you need and log the arguments */
     FM_LOG_ENTRY(FM_LOG_CAT_FFU,
@@ -1527,11 +1522,9 @@ fm_status fm10000MoveFFURules(fm_int                 sw,
                         FM10000_FFU_SLICE_SRAM_WIDTH;
     ramSwitchRegOffset = ramCacheRegOffset * 4;
 
-#if (FM10000_USE_FFU_SLICE_MONITOR)
     /* Suspend TCAM checking during update. */
     err = SuspendTcamMonitor(sw, slice);
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_FFU, err);
-#endif
 
     TAKE_REG_LOCK(sw);   /* make access atomic */
     TAKE_PLAT_LOCK(sw, FM_MEM_TYPE_CSR);
@@ -1662,15 +1655,13 @@ fm_status fm10000MoveFFURules(fm_int                 sw,
 
     }   /* end for (i = 0 ; i < nRules ; i++) */
 
-#if (FM10000_USE_FFU_SLICE_MONITOR)
     /* Resume checking of FFU TCAMs. */
-
     DROP_PLAT_LOCK(sw, FM_MEM_TYPE_CSR);
     DROP_REG_LOCK(sw);
     regLockTaken = FALSE;
+
     err = ResumeTcamMonitor(sw, slice);
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_FFU, err);
-#endif
 
 ABORT:
 
@@ -2373,11 +2364,9 @@ fm_status fm10000SetFFURule(fm_int                       sw,
     nKeySlices    = 1 + slice->keyEnd - slice->keyStart;
     nActionSlices = 1 + slice->actionEnd - slice->keyEnd;
 
-#if (FM10000_USE_FFU_SLICE_MONITOR)
     /* Suspend TCAM checking during update. */
     err = SuspendTcamMonitor(sw, slice);
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_FFU, err);
-#endif
 
     /* Translate the key part of the rule for all the condition slices */
     FM_CLEAR(data);
@@ -2547,11 +2536,9 @@ fm_status fm10000SetFFURule(fm_int                       sw,
 
     }   /* end if ( live == TRUE ) */
 
-#if (FM10000_USE_FFU_SLICE_MONITOR)
     /* Resume checking of FFU TCAMs. */
     err = ResumeTcamMonitor(sw, slice);
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_FFU, err);
-#endif
 
 ABORT:
     UNPROTECT_SWITCH(sw);
@@ -2707,11 +2694,9 @@ fm_status fm10000SetFFURules(fm_int                        sw,
                         (nKeySlices * FM10000_FFU_SLICE_TCAM_WIDTH +
                         nActionSlices * FM10000_FFU_SLICE_SRAM_WIDTH) );
 
-#if (FM10000_USE_FFU_SLICE_MONITOR)
     /* Suspend TCAM checking during update. */
     err = SuspendTcamMonitor(sw, slice);
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_FFU, err);
-#endif
 
     /* Translate the key part of the rule for all the condition slices */
     dataPtr = data;
@@ -2889,11 +2874,9 @@ fm_status fm10000SetFFURules(fm_int                        sw,
 
     }   /* end if ( live == TRUE ) */
 
-#if (FM10000_USE_FFU_SLICE_MONITOR)
     /* Resume checking of FFU TCAMs. */
     err = ResumeTcamMonitor(sw, slice);
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_FFU, err);
-#endif
 
 ABORT:
     FM_FREE_TEMP_ARRAYS();
@@ -2949,7 +2932,7 @@ fm_status fm10000SetFFURuleValid(fm_int                 sw,
                                  fm_bool                valid,
                                  fm_bool                useCache)
 {
-    fm_status   err;
+    fm_status        err;
 
     VALIDATE_AND_PROTECT_SWITCH(sw);
 
@@ -2961,18 +2944,14 @@ fm_status fm10000SetFFURuleValid(fm_int                 sw,
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_FFU, err);
     }
 
-#if (FM10000_USE_FFU_SLICE_MONITOR)
     err = SuspendTcamMonitor(sw, slice);
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_FFU, err);
-#endif
 
     err = SetFFURuleValid(sw, slice, ruleIndex, valid, useCache);
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_FFU, err);
 
-#if (FM10000_USE_FFU_SLICE_MONITOR)
     err = ResumeTcamMonitor(sw, slice);
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_FFU, err);
-#endif
 
 ABORT:
     UNPROTECT_SWITCH(sw);
@@ -3718,11 +3697,9 @@ fm_status fm10000CopyFFURules(fm_int                 sw,
 
     sgIndex += nActionSlices;
 
-#if (FM10000_USE_FFU_SLICE_MONITOR)
     /* Suspend TCAM checking during update. */
     err = SuspendTcamMonitor(sw, slice);
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_FFU, err);
-#endif
 
     /**************************************************
      * Acquire the regLock, so that the read-modify-write
@@ -3807,13 +3784,12 @@ fm_status fm10000CopyFFURules(fm_int                 sw,
         }
     }
 
-#if (FM10000_USE_FFU_SLICE_MONITOR)
     /* Resume checking of FFU TCAMs. */
     DROP_REG_LOCK(sw);
     regLockTaken = FALSE;
+
     err = ResumeTcamMonitor(sw, slice);
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_FFU, err);
-#endif
 
 ABORT:
     FM_FREE_TEMP_ARRAYS();

@@ -77,7 +77,7 @@ enum
         {                                                   \
             lastRouteSlice  = lastPartition;                \
         }                                                   \
-    }                                                           
+    }
 
 
 #define DO_SLICES_OVERLAP(owner1First,                      \
@@ -209,12 +209,12 @@ static fm_trapCodeMapping trapCodeMappingTable[] =
  * \ingroup intSwitch
  *
  * \desc            Creates the first IP Options trigger.
- * 
+ *
  *                  The global IP options trap (SYS_CFG_ROUTER.trapIPOptions)
  *                  applies to all frames, including ones that have not been
  *                  routed. This trigger untraps all switched IP frames that
  *                  are trapped because they contain IP options.
- *                  See Bugzero 2296, 2362. 
+ *                  See Bugzero 2296, 2362.
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -296,12 +296,12 @@ ABORT:
  * \ingroup intSwitch
  *
  * \desc            Creates the second IP Options trigger.
- * 
+ *
  *                  This trigger selectively untraps routed IP frames that are
  *                  trapped due to IP options. When the global IP options trap
  *                  is set, all IP frames are trapped.  This trigger allows
- *                  the user to trap (1) all, (2) none, (3) unicast frames, or 
- *                  (4) multicast frames; See Bugzero 2296, 2362. 
+ *                  the user to trap (1) all, (2) none, (3) unicast frames, or
+ *                  (4) multicast frames; See Bugzero 2296, 2362.
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -441,7 +441,7 @@ static fm_status SetIpOptionsDisposition(fm_int sw, fm_int disp)
     /**************************************************
      * We must protect the read-modify-write cycle on
      * SYS_CFG_ROUTER with routingLock rather then
-     * regLock because routingLock is used to manage 
+     * regLock because routingLock is used to manage
      * this register when changing router attributes.
      **************************************************/
 
@@ -550,7 +550,7 @@ static fm_status SetFrameAgingTime(fm_int sw, fm_int value)
     fm_uint32           timeoutMult;
     fm_uint32           rv;
     fm_status           err;
-    
+
     FM_LOG_ENTRY(FM_LOG_CAT_ATTR, "sw=%d value=%d\n", sw, value);
 
     switchPtr = GET_SWITCH_PTR(sw);
@@ -610,9 +610,9 @@ ABORT:
  *                  to the hardware.
  *
  * \param[in]       sw is the switch on which to operate.
- * 
+ *
  * \param[in]       index is the index of the reserved MAC address.
- * 
+ *
  * \param[in]       action is the action to be performed.
  *
  * \param[in]       useTrapPri specifies whether to use the configured
@@ -642,8 +642,8 @@ static fm_status WriteReservedMac(fm_int  sw,
      * Configure the MAC address action.
      **************************************************/
 
-    err = switchPtr->ReadUINT32Mult(sw, 
-                                    FM10000_IEEE_RESERVED_MAC_ACTION(0), 
+    err = switchPtr->ReadUINT32Mult(sw,
+                                    FM10000_IEEE_RESERVED_MAC_ACTION(0),
                                     FM10000_IEEE_RESERVED_MAC_ACTION_WIDTH,
                                     reservedMacCtrl);
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_ATTR, err);
@@ -656,8 +656,8 @@ static fm_status WriteReservedMac(fm_int  sw,
     reservedMacCtrl[arrayIndex] &= ~(0x3 << arrayBit);
     reservedMacCtrl[arrayIndex] |= ((action & 3) << arrayBit);
 
-    err = switchPtr->WriteUINT32Mult(sw, 
-                                     FM10000_IEEE_RESERVED_MAC_ACTION(0), 
+    err = switchPtr->WriteUINT32Mult(sw,
+                                     FM10000_IEEE_RESERVED_MAC_ACTION(0),
                                      FM10000_IEEE_RESERVED_MAC_ACTION_WIDTH,
                                      reservedMacCtrl);
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_ATTR, err);
@@ -707,10 +707,10 @@ ABORT:
  * \desc            Sets the configuration of a reserved MAC address.
  *
  * \param[in]       sw is the switch on which to operate.
- * 
+ *
  * \param[in]       index is the low-order octet of the reserved MAC address
  *                  to be configured.
- * 
+ *
  * \param[in]       action is the action to be performed. See ''fm_resMacAction''
  *                  for legal values.
  *
@@ -758,7 +758,7 @@ static fm_status SetReservedMacCfg(fm_int  sw,
  * \desc            Gets the configuration of a reserved MAC address.
  *
  * \param[in]       sw is the switch on which to operate.
- * 
+ *
  * \param[in,out]   resMac points to the structure to be filled in with the
  *                  MAC address configuration.
  *
@@ -802,16 +802,16 @@ static fm_status GetReservedMacCfg(fm_int  sw, fm_reservedMacCfg * resMac)
  * \param[in]       sw is the switch on which to operate.
  *
  * \param[in]       first is the suffix (last byte) of the first reserved MAC
- *                  for which the action should be set. 
- * 
+ *                  for which the action should be set.
+ *
  * \param[in]       last is the suffix (last byte) of the last reserved MAC for
  *                  which the action should be set. To set the action for
  *                  only one MAC, last should be equal to first.
- * 
+ *
  * \param[in]       action is the action to take when a frame has a
  *                  reserved DMAC between 'first' and 'last'. Possible
  *                  actions are: switch, trap, drop or log.
- * 
+ *
  * \param[in]       usePri is TRUE if the switch should use the configured
  *                  trap priority for the frame.
  *
@@ -822,7 +822,7 @@ static fm_status GetReservedMacCfg(fm_int  sw, fm_reservedMacCfg * resMac)
  *****************************************************************************/
 static fm_status SetReservedMacAction(fm_int    sw,
                                       fm_uint32 first,
-                                      fm_uint32 last, 
+                                      fm_uint32 last,
                                       fm_uint32 action,
                                       fm_bool   usePri)
 {
@@ -837,11 +837,11 @@ static fm_status SetReservedMacAction(fm_int    sw,
     fm_uint32       arrayBit;
     fm_bool         regLockTaken;
 
-    FM_LOG_ENTRY(FM_LOG_CAT_SWITCH, 
+    FM_LOG_ENTRY(FM_LOG_CAT_SWITCH,
                  "sw = %d, first = %d, last = %d, action = %d, usePri = %d\n",
-                 sw, 
-                 first, 
-                 last, 
+                 sw,
+                 first,
+                 last,
                  action,
                  usePri);
 
@@ -863,8 +863,8 @@ static fm_status SetReservedMacAction(fm_int    sw,
     regLockTaken = FALSE;
     FM_FLAG_TAKE_REG_LOCK(sw);
 
-    err = switchPtr->ReadUINT32Mult(sw, 
-                                    FM10000_IEEE_RESERVED_MAC_ACTION(0), 
+    err = switchPtr->ReadUINT32Mult(sw,
+                                    FM10000_IEEE_RESERVED_MAC_ACTION(0),
                                     FM10000_IEEE_RESERVED_MAC_ACTION_WIDTH,
                                     reservedMacCtrl);
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
@@ -889,8 +889,8 @@ static fm_status SetReservedMacAction(fm_int    sw,
         switchExt->reservedMacUsePri[suffix] = usePri;
     }
 
-    err = switchPtr->WriteUINT32Mult(sw, 
-                                     FM10000_IEEE_RESERVED_MAC_ACTION(0), 
+    err = switchPtr->WriteUINT32Mult(sw,
+                                     FM10000_IEEE_RESERVED_MAC_ACTION(0),
                                      FM10000_IEEE_RESERVED_MAC_ACTION_WIDTH,
                                      reservedMacCtrl);
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
@@ -901,7 +901,7 @@ static fm_status SetReservedMacAction(fm_int    sw,
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_ATTR, err);
 
 ABORT:
-    
+
     if (regLockTaken)
     {
         DROP_REG_LOCK(sw);
@@ -1050,7 +1050,7 @@ ABORT:
  * \desc            Get the L2 Hashing rotation configuration.
  *
  * \param[in]       sw is the switch on which to operate.
- * 
+ *
  * \param[in]       rot refer to the rotation to retreive. Can be either A
  *                  or B.
  *
@@ -1086,14 +1086,14 @@ static fm_status GetL2HashRot(fm_int        sw,
 
     if (rot == FM_HASH_ROTATION_A)
     {
-        l2HashRot->hashRotation = FM_GET_FIELD( hashCfg, 
-                                                FM10000_L234_HASH_CFG, 
+        l2HashRot->hashRotation = FM_GET_FIELD( hashCfg,
+                                                FM10000_L234_HASH_CFG,
                                                 RotationA );
     }
     else if (rot == FM_HASH_ROTATION_B)
     {
-        l2HashRot->hashRotation = FM_GET_FIELD( hashCfg, 
-                                                FM10000_L234_HASH_CFG, 
+        l2HashRot->hashRotation = FM_GET_FIELD( hashCfg,
+                                                FM10000_L234_HASH_CFG,
                                                 RotationB );
     }
     else
@@ -1163,7 +1163,7 @@ static fm_status GetL3Hash(fm_int           sw,
     l3HashCfg->ECMPRotation = FM_GET_FIELD( hashCfg, FM10000_L34_HASH_CFG, ECMP_Rotation );
 
     l3HashCfg->protocol1 = FM_GET_FIELD( hashCfg, FM10000_L34_HASH_CFG, PROT1 );
-  
+
     l3HashCfg->protocol2 = FM_GET_FIELD( hashCfg, FM10000_L34_HASH_CFG, PROT2 );
 
     l3HashCfg->useProtocol1 = FM_GET_BIT( hashCfg, FM10000_L34_HASH_CFG, UsePROT1 );
@@ -1290,7 +1290,7 @@ ABORT:
  * \desc            Set the L2 Hashing rotation configuration.
  *
  * \param[in]       sw is the switch on which to operate.
- * 
+ *
  * \param[in]       rot refer to the rotation to configure. Can be either A
  *                  or B.
  *
@@ -1411,7 +1411,7 @@ static fm_status SetL3Hash(fm_int           sw,
     {
         FM_LOG_EXIT(FM_LOG_CAT_ATTR, FM_ERR_INVALID_VALUE);
     }
-  
+
     if ( l3HashCfg->ECMPRotation > 0x03 )
     {
         FM_LOG_EXIT(FM_LOG_CAT_ATTR, FM_ERR_INVALID_VALUE);
@@ -1530,7 +1530,7 @@ ABORT:
 /** GetSliceAllocations
  * \ingroup intSwitch
  *
- * \desc            Get the current FFU slice allocations 
+ * \desc            Get the current FFU slice allocations
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -1573,7 +1573,7 @@ static fm_status GetSliceAllocations(fm_int                  sw,
         {
             FM_LOG_EXIT(FM_LOG_CAT_ATTR, err);
         }
-        
+
         sliceAlloc->ipv4UnicastFirstSlice   = -1;
         sliceAlloc->ipv4UnicastLastSlice    = -1;
         sliceAlloc->ipv4MulticastFirstSlice = -1;
@@ -1615,7 +1615,7 @@ static fm_status GetSliceAllocations(fm_int                  sw,
     sliceAlloc->cVlanLastSlice        = -1;
     sliceAlloc->bstRoutingFirstSlice  = -1;
     sliceAlloc->bstRoutingLastSlice   = -1;
-    
+
     if (err == FM_ERR_NO_FFU_RES_FOUND)
     {
         err = FM_OK;
@@ -1713,14 +1713,14 @@ static fm_status SetSliceAllocations(fm_int                  sw,
         routeOldFirstSlice = -1;
         routeOldLastSlice = -1;
     }
-    
+
     err = GetSliceAllocations(sw, &oldSliceAlloc);
 
     if ( (err != FM_ERR_NO_FFU_RES_FOUND) && (err != FM_OK) )
     {
         FM_LOG_EXIT(FM_LOG_CAT_ATTR, err);
     }
-    
+
     if (oldSliceAlloc.aclFirstSlice == -1)
     {
         aclSlicesInUse = 0;
@@ -1733,24 +1733,24 @@ static fm_status SetSliceAllocations(fm_int                  sw,
     routeFirstTcamSlice = 9999;
     routeLastTcamSlice = -1;
 
-    UPDATE_ROUTE_TCAM_SLICE(sliceAlloc->ipv4UnicastFirstSlice, 
+    UPDATE_ROUTE_TCAM_SLICE(sliceAlloc->ipv4UnicastFirstSlice,
                             sliceAlloc->ipv4UnicastLastSlice,
-                            routeFirstTcamSlice, 
+                            routeFirstTcamSlice,
                             routeLastTcamSlice);
 
-    UPDATE_ROUTE_TCAM_SLICE(sliceAlloc->ipv4MulticastFirstSlice, 
+    UPDATE_ROUTE_TCAM_SLICE(sliceAlloc->ipv4MulticastFirstSlice,
                             sliceAlloc->ipv4MulticastLastSlice,
-                            routeFirstTcamSlice, 
+                            routeFirstTcamSlice,
                             routeLastTcamSlice);
 
-    UPDATE_ROUTE_TCAM_SLICE(sliceAlloc->ipv6UnicastFirstSlice, 
+    UPDATE_ROUTE_TCAM_SLICE(sliceAlloc->ipv6UnicastFirstSlice,
                             sliceAlloc->ipv6UnicastLastSlice,
-                            routeFirstTcamSlice, 
+                            routeFirstTcamSlice,
                             routeLastTcamSlice);
 
-    UPDATE_ROUTE_TCAM_SLICE(sliceAlloc->ipv6MulticastFirstSlice, 
+    UPDATE_ROUTE_TCAM_SLICE(sliceAlloc->ipv6MulticastFirstSlice,
                             sliceAlloc->ipv6MulticastLastSlice,
-                            routeFirstTcamSlice, 
+                            routeFirstTcamSlice,
                             routeLastTcamSlice);
 
     FM_LOG_DEBUG(FM_LOG_CAT_ATTR,
@@ -2229,7 +2229,7 @@ static fm_status SetSliceAllocations(fm_int                  sw,
 /** UpdatePerPortAttribute
  * \ingroup intSwitch
  *
- * \desc            Applies a port attribute to all ports. 
+ * \desc            Applies a port attribute to all ports.
  *
  * \param[in]       sw is the switch number to operate on.
  *
@@ -2237,7 +2237,7 @@ static fm_status SetSliceAllocations(fm_int                  sw,
  *
  * \param[in]       value points to the storage that contains the port
  *                  attribute value to set
- * 
+ *
  * \return          FM_OK if successful.
  *
  *****************************************************************************/
@@ -2257,9 +2257,9 @@ static fm_status UpdatePerPortAttribute(fm_int sw, fm_int attr, void *value)
     fm_int          portSkipList[FM10000_NUM_PORTS];
     fm_int          nSkipPorts = 0;
     fm_bool         portIsInLag = FALSE;
-                
+
     FM_LOG_ENTRY(FM_LOG_CAT_ATTR,
-                 "sw=%d attr=%d value=%p\n", 
+                 "sw=%d attr=%d value=%p\n",
                  sw, attr, value);
 
     switchPtr = GET_SWITCH_PTR(sw);
@@ -2284,19 +2284,19 @@ static fm_status UpdatePerPortAttribute(fm_int sw, fm_int attr, void *value)
      * attributes are on a per-lag basis. */
     for (i = 0; i < nLags; i++)
     {
-        err = fm10000SetPortAttribute(sw, 
-                                      lagList[i], 
-                                      FM_PORT_ACTIVE_MAC, 
-                                      FM_PORT_LANE_NA, 
+        err = fm10000SetPortAttribute(sw,
+                                      lagList[i],
+                                      FM_PORT_ACTIVE_MAC,
+                                      FM_PORT_LANE_NA,
                                       attr,
                                       value);
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_ATTR, err);
 
         /* Retrieve the LAG member ports to add them to the skip list. */
-        err = fmGetLAGPortList(sw, 
-                               lagList[i], 
-                               &nLagPorts, 
-                               lagPortList, 
+        err = fmGetLAGPortList(sw,
+                               lagList[i],
+                               &nLagPorts,
+                               lagPortList,
                                FM_MAX_NUM_LAG_MEMBERS);
 
         for (j = 0; j < nLagPorts; j++)
@@ -2328,16 +2328,16 @@ static fm_status UpdatePerPortAttribute(fm_int sw, fm_int attr, void *value)
             continue;
         }
 
-        err = fm10000SetPortAttribute(sw, 
-                                      port, 
-                                      FM_PORT_ACTIVE_MAC, 
-                                      FM_PORT_LANE_NA, 
+        err = fm10000SetPortAttribute(sw,
+                                      port,
+                                      FM_PORT_ACTIVE_MAC,
+                                      FM_PORT_LANE_NA,
                                       attr,
                                       value);
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_ATTR, err);
 
     }   /* end for (cpi = 0 ; cpi < switchPtr->numCardinalPorts ; cpi++) */
-    
+
 ABORT:
     FM_LOG_EXIT(FM_LOG_CAT_ATTR, err);
 
@@ -2533,7 +2533,7 @@ fm_status fm10000GetSwitchAttribute(fm_int sw, fm_int attr, void *value)
             {
                 fm_trapType type = ((fm_trapCodeMapping *) value )->type;
                 fm_int *    codePtr = &((fm_trapCodeMapping *) value )->code;
-        
+
                 err = fm10000GetSwitchTrapCode(sw, type, codePtr);
             }
             break;
@@ -2542,7 +2542,7 @@ fm_status fm10000GetSwitchAttribute(fm_int sw, fm_int attr, void *value)
             {
                 fm_int       code = ((fm_trapCodeMapping *) value )->code;
                 fm_trapType *typePtr = &((fm_trapCodeMapping *) value )->type;
-        
+
                 err = fm10000GetSwitchTrapType(sw, code, typePtr);
             }
             break;
@@ -2578,7 +2578,7 @@ fm_status fm10000GetSwitchAttribute(fm_int sw, fm_int attr, void *value)
         case FM_DROP_INVALID_SMAC:
             *( (fm_bool *) value ) = switchExt->dropInvalidSmac;
             break;
- 
+
         case FM_SWITCH_PARSER_CUSTOM_TAG:
             customTag = (fm_customTag *) value;
 
@@ -2684,8 +2684,8 @@ fm_status fm10000GetSwitchAttribute(fm_int sw, fm_int attr, void *value)
                 FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_ATTR, err);
             }
 
-            err = switchPtr->ReadUINT64(sw, 
-                                        FM10000_MOD_VID2_MAP(mapEntry->entry, 0), 
+            err = switchPtr->ReadUINT64(sw,
+                                        FM10000_MOD_VID2_MAP(mapEntry->entry, 0),
                                         &reg64);
             FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_ATTR, err);
 
@@ -2877,6 +2877,9 @@ fm_status fm10000SetSwitchAttribute(fm_int sw, fm_int attr, void *value)
     fm_portType         portType;
     fm_bool             addToMcastGroup;
     fm_int              previousValue;
+    fm_int              i;
+    fm_fm10000TeTunnelCfg tunnelCfg;
+    fm_fm10000TeParserCfg parserCfg;
 
     FM_LOG_ENTRY(FM_LOG_CAT_ATTR,
                  "sw=%d attr=%d value=%p\n",
@@ -2924,7 +2927,7 @@ fm_status fm10000SetSwitchAttribute(fm_int sw, fm_int attr, void *value)
             }
             break;
 
-        case FM_VLAN_LEARNING_MODE: 
+        case FM_VLAN_LEARNING_MODE:
             mode = *( (fm_vlanLearningMode *) value );
 
             /* Only do something if the mode is different */
@@ -3061,7 +3064,7 @@ fm_status fm10000SetSwitchAttribute(fm_int sw, fm_int attr, void *value)
             break;
 
         case FM_LAG_PRUNING:
-            /* User input is reverse of the flag, 
+            /* User input is reverse of the flag,
              * since we want pruning enabled with zero value */
             VALIDATE_VALUE_IS_BOOL(value);
             switchPtr->lagInfoTable.pruningDisabled = !*( (fm_bool *)value );
@@ -3076,7 +3079,7 @@ fm_status fm10000SetSwitchAttribute(fm_int sw, fm_int attr, void *value)
             err = SetSliceAllocations(sw, (fm_ffuSliceAllocations *) value);
             break;
 
-        case FM_L2_HASH_KEY:       
+        case FM_L2_HASH_KEY:
             err = SetL2Hash(sw, (fm_L2HashKey *) value);
             break;
 
@@ -3109,7 +3112,7 @@ fm_status fm10000SetSwitchAttribute(fm_int sw, fm_int attr, void *value)
 
         case FM_REDIRECT_CPU_TRAFFIC:
             intValue = *( (fm_int *) value);
-            
+
             if (intValue < 0)
             {
                 err = FM_ERR_INVALID_PORT;
@@ -3162,7 +3165,7 @@ fm_status fm10000SetSwitchAttribute(fm_int sw, fm_int attr, void *value)
             if ( (intValue != FM_BCAST_FLOODING_PER_PORT) ||
                  (previousValue == FM_BCAST_FWD) )
             {
-                err = UpdatePerPortAttribute(sw, 
+                err = UpdatePerPortAttribute(sw,
                                              FM_PORT_BCAST_FLOODING,
                                              &portValue);
                 FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_ATTR, err);
@@ -3214,7 +3217,7 @@ fm_status fm10000SetSwitchAttribute(fm_int sw, fm_int attr, void *value)
             if ( (intValue != FM_MCAST_FLOODING_PER_PORT) ||
                  (previousValue == FM_MCAST_FWD) )
             {
-                err = UpdatePerPortAttribute(sw, 
+                err = UpdatePerPortAttribute(sw,
                                              FM_PORT_MCAST_FLOODING,
                                              &portValue);
                 FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_ATTR, err);
@@ -3266,7 +3269,7 @@ fm_status fm10000SetSwitchAttribute(fm_int sw, fm_int attr, void *value)
             if ( (intValue != FM_UCAST_FLOODING_PER_PORT) ||
                  (previousValue == FM_UCAST_FWD) )
             {
-                err = UpdatePerPortAttribute(sw, 
+                err = UpdatePerPortAttribute(sw,
                                              FM_PORT_UCAST_FLOODING,
                                              &portValue);
                 FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_ATTR, err);
@@ -3285,11 +3288,11 @@ fm_status fm10000SetSwitchAttribute(fm_int sw, fm_int attr, void *value)
             VALIDATE_VALUE_IS_BOOL(value);
             switchExt->trapLacp = *( (fm_bool *) value);
 
-            tmpUint32 = (switchExt->trapLacp) ? 
-                FM_RES_MAC_ACTION_TRAP : 
+            tmpUint32 = (switchExt->trapLacp) ?
+                FM_RES_MAC_ACTION_TRAP :
                 FM_RES_MAC_ACTION_SWITCH;
 
-            err = SetReservedMacAction(sw, 
+            err = SetReservedMacAction(sw,
                                        FM_RES_MAC_INDEX_LACP,
                                        FM_RES_MAC_INDEX_LACP,
                                        tmpUint32,
@@ -3300,11 +3303,11 @@ fm_status fm10000SetSwitchAttribute(fm_int sw, fm_int attr, void *value)
             VALIDATE_VALUE_IS_BOOL(value);
             switchExt->trapBpdu = *( (fm_bool *) value);
 
-            tmpUint32 = (switchExt->trapBpdu) ? 
-                FM_RES_MAC_ACTION_TRAP : 
+            tmpUint32 = (switchExt->trapBpdu) ?
+                FM_RES_MAC_ACTION_TRAP :
                 FM_RES_MAC_ACTION_SWITCH;
 
-            err = SetReservedMacAction(sw, 
+            err = SetReservedMacAction(sw,
                                        FM_RES_MAC_INDEX_BPDU,
                                        FM_RES_MAC_INDEX_BPDU,
                                        tmpUint32,
@@ -3315,11 +3318,11 @@ fm_status fm10000SetSwitchAttribute(fm_int sw, fm_int attr, void *value)
             VALIDATE_VALUE_IS_BOOL(value);
             switchExt->trapGarp = *( (fm_bool *) value);
 
-            tmpUint32 = (switchExt->trapGarp) ? 
-                FM_RES_MAC_ACTION_TRAP : 
+            tmpUint32 = (switchExt->trapGarp) ?
+                FM_RES_MAC_ACTION_TRAP :
                 FM_RES_MAC_ACTION_SWITCH;
 
-            err = SetReservedMacAction(sw, 
+            err = SetReservedMacAction(sw,
                                        FM_RES_MAC_INDEX_GARP_MIN,
                                        FM_RES_MAC_INDEX_GARP_MAX,
                                        tmpUint32,
@@ -3330,11 +3333,11 @@ fm_status fm10000SetSwitchAttribute(fm_int sw, fm_int attr, void *value)
             VALIDATE_VALUE_IS_BOOL(value);
             switchExt->trap8021X = *( (fm_bool *) value);
 
-            tmpUint32 = (switchExt->trap8021X) ? 
-                FM_RES_MAC_ACTION_TRAP : 
+            tmpUint32 = (switchExt->trap8021X) ?
+                FM_RES_MAC_ACTION_TRAP :
                 FM_RES_MAC_ACTION_SWITCH;
 
-            err = SetReservedMacAction(sw, 
+            err = SetReservedMacAction(sw,
                                        FM_RES_MAC_INDEX_802_1X,
                                        FM_RES_MAC_INDEX_802_1X,
                                        tmpUint32,
@@ -3344,7 +3347,7 @@ fm_status fm10000SetSwitchAttribute(fm_int sw, fm_int attr, void *value)
         case FM_TRAP_MTU_VIOLATIONS:
             VALIDATE_VALUE_IS_BOOL(value);
             tmpBool = *( (fm_bool *) value);
-            
+
             err = switchPtr->ReadUINT32(sw,
                                         FM10000_SYS_CFG_1(),
                                         &reg32);
@@ -3366,7 +3369,7 @@ fm_status fm10000SetSwitchAttribute(fm_int sw, fm_int attr, void *value)
         case FM_TRAP_PLUS_LOG:
             VALIDATE_VALUE_IS_BOOL(value);
             tmpBool = *( (fm_bool *) value);
-            
+
             err = switchPtr->ReadUINT32(sw,
                                         FM10000_SYS_CFG_1(),
                                         &reg32);
@@ -3388,7 +3391,7 @@ fm_status fm10000SetSwitchAttribute(fm_int sw, fm_int attr, void *value)
         case FM_DROP_PAUSE:
             VALIDATE_VALUE_IS_BOOL(value);
             tmpBool = (*( (fm_bool *) value) != 0);
-            
+
             err = switchPtr->ReadUINT32(sw,
                                         FM10000_SYS_CFG_1(),
                                         &reg32);
@@ -3420,7 +3423,7 @@ fm_status fm10000SetSwitchAttribute(fm_int sw, fm_int attr, void *value)
         case FM_DROP_INVALID_SMAC:
             VALIDATE_VALUE_IS_BOOL(value);
             tmpBool = *( (fm_bool *) value);
-            
+
             err = switchPtr->ReadUINT32(sw,
                                         FM10000_SYS_CFG_1(),
                                         &reg32);
@@ -3487,7 +3490,7 @@ fm_status fm10000SetSwitchAttribute(fm_int sw, fm_int attr, void *value)
             parserDiCfg = (fm_parserDiCfg *) value;
 
             if ( (parserDiCfg->index < 0) ||
-                 (parserDiCfg->index > FM_MAX_PARSER_DI_CFG_INDEX )) 
+                 (parserDiCfg->index > FM_MAX_PARSER_DI_CFG_INDEX ))
             {
                 err = FM_ERR_INVALID_ARGUMENT;
                 FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_ATTR, err);
@@ -3517,7 +3520,7 @@ fm_status fm10000SetSwitchAttribute(fm_int sw, fm_int attr, void *value)
                            L4Port,
                            parserDiCfg->parserDiCfgFields.l4Port);
 
-            FM_SET_FIELD64(reg64, 
+            FM_SET_FIELD64(reg64,
                            FM10000_PARSER_DI_CFG,
                            WordOffset,
                            parserDiCfg->parserDiCfgFields.wordOffset);
@@ -3653,16 +3656,48 @@ fm_status fm10000SetSwitchAttribute(fm_int sw, fm_int attr, void *value)
 
         case FM_SWITCH_TUNNEL_DEST_UDP_PORT:
             switchExt->vnVxlanUdpPort = *( (fm_uint32 *) value );
+            tunnelCfg.l4DstVxLan = switchExt->vnVxlanUdpPort;
+            parserCfg.vxLanPort = switchExt->vnVxlanUdpPort;
 
-            err = fm10000UpdateTunnelUdpPort(sw);
-            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_ATTR, err);
+            for (i = 0 ; i < FM10000_TE_DEFAULT_L4DST_ENTRIES ; i++)
+            {
+                err = fm10000SetTeDefaultTunnel(sw,
+                                                i,
+                                                &tunnelCfg,
+                                                FM10000_TE_DEFAULT_TUNNEL_L4DST_VXLAN,
+                                                TRUE);
+                FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_ATTR, err);
+
+                err = fm10000SetTeParser(sw,
+                                         i,
+                                         &parserCfg,
+                                         FM10000_TE_PARSER_VXLAN_PORT,
+                                         TRUE);
+                FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_ATTR, err);
+            }
             break;
 
         case FM_SWITCH_GENEVE_TUNNEL_DEST_UDP_PORT:
             switchExt->vnGeneveUdpPort = *( (fm_uint32 *) value );
+            tunnelCfg.l4DstNge = switchExt->vnGeneveUdpPort;
+            parserCfg.ngePort = switchExt->vnGeneveUdpPort;
 
-            err = fm10000UpdateTunnelUdpPort(sw);
-            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_ATTR, err);
+            for (i = 0 ; i < FM10000_TE_DEFAULT_L4DST_ENTRIES ; i++)
+            {
+                err = fm10000SetTeDefaultTunnel(sw,
+                                                i,
+                                                &tunnelCfg,
+                                                FM10000_TE_DEFAULT_TUNNEL_L4DST_NGE,
+                                                TRUE);
+                FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_ATTR, err);
+
+                err = fm10000SetTeParser(sw,
+                                         i,
+                                         &parserCfg,
+                                         FM10000_TE_PARSER_NGE_PORT,
+                                         TRUE);
+                FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_ATTR, err);
+            }
             break;
 
         case FM_SWITCH_TRAP_CODE:
@@ -3714,8 +3749,8 @@ fm_status fm10000SetSwitchAttribute(fm_int sw, fm_int attr, void *value)
 
             FM_SET_FIELD64(reg64, FM10000_MOD_VID2_MAP, VID, mapEntry->value);
 
-            err = switchPtr->WriteUINT64(sw, 
-                                         FM10000_MOD_VID2_MAP(mapEntry->entry, 0), 
+            err = switchPtr->WriteUINT64(sw,
+                                         FM10000_MOD_VID2_MAP(mapEntry->entry, 0),
                                          reg64);
             FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_ATTR, err);
             break;
@@ -3840,15 +3875,15 @@ fm_status fm10000SetSwitchAttribute(fm_int sw, fm_int attr, void *value)
             break;
 
         case FM_SWITCH_ETH_TIMESTAMP_OWNER:
-            /* Announce Tx Timestamp Mode when Ethernet Timestamp owner 
+            /* Announce Tx Timestamp Mode when Ethernet Timestamp owner
              * changes */
             if (switchExt->ethTimestampsOwnerPort != *( (fm_int *) value) )
-            { 
+            {
                 if (*( (fm_int *) value) != -1)
                 {
-                    err = fm10000GetLogicalPortAttribute(sw, 
-                                                         *( (fm_int *) value), 
-                                                         FM_LPORT_TYPE, 
+                    err = fm10000GetLogicalPortAttribute(sw,
+                                                         *( (fm_int *) value),
+                                                         FM_LPORT_TYPE,
                                                          (void *)&portType);
                     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_ATTR, err);
 
@@ -3886,7 +3921,7 @@ fm_status fm10000SetSwitchAttribute(fm_int sw, fm_int attr, void *value)
             break;
 
     }   /* end switch (attr) */
-    
+
 ABORT:
     if (regLockTaken)
     {
@@ -3965,7 +4000,7 @@ ABORT:
  * \desc            Retrieves a trap code for a given trap type
  *
  * \param[in]       sw is the switch on which to operate.
- * 
+ *
  * \param[in]       type is the trap code id from the ''fm_trapType'' enum
  *
  * \param[out]      code points to caller-allocated storage where the trap
@@ -3984,12 +4019,12 @@ fm_status fm10000GetSwitchTrapCode(fm_int sw, fm_trapType type, fm_int *code)
 
     FM_LOG_ENTRY(FM_LOG_CAT_SWITCH,
                  "sw=%d, type=%d, code=%p\n",
-                 sw, 
+                 sw,
                  type,
                  (void *)code);
 
-    for (i = 0; 
-         i < ( sizeof(trapCodeMappingTable) / sizeof(fm_trapCodeMapping) ); 
+    for (i = 0;
+         i < ( sizeof(trapCodeMappingTable) / sizeof(fm_trapCodeMapping) );
          i++ )
     {
         if (type == trapCodeMappingTable[i].type)
@@ -4004,9 +4039,9 @@ fm_status fm10000GetSwitchTrapCode(fm_int sw, fm_trapType type, fm_int *code)
     {
         err = FM_ERR_INVALID_TRAP_CODE;
     }
-    
+
     FM_LOG_EXIT(FM_LOG_CAT_SWITCH, err);
-    
+
 }   /* end fm10000GetSwitchTrapCode */
 
 
@@ -4019,7 +4054,7 @@ fm_status fm10000GetSwitchTrapCode(fm_int sw, fm_trapType type, fm_int *code)
  * \desc            Retrieves a trap type for a given trap code
  *
  * \param[in]       sw is the switch on which to operate.
- * 
+ *
  * \param[in]       code is the trap code to convert
  *
  * \param[out]      type points to caller-allocated storage where the trap
@@ -4038,12 +4073,12 @@ fm_status fm10000GetSwitchTrapType(fm_int sw, fm_int code, fm_trapType *type)
 
     FM_LOG_ENTRY(FM_LOG_CAT_SWITCH,
                  "sw=%d, code=%d, type=%p\n",
-                 sw, 
+                 sw,
                  code,
                  (void *) type);
 
-    for (i = 0; 
-         i < ( sizeof(trapCodeMappingTable) / sizeof(fm_trapCodeMapping) ); 
+    for (i = 0;
+         i < ( sizeof(trapCodeMappingTable) / sizeof(fm_trapCodeMapping) );
          i++ )
     {
         if (code == trapCodeMappingTable[i].code)
@@ -4058,9 +4093,9 @@ fm_status fm10000GetSwitchTrapType(fm_int sw, fm_int code, fm_trapType *type)
     {
         err = FM_ERR_INVALID_TRAP_CODE;
     }
-    
+
     FM_LOG_EXIT(FM_LOG_CAT_SWITCH, err);
-    
+
 }   /* end fm10000GetSwitchTrapType */
 
 
@@ -4069,7 +4104,7 @@ fm_status fm10000GetSwitchTrapType(fm_int sw, fm_int code, fm_trapType *type)
 /*****************************************************************************/
 /** fm10000InitHashing
  * \ingroup intSwitch
- * 
+ *
  * \desc            Initialize the hashing to be inline with default values
  *
  * \param[in]       sw is the switch number to operate on.
@@ -4143,7 +4178,7 @@ ABORT:
 /*****************************************************************************/
 /** fm10000InitSwitchAttributes
  * \ingroup intSwitch
- * 
+ *
  * \desc            Sets various switch attributes to their default values.
  *
  * \param[in]       sw is the switch to operate on.
@@ -4166,7 +4201,7 @@ fm_status fm10000InitSwitchAttributes(fm_int sw)
     switchExt = GET_SWITCH_EXT(sw);
 
     /**********************************************************************
-     * Set the default values for the VLAN Ether Type in API cache. 
+     * Set the default values for the VLAN Ether Type in API cache.
      * Default value for all vlan tag ether types is 0x8100.
      **********************************************************************/
     for (index = 0 ; index < FM10000_PARSER_VLAN_TAG_ENTRIES ; index++)
@@ -4231,7 +4266,7 @@ fm_status fm10000InitSwitchAttributes(fm_int sw)
 
     err = fm10000SetBoolSwitchAttribute(sw, FM_DROP_PAUSE, TRUE);
     FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_SWITCH, err);
-    
+
     switchExt->trapMtuViolations    = TRUE;
     switchExt->trapPlusLog          = TRUE;
     switchExt->dropInvalidSmac      = TRUE;

@@ -140,6 +140,7 @@ fm_status fmPlatformSwitchInitialize(fm_int sw);
 fm_status fmPlatformSwitchTerminate(fm_int sw);
 fm_status fmPlatformSwitchInserted(fm_int sw);
 fm_status fmPlatformSwitchPreInsert(fm_int sw);
+fm_status fmPlatformTerminate(void);
 
 fm_status fmPlatformRelease(fm_int sw);
 fm_status fmPlatformReset(fm_int sw);

@@ -240,6 +240,14 @@ enum _fm_switchAttr
      *                                                                  \lb\lb
      *  For FM6000 and FM10000 devices, using this attribute will overwrite
      *  the configuration of the ''FM_PORT_BCAST_FLOODING'' port attribute.
+     *                                                                  \lb\lb
+     *  For FM10000 devices, this attribute must be set to ''FM_BCAST_FWD''
+     *  to ensure that VLAN information retrieved from a packet received
+     *  from a PEP port is properly forwarded in the FTAG of the egress
+     *  packet going to the CPU port. If the ''FM_PORT_BCAST_FLOODING'' port
+     *  attribute is used instead to forward broadcast packets to the CPU
+     *  port, the VLAN information will not be preserved when such packets
+     *  are forwarded to the CPU port.
      *
      *  \chips  FM2000, FM3000, FM4000, FM6000, FM10000 */
     FM_BCAST_FLOODING,
@@ -268,6 +276,14 @@ enum _fm_switchAttr
      *                                                                  \lb\lb
      *  For FM6000 and FM10000 devices, using this attribute will overwrite   
      *  the configuration of the ''FM_PORT_MCAST_FLOODING'' port attribute.
+     *                                                                  \lb\lb
+     *  For FM10000 devices, this attribute must be set to ''FM_MCAST_FWD''
+     *  to ensure that the VLAN information retrieved from a packet received
+     *  from a PEP port is properly forwarded in the FTAG of the egress
+     *  packet going to the CPU port. If the ''FM_PORT_MCAST_FLOODING'' port
+     *  attribute is used instead to forward unknown multicast packets to
+     *  the CPU port, the VLAN information will not be preserved when such
+     *  packets are forwarded to the CPU port.
      *  
      *  \chips  FM2000, FM3000, FM4000, FM6000, FM10000 */
     FM_MCAST_FLOODING,
@@ -296,6 +312,14 @@ enum _fm_switchAttr
      *                                                                  \lb\lb
      *  For FM6000 and FM10000 devices, using this attribute will overwrite
      *  the configuration of the ''FM_PORT_UCAST_FLOODING'' port attribute.
+     *                                                                  \lb\lb
+     *  For FM10000 devices, this attribute must be set to ''FM_UCAST_FWD''
+     *  to ensure that the VLAN information retrieved from a packet received
+     *  from a PEP port is properly forwarded in the FTAG of the egress
+     *  packet going to the CPU port. If the ''FM_PORT_UCAST_FLOODING'' port
+     *  attribute is used instead to forward unknown unicast packets to the
+     *  CPU port, the VLAN information will not be preserved when such
+     *  packets are forwarded to the CPU port.
      *  
      *  \chips  FM2000, FM3000, FM4000, FM6000, FM10000 */
     FM_UCAST_FLOODING,
@@ -654,12 +678,12 @@ enum _fm_switchAttr
      *  \chips  FM3000, FM4000, FM6000, FM10000 */
     FM_REDIRECT_CPU_TRAFFIC,
 
-    /** Type ''fm_mtuEntry'': Indicates a VLAN MTU. On FM3000 and FM4000
-     *  devices, up to eight MTU values may be specified, each identified
-     *  by an index field in the ''fm_mtuEntry'' structure. On FM6000 devices, 
-     *  up to 16 MTU values may be specified. Once an MTU value is established, 
-     *  it may be associated with any VLAN by setting the VLAN's 
-     *  ''FM_VLAN_MTU'' attribute.
+    /** Type ''fm_mtuEntry'': Specifies a VLAN MTU. On FM3000, FM4000, and
+     *  FM10000 devices, up to eight MTU values may be specified, each
+     *  identified by an index field in the ''fm_mtuEntry'' structure. On
+     *  FM6000 devices, up to 16 MTU values may be specified. Once an MTU
+     *  value is established, it may be associated with any VLAN by setting
+     *  the VLAN's ''FM_VLAN_MTU'' attribute.
      *                                                                  \lb\lb
      *  The MTU is checked only for IP frames and the check is made against
      *  the packet length found in the IP header, not the actual frame
@@ -872,7 +896,7 @@ enum _fm_switchAttr
      *                                                                  \lb\lb
      *  If a VNTAG is detected, its data words will be available as deep
      *  inspection fields G and H. Note that VN-Tag parsing is incompatible
-     *  with Deep Inspection parsing (''FM_PORT_DI_PARSING'').
+     *  with Deep Inspection parsing (FM_PORT_DI_PARSING).
      *  
      *  \chips  FM6000 */
     FM_SWITCH_PARSE_VNTAG,
@@ -918,7 +942,7 @@ enum _fm_switchAttr
      *  If an ARP is detected, its data words will be available in
      *  the deep inspection fields. Note that ARP parsing is
      *  enabled if L3/L4 parsing is enabled and Deep Inspection
-     *  parsing is enabled (''FM_PORT_DI_PARSING'').
+     *  parsing is enabled (FM_PORT_DI_PARSING).
      *
      *  \chips  FM6000 */
     FM_SWITCH_PARSE_ARP,
@@ -1198,7 +1222,7 @@ typedef enum
 
 
 /**************************************************/
-/** \ingroup intTypeEnum
+/** \ingroup typeEnum
  * Set of possible enumerated values for the
  * ''FM_BCAST_FLOODING'' switch attribute.
  **************************************************/
@@ -1232,7 +1256,7 @@ typedef enum
 
 
 /**************************************************/
-/** \ingroup intTypeEnum
+/** \ingroup typeEnum
  * Set of possible enumerated values for the
  * ''FM_MCAST_FLOODING'' switch attribute.
  **************************************************/
@@ -1269,7 +1293,7 @@ typedef enum
 
 
 /**************************************************/
-/** \ingroup intTypeEnum
+/** \ingroup typeEnum
  * Set of possible enumerated values for the
  * ''FM_UCAST_FLOODING'' switch attribute.
  **************************************************/
@@ -1484,7 +1508,12 @@ typedef enum
     /** 25GBASE-KR: 25G, 1 lane, 64/66b encoding.
      *  This mode is read-only, i.e., it can be set only through Clause-73
      *  autonegotiation. */
-    FM_ETH_MODE_25GBASE_KR,
+    FM_ETH_MODE_25GBASE_KR
+,
+    /** 25GBASE-CR: 25G, 1 lane, 64/66b encoding.
+     *  This mode is read-only, i.e., it can be set only through Clause-73
+     *  autonegotiation. */
+    FM_ETH_MODE_25GBASE_CR,
 
     /** AN-73: Auto-negotiation Clause 73. */
     FM_ETH_MODE_AN_73,
@@ -1702,19 +1731,19 @@ enum _fm_vlanAttr
      *  switched frames, not routed, and reflection is subject to the ingress
      *  port's ''FM_PORT_MASK'' attribute.
      *                                                                  \lb\lb
-     *  On FM6000 devices, the effect of setting this attribute is 
-     *  identical to setting the ''FM_VLAN_ROUTING_REFLECT_UNICAST'',
-     *  ''FM_VLAN_ROUTING_REFLECT_MULTICAST'' and
-     *  ''FM_VLAN_SWITCHING_REFLECT'' attributes individually to the same 
-     *  value. See those attributes for more information.
+     *  On FM6000 devices, the effect of setting this attribute is identical
+     *  to setting the FM_VLAN_ROUTING_REFLECT_UNICAST,
+     *  FM_VLAN_ROUTING_REFLECT_MULTICAST and FM_VLAN_SWITCHING_REFLECT
+     *  attributes individually to the same value. See those attributes for
+     *  more information.
      *
      *  \chips  FM2000, FM3000, FM4000, FM6000, FM10000 */
     FM_VLAN_REFLECT = 0,
 
-    /** Type fm_bool: Routing on this VLAN: FM_ENABLED or
-     *  FM_DISABLED (default). A VLAN must have this attribute enabled in order
-     *  for traffic ingressing on the VLAN to be routed. When this attribute
-     *  is disabled, ingressing traffic will only be switched at layer 2.
+    /** Type fm_bool: Routing on this VLAN: FM_ENABLED or FM_DISABLED
+     *  (default). A VLAN must have this attribute enabled in order for
+     *  traffic ingressing on the VLAN to be routed. When this attribute is
+     *  disabled, ingressing traffic will only be switched at layer 2.
      *                                                                  \lb\lb
      *  Note: When a VLAN is assigned to a router interface (by calling
      *  ''fmSetInterfaceAttribute'' for the ''FM_INTERFACE_VLAN'' attribute),
@@ -1753,7 +1782,7 @@ enum _fm_vlanAttr
     FM_VLAN_FID2_IVL,
 
     /** Type: fm_bool. Enables trapping of ARP frames. This attribute has
-     *  been deprecated in favor of the ''FM_VLAN_ARP_LOGGING'' attribute
+     *  been deprecated in favor of the FM_VLAN_ARP_LOGGING attribute
      *
      * \chips FM6000 */
     FM_VLAN_ARP_TRAPPING,
@@ -1983,7 +2012,16 @@ enum _fm_triggerAttr
  ****************************************************************************/
 enum _fm_maTableAttr
 {
-    /** Type fm_uint32: The size of the MA Table in bytes (read-only). 
+    /** Type fm_uint32: The size of the MA Table in bytes (read-only). Used
+     *  to determine the number of bytes to allocate for the array passed to
+     *  the ''fmGetAddressTableExt'' function.
+     *  
+     *  For physical switches, the API returns a value based on the capacity
+     *  of the hardware MA Table.
+     *  
+     *  For SWAG switches, the API returns a value based on the number of
+     *  entries in the SWAG MA Table, which may exceed the capacity of a
+     *  single switch. If the SWAG MA Table is empty, its size will be zero.
      *
      *  \chips  FM2000, FM3000, FM4000, FM6000, FM10000 */
     FM_MAC_TABLE_SIZE = 0,
@@ -2346,7 +2384,7 @@ enum _fm_portAttr
      *  for the ISL Tag. 
      *
      *  \portType6K ETH, PCIE, LAG
-     *  \portType10K ETH, PCIE:ro, TE, LPBK, LAG
+     *  \portType10K ETH, PCIE:ro, TE:ro, LPBK, LAG
      *  \chips  FM2000, FM3000, FM4000, FM6000, FM10000 */
     FM_PORT_MIN_FRAME_SIZE = 0,
 
@@ -2362,7 +2400,7 @@ enum _fm_portAttr
      *  for the ISL Tag. 
      *
      *  \portType6K ETH, PCIE, LAG
-     *  \portType10K ETH, PCIE:ro, TE, LPBK, LAG
+     *  \portType10K ETH, PCIE:ro, TE:ro, LPBK, LAG
      *  \chips  FM2000, FM3000, FM4000, FM6000, FM10000 */
     FM_PORT_MAX_FRAME_SIZE,
 
@@ -2433,7 +2471,7 @@ enum _fm_portAttr
     FM_PORT_SECURITY_TRAP,
 
     /** Type fm_bool: Learning of source addresses on this port: FM_ENABLED
-     *  (default) or FM_DISABLED.
+     *  (default) or FM_DISABLED (default for TE ports).
      *                                                                  \lb\lb
      *  Note: the ''fmSetPortSecurity'' API service will override the value of
      *  this attribute. 
@@ -2569,7 +2607,7 @@ enum _fm_portAttr
      *                                                                  \lb\lb
      *  On FM6000 devices, dropping of priority tagged frames
      *  (VLAN ID is 0) is controlled by a separate attribute, 
-     *  ''FM_PORT_DROP_PRIORITY_TAGGED''.
+     *  FM_PORT_DROP_PRIORITY_TAGGED.
      *                                                                  \lb\lb
      *  On FM10000 devices, this attribute is not applicable if 
      *  port attribute ''FM_PORT_ISL_TAG_FORMAT'' is set to 
@@ -2592,7 +2630,7 @@ enum _fm_portAttr
      *                                                                  \lb\lb
      *  On FM6000 devices, dropping of priority tagged frames
      *  (VLAN ID is 0) is controlled by a separate attribute, 
-     *  ''FM_PORT_DROP_PRIORITY_TAGGED''.
+     *  FM_PORT_DROP_PRIORITY_TAGGED.
      *                                                                  \lb\lb
      *  On FM10000 devices, this attribute is not applicable if 
      *  port attribute ''FM_PORT_ISL_TAG_FORMAT'' is set to 
@@ -2751,7 +2789,7 @@ enum _fm_portAttr
      *  traffic classes.
      *
      *  \portType6K ETH
-     *  \portType10K ETH, PCIE, TE, LPBK
+     *  \portType10K ETH, PCIE, TE, LPBK, LAG
      *  \chips  FM2000, FM3000, FM4000, FM6000, FM10000 */
     FM_PORT_RX_PAUSE,
 
@@ -2979,10 +3017,11 @@ enum _fm_portAttr
      *  \chips  FM2000, FM3000, FM4000, FM6000, FM10000 */
     FM_PORT_DIC_ENABLE,
 
-    /** Type fm_bool: Routing on this port: FM_ENABLED or
-     *  FM_DISABLED (default). A port must have this attribute enabled in order
-     *  for traffic ingressing on the port to be routed. When this attribute
-     *  is disabled, ingressing traffic will only be switched at layer 2.
+    /** Type fm_bool: Routing on this port: FM_ENABLED (default for TE ports)
+     *  or FM_DISABLED (default). A port must have this attribute enabled in
+     *  order for traffic ingressing on the port to be routed. When this
+     *  attribute is disabled, ingressing traffic will only be switched at
+     *  layer 2.
      *  
      *  \portType ETH, PCIE, TE, LPBK, LAG
      *  \chips  FM3000, FM4000, FM6000, FM10000 */
@@ -3045,7 +3084,7 @@ enum _fm_portAttr
      *  will disable PAUSE for all traffic classes.
      *
      *  \portType6K ETH
-     *  \portType10K ETH, PCIE, TE, LPBK
+     *  \portType10K ETH, PCIE, TE, LPBK, LAG
      *  \chips  FM3000, FM4000, FM6000, FM10000 */
     FM_PORT_RX_CLASS_PAUSE,
 
@@ -3130,7 +3169,7 @@ enum _fm_portAttr
      *  IGMP storm control and L3 ACLs.
      *                                                                  \lb\lb
      *  FM_PORT_PARSER_STOP_AFTER_L4 - Note, you must set FM_PORT_PARSER to
-     *  this value to enable L4 ACLs. 
+     *  this value to enable L4 ACLs (default for TE ports).
      *
      *  \portType6K ETH, LAG
      *  \portType10K ETH, PCIE, TE, LPBK, LAG
@@ -3141,11 +3180,9 @@ enum _fm_portAttr
      *  identifies the C-VLAN in a stacked tag environment. The default value
      *  is 0x8100. 
      *                                                                  \lb\lb
-     *  For FM6000 devices, use the following switch attributes:        \lb
-     *  ''FM_SWITCH_VLAN1_ETHERTYPE_A''                                 \lb
-     *  ''FM_SWITCH_VLAN1_ETHERTYPE_B''                                 \lb
-     *  ''FM_SWITCH_VLAN2_ETHERTYPE_A''                                 \lb
-     *  ''FM_SWITCH_VLAN2_ETHERTYPE_B''
+     *  For FM6000 devices, use switch attributes
+     *  FM_SWITCH_VLAN1_ETHERTYPE_A, FM_SWITCH_VLAN1_ETHERTYPE_B,
+     *  FM_SWITCH_VLAN2_ETHERTYPE_A, and FM_SWITCH_VLAN2_ETHERTYPE_B.
      *
      *  \chips  FM3000, FM4000 */
     FM_PORT_PARSER_CVLAN_TAG,
@@ -3156,15 +3193,13 @@ enum _fm_portAttr
      *  ''FM_PORT_PARSER_CVLAN_TAG'' attribute, effectively disables this
      *  attribute. 
      *                                                                  \lb\lb
-     *  For FM6000 devices, use the following switch attributes:        \lb
-     *  ''FM_SWITCH_VLAN1_ETHERTYPE_A''                                 \lb
-     *  ''FM_SWITCH_VLAN1_ETHERTYPE_B''                                 \lb
-     *  ''FM_SWITCH_VLAN2_ETHERTYPE_A''                                 \lb
-     *  ''FM_SWITCH_VLAN2_ETHERTYPE_B''
+     *  For FM6000 devices, use switch attributes
+     *  FM_SWITCH_VLAN1_ETHERTYPE_A, FM_SWITCH_VLAN1_ETHERTYPE_B,
+     *  FM_SWITCH_VLAN2_ETHERTYPE_A, and FM_SWITCH_VLAN2_ETHERTYPE_B.
      *
      *  For FM10000 devices, use switch attribute
      *  ''FM_SWITCH_PARSER_VLAN_ETYPES'', and port attributes
-     *  ''FM_PORT_PARSER_VLAN1_TAG'' and ''FM_PORT_PARSER_VLAN2_TAG''
+     *  ''FM_PORT_PARSER_VLAN1_TAG'' and ''FM_PORT_PARSER_VLAN2_TAG''.
      *
      *  \chips  FM3000, FM4000 */
     FM_PORT_PARSER_VLAN_TAG_A,
@@ -3175,15 +3210,13 @@ enum _fm_portAttr
      *  ''FM_PORT_PARSER_CVLAN_TAG'' attribute, it effectively disables this
      *  attribute. 
      *                                                                  \lb\lb
-     *  For FM6000 devices, use the following switch attributes:        \lb
-     *  ''FM_SWITCH_VLAN1_ETHERTYPE_A''                                 \lb
-     *  ''FM_SWITCH_VLAN1_ETHERTYPE_B''                                 \lb
-     *  ''FM_SWITCH_VLAN2_ETHERTYPE_A''                                 \lb
-     *  ''FM_SWITCH_VLAN2_ETHERTYPE_B''
+     *  For FM6000 devices, use switch attributes
+     *  FM_SWITCH_VLAN1_ETHERTYPE_A, FM_SWITCH_VLAN1_ETHERTYPE_B,
+     *  FM_SWITCH_VLAN2_ETHERTYPE_A, and FM_SWITCH_VLAN2_ETHERTYPE_B.
      *
      *  For FM10000 devices, use switch attribute
      *  ''FM_SWITCH_PARSER_VLAN_ETYPES'', and port attributes
-     *  ''FM_PORT_PARSER_VLAN1_TAG'' and ''FM_PORT_PARSER_VLAN2_TAG''
+     *  ''FM_PORT_PARSER_VLAN1_TAG'' and ''FM_PORT_PARSER_VLAN2_TAG''.
      *
      *  \chips  FM3000, FM4000 */
     FM_PORT_PARSER_VLAN_TAG_B,
@@ -3271,7 +3304,7 @@ enum _fm_portAttr
      *  ''FM_PORT_PARSER_NOT_IP_PAYLOAD'' attribute. FM_ENABLED or
      *  FM_DISABLED (default).
      *                                                                  \lb\lb
-     *  For FM6000 devices, use ''FM_PORT_DI_PARSING''.
+     *  For FM6000 devices, use FM_PORT_DI_PARSING.
      *
      *  \chips  FM3000, FM4000 */
     FM_PORT_PARSER_ENABLE_NOT_IP,
@@ -3403,6 +3436,14 @@ enum _fm_portAttr
      *  \portType ETH:ro
      *  \chips  FM6000, FM10000 */
     FM_PORT_AUTONEG_PARTNER_NEXTPAGES,
+
+    /** Type fm_uint32: Provides the OUI used by 25G auto-negotiation next
+     *  pages used by the 25G-Consortium
+     *                                                                  \lb\lb
+     *  
+     *  \portType ETH
+     *  \chips  FM10000 */
+    FM_PORT_AUTONEG_25G_NEXTPAGE_OUI,
 
     /** Type fm_uint32: The Clause 73 link_fail_inhibit_timer in milliseconds
      *  for all links supported. The default is 0.5 second, a valid range is
@@ -3737,9 +3778,9 @@ enum _fm_portAttr
     FM_PORT_STAT_GROUP_ENABLE,
 
     /** Type fm_bool: Indicates whether loopback suppression
-     *  is enabled or disabled for a port.  Value is either FM_ENABLED (default)
-     *  or FM_DISABLED.  Note that this attribute has no effect when a port is
-     *  a member of a link aggregation group.
+     *  is enabled or disabled for a port. Value is either FM_ENABLED (default)
+     *  or FM_DISABLED (default for TE ports). Note that this attribute has
+     *  no effect when a port is a member of a link aggregation group.
      *                                                                  \lb\lb
      *  This attribute is read-only on the CPU interface port.
      *
@@ -3752,7 +3793,8 @@ enum _fm_portAttr
      *  multi-switch environment (port connects the switch to another
      *  switch). Value is either FM_ENABLED or FM_DISABLED (default).  
      *                                                                   \lb\lb
-     *  On FM10000, this attribute is always FM_DISABLED for PCIe ports.
+     *  On FM10000, this attribute is always FM_DISABLED for PCIe ports
+     *  and FM_ENABLED for TE ports.
      *                                                                   \lb\lb
      *  \portType6K ETH, LAG
      *  \portType10K ETH, PCIE, TE, LPBK, LAG
@@ -4056,7 +4098,7 @@ enum _fm_portAttr
      *  custom L4 protocols.  The value will be rounded down to the nearest 
      *  even value.  Default is zero. 
      *                                                                  \lb\lb
-     *  For FM6000 devices, use ''FM_PORT_DI_PARSING''.
+     *  For FM6000 devices, use FM_PORT_DI_PARSING.
      *
      *  \chips  FM3000, FM4000 */
     FM_PORT_PARSER_UNKNOWN_L4_PAYLOAD,
@@ -4562,8 +4604,8 @@ enum _fm_portAttr
 
     /** Type fm_bool: Specifies whether an ARP packet with DMAC equal to
      *  FF:FF:FF:FF:FF:FF or to one of the router MACs and received on
-     *  a VLAN for which ''FM_VLAN_ARP_LOGGING'' is set to FM_ENABLED should
-     *  be logged to the CPU. Value is FM_ENABLED (default) or FM_DISABLED.
+     *  a VLAN for which FM_VLAN_ARP_LOGGING is set to FM_ENABLED should be
+     *  logged to the CPU. Value is FM_ENABLED (default) or FM_DISABLED.
      *                                                                  \lb\lb
      *  \portType ETH, LAG
      *  \chips FM6000 */
@@ -4746,23 +4788,27 @@ enum _fm_portAttr
 
 
     /** Type fm_bool: Whether to enable Energy Efficient Ethernet mode on
-     *  the port. Defaults to FM_DISABLED on all ports
+     *  the port. Defaults to FM_DISABLED on all ports.
      *
      *  \portType ETH
      *  \chips  FM10000 */
     FM_PORT_EEE_MODE,
 
-    /** Type fm_int: The Energy Efficient Ethernet state of the port.
+    /** Type fm_int: The Energy Efficient Ethernet state of the port. This
+     *  attribute is read-only.
      *                                                                  \lb\lb
      *  FM_PORT_EEE_NORMAL indicates normal mode.
      *                                                                  \lb\lb
-     *  FM_PORT_EEE_RX_LPI indicates the receiver is in Low Power Idle mode.
+     *  FM_PORT_EEE_RX_LPI indicates that the receiver is in Low Power Idle
+     *  mode.
      *                                                                  \lb\lb
-     *  FM_PORT_EEE_TX_LPI indicates the transmitter is in Low Power Idle mode.
+     *  FM_PORT_EEE_TX_LPI indicates that the transmitter is in Low Power
+     *  Idle mode.
      *                                                                  \lb\lb
-     *  FM_PORT_EEE_RX_TX_LPI indicates both RX and TX are in Low Power Idle.
+     *  FM_PORT_EEE_RX_TX_LPI indicates that both RX and TX are in Low Power
+     *  Idle.
      *
-     *  \portType ETH
+     *  \portType ETH:ro
      *  \chips  FM10000 */
     FM_PORT_EEE_STATE,
 
@@ -4783,7 +4829,7 @@ enum _fm_portAttr
      *  waits before starting a new frame transmission upon exiting EEE
      *  low-power mode. It defaults to 180 usec. Note that an extra 20 usec
      *  is added to this timer. That extra time is related to the
-     *  TxLpiHoldTimeout which is hard coded to 20 usec.
+     *  TxLpiHoldTimeout, which is hard coded to 20 usec.
      *  The valid values are from 0 to 255.
      *
      *  \portType ETH
@@ -5036,38 +5082,40 @@ typedef enum
  **************************************************/
 typedef enum
 {
-    /** Tagging Mode 802.1Q. Frames will egress with or without a VID1 VLAN tag,
-     *  on a per-vlan basis, based upon the tag parameter provided in a call to
-     *  ''fmAddVlanPort'' or ''fmChangeVlanPort''. A VID2 VLAN tag will only be
-     *  present if one appeared in the frame on ingress. This is the default
-     *  value. */
+    /** Tagging Mode 802.1Q. Frames will egress with or without a VID1 VLAN
+     *  tag, on a per-vlan basis, based upon the tag parameter provided in a
+     *  call to ''fmAddVlanPort'' or ''fmChangeVlanPort''. A VID2 VLAN tag
+     *  will only be present if one appeared in the frame on ingress. This
+     *  is the default value. */
     FM_PORT_TAGGING_8021Q,
 
-    /** Tagging Mode 802.1AD Customer Port. Frames will egress with or without a
-     *  VID2 VLAN tag, on a per-VLAN basis, based upon the tag parameter provided
-     *  in a call to ''fmAddVlanPort'' or ''fmChangeVlanPort'', or if a VID2 VLAN
-     *  tag was present on ingress. A VID1 VLAN tag will never be present. */
+    /** Tagging Mode 802.1AD Customer Port. Frames will egress with or
+     *  without a VID2 VLAN tag, on a per-VLAN basis, based upon the tag
+     *  parameter provided in a call to ''fmAddVlanPort'' or
+     *  ''fmChangeVlanPort'', or if a VID2 VLAN tag was present on
+     *  ingress. A VID1 VLAN tag will never be present. */
     FM_PORT_TAGGING_8021AD_CUST,
 
-    /** Tagging Mode 802.1AD Provider Port. Frames will always egress with a VID1
-     *  VLAN tag. Frames will egress with or without a VID2 VLAN tag, on a per-VLAN
-     *  basis, based upon the tag parameter provided in a call to ''fmAddVlanPort''
-     *  or ''fmChangeVlanPort'', or if a VID2 VLAN tag was present on ingress. */
+    /** Tagging Mode 802.1AD Provider Port. Frames will always egress with a
+     *  VID1 VLAN tag. Frames will egress with or without a VID2 VLAN tag,
+     *  on a per-VLAN basis, based upon the tag parameter provided in a call
+     *  to ''fmAddVlanPort'' or ''fmChangeVlanPort'', or if a VID2 VLAN
+     *  tag was present on ingress. */
     FM_PORT_TAGGING_8021AD_PROV,
 
-    /** Tagging Mode Pseudo-1. Frames will egress with or without a VID1 VLAN
-     *  tag, on a per-VLAN basis, based upon the tag parameter provided in a call
-     *  to ''fmAddVlanPort'' or ''fmChangeVlanPort''. A VID2 VLAN tag will never
-     *  be present. */
+    /** Tagging Mode Pseudo-1. Frames will egress with or without a VID1
+     *  VLAN tag, on a per-VLAN basis, based upon the tag parameter provided
+     *  in a call to ''fmAddVlanPort'' or ''fmChangeVlanPort''. A VID2 VLAN
+     *  tag will always be present. */
     FM_PORT_TAGGING_PSEUDO1,
 
-    /** Tagging Mode Pseudo-2. Frames will egress with or without a VID1 VLAN tag,
-     *  on a per-VLAN basis, based upon the tag parameter provided in a call to
-     *  ''fmAddVlanPort'' or ''fmChangeVlanPort''. A VID2 VLAN tag will always be
-     *  present. */
+    /** Tagging Mode Pseudo-2. Frames will egress with or without a VID1
+     *  VLAN tag, on a per-VLAN basis, based upon the tag parameter provided
+     *  in a call to ''fmAddVlanPort'' or ''fmChangeVlanPort''. A VID2 VLAN
+     *  tag will never be present. */
     FM_PORT_TAGGING_PSEUDO2,
 
-    /** UNPUBLISHED: For Internal Use Only. Must be last. */
+    /** UNPUBLISHED: For internal use only. Must be last. */
     FM_PORT_TAGGING_MAX,
 
 } fm_portTaggingMode;
@@ -5242,6 +5290,14 @@ enum
 /***************************************************
  * For FM_PORT_ISL_TAG_FORMAT
  **************************************************/
+
+/***************************************************
+ * For FM_PORT_AUTONEG_25G_NEXTPAGE_OUI 
+ * The default OUI is the one defined by the 
+ * 25G-Consortium, draft 1.5 
+ **************************************************/
+#define FM_PORT_25GAN_DEFAULT_OUI   0x6a737d
+
 
 /**************************************************/
 /** \ingroup typeEnum
@@ -7654,8 +7710,8 @@ typedef enum
     FM_QOS_TRAP_CLASS_NEXTHOP_MISS,
 
     /** For ARP frames logged to the CPU. Logging of these frames is enabled
-     *  with the ''FM_VLAN_ARP_LOGGING'' VLAN attribute and
-     *  ''FM_PORT_LOG_ARP'' port attribute.
+     *  with the FM_VLAN_ARP_LOGGING VLAN attribute and ''FM_PORT_LOG_ARP''
+     *  port attribute.
      *  
      *  \chips  FM6000 */
     FM_QOS_TRAP_CLASS_ARP,
@@ -8956,24 +9012,32 @@ typedef struct _fm_vsiData
 
 
 /**************************************************/
-/** \ingroup typeEnum
+/** \ingroup intTypeEnum
  * Logical port specific attributes used with
- * fmGetLogicalPortAttribute(...).
+ * fmGetLogicalPortAttribute and 
+ * fmSetLogicalPortAttribute. 
  **************************************************/
 typedef enum
 {
-    /** The destination mask this logical port maps to. */
+    /** Type fm_portmask: Destination mask this logical port maps to.
+     *  Note that this is a lightweight internal representation of a
+     *  physical port mask. This attribute is NOT supported on SWAG
+     *  switches.
+     *  \chips  FM2000, FM4000, FM6000, FM1000 */
     FM_LPORT_DEST_MASK = 0,
 
-    /** The multicast index associated with this logical port. (FM4000/FM6000) */
+    /** Type fm_uint32: Multicast index associated with this logical port.
+     *  \chips  FM4000, FM6000, FM10000 */
     FM_LPORT_MULTICAST_INDEX,
 
-    /** The port type, see fm_portType */
+    /** Type fm_portType: Logical port type.
+     *  \chips  FM10000 */
     FM_LPORT_TYPE,
 
-    /** Tx Timestamp mode of logical port belonging to a PCIE port. This is
-     *  valid only for PCIE physical port and virtual ports. See
-     *  fm_portTxTimestampMode for more details. */
+    /** Type fm_portTxTimestampMode: Tx Timestamp mode of logical port
+     *  belonging to a PCIE port. This is valid only for PCIE physical port
+     *  and virtual ports. See fm_portTxTimestampMode for more details.
+     *  \chips  FM10000 */
     FM_LPORT_TX_TIMESTAMP_MODE,
 
     /** UNPUBLISHED: For internal use only. */

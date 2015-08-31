@@ -5,7 +5,7 @@
  * Creation Date:   June 28, 2005
  * Description:     Constants shared by multiple software components
  *
- * Copyright (c) 2005 - 2014, Intel Corporation
+ * Copyright (c) 2005 - 2015, Intel Corporation
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -29,7 +29,7 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
+ *****************************************************************************/
 
 #ifndef __FM_FM_API_COMMON_H
 #define __FM_FM_API_COMMON_H
@@ -41,7 +41,6 @@
  * traffic on each VLAN being registered to counter set zero until a counter
  * is allocated for that VLAN via fmAllocateVLANCounters
  */
-
 #define FM_UNUSED_VLAN_COUNTER_ID     0
 
 /** \ingroup constSystem
@@ -91,7 +90,7 @@
 
 /** Use to determine whether switch is accessible */
 #define FM_IS_STATE_ALIVE(state) \
-    ((state >= FM_SWITCH_STATE_BOOT_DONE) && (state <= FM_SWITCH_STATE_UP))
+    (((state) >= FM_SWITCH_STATE_BOOT_DONE) && ((state) <= FM_SWITCH_STATE_UP))
 
 #ifndef FM_SET_MEM_i
 /** Initializes a single-word, 1-dimensional register. */
@@ -737,6 +736,10 @@ typedef enum
     /** FM6724 Version B2.
      *  \chips  FM6000 */
     FM_SWITCH_VERSION_FM6724_B2,
+
+    /** FM10440 Version B0.
+     *  \chips  FM10000 */
+    FM_SWITCH_VERSION_FM10440_B0,
 
     /** UNPUBLISHED: For internal use only. */
     FM_SWITCH_VERSION_MAX,

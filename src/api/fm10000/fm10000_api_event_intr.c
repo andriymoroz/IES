@@ -92,9 +92,6 @@
         }                                                               \
     }
 
-/* PCIE recovery mechanism related defines */
-#define PCIE_IM_RECOVER_MASK                (1 << FM10000_PCIE_IM_b_DeviceStateChange)
-
 
 /*****************************************************************************
  * Global Variables
@@ -303,10 +300,15 @@ fm_status fm10000InterruptHandler(fm_switch *switchPtr)
     fm_bool             regLockTaken = FALSE;
     fm10000_switch *    switchExt;
     fm_uint32           devCfg;
-    fm_uint32           rv;
+    fm_uint32           chipVersion;
+    fm_uint32           xclkMode = 0;
+    fm_uint32           xclkStatus;
+    fm_uint32           xclkSel;
+    fm_bool             restoreXclkMode;
     fm_bool             curPepState;
     fm_uint32           softReset;
-    fm_bool             sendLinkDownEvent = FALSE;
+    fm_uint32           pepLinkDownMask = 0;
+    fm_int              port;
 
     FM_LOG_ENTRY(FM_LOG_CAT_EVENT_INTR,
                  "switchPtr=%p\n",
@@ -414,6 +416,8 @@ fm_status fm10000InterruptHandler(fm_switch *switchPtr)
     pcieIntMask = FM10000_INT_PCIe_0;
     for ( i = 0 ; i < FM10000_NUM_PEPS ; i++ )
     {
+        restoreXclkMode = 0;
+
         /* Don't mask out the DeviceStateChange Interrupt. This is to protect
          * the following corner case:
          *
@@ -457,6 +461,7 @@ fm_status fm10000InterruptHandler(fm_switch *switchPtr)
                 FM_LOG_DEBUG(FM_LOG_CAT_EVENT_INTR, 
                                "PEP[%d] Interrupt Bit Stuck\n", 
                                i);
+
                 FM_LOG_DEBUG(FM_LOG_CAT_EVENT_INTR, 
                                "    GLOBAL_INTERRUPT_DETECT = 0x%016llx\n", 
                                global);
@@ -472,66 +477,114 @@ fm_status fm10000InterruptHandler(fm_switch *switchPtr)
                 /* Apply Recovery if possible */
                 status = switchPtr->ReadUINT32(sw, 
                                                FM10000_CHIP_VERSION(),
-                                               &rv);
+                                               &chipVersion);
                 FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_EVENT_INTR, status);
 
-                if ( rv == FM10000_CHIP_VERSION_A0 )
+                /* Make sure the PEP is in reset */
+                status = fm10000GetPepResetState(sw, i, &curPepState);
+                FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_EVENT_INTR, status);
+
+                if ( !curPepState )
                 {
-                    /* Make sure the PEP is in reset */
-                    status = fm10000GetPepResetState(sw, i, &curPepState);
+                    FM_LOG_DEBUG(FM_LOG_CAT_EVENT_INTR, "    Applying Interrupt Stuck Recovery\n");
+
+                    /* Get the logical port of the pep */
+                    port = switchExt->pepPortMapping[i];
+
+                    if ( port == FM10000_PCIE_INVALID_LOGICAL_PORT ) 
+                    {
+                        /* Skip this recovery since there is no logical port
+                           associated with this PEP */
+                        FM_LOG_DEBUG(FM_LOG_CAT_EVENT_INTR, 
+                                     "Skip recovery, no logicarrl port created for PEP %d\n",
+                                     i);
+
+                        pepLinkDownMask &= ~( PCIE_RECOVERY_FLAG_BASE << i );
+                        pcieIntMask <<= 1;
+                        continue;
+                    }
+
+                    /* Recovery for is done the following way.
+                     *  
+                     * 1- Take the PEP out of reset
+                     * 2- API masks the DeviceStateChange interrupt
+                     * 3- API starts a timer for each PEP to poll their
+                     *    respective states
+                     * 4- PEP is put in reset again
+                     * 5- While polling, if a PEP comes out of reset,
+                     *    its respective timer callback will unmask the
+                     *    DeviceStateChange interrupt and stop the timer
+                     *    for this PEP.
+                     *
+                     * After the last step, no interrupt should be
+                     * detected until the PEP is taken out
+                     * of reset from a clean DeviceStateChange interrupt */
+
+                    /* Take the SOFT_RESET lock */
+                    status = fm10000TakeSoftResetLock(sw);
                     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_EVENT_INTR, status);
 
-                    if ( !curPepState )
+                    if ( (chipVersion == FM10000_CHIP_VERSION_B0) && 
+                         (i != 8) )
                     {
-                        FM_LOG_DEBUG(FM_LOG_CAT_EVENT_INTR, "    Applying A0 recovery\n");
+                        status = fm10000GetXrefClkMode( sw, i, &xclkMode, &xclkStatus);
+                        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, status);
 
-                        /* Recovery for A0 is done the following way.
-                         *  
-                         * 1- Take the PEP out of reset
-                         * 2- API masks the DeviceStateChange interrupt
-                         * 3- API starts a timer for each PEP to poll their
-                         *    respective states
-                         * 4- PEP is put in reset again
-                         * 5- While polling, if a PEP comes out of reset,
-                         *    its respective timer callback will unmask the
-                         *    DeviceStateChange interrupt and stop the timer
-                         *    for this PEP.
-                         *
-                         * After the last step, no interrupt should be
-                         * detected until the PEP is taken out
-                         * of reset from a clean DeviceStateChange interrupt */
+                        xclkSel = FM_GET_UNNAMED_FIELD(xclkStatus, 
+                                                       FM10000_PCIE_CLK_STAT_l_RefclkSel + (i/2),
+                                                       1);
 
-                        /* Take the SOFT_RESET lock */
-                        status = fm10000TakeSoftResetLock(sw);
+                        if ( (xclkMode != FM10000_PCIE_CLK_CTRL_MODE_PCIE_REFCLK) && 
+                             (xclkSel == 0) )
+                        {
+                            status = fm10000SetXrefClkMode( sw, 
+                                                            i, 
+                                                            FM10000_PCIE_CLK_CTRL_MODE_PCIE_REFCLK, 
+                                                            FM10000_PA_ACTIVE_DO_NOTHING);
+                            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, status);
+
+                            restoreXclkMode = 1;
+                        }
+                    }
+
+                    status = switchPtr->ReadUINT32(sw, FM10000_SOFT_RESET(), &softReset);
+                    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_EVENT_INTR, status);
+
+                    /* Force PEP into active state so BSM can update PCIE_IP
+                     * if in recovery mode (from API PoV) */
+                    FM_SET_UNNAMED_FIELD(softReset,
+                                         FM10000_SOFT_RESET_b_PCIeActive_0 + i,
+                                         1,
+                                         1);
+
+                    status = switchPtr->WriteUINT32(sw, FM10000_SOFT_RESET(), softReset);
+                    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_EVENT_INTR, status);
+
+                    status = switchPtr->ReadUINT32(sw, 
+                                       FM10000_PCIE_PF_ADDR(FM10000_PCIE_IM(), 
+                                       i),
+                                       &imTmp32);
+                    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_EVENT_INTR, status);
+
+                    /* Mask the PCIE_IM.DeviceStateChange interrupt */
+                    FM_SET_BIT(imTmp32, FM10000_PCIE_IP, DeviceStateChange, 1);
+                    status = switchPtr->WriteUINT32(sw, 
+                                                    FM10000_PCIE_PF_ADDR(FM10000_PCIE_IM(), 
+                                                    i), 
+                                                    imTmp32);
+
+                    if (restoreXclkMode == 1)
+                    {
+                        /* Need to go to PCIE_REFCLK(0) mode to be able
+                         * force active state on the PEP.*/
+                        status = fm10000SetXrefClkMode(sw, 
+                                                       i, 
+                                                       xclkMode, 
+                                                       FM10000_PA_ACTIVE_CLEAR_AFTER_RESET);
                         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_EVENT_INTR, status);
-
-                        /* Take the PEP out of reset */
-                        status = switchPtr->ReadUINT32(sw, FM10000_SOFT_RESET(), &softReset);
-                        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_EVENT_INTR, status);
-
-                        /* Force PEP into active state so BSM can update PCIE_IP
-                         * if in recovery mode (from API PoV) */
-                        FM_SET_UNNAMED_FIELD(softReset,
-                                             FM10000_SOFT_RESET_b_PCIeActive_0 + i,
-                                             1,
-                                             1);
-
-                        status = switchPtr->WriteUINT32(sw, FM10000_SOFT_RESET(), softReset);
-                        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_EVENT_INTR, status);
-
-                        status = switchPtr->ReadUINT32(sw, 
-                                           FM10000_PCIE_PF_ADDR(FM10000_PCIE_IM(), 
-                                           i),
-                                           &imTmp32);
-                        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_EVENT_INTR, status);
-
-                        /* Mask the PCIE_IM.DeviceStateChange interrupt */
-                        FM_SET_BIT(imTmp32, FM10000_PCIE_IP, DeviceStateChange, 1);
-                        status = switchPtr->WriteUINT32(sw, 
-                                                        FM10000_PCIE_PF_ADDR(FM10000_PCIE_IM(), 
-                                                        i), 
-                                                        imTmp32);
-
+                    }
+                    else
+                    {
                         /* Restore the PEP back to its original state */
                         FM_SET_UNNAMED_FIELD(softReset,
                                  FM10000_SOFT_RESET_b_PCIeActive_0 + i,
@@ -540,26 +593,19 @@ fm_status fm10000InterruptHandler(fm_switch *switchPtr)
 
                         status = switchPtr->WriteUINT32(sw, FM10000_SOFT_RESET(), softReset);
                         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_EVENT_INTR, status);
-
-                        /* Drop the SOFT_RESET lock */
-                        status = fm10000DropSoftResetLock(sw);
-                        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_EVENT_INTR, status);
-
-                        /* Flag that a link down event is needed when
-                           pep event handler will be called */
-                        sendLinkDownEvent = TRUE;
                     }
-                }
-                else
-                {
-                    FM_LOG_DEBUG(FM_LOG_CAT_EVENT_INTR, "    Applying B0 recovery\n");
 
-                    /* clear the GLOBAL_INTERRUPT_DETECT bit for this PEP */
-                    rv = (1 << ( FM10000_GLOBAL_INTERRUPT_DETECT_b_PCIE_0 + i) );
-                    status = switchPtr->WriteUINT32(sw, 
-                                                    FM10000_GLOBAL_INTERRUPT_DETECT(0),
-                                                    rv);
+                    /* Drop the SOFT_RESET lock */
+                    status = fm10000DropSoftResetLock(sw);
                     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_EVENT_INTR, status);
+
+                    /* Start PEP status polling timer */
+                    status = fm10000StartPepStatusPollingTimer(sw, port);
+                    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_EVENT_INTR, status);
+
+                    /* Indicate that a we need to send a link down
+                       event to the port state machine for this pep */
+                    pepLinkDownMask |= (PCIE_RECOVERY_FLAG_BASE << i);              
                 }
 
                 pcieIntMask <<= 1;
@@ -863,11 +909,22 @@ fm_status fm10000InterruptHandler(fm_switch *switchPtr)
      **************************************************/
     for (i = 0 ; i < FM10000_NUM_PEPS ; i++)
     {
+        /* Get the logical port of the pep */
+        port = switchExt->pepPortMapping[i];
+
         /* PEP-related interrupts */
         if ( currentIntr.pcie[i] & FM10000_PCIE_INT_MASK )
         {
-            status = fm10000PepEventHandler(sw, i, currentIntr.pcie[i], &sendLinkDownEvent);
+            status = fm10000PepEventHandler(sw, port, currentIntr.pcie[i]);
             FM_LOG_CONTINUE_ON_ERR(FM_LOG_CAT_EVENT_INTR, status, retStatus);
+        }
+        else if ( ( ( pepLinkDownMask >> i ) & PCIE_RECOVERY_FLAG_BASE ) == 1 ) 
+        {
+            status = fm10000PepRecoveryHandler(sw, port);
+            FM_LOG_CONTINUE_ON_ERR(FM_LOG_CAT_EVENT_INTR, status, retStatus);
+
+            /* reset the pep link down flag for this pep */
+            pepLinkDownMask &= ~( PCIE_RECOVERY_FLAG_BASE << i );
         }
 
         /* Mailbox interrupts */

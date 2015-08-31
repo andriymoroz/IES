@@ -262,7 +262,7 @@ typedef struct _fm10000_mirrorCfg
 /**************************************************
  * Mirror profile entry type.
  **************************************************/
-enum
+enum _fm_mirrorProfileType
 {
     FM10000_MIRROR_PROFILE_NONE,
     FM10000_MIRROR_PROFILE_INTRINSIC,
@@ -274,7 +274,7 @@ enum
 /**************************************************
  * Intrinsic mirror type.
  **************************************************/
-enum
+enum _fm_intrinsicMirrorType
 {
     FM_INTRINSIC_MIRROR_NONE,
     FM_INTRINSIC_MIRROR_FFU,
@@ -425,7 +425,7 @@ typedef struct _fm10000_triggerInfo
 
 /**************************************************
  * Trigger detail structure. 
- * Returned by fmDbgGetMirrorTriggerDetail. 
+ * Returned by fm10000DbgGetTriggerDetail.
  **************************************************/
 typedef struct _fm_triggerDetail
 {
@@ -444,17 +444,19 @@ typedef struct _fm_triggerDetail
 
 /**************************************************
  * Mirror profile detail structure. 
- * Returned by fmDbgGetMirrorProfileDetail. 
+ * Returned by fm10000DbgGetMirrorProfileDetail.
  **************************************************/
 typedef struct _fm_mirrorProfileDetail
 {
     /* The index where this profile is located in hardware. */
     fm_int      profileIndex;
 
-    /* Mirror profile entry type. */
+    /* Mirror profile entry type.
+     * See _fm_mirrorProfileType for values. */
     fm_int      entryType;
 
-    /* Intrinsic mirror type if this is an intrinsic profile. */
+    /* Intrinsic mirror type if this is an intrinsic profile.
+     * See _fm_intrinsicMirrorType for values. */
     fm_int      intrinsicType;
 
     /* Physical destination port for mirrored or logged copies. */

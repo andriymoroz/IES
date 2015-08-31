@@ -547,6 +547,11 @@
 #define FM_AAT_API_FM10000_INTR_TE_IGNORE_MASK         FM_API_ATTR_INT
 #define FM_AAD_API_FM10000_INTR_TE_IGNORE_MASK         0
 
+/* Whether to enable parity interrupts. */
+#define FM_AAK_API_FM10000_ENABLE_EEE_SPICO_INTR    "api.FM10000.enable.eeeSpicoIntr"
+#define FM_AAT_API_FM10000_ENABLE_EEE_SPICO_INTR    FM_API_ATTR_BOOL
+#define FM_AAD_API_FM10000_ENABLE_EEE_SPICO_INTR    FALSE
+
 /************************************************************************
  ****                                                                ****
  ****              END UNDOCUMENTED API PROPERTIES                   ****

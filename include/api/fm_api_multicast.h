@@ -295,8 +295,8 @@ enum _fm_mcastGroupAttr
     FM_MCASTGROUP_L2_VXLAN_DECAP,
 
     /** Type fm_bool: Specifies if this multicast group must also
-     *  match on a VLAN that has its ''FM_VLAN_IP_TUNNELING''
-     *  attribute enabled: FM_ENABLED or FM_DISABLED (default).
+     *  match on a VLAN that has its FM_VLAN_IP_TUNNELING attribute enabled:
+     *  FM_ENABLED or FM_DISABLED (default).
      * 
      *   \chips  FM6000 */
     FM_MCASTGROUP_IP_TUNNELING,

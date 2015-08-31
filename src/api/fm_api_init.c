@@ -133,7 +133,7 @@ extern const fm_switch           FMSWAGSwitchDefaultTable;
  * Local Variables
  *****************************************************************************/
 
-/* True iff we are the process that owns the global event handler */
+/* True if we are the process that owns the global event handler */
 static fm_bool                   fmFirstProcess = FALSE;
 
 static const fm_switchModelEntry fmSwitchModelList[] =
@@ -2279,9 +2279,20 @@ fm_status fmTerminate(void)
     {
         /* Terminate local event dispatch thread for this process */
         err = TerminateLocalDispatchThread();
-    
+
+        if (err != FM_OK)
+        {
+            FM_LOG_EXIT_API(FM_LOG_CAT_API, err);
+        }
+
         /* allow the local dispatch thread to exit */
         fmYield();
+
+        err = fmPlatformTerminate();
+        if (err != FM_OK)
+        {
+            FM_LOG_EXIT_API(FM_LOG_CAT_API, err);
+        }
     }
 
     FM_LOG_EXIT_API(FM_LOG_CAT_API, err);

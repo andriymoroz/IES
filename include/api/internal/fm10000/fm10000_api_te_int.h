@@ -5,7 +5,7 @@
  * Creation Date:  November 28, 2013
  * Description:    Low-level API for manipulating the Tunneling Engine.
  *
- * Copyright (c) 2013 - 2014, Intel Corporation
+ * Copyright (c) 2013 - 2015, Intel Corporation
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -29,17 +29,47 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
+ *****************************************************************************/
 
 #ifndef __FM_FM10000_FM_API_TE_INT_H
 #define __FM_FM10000_FM_API_TE_INT_H
 
 
 /* Size of the NGE Data array. */
-#define FM10000_TE_NGE_DATA_SIZE                 16
+#define FM10000_TE_NGE_DATA_SIZE                16
+
+/* Size of GPE header in 4-byte words */
+#define FM10000_TE_GPE_HDR_SIZE                 2
+
+/* Size of NSH header in 4-byte words */
+#define FM10000_TE_NSH_HDR_SIZE                 2
+
+/* Size available for NSH data in 4-byte words */
+#define FM10000_TE_NSH_DATA_SIZE                (FM10000_TE_NGE_DATA_SIZE -\
+                                                 FM10000_TE_GPE_HDR_SIZE  -\
+                                                 FM10000_TE_NSH_HDR_SIZE)
+#define FM10000_TE_NSH_DATA_MASK                 ((1 << FM10000_TE_NSH_DATA_SIZE) - 1)
 
 /* Limit the number of teData entry per bin on hash lookup */
 #define FM10000_TE_MAX_DATA_BIN_SIZE            512
+
+/* The number of tunnel engines */
+#define FM10000_NUM_TE                          FM10000_TE_DGLORT_MAP_ENTRIES_1
+
+
+
+/* The bit mask and position where GPE and NSH words are placed in
+ * the NGE data array. */
+#define FM10000_NGE_MASK_GPE_FLAGS_NEXT_PROT    (1 << 0)
+#define FM10000_NGE_MASK_GPE_VNI                (1 << 1)
+#define FM10000_NGE_MASK_NSH_BASE_HDR           (1 << 2)
+#define FM10000_NGE_MASK_NSH_SERVICE_HDR        (1 << 3)
+
+#define FM10000_NGE_POS_GPE_FLAGS_NEXT_PROT     0
+#define FM10000_NGE_POS_GPE_VNI                 1
+#define FM10000_NGE_POS_NSH_BASE_HDR            2
+#define FM10000_NGE_POS_NSH_SERVICE_HDR         3
+#define FM10000_NGE_POS_NSH_DATA                4
 
 
 /**************************************************/
@@ -379,10 +409,12 @@ typedef enum
     /** Write default TOS value for tunnels during encapsulation. */
     FM10000_TE_DEFAULT_TUNNEL_TOS = (1 << 3),
 
-    /** Write default NGE Data words. */
+    /** Write default NGE Data words or GPE/NSH data words if
+     *  TE mode is FM10000_TE_MODE_VXLAN_NVGRE_NGE. */
     FM10000_TE_DEFAULT_TUNNEL_NGE_DATA = (1 << 4),
 
-    /** Write default NGE valid words. */
+    /** Write default NGE valid words or the GPE/NSH valid words
+     *  if the TE mode is FM10000_TE_MODE_VXLAN_NVGRE_NGE. */
     FM10000_TE_DEFAULT_TUNNEL_NGE_MASK = (1 << 5),
 
     /** Write default NGE Time Tag behavior. */
@@ -394,26 +426,87 @@ typedef enum
     /** Write default source MAC to use when adding a tunnel. */
     FM10000_TE_DEFAULT_TUNNEL_SMAC = (1 << 8),
 
-    /** Write default NVGRE protocol to use when adding a tunnel. */
+    /** If TE mode is FM10000_TE_MODE_VXLAN_NVGRE_NGE, write default
+     *  NVGRE/NGE protocol to use when adding a tunnel. If TE mode
+     *  is FM10000_TE_MODE_VXLAN_GPE_NSH, define which NextProtocol
+     *  that should be used on decap of GPE frames. */ 
     FM10000_TE_DEFAULT_TUNNEL_PROTOCOL = (1 << 9),
 
-    /** Write default NVGRE version to use when adding a tunnel. */
+    /** If TE mode is FM10000_TE_MODE_VXLAN_NVGRE_NGE, write default
+     *  NVGRE/NGE version to use when adding a tunnel. If TE mode
+     *  is FM10000_TE_MODE_VXLAN_GPE_NSH, write the version that
+     *  should be checked for in the GPE and NSH headers. */
     FM10000_TE_DEFAULT_TUNNEL_VERSION = (1 << 10),
 
-    /** Write all fields. */
+    /** Write default tunnel operation mode */
+    FM10000_TE_DEFAULT_TUNNEL_MODE = (1 << 11),
+
+    /** Clear all the GPE/NSH options that may have been set
+     *  previously. This should generally be done when changing
+     *  the tunnel mode to FM10000_TE_MODE_VXLAN_GPE_NSH. */
+    FM10000_TE_DEFAULT_GPE_NSH_CLEAR = (1 << 12),
+
+    /** Defines the GPE header's next protocol field for this
+     *  tunnel. */
+    FM10000_TE_DEFAULT_GPE_NEXT_PROT = (1 << 13),
+
+    /** Defines the GPE header's VNI field for this tunnel.  */
+    FM10000_TE_DEFAULT_GPE_VNI = (1 << 14),
+
+    /** Defines the NSH Base Header fields (Critical Flag, Length
+     *  and MD Type) for this tunnel. */
+    FM10000_TE_DEFAULT_NSH_BASE_HDR = (1 << 15),
+
+    /** Defines the NSH Service Header fields for this tunnel. */
+    FM10000_TE_DEFAULT_NSH_SERVICE_HDR = (1 << 16),
+
+    /** Defines the NSH header's data bytes field for this
+     *  tunnel. */
+    FM10000_TE_DEFAULT_NSH_DATA = (1 << 17),
+
+    /** Write all fields. (Except for
+     *  FM10000_TE_DEFAULT_TUNNEL_MODE and GPE/NSH fields) */
     FM10000_TE_DEFAULT_TUNNEL_ALL = (FM10000_TE_DEFAULT_TUNNEL_L4DST_VXLAN  |
                                      FM10000_TE_DEFAULT_TUNNEL_L4DST_NGE    |
                                      FM10000_TE_DEFAULT_TUNNEL_TTL          |
                                      FM10000_TE_DEFAULT_TUNNEL_TOS          |
-                                     FM10000_TE_DEFAULT_TUNNEL_NGE_DATA     |
-                                     FM10000_TE_DEFAULT_TUNNEL_NGE_MASK     |
-                                     FM10000_TE_DEFAULT_TUNNEL_NGE_TIME     |
                                      FM10000_TE_DEFAULT_TUNNEL_DMAC         |
                                      FM10000_TE_DEFAULT_TUNNEL_SMAC         |
                                      FM10000_TE_DEFAULT_TUNNEL_PROTOCOL     |
-                                     FM10000_TE_DEFAULT_TUNNEL_VERSION)
+                                     FM10000_TE_DEFAULT_TUNNEL_VERSION),
+
+    /** Write all NGE fields. */
+    FM10000_TE_DEFAULT_TUNNEL_NGE_ALL    = (FM10000_TE_DEFAULT_TUNNEL_NGE_DATA | 
+                                            FM10000_TE_DEFAULT_TUNNEL_NGE_MASK | 
+                                            FM10000_TE_DEFAULT_TUNNEL_NGE_TIME),
+
+    /** Write all GPE/NSH fields. */
+    FM10000_TE_DEFAULT_TUNNEL_GPE_NSH_ALL = (FM10000_TE_DEFAULT_GPE_NSH_CLEAR  |
+                                             FM10000_TE_DEFAULT_GPE_NEXT_PROT  |
+                                             FM10000_TE_DEFAULT_GPE_VNI        |
+                                             FM10000_TE_DEFAULT_NSH_BASE_HDR   |
+                                             FM10000_TE_DEFAULT_NSH_SERVICE_HDR|
+                                             FM10000_TE_DEFAULT_NSH_DATA),
 
 } fm_fm10000TeDefTunnelSel;
+
+/**************************************************/
+/** \ingroup typeEnum
+ *  
+ *  Tunnel Engine Mode
+ *  
+ *  Bit masks that specify which field(s) are included
+ *  in the hash or search.
+ **************************************************/
+typedef enum
+{
+    /** Support the VXLAN, NVGRE and NGE protocols. */
+    FM10000_TE_MODE_VXLAN_NVGRE_NGE = 0,
+
+    /** Support the VXLAN, GPE and NSH protocols. */
+    FM10000_TE_MODE_VXLAN_GPE_NSH,
+
+} fm_fm10000TeMode;
 
 
 /**************************************************/
@@ -462,12 +555,78 @@ typedef struct _fm_fm10000TeTunnelCfg
     fm_macaddr smac;
 
     /** The protocol to use in the NVGRE and NGE headers when 
-     *  encapsulating. Can also be used to check protocol on decap. */
+     *  encapsulating. Can also be used to check protocol on decap.
+     *  
+     *  When the TE mode is FM10000_TE_MODE_VXLAN_GPE_NSH, this
+     *  field defines the decap "NextProtocol" supported in the GPE
+     *  header. The L2 Ethernet Protocol should be stored in
+     *  encapProtocol[7:0] while the NSH Protocol should be stored
+     *  in encapProtocol[15:8]. The typical value is 0x0403. */
     fm_uint16  encapProtocol;
 
     /** The version to use in the NVGRE and NGE headers when
-     *  encapsulating. Can also be used to check version on decap. */
+     *  encapsulating. Can also be used to check version on decap.
+     *  
+     *  When the TE mode is FM10000_TE_MODE_VXLAN_GPE_NSH, this
+     *  field is used to check the version of GPE and NSH headers
+     *  against this value if fm_fm10000TeParserCfg.checkVersion is
+     *  enabled */
     fm_byte    encapVersion;
+
+    /** The mode controls which set of protocols the TE should
+     *  operate with.
+     *  
+     *  Note: that FM10000_TE_MODE_VXLAN_GPE_NSH is only supported
+     *  in the B0 silicon revision.  */
+    fm_fm10000TeMode mode;
+
+    /** Must be set to the proper value if
+     *  ''FM10000_TE_DEFAULT_GPE_NEXT_PROT'' is set. This is the VNI
+     *  that will be stored in the VXLAN-GPE header. */
+    fm_uint32  gpeNextProt;
+
+    /** Must be set to the proper value if
+     *  ''FM10000_TE_DEFAULT_GPE_VNI'' is set. This is the VNI
+     *  that will be stored in the VXLAN-GPE header. */
+    fm_uint32  gpeVni;
+
+    /** Must be set to the proper value if
+     *  ''FM10000_TE_DEFAULT_NSH_BASE_HDR'' is set. This is length
+     *  of the NSH header in 4-byte words including the Base Header,
+     *  Service Path Header and Context Data.  */
+    fm_byte    nshLength;
+
+    /** Must be set to the proper value if
+     *  ''FM10000_TE_DEFAULT_NSH_BASE_HDR'' is set. This bit
+     *  should be set if there are critical TLV that are included in
+     *  the NSH data. */
+    fm_bool    nshCritical;
+
+    /** Must be set to the proper value if
+     *  ''FM10000_TE_DEFAULT_NSH_BASE_HDR'' is set. This field
+     *  should contain the MD Type. */
+    fm_byte    nshMdType;
+
+    /** Must be set to the proper value if
+     *  ''FM10000_TE_DEFAULT_NSH_SERVICE_HDR'' is set. This field
+     *  should contain the Service Path ID. */
+    fm_uint32  nshSvcPathId;
+
+    /** Must be set to the proper value if
+     *  ''FM10000_TE_DEFAULT_NSH_SERVICE_HDR'' is set. This field
+     *  should contain the Service Index. */
+    fm_byte    nshSvcIndex;
+
+    /** Must be set to the proper value if
+     *  ''FM10000_TE_DEFAULT_NSH_DATA'' is set. This field should
+     *  contain the NSH context data that follows the service
+     *  header. */
+    fm_uint32  nshData[FM_TUNNEL_NSH_DATA_SIZE];
+
+    /** Must be set to the proper value if
+     *  ''FM10000_TE_DEFAULT_NSH_DATA'' is set. This field is a
+     *  bitmask of the valid 32-bit words in nshData. */
+    fm_uint16  nshDataMask;
 
 } fm_fm10000TeTunnelCfg;
 
@@ -639,7 +798,12 @@ typedef struct _fm_fm10000TeParserCfg
      *  detection. */
     fm_uint16 vxLanPort;
 
-    /** The L4 port used for NGE. Setting to 0 disables NGE detection. */
+    /** The L4 port used for NGE. Setting to 0 disables NGE
+     *  detection. When the TE Mode is
+     *  ''FM10000_TE_MODE_VXLAN_GPE_NSH'', this field must contain the 
+     *  GPE L4 port to use to recognize the GPE header. In that
+     *  mode, both vxLanPort and ngePort numbers are equally
+     *  accepted for both types of packets (VXLAN and GPE). */
     fm_uint16 ngePort;
 
     /** The extra ethernet type. Parser jumps over if detected. */
@@ -662,7 +826,11 @@ typedef struct _fm_fm10000TeParserCfg
     fm_bool   checkProtocol;
 
     /** Whether the NVGRE or GRE header version field needs to be
-     *  validated on decap (TRUE) or not (FALSE). */
+     *  validated on decap (TRUE) or not (FALSE).
+     *  
+     *  When the TE mode is FM10000_TE_MODE_VXLAN_GPE_NSH, defines
+     *  whether the GPE and NSH header version fields need to be
+     *  validated on decap (TRUE) or not (FALSE) */
     fm_bool   checkVersion;
 
     /** Whether the NGE OAM bit needs to be compared with zero on
@@ -1396,7 +1564,7 @@ typedef enum
 typedef enum
 {
     /** Delete the Outer Header. */
-    FM_FM10000_TE_TUNNEL_TYPE_RESERVED = 0,
+    FM_FM10000_TE_TUNNEL_TYPE_GENERIC = 0,
 
     /** Encapsulate using VXLAN type of tunnel. */
     FM_FM10000_TE_TUNNEL_TYPE_VXLAN,

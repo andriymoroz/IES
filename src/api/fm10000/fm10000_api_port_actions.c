@@ -246,6 +246,7 @@ fm_status GetTxFifoConfig( fm_ethMode ethMode,
             }
             case FM_ETH_MODE_25GBASE_SR:
             case FM_ETH_MODE_25GBASE_KR:
+            case FM_ETH_MODE_25GBASE_CR:
             {
                 *pTxAntiBubbleWatermarkValue = 6;
                 *pTxRateFifoWatermarkValue   = 3;
@@ -665,6 +666,7 @@ static fm10000_laneBitrate EthModeToBitRate( fm_ethMode ethMode,
 
         case FM_ETH_MODE_25GBASE_SR:
         case FM_ETH_MODE_25GBASE_KR:
+        case FM_ETH_MODE_25GBASE_CR:
         case FM_ETH_MODE_100GBASE_KR4:
         case FM_ETH_MODE_100GBASE_CR4:
         case FM_ETH_MODE_100GBASE_SR4:
@@ -1072,7 +1074,7 @@ static fm_status ConfigureEeeLane( fm_smEventInfo *eventInfo,
 
     FM_SET_BIT(laneCfg, 
                FM10000_LANE_CFG, 
-               EeeHwTxQuiet, 1);
+               EeeHwTxQuiet, 0);
 
     FM_SET_BIT(laneCfg, 
                FM10000_LANE_CFG, 
@@ -1408,22 +1410,45 @@ static fm_status RequestSchedBw( fm_smEventInfo *eventInfo, void *userInfo )
     fm_int               physPort;
     fm_schedulerPortMode schedPortMode;
     fm10000_port        *portExt;
+    fm_portAttr         *portAttr;
     fm_uint32            speed;
-    
-    err     = FM_OK;
-    sw      = ((fm10000_portSmEventInfo *)userInfo)->switchPtr->switchNumber;
-    portExt = ((fm10000_portSmEventInfo *)userInfo)->portExt;
+    fm_int               port;
+ 
+    err      = FM_OK;
+    sw       = ((fm10000_portSmEventInfo *)userInfo)->switchPtr->switchNumber;
+    portExt  = ((fm10000_portSmEventInfo *)userInfo)->portExt;
     physPort = ((fm10000_portSmEventInfo *)userInfo)->portPtr->physicalPort;
+    portAttr = ((fm10000_portSmEventInfo *)userInfo)->portAttr;
     ethMode  = portExt->ethMode;
-
-    err = GetSchedPortMode(sw, physPort, ethMode, &schedPortMode);
-    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
+    port     = ((fm10000_portSmEventInfo *)userInfo)->portExt->base->portNumber;
 
     speed = FM10000_SCHED_SPEED_DEFAULT;
 
     if ( ((fm10000_portSmEventInfo *)userInfo)->portExt->ring == FM10000_SERDES_RING_EPL )
     {
-        speed = fm10000GetPortSpeed(ethMode);
+        if (ethMode == FM_ETH_MODE_AN_73)
+        {
+            err = fm10000AnGetMaxSpeedAbilityAndMode(sw,
+                                                     port,
+                                                     portAttr->autoNegMode,
+                                                     portAttr->autoNegBasePage,
+                                                     portAttr->autoNegNextPages,
+                                                     &speed,
+                                                     &schedPortMode);
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
+        }
+        else
+        {
+            speed = fm10000GetPortSpeed(ethMode);
+
+            err = GetSchedPortMode(sw, physPort, ethMode, &schedPortMode);
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
+        }
+    }
+    else
+    {
+        err = GetSchedPortMode(sw, physPort, ethMode, &schedPortMode);
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
     }
 
     err = ReleaseRequestSchedBw(sw, physPort, speed, schedPortMode);
@@ -1903,30 +1928,68 @@ ABORT:
  *****************************************************************************/
 fm_status fm10000ReconfigureScheduler( fm_smEventInfo *eventInfo, void *userInfo )
 {
-    fm_status            err;
-    fm_status            err2;
-    fm_int               sw;
-    fm_uint32            speed;
-    fm_int               ethMode;
-    fm_int               physPort;
-    fm_schedulerPortMode schedPortMode;
-    fm10000_schedAttr    schedAttr;
-    fm_int               portMode;
-    fm_bool              linkUp;
+    fm_status              err;
+    fm_status              err2;
+    fm_int                 sw;
+    fm_uint32              speed;
+    fm_int                 ethMode;
+    fm_int                 physPort;
+    fm_schedulerPortMode   schedPortMode;
+    fm10000_schedAttr      schedAttr;
+    fm_int                 portMode;
+    fm_bool                linkUp;
     fm10000_schedSpeedInfo ssi;
+    fm_portAttr           *portAttr;
+    fm_uint64              basepage;
+    fm10000_portAttr      *portAttrExt;
+    fm_int                 port;
+    fm_anNextPages         nextPages;
 
     err = FM_OK;
     schedPortMode = FM_SCHED_PORT_MODE_NONE;
 
-    sw = ((fm10000_portSmEventInfo *)userInfo)->switchPtr->switchNumber;
-    physPort = ((fm10000_portSmEventInfo *)userInfo)->portPtr->physicalPort;
-    portMode = ((fm10000_portSmEventInfo *)userInfo)->portPtr->mode;
-    linkUp   = ((fm10000_portSmEventInfo *)userInfo)->portPtr->linkUp;
-    ethMode  = ((fm10000_portSmEventInfo *)userInfo)->info.config.ethMode;
-    speed    = ((fm10000_portSmEventInfo *)userInfo)->info.config.speed;
+    sw          = ((fm10000_portSmEventInfo *)userInfo)->switchPtr->switchNumber;
+    physPort    = ((fm10000_portSmEventInfo *)userInfo)->portPtr->physicalPort;
+    portMode    = ((fm10000_portSmEventInfo *)userInfo)->portPtr->mode;
+    linkUp      = ((fm10000_portSmEventInfo *)userInfo)->portPtr->linkUp;
+    portAttr    = ((fm10000_portSmEventInfo *)userInfo)->portAttr; 
+    portAttrExt = ((fm10000_portSmEventInfo *)userInfo)->portAttrExt;
+    port        = ((fm10000_portSmEventInfo *)userInfo)->portExt->base->portNumber;
+    ethMode     = ((fm10000_portSmEventInfo *)userInfo)->info.config.ethMode;
+    speed       = ((fm10000_portSmEventInfo *)userInfo)->info.config.speed;
+    basepage    = ((fm10000_portSmEventInfo *)userInfo)->info.anConfig.autoNegBasePage;
+    nextPages   = ((fm10000_portSmEventInfo *)userInfo)->info.anConfig.autoNegNextPages;
 
-    err = GetSchedPortMode(sw, physPort, ethMode, &schedPortMode);
-    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
+    if ( (eventInfo->eventId == FM10000_PORT_EVENT_CONFIG_REQ) &&
+         (ethMode            == FM_ETH_MODE_AN_73) ) 
+    {
+        err = fm10000AnGetMaxSpeedAbilityAndMode(sw,
+                                                 port,
+                                                 portAttr->autoNegMode, 
+                                                 portAttr->autoNegBasePage,
+                                                 portAttr->autoNegNextPages,
+                                                 &speed,
+                                                 &schedPortMode);
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
+    }
+    else if ( (eventInfo->eventId   == FM10000_PORT_EVENT_AN_CONFIG_REQ) &&
+              (portAttrExt->ethMode == FM_ETH_MODE_AN_73) )
+    {
+        /* If it is AN_CONFIG_REQ, use the basepage from the eventInfo */
+        err = fm10000AnGetMaxSpeedAbilityAndMode(sw,
+                                                 port,
+                                                 portAttr->autoNegMode, 
+                                                 basepage,
+                                                 nextPages,
+                                                 &speed,
+                                                 &schedPortMode);
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
+    }
+    else
+    {
+        err = GetSchedPortMode(sw, physPort, ethMode, &schedPortMode);
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
+    }
 
     FM_LOG_DEBUG_V2(FM_LOG_CAT_PORT, ((fm10000_portSmEventInfo *)userInfo)->portExt->base->portNumber,
                     "Reconfiguring scheduler for port %d, physPort=%d, ethernetMode=%d for speed=%d, schedPortMode=%d\n",
@@ -2155,12 +2218,12 @@ fm_status fm10000NotifyApiPortDown( fm_smEventInfo *eventInfo, void *userInfo )
     if ( (portPtr->portType == FM_PORT_TYPE_PHYSICAL)   ||
           ( (portPtr->portType == FM_PORT_TYPE_CPU) && (portPtr->portNumber != 0) ))
     {
-        /* Notify the serdes about that link down for EEE purpose */
-        status = fm10000NotifyEeeModeChange( sw, port, FALSE );
-        FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, status);
-
         if (portPtr->linkUp == TRUE)
         {
+            /* Notify the serdes about that link down for EEE purpose */
+            status = fm10000NotifyEeeModeChange( sw, port, FALSE );
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, status);
+
             portPtr->linkUp = FALSE;
             status = fm10000SendLinkUpDownEvent( sw,
                                                  physPort,
@@ -4487,7 +4550,7 @@ fm_status fm10000StopPortStatusPollingTimer( fm_smEventInfo *eventInfo,
 /** fm10000StartDeferredLpiTimer
  * \ingroup intPort
  *
- * \desc            Action starting an 100 msec delay timer to enable Low
+ * \desc            Action starting an 1 second delay timer to enable Low
  *                  Power Idle mode
  * 
  * \param[in]       eventInfo pointer to a caller-allocated area containing
@@ -5940,9 +6003,6 @@ fm_status fm10000ReconfigurePortForAn( fm_smEventInfo *eventInfo, void *userInfo
         status = fm10000ResetPortModuleState( eventInfo, userInfo );
         FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
 
-        status = fm10000ReconfigureScheduler(eventInfo,userInfo);
-        FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-
         status = fm10000LinkPortToLanes( eventInfo, userInfo );
         FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
 
@@ -5960,7 +6020,6 @@ fm_status fm10000ReconfigurePortForAn( fm_smEventInfo *eventInfo, void *userInfo
 
         status = fm10000ConfigureLaneForAn73( eventInfo, userInfo );
         FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-
 
         /* AN73 was restored successfully */
         portExt->ethMode = FM_ETH_MODE_AN_73;
@@ -6229,6 +6288,7 @@ fm_status fm10000AnRestart( fm_smEventInfo *eventInfo,
     fm10000_portAttr *portAttrExt;
     fm_int            port;
     fm_int            eventId;
+    fm_uint64         basepage;
 
     portAttrExt = ((fm10000_portSmEventInfo *)userInfo)->portAttrExt;
     portAttr    = ((fm10000_portSmEventInfo *)userInfo)->portAttr;
@@ -6258,16 +6318,6 @@ fm_status fm10000AnRestart( fm_smEventInfo *eventInfo,
     /* processing needed to restart it, depends on the AN type */
     if ( portAttrExt->ethMode == FM_ETH_MODE_AN_73 )
     {
-        /* this is effectively a reconfiguration from the current mode to
-           AN-73. In the following make the action callbacks think that the 
-           original event was a configuration request. An alternative
-           could be to recursively notify a CONFIG_REQ event. After it returns
-           this function would set the final next state as the next state
-           of the 2nd-level event notification */
-        portExt->eventInfo.info.config.ethMode = FM_ETH_MODE_AN_73;
-        portExt->eventInfo.info.config.speed   = 0;
-        eventInfo->eventId = FM10000_PORT_EVENT_CONFIG_REQ;
-
         /* restore AN73 PCS mode */
 
         status = fm10000DisablePhy( eventInfo, userInfo );
@@ -6279,8 +6329,26 @@ fm_status fm10000AnRestart( fm_smEventInfo *eventInfo,
         status = fm10000ResetPortModuleState( eventInfo, userInfo );
         FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
 
-        status = fm10000ReconfigureScheduler(eventInfo,userInfo);
-        FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+        if (eventId ==  FM10000_PORT_EVENT_AN_CONFIG_REQ)
+        {
+            /* Reconfigure Scheduler only when restarting AN on the event 
+               AN_CONFIG_REQ. This is to handle scheduler change required 
+               on basepage configuration change. */
+            eventInfo->eventId = eventId;
+            status = fm10000ReconfigureScheduler(eventInfo,userInfo);
+            FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+        }
+
+        /* this is effectively a reconfiguration from the current mode to
+           AN-73. In the following make the action callbacks think that the 
+           original event was a configuration request. An alternative
+           could be to recursively notify a CONFIG_REQ event. After it returns
+           this function would set the final next state as the next state
+           of the 2nd-level event notification */
+        basepage = portExt->eventInfo.info.anConfig.autoNegBasePage;
+        portExt->eventInfo.info.config.ethMode = FM_ETH_MODE_AN_73;
+        portExt->eventInfo.info.config.speed   = 0;
+        eventInfo->eventId = FM10000_PORT_EVENT_CONFIG_REQ;
 
         status = fm10000LinkPortToLanes( eventInfo, userInfo );
         FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
@@ -6448,9 +6516,6 @@ fm_status fm10000EnterNegotiatedMode( fm_smEventInfo *eventInfo,
         FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
 
         status = fm10000ResetPortModuleState( eventInfo, userInfo );
-        FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-
-        status = fm10000ReconfigureScheduler(eventInfo,userInfo);
         FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
 
         status = fm10000LinkPortToLanes( eventInfo, userInfo );
@@ -6788,6 +6853,8 @@ fm_status fm10000SetupAdminModeUp ( fm_smEventInfo *eventInfo,
     {
         /* assume local fault for anything else */
         *nextState = FM10000_PORT_STATE_LOCAL_FAULT;
+
+        status = fm10000Restart100gSyncDetection(eventInfo,userInfo);
     }
 
     fm10000StartPortStatusPollingTimer(eventInfo,userInfo);

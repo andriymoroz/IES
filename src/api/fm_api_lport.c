@@ -2231,15 +2231,14 @@ fm_status fmFreeLogicalPort(fm_int sw, fm_int port)
 /** fmFreeLaneResources
  * \ingroup intPort
  *
- * \desc            Function to free lane-level resources
+ * \desc            Free lane-level resources.
  *
- * \param[in]       sw is the ID of the switch
+ * \param[in]       sw is the switch on which to operate.
  *
- * \return          FM_OK if successful
- *                  (If returns void, then just say None.)
- * \return          Description of another possible return value.
+ * \return          FM_OK if successful.
+ *
  *****************************************************************************/
-fm_status fmFreeLaneResources( fm_int sw )
+fm_status fmFreeLaneResources(fm_int sw)
 {
     fm_switch *switchPtr;
 
@@ -2248,21 +2247,23 @@ fm_status fmFreeLaneResources( fm_int sw )
     switchPtr = GET_SWITCH_PTR(sw);
 
     /* Free resources associated with all lanes */
-    FM_API_CALL_FAMILY_VOID( switchPtr->FreeLaneResources, sw );
+    FM_API_CALL_FAMILY_VOID(switchPtr->FreeLaneResources, sw);
 
-    FM_LOG_EXIT( FM_LOG_CAT_PORT, FM_OK );
+    FM_LOG_EXIT(FM_LOG_CAT_PORT, FM_OK);
 
-} /* end fmFreeLaneResources */
+}   /* end fmFreeLaneResources */
 
 
 
 
 /*****************************************************************************/
 /** fmSetLogicalPortAttribute
- * \ingroup intPort
+ * \ingroup intlport
  *
  * \desc            Set a logical port attribute, preserving an internal
  *                  record of some attributes.
+ * 
+ * \note            This API is intended for internal use only.
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -2277,6 +2278,7 @@ fm_status fmFreeLaneResources( fm_int sw )
  * \return          FM_ERR_INVALID_PORT if port is invalid.
  * \return          FM_ERR_INVALID_ARGUMENT if unrecognized attribute.
  * \return          FM_ERR_INVALID_ATTRIB if read-only attribute.
+ * \return          FM_ERR_UNSUPPORTED if the attribute is not supported.
  *
  *****************************************************************************/
 fm_status fmSetLogicalPortAttribute(fm_int sw,
@@ -2304,9 +2306,11 @@ fm_status fmSetLogicalPortAttribute(fm_int sw,
 
 /*****************************************************************************/
 /** fmGetLogicalPortAttribute
- * \ingroup port
+ * \ingroup intlport
  *
  * \desc            Gets a logical port attribute.
+ * 
+ * \note            This API is intended for internal use only.
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -2321,6 +2325,7 @@ fm_status fmSetLogicalPortAttribute(fm_int sw,
  * \return          FM_ERR_INVALID_SWITCH if sw is invalid.
  * \return          FM_ERR_INVALID_PORT if port is invalid.
  * \return          FM_ERR_INVALID_ARGUMENT if unrecognized attribute.
+ * \return          FM_ERR_UNSUPPORTED if the attribute is not supported.
  *
  *****************************************************************************/
 fm_status fmGetLogicalPortAttribute(fm_int sw,

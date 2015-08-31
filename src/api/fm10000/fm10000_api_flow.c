@@ -2,7 +2,7 @@
  * (No tabs, indent level is 4 spaces)  */
 /*****************************************************************************
  * File:            fm10000_api_flow.c
- * Creation Date:   December 6, 2013 
+ * Creation Date:   December 6, 2013
  * Description:     FM10000 OpenFlow API interface.
  *
  * Copyright (c) 2005 - 2015, Intel Corporation
@@ -367,10 +367,10 @@ static fm_status TranslateFlowToACLAction(fm_int           sw,
         param->logicalPort = switchExt->flowInfo.fwdToCpuLogicalPort;
     }
 
-    /* ''FM_FLOW_ACTION_POP_VLAN'' action must always be paired with 
-     * ''FM_FLOW_ACTION_SET_VLAN'' to specify the new vlan that 
+    /* ''FM_FLOW_ACTION_POP_VLAN'' action must always be paired with
+     * ''FM_FLOW_ACTION_SET_VLAN'' to specify the new vlan that
      * would be used for filtering. */
-    if ( (*action & FM_FLOW_ACTION_POP_VLAN) && 
+    if ( (*action & FM_FLOW_ACTION_POP_VLAN) &&
             !(*action & FM_FLOW_ACTION_SET_VLAN) )
     {
         return FM_ERR_INVALID_ARGUMENT;
@@ -576,14 +576,14 @@ static fm_status TranslateACLToFlowAction(fm_int           sw,
         *action |= FM_FLOW_ACTION_FORWARD_NORMAL;
     }
 
-    if ( *aclAction & FM_ACL_ACTIONEXT_REDIRECT && 
+    if ( *aclAction & FM_ACL_ACTIONEXT_REDIRECT &&
          param->logicalPort == switchExt->flowInfo.dropLogicalPort)
     {
         /* Translate the drop action into a Redirect */
         *action |= FM_FLOW_ACTION_DROP;
     }
 
-    if ( *aclAction & FM_ACL_ACTIONEXT_REDIRECT && 
+    if ( *aclAction & FM_ACL_ACTIONEXT_REDIRECT &&
          param->logicalPort == switchExt->flowInfo.trapLogicalPort )
     {
         /* Translate the trap action into a Redirect */
@@ -678,11 +678,11 @@ static fm_status TranslateACLToFlowAction(fm_int           sw,
 /** ConfigureDeepInspectionProfile
  * \ingroup intFlow
  *
- * \desc            Configure Deep Inspection Profile for 
+ * \desc            Configure Deep Inspection Profile for
  *                  ''FM_FLOW_MATCH_TCP_FLAGS'' usage.
- * 
+ *
  * \param[in]       sw is the switch on which to operate.
- * 
+ *
  * \return          FM_OK if successful.
  *
  *****************************************************************************/
@@ -727,14 +727,14 @@ static fm_status ConfigureDeepInspectionProfile(fm_int sw)
  * \ingroup intFlow
  *
  * \desc            Translate the flow condition into ACL one.
- * 
+ *
  * \param[in]       sw is the switch on which to operate.
  *
  * \param[in]       condition refers to the actual flow condition that must be
  *                  translated.
- * 
+ *
  * \param[out]      aclCondition refers to the ACL condition that stores result.
- * 
+ *
  * \return          FM_OK if successful.
  *
  *****************************************************************************/
@@ -746,9 +746,9 @@ static fm_status TranslateFlowToACLCondition(fm_int            sw,
 
     *aclCondition = 0;
 
-    /*************************************************** 
-     *   Translate Flow condition to an ACL condition 
-     ***************************************************/ 
+    /***************************************************
+     *   Translate Flow condition to an ACL condition
+     ***************************************************/
 
     if ( *condition & FM_FLOW_MATCH_SRC_MAC )
     {
@@ -878,14 +878,14 @@ static fm_status TranslateFlowToACLCondition(fm_int            sw,
  * \ingroup intFlow
  *
  * \desc            Translate the flow condition into ACL one.
- * 
+ *
  * \param[in]       sw is the switch on which to operate.
  *
  * \param[in]       aclCondition refers to the actual ACL condition that must be
  *                  translated.
- * 
+ *
  * \param[out]      condition refers to the flow condition that stores result.
- * 
+ *
  * \return          FM_OK if successful.
  *
  *****************************************************************************/
@@ -897,9 +897,9 @@ static fm_status TranslateACLToFlowCondition(fm_int            sw,
 
     *condition = 0;
 
-    /*************************************************** 
-     *   Translate Flow condition to an ACL condition 
-     ***************************************************/ 
+    /***************************************************
+     *   Translate Flow condition to an ACL condition
+     ***************************************************/
 
     if ( *aclCondition & FM_ACL_MATCH_SRC_MAC )
     {
@@ -1028,12 +1028,12 @@ static fm_status TranslateACLToFlowCondition(fm_int            sw,
  * \ingroup intFlow
  *
  * \desc            Translate the flow condition mask into ACL one.
- * 
+ *
  * \param[in]       sw is the switch on which to operate.
- * 
+ *
  * \param[in,out]   condition refers to the actual flow condition mask that must
  *                  be translated.
- * 
+ *
  * \return          FM_OK if successful.
  * \return          FM_ERR_INVALID_ARGUMENT invalid condition pointer.
  *
@@ -1048,7 +1048,7 @@ static fm_status TranslateConditionMask(fm_int            sw,
         err = FM_ERR_INVALID_ARGUMENT;
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_FLOW, err);
     }
-    
+
     /* Translate conditions */
     if (*condition & FM_ACL_MATCH_L4_SRC_PORT)
     {
@@ -1059,13 +1059,13 @@ static fm_status TranslateConditionMask(fm_int            sw,
     if (*condition & FM_ACL_MATCH_L4_DST_PORT)
     {
         *condition &= ~FM_ACL_MATCH_L4_DST_PORT;
-        *condition |= FM_ACL_MATCH_L4_DST_PORT_WITH_MASK;        
+        *condition |= FM_ACL_MATCH_L4_DST_PORT_WITH_MASK;
     }
 
     if (*condition & FM_ACL_MATCH_INGRESS_PORT_SET)
     {
         *condition &= ~FM_ACL_MATCH_INGRESS_PORT_SET;
-        *condition |= FM_ACL_MATCH_SOURCE_MAP;       
+        *condition |= FM_ACL_MATCH_SOURCE_MAP;
     }
 
 ABORT:
@@ -1081,15 +1081,15 @@ ABORT:
  *
  * \desc            Translate the FM_ACL_MATCH_L4_***_PORT condition into
  *                  FM_ACL_MATCH_L4_***_PORT_WITH_MASK.
- * 
+ *
  * \param[in]       sw is the switch on which to operate.
- * 
+ *
  * \param[in]       l4Src indicates if the translated L4 port condition is the
  *                  source or the destination.
  *
  * \param[in,out]   condition refers to the actual flow condition that must be
  *                  translated.
- * 
+ *
  * \return          FM_OK if successful.
  * \return          FM_ERR_INVALID_ARGUMENT invalid condition set.
  *
@@ -1133,15 +1133,15 @@ static fm_status TranslateL4Port(fm_int            sw,
  *                  is intended to have a better control of the different
  *                  portSet allocated while making sure that key usage is
  *                  constant.
- * 
+ *
  * \param[in]       sw is the switch on which to operate.
- * 
+ *
  * \param[in,out]   condition refers to the actual flow condition that must be
  *                  translated.
- * 
+ *
  * \param[in,out]   condVal refers to the actual flow condition arguments that
  *                  must be translated.
- * 
+ *
  * \return          FM_OK if successful.
  *
  *****************************************************************************/
@@ -1262,7 +1262,7 @@ static fm_status TranslatePortSet(fm_int            sw,
                 /* Update a logical port mapped value in case this ingress
                  * port is already part of another portSet or add this port
                  * into the mapper structure in case it is the first time
-                 * this port is part of a portSet. */ 
+                 * this port is part of a portSet. */
                 if ( (i < nEntries) &&
                      (srcMapValue[i].sourcePort == logicalPort) )
                 {
@@ -1312,7 +1312,7 @@ ABORT:
     {
         fmDeleteBitArray(&portSetPorts);
     }
-    
+
     return err;
 
 } /* end TranslatePortSet */
@@ -1325,15 +1325,15 @@ ABORT:
  * \ingroup intFlow
  *
  * \desc            Remove and adjust usage of mapped entries.
- * 
+ *
  * \param[in]       sw is the switch on which to operate.
- * 
+ *
  * \param[in]       aclCond refers to the actual flow condition of the rule that
  *                  must be removed
- * 
+ *
  * \param[in]       aclValue refers to the actual flow condition arguments of
  *                  the rule that must be removed.
- * 
+ *
  * \return          FM_OK if successful.
  *
  *****************************************************************************/
@@ -1516,7 +1516,7 @@ static fm_status VerifyFlowConditionsMasks(fm_int           sw,
     }
 
     if ( (condition & FM_FLOW_MATCH_DST_MAC) &&
-            ( (condVal->dstMask | 
+            ( (condVal->dstMask |
                switchExt->flowInfo.table[tableIndex].condMasks.dstMask) !=
               switchExt->flowInfo.table[tableIndex].condMasks.dstMask) )
     {
@@ -1526,7 +1526,7 @@ static fm_status VerifyFlowConditionsMasks(fm_int           sw,
     }
 
     if ( (condition & FM_FLOW_MATCH_SRC_MAC) &&
-            ( (condVal->srcMask | 
+            ( (condVal->srcMask |
                switchExt->flowInfo.table[tableIndex].condMasks.srcMask) !=
               switchExt->flowInfo.table[tableIndex].condMasks.srcMask) )
     {
@@ -1536,7 +1536,7 @@ static fm_status VerifyFlowConditionsMasks(fm_int           sw,
     }
 
     if ( (condition & FM_FLOW_MATCH_TOS) &&
-            ( (condVal->tosMask | 
+            ( (condVal->tosMask |
                switchExt->flowInfo.table[tableIndex].condMasks.tosMask) !=
               switchExt->flowInfo.table[tableIndex].condMasks.tosMask) )
     {
@@ -1752,13 +1752,13 @@ static fm_status TranslateFlowToTEAction(fm_flowAction      *action,
  * \ingroup intFlow
  *
  * \desc            Translate the flow actions into tunnel and encap actions.
- * 
+ *
  * \param[in]       tunnelAction refers to the tunnel action that must be
  *                  translated.
  *
  * \param[in]       encapAction refers to the encap action that must be
  *                  translated.
- * 
+ *
  * \param[out]      action refers to the actual flow action that stores
  *                  the results.
  *
@@ -1867,13 +1867,13 @@ static fm_status TranslateTEToFlowAction(fm_tunnelAction    *tunnelAction,
  * \ingroup intFlow
  *
  * \desc            Translate the flow condition into tunnel one.
- * 
+ *
  * \param[in]       condition refers to the actual flow condition that must be
  *                  translated.
- * 
- * \param[out]      tunnelCondition refers to the tunnel condition that 
+ *
+ * \param[out]      tunnelCondition refers to the tunnel condition that
  *                  stores result.
- * 
+ *
  * \return          FM_OK if successful.
  *
  *****************************************************************************/
@@ -1947,13 +1947,13 @@ static fm_status TranslateFlowToTECondition(fm_flowCondition   *condition,
  * \ingroup intFlow
  *
  * \desc            Translate the flow condition into tunnel one.
- * 
+ *
  * \param[in]       tunnelCondition refers to the actual ACL condition that must be
  *                  translated.
- * 
- * \param[out]      condition refers to the flow condition that 
+ *
+ * \param[out]      condition refers to the flow condition that
  *                  stores result.
- * 
+ *
  * \return          FM_OK if successful.
  *
  *****************************************************************************/
@@ -2021,114 +2021,6 @@ static fm_status TranslateTEToFlowCondition(fm_tunnelCondition *tunnelCondition,
 
 
 
-/*****************************************************************************/
-/** ConfigureTunnelEngine
- * \ingroup intFlow
- *
- * \desc            Configure Tunnel Engine for Flow API usage.
- * 
- * \param[in]       sw is the switch on which to operate.
- * 
- * \param[in]       te is the tunneling engine on which to operate.
- * 
- * \return          FM_OK if successful.
- *
- *****************************************************************************/
-static fm_status ConfigureTunnelEngine(fm_int   sw,
-                                       fm_int   te)
-{
-    fm_status                err = FM_OK;
-    fm_switch               *switchPtr;
-    fm_fm10000TeChecksumCfg  teChecksumCfg;
-    fm_uint32                checksumCfgFieldSelectMask;
-    fm_fm10000TeTunnelCfg    tunnelCfg;
-    fm_uint32                tunnelCfgFieldSelectMask;
-    fm_fm10000TeParserCfg    parserCfg;
-    fm_uint32                parserCfgFieldSelectMask;
-    fm_fm10000TeGlortCfg     teGlortCfg;
-
-    switchPtr = GET_SWITCH_PTR(sw);
-
-    checksumCfgFieldSelectMask = 0;
-
-    teChecksumCfg.notIp = FM_FM10000_TE_CHECKSUM_COMPUTE;
-    checksumCfgFieldSelectMask |= FM10000_TE_CHECKSUM_NOT_IP;
-    
-    teChecksumCfg.notTcpOrUdp = FM_FM10000_TE_CHECKSUM_COMPUTE;
-    checksumCfgFieldSelectMask |= FM10000_TE_CHECKSUM_NOT_TCP_OR_UDP;
-    
-    teChecksumCfg.tcpOrUdp = FM_FM10000_TE_CHECKSUM_HEADER;
-    checksumCfgFieldSelectMask |= FM10000_TE_CHECKSUM_TCP_OR_UDP;
-
-    err = fm10000SetTeChecksum(sw,
-                               te,
-                               &teChecksumCfg,
-                               checksumCfgFieldSelectMask,
-                               TRUE);
-    FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_FLOW, err);
-
-    tunnelCfgFieldSelectMask = 0;
-
-    tunnelCfg.l4DstVxLan = FM10000_FLOW_VXLAN_PORT;
-    tunnelCfgFieldSelectMask |= FM10000_TE_DEFAULT_TUNNEL_L4DST_VXLAN;
-
-    tunnelCfg.l4DstNge = FM10000_FLOW_NGE_PORT;
-    tunnelCfgFieldSelectMask |= FM10000_TE_DEFAULT_TUNNEL_L4DST_NGE;
-
-    tunnelCfg.dmac = switchPtr->physicalRouterMac;
-    tunnelCfgFieldSelectMask |= FM10000_TE_DEFAULT_TUNNEL_DMAC;
-
-    tunnelCfg.smac = switchPtr->physicalRouterMac;
-    tunnelCfgFieldSelectMask |= FM10000_TE_DEFAULT_TUNNEL_SMAC;
-
-    tunnelCfg.ngeTime = FALSE;
-    tunnelCfgFieldSelectMask |= FM10000_TE_DEFAULT_TUNNEL_NGE_TIME;
-
-    tunnelCfg.encapProtocol = FM10000_FLOW_NVGRE_PROTOCOL;
-    tunnelCfgFieldSelectMask |= FM10000_TE_DEFAULT_TUNNEL_PROTOCOL;
-
-    tunnelCfg.encapVersion = FM10000_FLOW_NVGRE_VERSION;
-    tunnelCfgFieldSelectMask |= FM10000_TE_DEFAULT_TUNNEL_VERSION;
-
-    err = fm10000SetTeDefaultTunnel(sw,
-                                    te,
-                                    &tunnelCfg,
-                                    tunnelCfgFieldSelectMask,
-                                    TRUE);
-    FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_FLOW, err);
-
-    parserCfgFieldSelectMask = 0;
-
-    parserCfg.vxLanPort = FM10000_FLOW_VXLAN_PORT;
-    parserCfgFieldSelectMask |= FM10000_TE_PARSER_VXLAN_PORT;
-
-    parserCfg.ngePort = FM10000_FLOW_NGE_PORT;
-    parserCfgFieldSelectMask |= FM10000_TE_PARSER_NGE_PORT;
-
-    err = fm10000SetTeParser(sw,
-                             te,
-                             &parserCfg,
-                             parserCfgFieldSelectMask,
-                             TRUE);
-    FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_FLOW, err);
-
-    teGlortCfg.encapDglort = 0;
-    teGlortCfg.decapDglort = 0;
-    err = fm10000SetTeDefaultGlort(sw,
-                                   te,
-                                   &teGlortCfg,
-                                   FM10000_TE_DEFAULT_GLORT_ENCAP_DGLORT |
-                                   FM10000_TE_DEFAULT_GLORT_DECAP_DGLORT,
-                                   TRUE);
-    FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_FLOW, err);
-
-    return err;
-
-} /* end ConfigureTunnelEngine */
-
-
-
-
 /*****************************************************************************
  * Public Functions
  *****************************************************************************/
@@ -2139,8 +2031,8 @@ static fm_status ConfigureTunnelEngine(fm_int   sw,
  *
  * \desc            Creates a flow table in the FFU TCAM.
  *
- * \note            Flow TCAM tables and ACLs share the same number space for 
- *                  tableIndex numbers and acl numbers used in fmCreateACLExt 
+ * \note            Flow TCAM tables and ACLs share the same number space for
+ *                  tableIndex numbers and acl numbers used in fmCreateACLExt
  *                  function. Unique numbers must be provided when using both
  *                  Flow API and ACL API.
  *
@@ -2150,15 +2042,15 @@ static fm_status ConfigureTunnelEngine(fm_int   sw,
  *                  TCAM tables. The higher the tableIndex, the higher the
  *                  precedence. tableIndex must be less than
  *                  ''FM_FLOW_MAX_TABLE_TYPE''.
- * 
+ *
  * \param[in]       condition is a bit mask of matching conditions used to
- *                  identify flows that may be added to this table. See 
- *                  ''Flow Condition Masks'' for the definitions of each bit 
+ *                  identify flows that may be added to this table. See
+ *                  ''Flow Condition Masks'' for the definitions of each bit
  *                  in the mask.
- * 
+ *
  * \param[in]       maxEntries is the size of the flow table and must be
  *                  no larger than ''FM10000_MAX_RULE_PER_FLOW_TABLE''.
- * 
+ *
  * \param[in]       maxAction is the maximum number of actions supported by
  *                  rules in this table (must be at least 1).
  *
@@ -2166,13 +2058,13 @@ static fm_status ConfigureTunnelEngine(fm_int   sw,
  * \return          FM_ERR_INVALID_SWITCH if sw is invalid.
  * \return          FM_ERR_UNSUPPORTED if the specified condition is not
  *                  supported for this table.
- * \return          FM_ERR_NO_MEM if memory cannot be allocated. 
+ * \return          FM_ERR_NO_MEM if memory cannot be allocated.
  * \return          FM_ERR_INVALID_ARGUMENT if an argument is invalid.
  * \return          FM_ERR_INVALID_ACL if tableIndex already used.
  *
  *****************************************************************************/
-fm_status fm10000CreateFlowTCAMTable(fm_int           sw, 
-                                     fm_int           tableIndex, 
+fm_status fm10000CreateFlowTCAMTable(fm_int           sw,
+                                     fm_int           tableIndex,
                                      fm_flowCondition condition,
                                      fm_uint32        maxEntries,
                                      fm_uint32        maxAction)
@@ -2362,11 +2254,11 @@ fm_status fm10000CreateFlowTCAMTable(fm_int           sw,
     }
 
     /* Allocate memory needed to manage this tableIndex */
-    err = fmCreateBitArray(&switchExt->flowInfo.table[tableIndex].idInUse, 
+    err = fmCreateBitArray(&switchExt->flowInfo.table[tableIndex].idInUse,
                            maxEntries);
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_FLOW, err);
 
-    switchExt->flowInfo.table[tableIndex].lastCnt = 
+    switchExt->flowInfo.table[tableIndex].lastCnt =
         fmAlloc(maxEntries * sizeof(fm_flowCounters));
     if (switchExt->flowInfo.table[tableIndex].lastCnt == NULL)
     {
@@ -2375,10 +2267,10 @@ fm_status fm10000CreateFlowTCAMTable(fm_int           sw,
     }
     FM_MEMSET_S(switchExt->flowInfo.table[tableIndex].lastCnt,
                 maxEntries * sizeof(fm_flowCounters),
-                0, 
+                0,
                 maxEntries * sizeof(fm_flowCounters));
 
-    switchExt->flowInfo.table[tableIndex].useBit = 
+    switchExt->flowInfo.table[tableIndex].useBit =
         fmAlloc(maxEntries * sizeof(fm_bool));
     if (switchExt->flowInfo.table[tableIndex].useBit == NULL)
     {
@@ -2390,7 +2282,7 @@ fm_status fm10000CreateFlowTCAMTable(fm_int           sw,
                 0,
                 maxEntries * sizeof(fm_bool));
 
-    switchExt->flowInfo.table[tableIndex].mapping = 
+    switchExt->flowInfo.table[tableIndex].mapping =
         fmAlloc(maxEntries * sizeof(fm_int));
     if (switchExt->flowInfo.table[tableIndex].mapping == NULL)
     {
@@ -2402,7 +2294,7 @@ fm_status fm10000CreateFlowTCAMTable(fm_int           sw,
                 -1,
                 maxEntries * sizeof(fm_int));
 
-    switchExt->flowInfo.table[tableIndex].useCnt = 
+    switchExt->flowInfo.table[tableIndex].useCnt =
         fmAlloc(maxEntries * sizeof(fm_int));
     if (switchExt->flowInfo.table[tableIndex].useCnt == NULL)
     {
@@ -2450,7 +2342,7 @@ ABORT:
  * \param[in]       sw is the switch on which to operate.
  *
  * \param[in]       tableIndex is the tableIndex to delete.
- * 
+ *
  * \return          FM_OK if successful.
  * \return          FM_ERR_INVALID_ARGUMENT if an argument is invalid.
  * \return          FM_ERR_INVALID_SWITCH if sw is invalid.
@@ -2459,7 +2351,7 @@ ABORT:
  *                  referenced by another module.
  *
  *****************************************************************************/
-fm_status fm10000DeleteFlowTCAMTable(fm_int sw, 
+fm_status fm10000DeleteFlowTCAMTable(fm_int sw,
                                      fm_int tableIndex)
 {
     fm_status       err = FM_OK;
@@ -2585,7 +2477,7 @@ ABORT:
  *
  * \desc            Creates a flow table in the Tunnel Engine.
  *
- * \note            The frame must be redirected by 
+ * \note            The frame must be redirected by
  *                  ''FM_FLOW_ACTION_REDIRECT_TUNNEL'' or
  *                  ''FM_FLOW_ACTION_BALANCE'' from TCAM table to be processed
  *                  in TE table.
@@ -2599,15 +2491,15 @@ ABORT:
  *                  TCAM tables. The higher the tableIndex, the higher the
  *                  precedence. tableIndex must be less than
  *                  ''FM_FLOW_MAX_TABLE_TYPE''.
- * 
+ *
  * \param[in]       condition is a bit mask of matching conditions used to
- *                  identify flows that may be added to this table. See 
- *                  ''Flow Condition Masks'' for the definitions of each bit 
+ *                  identify flows that may be added to this table. See
+ *                  ''Flow Condition Masks'' for the definitions of each bit
  *                  in the mask.
- * 
+ *
  * \param[in]       maxEntries is the size of the flow table and must be
  *                  no larger than ''FM10000_MAX_RULE_PER_FLOW_TE_TABLE''.
- * 
+ *
  * \param[in]       maxAction is the maximum number of actions supported by
  *                  rules in this table (must be at least 1).
  *
@@ -2615,12 +2507,12 @@ ABORT:
  * \return          FM_ERR_INVALID_SWITCH if sw is invalid.
  * \return          FM_ERR_UNSUPPORTED if the specified condition is not
  *                  supported for this table.
- * \return          FM_ERR_NO_MEM if memory cannot be allocated. 
+ * \return          FM_ERR_NO_MEM if memory cannot be allocated.
  * \return          FM_ERR_INVALID_ARGUMENT if an argument is invalid.
  *
  *****************************************************************************/
-fm_status fm10000CreateFlowTETable(fm_int           sw, 
-                                   fm_int           tableIndex, 
+fm_status fm10000CreateFlowTETable(fm_int           sw,
+                                   fm_int           tableIndex,
                                    fm_flowCondition condition,
                                    fm_uint32        maxEntries,
                                    fm_uint32        maxAction)
@@ -2695,9 +2587,6 @@ fm_status fm10000CreateFlowTETable(fm_int           sw,
     err = TranslateFlowToTECondition(&condition, &tunnelCondition);
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_FLOW, err);
 
-    err = ConfigureTunnelEngine(sw, switchExt->flowInfo.table[tableIndex].te);
-    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_FLOW, err);
-
     FM_MEMSET_S(&tunnelParam, sizeof(fm_tunnelParam), 0, sizeof(fm_tunnelParam));
 
     tunnelParam.te = switchExt->flowInfo.table[tableIndex].te;
@@ -2716,19 +2605,19 @@ fm_status fm10000CreateFlowTETable(fm_int           sw,
 
     switchExt->flowInfo.table[tableIndex].group = group;
 
-    err = fm10000SetTunnelAttribute(sw, 
-                                    group, 
-                                    0, 
-                                    FM_TUNNEL_SET_DEFAULT_DGLORT, 
+    err = fm10000SetTunnelAttribute(sw,
+                                    group,
+                                    0,
+                                    FM_TUNNEL_SET_DEFAULT_DGLORT,
                                     &defaultDglort);
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_FLOW, err);
 
     /* Allocate memory needed to manage this tableIndex */
-    err = fmCreateBitArray(&switchExt->flowInfo.table[tableIndex].idInUse, 
+    err = fmCreateBitArray(&switchExt->flowInfo.table[tableIndex].idInUse,
                            maxEntries);
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_FLOW, err);
 
-    switchExt->flowInfo.table[tableIndex].lastCnt = 
+    switchExt->flowInfo.table[tableIndex].lastCnt =
         fmAlloc(maxEntries * sizeof(fm_flowCounters));
     if (switchExt->flowInfo.table[tableIndex].lastCnt == NULL)
     {
@@ -2737,10 +2626,10 @@ fm_status fm10000CreateFlowTETable(fm_int           sw,
     }
     FM_MEMSET_S(switchExt->flowInfo.table[tableIndex].lastCnt,
                 maxEntries * sizeof(fm_flowCounters),
-                0, 
+                0,
                 maxEntries * sizeof(fm_flowCounters));
 
-    switchExt->flowInfo.table[tableIndex].useBit = 
+    switchExt->flowInfo.table[tableIndex].useBit =
         fmAlloc(maxEntries * sizeof(fm_bool));
     if (switchExt->flowInfo.table[tableIndex].useBit == NULL)
     {
@@ -2752,7 +2641,7 @@ fm_status fm10000CreateFlowTETable(fm_int           sw,
                 0,
                 maxEntries * sizeof(fm_bool));
 
-    switchExt->flowInfo.table[tableIndex].mapping = 
+    switchExt->flowInfo.table[tableIndex].mapping =
         fmAlloc(maxEntries * sizeof(fm_int));
     if (switchExt->flowInfo.table[tableIndex].mapping == NULL)
     {
@@ -2764,7 +2653,7 @@ fm_status fm10000CreateFlowTETable(fm_int           sw,
                 -1,
                 maxEntries * sizeof(fm_int));
 
-    switchExt->flowInfo.table[tableIndex].useCnt = 
+    switchExt->flowInfo.table[tableIndex].useCnt =
         fmAlloc(maxEntries * sizeof(fm_int));
     if (switchExt->flowInfo.table[tableIndex].useCnt == NULL)
     {
@@ -2797,7 +2686,7 @@ ABORT:
  * \param[in]       sw is the switch on which to operate.
  *
  * \param[in]       tableIndex is the tableIndex to delete.
- * 
+ *
  * \return          FM_OK if successful.
  * \return          FM_ERR_INVALID_ARGUMENT if an argument is invalid.
  * \return          FM_ERR_INVALID_SWITCH if sw is invalid.
@@ -2805,7 +2694,7 @@ ABORT:
  *                  referenced by another module.
  *
  *****************************************************************************/
-fm_status fm10000DeleteFlowTETable(fm_int sw, 
+fm_status fm10000DeleteFlowTETable(fm_int sw,
                                    fm_int tableIndex)
 {
     fm_status       err = FM_OK;
@@ -2899,39 +2788,39 @@ ABORT:
  * \ingroup intFlow
  *
  * \desc            Add a flow entry to the specified table.
- * 
+ *
  * \param[in]       sw is the switch on which to operate.
  *
  * \param[in]       tableIndex is the table instance to which this flow should
  *                  be added.
- * 
+ *
  * \param[in]       priority is the priority for this flow within the table.
  *                  For TE table this functionality is not available.
- * 
+ *
  * \param[in]       precedence is the inter-table flow precedence.
- * 
+ *
  * \param[in]       condition is a bit mask of matching conditions used to
  *                  identify the flow. See ''Flow Condition Masks'' for the
- *                  definitions of each bit in the mask. For TE table, this 
+ *                  definitions of each bit in the mask. For TE table, this
  *                  mask must equal the condition mask selected for a table.
- * 
+ *
  * \param[in]       condVal points to a ''fm_flowValue'' structure containing
  *                  the values to match against for the specified condition.
- * 
+ *
  * \param[in]       action is a bit mask of actions that will occur when a
  *                  packet is identified that matches the flow condition.
- *                  See ''Flow Action Masks'' for definitions of each bit in 
+ *                  See ''Flow Action Masks'' for definitions of each bit in
  *                  the mask.
- * 
+ *
  * \param[in]       param points to an ''fm_flowParam'' structure containing
  *                  values used by some actions.
- * 
+ *
  * \param[in]       flowState is the initial state of the flow (enabled or
  *                  not). A flow in a TE table is always enabled.
- * 
+ *
  * \param[out]      flowId points to caller-allocated storage where this
  *                  function will store the handle identifying this flow entry.
- * 
+ *
  * \return          FM_OK if successful.
  * \return          FM_ERR_INVALID_SWITCH if sw is invalid.
  * \return          FM_ERR_UNSUPPORTED if tableIndex or action is not
@@ -2948,10 +2837,10 @@ ABORT:
  *                  configuration.
  *
  *****************************************************************************/
-fm_status fm10000AddFlow(fm_int           sw, 
+fm_status fm10000AddFlow(fm_int           sw,
                          fm_int           tableIndex,
                          fm_uint16        priority,
-                         fm_uint32        precedence, 
+                         fm_uint32        precedence,
                          fm_flowCondition condition,
                          fm_flowValue    *condVal,
                          fm_flowAction    action,
@@ -3212,7 +3101,7 @@ fm_status fm10000AddFlow(fm_int           sw,
                                 (void*) &acl);
             if ( err != FM_OK )
             {
-                FM_LOG_WARNING(FM_LOG_CAT_FLOW, 
+                FM_LOG_WARNING(FM_LOG_CAT_FLOW,
                                "Non disruptive ACL apply failed with error=%d. "
                                "Performing disruptive compile and apply.\n",
                                err);
@@ -3237,7 +3126,7 @@ fm_status fm10000AddFlow(fm_int           sw,
 
                     err = fmApplyACL(sw, 0);
                     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_FLOW, err);
-                    
+
                     err = FM_ERR_ACL_COMPILE;
                     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_FLOW, err);
                 }
@@ -3333,14 +3222,14 @@ fm_status fm10000AddFlow(fm_int           sw,
             FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_FLOW, err);
         }
 
-        err = fmConvertFlowToTEParams(param, 
+        err = fmConvertFlowToTEParams(param,
                                       &tunnelActionParam,
                                       &tunnelEncapFlowParam);
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_FLOW, err);
 
         err = fmConvertFlowToTEValue(condVal, &tunnelConditionParam);
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_FLOW, err);
-        
+
         err = TranslateFlowToTEAction(&action, &tunnelAction, &tunnelEncapFlow);
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_FLOW, err);
 
@@ -3416,7 +3305,7 @@ ABORT:
         * for this rule. */
         RemoveMappedEntry(sw, aclCondition, &aclValue);
     }
-    else if ( (tableType == FM_FLOW_TE_TABLE) && 
+    else if ( (tableType == FM_FLOW_TE_TABLE) &&
               (tunnelRule >= 0) &&
               (switchExt->flowInfo.table[tableIndex].mapping[tunnelRule] != -1) )
     {
@@ -3438,32 +3327,32 @@ ABORT:
  * \ingroup intFlow
  *
  * \desc            Gets a flow entry from the specified table.
- * 
+ *
  * \param[in]       sw is the switch on which to operate.
  *
  * \param[in]       tableIndex is the table instance to which this flow should
  *                  be added.
- * 
+ *
  * \param[in]       flowId is the handle identifying this flow entry
- * 
+ *
  * \param[out]      condition points to user-allocated storage where this flow
  *                  condition mask should be stored.
- * 
+ *
  * \param[out]      condVal points to user-allocated storage where this flow
  *                  condition values should be stored.
- * 
+ *
  * \param[out]      action points to user-allocated storage where this flow
  *                  action mask should be stored.
- * 
+ *
  * \param[out]      param points to user-allocated storage where this flow
  *                  action values should be stored.
- * 
+ *
  * \param[out]      priority points to user-allocated storage where this flow
  *                  priority should be stored.
- * 
+ *
  * \param[out]      precedence points to user-allocated storage where this flow
  *                  precedence should be stored.
- * 
+ *
  * \return          FM_OK if successful.
  * \return          FM_ERR_INVALID_ARGUMENT if an argument is invalid.
  * \return          FM_ERR_INVALID_ACL if tableIndex is not valid.
@@ -3472,7 +3361,7 @@ ABORT:
  * \return          FM_ERR_TUNNEL_INVALID_ENTRY if group or rule is invalid.
  *
  *****************************************************************************/
-fm_status fm10000GetFlow(fm_int             sw, 
+fm_status fm10000GetFlow(fm_int             sw,
                          fm_int             tableIndex,
                          fm_int             flowId,
                          fm_flowCondition * condition,
@@ -3558,7 +3447,7 @@ fm_status fm10000GetFlow(fm_int             sw,
                            &aclAction,
                            &aclParam);
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_FLOW, err);
-        
+
 
         /* Translate conditions */
         if (aclCond & FM_ACL_MATCH_L4_SRC_PORT_WITH_MASK)
@@ -3571,7 +3460,7 @@ fm_status fm10000GetFlow(fm_int             sw,
             }
 
             aclCond &= ~FM_ACL_MATCH_L4_SRC_PORT_WITH_MASK;
-            aclCond |= FM_ACL_MATCH_L4_SRC_PORT; 
+            aclCond |= FM_ACL_MATCH_L4_SRC_PORT;
         }
 
         if (aclCond & FM_ACL_MATCH_L4_DST_PORT_WITH_MASK)
@@ -3584,7 +3473,7 @@ fm_status fm10000GetFlow(fm_int             sw,
             }
 
             aclCond &= ~FM_ACL_MATCH_L4_DST_PORT_WITH_MASK;
-            aclCond |= FM_ACL_MATCH_L4_DST_PORT; 
+            aclCond |= FM_ACL_MATCH_L4_DST_PORT;
         }
 
         err = TranslateACLToFlowCondition(sw, &aclCond, condition);
@@ -3638,7 +3527,7 @@ fm_status fm10000GetFlow(fm_int             sw,
         FM_CLEAR(tunnelActionParam);
 
         /* Get the Tunnel Rule associated with this flow */
-        err = fm10000GetTunnelRule(sw, 
+        err = fm10000GetTunnelRule(sw,
                                    flowTableInfo->group,
                                    tunnelRule,
                                    &tunnelCondition,
@@ -3651,7 +3540,7 @@ fm_status fm10000GetFlow(fm_int             sw,
         if (tunnelAction & FM_TUNNEL_ENCAP_FLOW)
         {
             /* Get the encapFlow action bit mask */
-            err = fm10000GetTunnelEncapFlow(sw, 
+            err = fm10000GetTunnelEncapFlow(sw,
                                             flowTableInfo->group,
                                             tunnelRule,
                                             &tunnelEncapFlow,
@@ -3659,14 +3548,14 @@ fm_status fm10000GetFlow(fm_int             sw,
             FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_FLOW, err);
         }
 
-        err = fmConvertTEToFlowValue(&tunnelConditionParam, 
+        err = fmConvertTEToFlowValue(&tunnelConditionParam,
                                      condVal);
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_FLOW, err);
 
         err = TranslateTEToFlowCondition(&tunnelCondition, condition);
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_FLOW, err);
 
-        err = fmConvertTEParamsToFlow(&tunnelActionParam, 
+        err = fmConvertTEParamsToFlow(&tunnelActionParam,
                                       &tunnelEncapFlowParam,
                                       param);
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_FLOW, err);
@@ -3708,20 +3597,20 @@ ABORT:
  * \ingroup intFlow
  *
  * \desc            Gets a flow table type associated with the specified table.
- * 
+ *
  * \param[in]       sw is the switch on which to operate.
  *
  * \param[in]       tableIndex is the table instance to which this flow should
  *                  be added.
- * 
+ *
  * \param[out]      flowTableType points to user allocated storage
  *                  where this flow table type should be stored.
- * 
+ *
  * \return          FM_OK if successful.
  * \return          FM_ERR_INVALID_ARGUMENT if an argument is invalid.
  *
  *****************************************************************************/
-fm_status fm10000GetFlowTableType(fm_int             sw, 
+fm_status fm10000GetFlowTableType(fm_int             sw,
                                   fm_int             tableIndex,
                                   fm_flowTableType * flowTableType)
 {
@@ -3746,7 +3635,7 @@ fm_status fm10000GetFlowTableType(fm_int             sw,
 ABORT:
 
     FM_LOG_EXIT(FM_LOG_CAT_FLOW, err);
-}   
+}
 
 
 
@@ -3762,7 +3651,7 @@ ABORT:
  * \param[out]      firstTable points to user-allocated memory where
  *                  the table instance to which the flow belongs should
  *                  stored.
- * 
+ *
  * \return          FM_OK if successful.
  * \return          FM_ERR_INVALID_SWITCH if sw is invalid.
  * \return          FM_ERR_UNSUPPORTED if tableIndex is not supported.
@@ -3776,9 +3665,9 @@ fm_status fm10000GetFlowFirst(fm_int   sw,
     fm_status           err = FM_OK;
     fm10000_switch *    switchExt;
     fm10000_flowInfo *  flowInfo;
-    fm_int              group;              
+    fm_int              group;
 
-    FM_LOG_ENTRY(FM_LOG_CAT_FLOW, 
+    FM_LOG_ENTRY(FM_LOG_CAT_FLOW,
                  "sw = %d\n",
                  sw);
 
@@ -3805,13 +3694,13 @@ fm_status fm10000GetFlowFirst(fm_int   sw,
         err = FM_ERR_NO_MORE;
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_FLOW, err);
     }
-    else 
+    else
     {
         *firstTable = group;
     }
 
 ABORT:
-    
+
     FM_LOG_EXIT(FM_LOG_CAT_FLOW, err);
 }
 
@@ -3825,14 +3714,14 @@ ABORT:
  *                  one with a call to ''fm10000GetFlowFirst''.
  *
  * \param[in]       sw is the switch on which to operate.
- * 
+ *
  * \param[in]       currentTable is the last table found by a previous call
  *                  made to ''fm10000GetFlowFirst''.
  *
  * \param[out]      nextTable points to user-allocated memory where
  *                  the table instance to which the flow belongs should
  *                  stored.
- * 
+ *
  * \return          FM_OK if successful.
  * \return          FM_ERR_INVALID_SWITCH if sw is invalid.
  * \return          FM_ERR_UNSUPPORTED if tableIndex is not supported.
@@ -3847,9 +3736,9 @@ fm_status fm10000GetFlowNext(fm_int   sw,
     fm_status           err = FM_OK;
     fm10000_switch *    switchExt;
     fm10000_flowInfo *  flowInfo;
-    fm_int              group;              
+    fm_int              group;
 
-    FM_LOG_ENTRY(FM_LOG_CAT_FLOW, 
+    FM_LOG_ENTRY(FM_LOG_CAT_FLOW,
                  "sw = %d, currentTable = %d\n",
                  sw,
                  currentTable);
@@ -3889,7 +3778,7 @@ fm_status fm10000GetFlowNext(fm_int   sw,
     }
 
 ABORT:
-    
+
     FM_LOG_EXIT(FM_LOG_CAT_FLOW, err);
 }
 
@@ -3904,12 +3793,12 @@ ABORT:
  * \desc            Gets the first created flow from a defined flow table.
  *
  * \param[in]       sw is the switch on which to operate.
- * 
+ *
  * \param[in]       tableIndex is the flow table on which to operate.
  *
  * \param[out]      firstRule points to user-allocated memory where
  *                  the firts in use flowId should be stored.
- * 
+ *
  * \return          FM_OK if successful.
  * \return          FM_ERR_INVALID_SWITCH if sw is invalid.
  * \return          FM_ERR_UNSUPPORTED if tableIndex is not supported.
@@ -3925,9 +3814,9 @@ fm_status fm10000GetFlowRuleFirst(fm_int   sw,
     fm10000_flowTableInfo *  flowInfoTable;
     fm_bool                  isInUse = 0;
     fm_int                   bitArraySize;
-    fm_int                   rule;              
+    fm_int                   rule;
 
-    FM_LOG_ENTRY(FM_LOG_CAT_FLOW, 
+    FM_LOG_ENTRY(FM_LOG_CAT_FLOW,
                  "sw = %d, tableIndex = %d\n",
                  sw,
                  tableIndex);
@@ -3951,7 +3840,7 @@ fm_status fm10000GetFlowRuleFirst(fm_int   sw,
 
     for ( rule = 0; rule < bitArraySize; rule++ )
     {
-        err = fmGetBitArrayBit(&flowInfoTable->idInUse, 
+        err = fmGetBitArrayBit(&flowInfoTable->idInUse,
                                rule,
                                &isInUse);
 
@@ -3985,17 +3874,17 @@ ABORT:
  *
  * \desc            Gets the next created flow from a defined flow table
  *                  after finding the first one with a call to ''fm10000GetFlowRuleFirst''.
- * 
+ *
  * \param[in]       sw is the switch on which to operate.
- * 
+ *
  * \param[in]       tableIndex is the flow table on which to operate.
- * 
+ *
  * \param[in]       currentRule is the last flow found by a previous call
  *                  to ''fm10000GetFlowRuleFirst''
  *
  * \param[out]      nextRule points to user-allocated memory where
  *                  the rule instance should be stored.
- * 
+ *
  * \return          FM_OK if successful.
  * \return          FM_ERR_INVALID_SWITCH if sw is invalid.
  * \return          FM_ERR_UNSUPPORTED if tableIndex is not supported.
@@ -4012,9 +3901,9 @@ fm_status fm10000GetFlowRuleNext(fm_int   sw,
     fm10000_flowTableInfo *  flowInfoTable;
     fm_bool                  isInUse = 0;
     fm_int                   bitArraySize;
-    fm_int                   rule;              
+    fm_int                   rule;
 
-    FM_LOG_ENTRY(FM_LOG_CAT_FLOW, 
+    FM_LOG_ENTRY(FM_LOG_CAT_FLOW,
                  "sw = %d, currentTable = %d, currentRule = %d\n",
                  sw,
                  tableIndex,
@@ -4045,7 +3934,7 @@ fm_status fm10000GetFlowRuleNext(fm_int   sw,
 
     for ( rule = currentRule + 1; rule < bitArraySize; rule++ )
     {
-        err = fmGetBitArrayBit(&flowInfoTable->idInUse, 
+        err = fmGetBitArrayBit(&flowInfoTable->idInUse,
                                rule,
                                &isInUse);
 
@@ -4084,28 +3973,28 @@ ABORT:
  * \param[in]       sw is the switch on which to operate.
  *
  * \param[in]       tableIndex is the table instance to which the flow belongs.
- * 
+ *
  * \param[in]       flowId is the flow instance to be modified.
- * 
+ *
  * \param[in]       priority is the priority for this flow within the table.
- * 
+ *
  * \param[in]       precedence is the inter-table flow precedence.
- * 
+ *
  * \param[in]       condition is a bit mask of matching conditions used to
  *                  identify the flow. See ''Flow Condition Masks'' for the
  *                  definitions of each bit in the mask.
- * 
+ *
  * \param[in]       condVal points to a ''fm_flowValue'' structure containing
  *                  the values to match against for the specified condition.
- * 
+ *
  * \param[in]       action is a bit mask of actions that will occur when a
  *                  packet is identified that matches the flow condition.
- *                  See ''Flow Action Masks'' for definitions of each bit in 
+ *                  See ''Flow Action Masks'' for definitions of each bit in
  *                  the mask.
- * 
+ *
  * \param[in]       param points to a ''fm_flowParam'' structure containing
  *                  values used by some actions.
- * 
+ *
  * \return          FM_OK if successful.
  * \return          FM_ERR_INVALID_SWITCH if sw is invalid.
  * \return          FM_ERR_UNSUPPORTED if tableIndex is not supported.
@@ -4116,11 +4005,11 @@ ABORT:
  * \return          FM_ERR_TUNNEL_CONFLICT if an argument is invalid.
  *
  *****************************************************************************/
-fm_status fm10000ModifyFlow(fm_int           sw, 
+fm_status fm10000ModifyFlow(fm_int           sw,
                             fm_int           tableIndex,
                             fm_int           flowId,
                             fm_uint16        priority,
-                            fm_uint32        precedence, 
+                            fm_uint32        precedence,
                             fm_flowCondition condition,
                             fm_flowValue    *condVal,
                             fm_flowAction    action,
@@ -4416,14 +4305,14 @@ fm_status fm10000ModifyFlow(fm_int           sw,
             FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_FLOW, err);
         }
 
-        err = fmConvertFlowToTEParams(param, 
+        err = fmConvertFlowToTEParams(param,
                                       &tunnelActionParam,
                                       &tunnelEncapFlowParam);
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_FLOW, err);
 
         err = fmConvertFlowToTEValue(condVal, &tunnelConditionParam);
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_FLOW, err);
-        
+
         err = TranslateFlowToTEAction(&action, &tunnelAction, &tunnelEncapFlow);
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_FLOW, err);
 
@@ -4444,9 +4333,9 @@ fm_status fm10000ModifyFlow(fm_int           sw,
             tunnelAction |= FM_TUNNEL_SET_DGLORT;
             tunnelActionParam.dglort = glort;
         }
-        
+
         /* Tunnel Encap Flow Update */
-        if ( ( tunnelEncapFlow != 0 ) && 
+        if ( ( tunnelEncapFlow != 0 ) &&
                 ( switchExt->flowInfo.table[tableIndex].mapping[flowId] != -1 ) )
         {
             err = fm10000UpdateTunnelEncapFlow(sw,
@@ -4461,7 +4350,7 @@ fm_status fm10000ModifyFlow(fm_int           sw,
         }
 
         /* Tunnel Encap Flow Creation */
-        if ( ( tunnelEncapFlow != 0 ) && 
+        if ( ( tunnelEncapFlow != 0 ) &&
                 ( switchExt->flowInfo.table[tableIndex].mapping[flowId] == -1 ) )
         {
             err = fm10000AddTunnelEncapFlow(sw,
@@ -4485,9 +4374,9 @@ fm_status fm10000ModifyFlow(fm_int           sw,
                                  tunnelAction,
                                  &tunnelActionParam);
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_FLOW, err);
-        
+
         /* Tunnel Encap Flow Deletion */
-        if ( ( tunnelEncapFlow == 0 ) && 
+        if ( ( tunnelEncapFlow == 0 ) &&
                 ( switchExt->flowInfo.table[tableIndex].mapping[flowId] != -1 ) )
         {
             err =  fm10000DeleteTunnelEncapFlow(sw,
@@ -4526,14 +4415,14 @@ ABORT:
  * \ingroup intFlow
  *
  * \desc            Delete a flow entry from the specified table.
- * 
+ *
  * \param[in]       sw is the switch on which to operate.
  *
  * \param[in]       tableIndex is the flow table instance from which to delete
  *                  the flow.
- * 
+ *
  * \param[in]       flowId is the flow instance to be deleted.
- * 
+ *
  * \return          FM_OK if successful.
  * \return          FM_ERR_INVALID_SWITCH if sw is invalid.
  * \return          FM_ERR_INVALID_ARGUMENT if an argument is invalid.
@@ -4636,7 +4525,7 @@ fm_status fm10000DeleteFlow(fm_int sw, fm_int tableIndex, fm_int flowId)
                                 (void*) &acl);
             if ( err != FM_OK )
             {
-                FM_LOG_WARNING(FM_LOG_CAT_FLOW, 
+                FM_LOG_WARNING(FM_LOG_CAT_FLOW,
                                "Non disruptive ACL apply failed with error=%d. "
                                "Performing disruptive compile and apply.\n",
                                err);
@@ -4664,7 +4553,7 @@ fm_status fm10000DeleteFlow(fm_int sw, fm_int tableIndex, fm_int flowId)
 
                     err = fmApplyACL(sw, 0);
                     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_FLOW, err);
-                    
+
                     err = FM_ERR_ACL_COMPILE;
                     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_FLOW, err);
                 }
@@ -4698,7 +4587,7 @@ fm_status fm10000DeleteFlow(fm_int sw, fm_int tableIndex, fm_int flowId)
 
         err = fmSetBitArrayBit(&switchExt->flowInfo.table[tableIndex].idInUse,
                                flowId,
-                               FALSE);                                                                                           
+                               FALSE);
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_FLOW, err);
     }
 
@@ -4720,11 +4609,11 @@ ABORT:
  * \param[in]       sw is the switch on which to operate.
  *
  * \param[in]       tableIndex is the table instance to which the flow belongs.
- * 
+ *
  * \param[in]       flowId is the flow instance.
- * 
+ *
  * \param[in]       flowState is the flow's new state (see ''fm_flowState'').
- * 
+ *
  * \return          FM_OK if successful.
  * \return          FM_ERR_INVALID_SWITCH if sw is invalid.
  * \return          FM_ERR_UNSUPPORTED if tableIndex identifies a table that
@@ -4733,9 +4622,9 @@ ABORT:
  * \return          FM_ERR_INVALID_ACL_RULE if flowId is not valid.
  *
  *****************************************************************************/
-fm_status fm10000SetFlowState(fm_int       sw, 
-                              fm_int       tableIndex, 
-                              fm_int       flowId, 
+fm_status fm10000SetFlowState(fm_int       sw,
+                              fm_int       tableIndex,
+                              fm_int       flowId,
                               fm_flowState flowState)
 {
     fm_status        err = FM_OK;
@@ -4794,16 +4683,16 @@ ABORT:
  * \ingroup intFlow
  *
  * \desc            Retrieve counters for a flow.
- * 
+ *
  * \param[in]       sw is the switch on which to operate.
  *
  * \param[in]       tableIndex is the table instance to which the flow belongs.
- * 
+ *
  * \param[in]       flowId is the flow instance.
- * 
+ *
  * \param[out]      counters points to caller-allocated storage where this
  *                  function will store the counter values.
- * 
+ *
  * \return          FM_OK if successful.
  * \return          FM_ERR_INVALID_SWITCH if sw is invalid.
  * \return          FM_ERR_UNSUPPORTED if tableIndex does not identify a
@@ -4811,10 +4700,10 @@ ABORT:
  * \return          FM_ERR_INVALID_ACL if tableIndex is invalid.
  * \return          FM_ERR_INVALID_ACL_RULE if flowId is invalid.
  * \return          FM_ERR_INVALID_ARGUMENT if an argument is invalid.
- *                  
+ *
  *****************************************************************************/
-fm_status fm10000GetFlowCount(fm_int           sw, 
-                              fm_int           tableIndex, 
+fm_status fm10000GetFlowCount(fm_int           sw,
+                              fm_int           tableIndex,
                               fm_int           flowId,
                               fm_flowCounters *counters)
 {
@@ -4890,13 +4779,13 @@ ABORT:
  * \ingroup intFlow
  *
  * \desc            Resets a flow's counters to zero.
- * 
+ *
  * \param[in]       sw is the switch on which to operate.
  *
  * \param[in]       tableIndex is the table instance to which the flow belongs.
- * 
+ *
  * \param[in]       flowId is the flow instance.
- * 
+ *
  * \return          FM_OK if successful.
  * \return          FM_ERR_INVALID_SWITCH if sw is invalid.
  * \return          FM_ERR_UNSUPPORTED if tableIndex identifies a flow table
@@ -4906,8 +4795,8 @@ ABORT:
  * \return          FM_ERR_INVALID_ARGUMENT if an argument is invalid.
  *
  *****************************************************************************/
-fm_status fm10000ResetFlowCount(fm_int sw, 
-                                fm_int tableIndex, 
+fm_status fm10000ResetFlowCount(fm_int sw,
+                                fm_int tableIndex,
                                 fm_int flowId)
 {
     fm_status       err = FM_OK;
@@ -4967,23 +4856,23 @@ ABORT:
  * \ingroup intFlow
  *
  * \desc            Determine if a packet has been received that matches
- *                  the specified flow. This function can be used to age out 
+ *                  the specified flow. This function can be used to age out
  *                  unused flow entries.
  *
  * \param[in]       sw is the switch on which to operate.
  *
  * \param[in]       tableIndex is the table instance to which the flow belongs.
- * 
+ *
  * \param[in]       flowId is the flow instance.
- * 
+ *
  * \param[in]       clear should be set to TRUE to reset the flow's "used"
  *                  flag after it has been read.
- * 
+ *
  * \param[out]      used points to caller-allocated storage where the flow's
  *                  "used" flag will be stored. If clear is set to TRUE,
  *                  used will reflect the value of the "used" flag prior to
  *                  it being cleared.
- * 
+ *
  * \return          FM_OK if successful.
  * \return          FM_ERR_INVALID_SWITCH if sw is invalid.
  * \return          FM_ERR_UNSUPPORTED if tableIndex is not supported.
@@ -4992,8 +4881,8 @@ ABORT:
  * \return          FM_ERR_INVALID_ARGUMENT if an argument is invalid.
  *
  *****************************************************************************/
-fm_status fm10000GetFlowUsed(fm_int   sw, 
-                             fm_int   tableIndex, 
+fm_status fm10000GetFlowUsed(fm_int   sw,
+                             fm_int   tableIndex,
                              fm_int   flowId,
                              fm_bool  clear,
                              fm_bool *used)
@@ -5057,7 +4946,7 @@ fm_status fm10000GetFlowUsed(fm_int   sw,
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_FLOW, err);
     }
 
-    if (counters.cntPkts != 
+    if (counters.cntPkts !=
         switchExt->flowInfo.table[tableIndex].lastCnt[flowId].cntPkts)
     {
         switchExt->flowInfo.table[tableIndex].useBit[flowId] = TRUE;
@@ -5091,21 +4980,21 @@ ABORT:
  *
  * \param[in]       tableIndex is the table instance to which the
  *                  attribute belongs.
- * 
+ *
  * \param[in]       attr is the flow api attribute to set
  *                  (see 'Flow Attributes').
- * 
+ *
  * \param[in]       value points to the attribute value to set.
- * 
+ *
  * \return          FM_OK if successful.
  * \return          FM_ERR_INVALID_SWITCH if sw is invalid.
- * \return          FM_ERR_UNSUPPORTED if attribute is not supported or table 
+ * \return          FM_ERR_UNSUPPORTED if attribute is not supported or table
  *                  exists and attribute should be set before creation of table.
  * \return          FM_ERR_INVALID_ARGUMENT if argument is invalid.
  *
  *****************************************************************************/
-fm_status fm10000SetFlowAttribute(fm_int sw, 
-                                  fm_int tableIndex, 
+fm_status fm10000SetFlowAttribute(fm_int sw,
+                                  fm_int tableIndex,
                                   fm_int attr,
                                   void  *value)
 {
@@ -5141,7 +5030,7 @@ fm_status fm10000SetFlowAttribute(fm_int sw,
             /* Priority configuration must be done prior to the ACL creation. */
             if (switchExt->flowInfo.table[tableIndex].created == FALSE)
             {
-                switchExt->flowInfo.table[tableIndex].withPriority = 
+                switchExt->flowInfo.table[tableIndex].withPriority =
                     *( (fm_bool *) value );
                 err = FM_OK;
             }
@@ -5156,7 +5045,7 @@ fm_status fm10000SetFlowAttribute(fm_int sw,
              * creation. */
             if (switchExt->flowInfo.table[tableIndex].created == FALSE)
             {
-                switchExt->flowInfo.table[tableIndex].withDefault = 
+                switchExt->flowInfo.table[tableIndex].withDefault =
                     *( (fm_bool *) value );
                 err = FM_OK;
             }
@@ -5222,7 +5111,7 @@ fm_status fm10000SetFlowAttribute(fm_int sw,
 
         case FM_FLOW_TABLE_TUNNEL_ENGINE:
             /* Tunnel Engine must be set prior to the TE table creation. */
-            err = fm10000GetTunnel(sw, 
+            err = fm10000GetTunnel(sw,
                               switchExt->flowInfo.table[tableIndex].group,
                               &tunnelParam);
             if (err == FM_ERR_TUNNEL_INVALID_ENTRY)
@@ -5247,7 +5136,7 @@ fm_status fm10000SetFlowAttribute(fm_int sw,
             /* Specifying if a flow table is Encap (TRUE) or Decap (FALSE).
                This attribute must be configured prior to the TE table
                creation. */
-            err = fm10000GetTunnel(sw, 
+            err = fm10000GetTunnel(sw,
                               switchExt->flowInfo.table[tableIndex].group,
                               &tunnelParam);
             if (err == FM_ERR_TUNNEL_INVALID_ENTRY)
@@ -5300,12 +5189,12 @@ ABORT:
  *
  * \param[in]       tableIndex is the table instance to which the
  *                  attribute belongs.
- * 
+ *
  * \param[in]       attr is the flow api attribute to get
  *                  (see 'Flow Attributes').
- * 
+ *
  * \param[in]       value points to the attribute value to get.
- * 
+ *
  * \return          FM_OK if successful.
  * \return          FM_ERR_INVALID_SWITCH if sw is invalid.
  * \return          FM_ERR_UNSUPPORTED if attribute is not supported.
@@ -5420,7 +5309,7 @@ ABORT:
 /** fm10000CreateFlowBalanceGrp
  * \ingroup intFlow
  *
- * \desc            Create ECMP balance group for use with 
+ * \desc            Create variable sized ECMP balance group for use with the
  *                  ''FM_FLOW_ACTION_BALANCE'' action.
  *
  * \param[in]       sw is the switch on which to operate.
@@ -5456,7 +5345,7 @@ fm_status fm10000CreateFlowBalanceGrp(fm_int  sw,
     FM_MEMSET_S(&info, sizeof(fm_ecmpGroupInfo), 0, sizeof(fm_ecmpGroupInfo));
 
     info.numFixedEntries = 0;
-    
+
     err = fmCreateECMPGroupV2(sw, groupId, &info);
     FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_FLOW, err);
 
@@ -5546,7 +5435,7 @@ fm_status fm10000DeleteFlowBalanceGrp(fm_int sw,
  * \param[in]       groupId is identifier of group that entry will be added to.
  *
  * \param[in]       tableIndex is flow TE table index part of the entry.
- *                  Specified flow TE table should be in direct mode and must 
+ *                  Specified flow TE table should be in direct mode and must
  *                  not use the USER field.
  *
  * \param[in]       flowId is flow id part of the entry.
@@ -5559,7 +5448,7 @@ fm_status fm10000DeleteFlowBalanceGrp(fm_int sw,
  * \return          FM_ERR_TABLE_FULL if the hardware ARP table is full.
  * \return          FM_ERR_NO_MEM if the function is unable to allocate
  *                  needed memory.
- * \return          FM_ERR_ALREADY_EXISTS if entry being added already exists 
+ * \return          FM_ERR_ALREADY_EXISTS if entry being added already exists
  *                  in the ECMP group.
  *
  *****************************************************************************/
@@ -5657,7 +5546,7 @@ fm_status fm10000AddFlowBalanceGrpEntry(fm_int sw,
  *
  * \desc            Delete entry from ECMP balance group.
  *
- * \note            If an entry cannot be found in the ECMP group's entries 
+ * \note            If an entry cannot be found in the ECMP group's entries
  *                  table, that entry will simply be ignored.
  *
  * \param[in]       sw is the switch on which to operate.
@@ -5800,7 +5689,7 @@ fm_status fm10000FreeFlowResource(fm_int sw)
  * \param[in]       defaultMcastGroupId is multicast group id for default
  *                  action.
  * \param[in]       trapMcastGroupId is multicast group id for trap action.
- * \param[in]       fwdToCpuMcastGroupId is multicast group id for 
+ * \param[in]       fwdToCpuMcastGroupId is multicast group id for
  *                  forward-to-cpu action.
  *
  * \return          FM_OK if successful.

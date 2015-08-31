@@ -142,7 +142,6 @@ api/fm_api_port.c                                                               
 api/fm_api_portmask.c                                                                             \
 api/fm_api_portset.c                                                                              \
 api/fm_api_qos.c                                                                                  \
-api/fm_api_rbridge.c                                                                              \
 api/fm_api_regs.c                                                                                 \
 api/fm_api_regs_cache.c                                                                           \
 api/fm_api_replication.c                                                                          \
@@ -221,6 +220,7 @@ platforms/libertyTrail/platform.c                                               
 platforms/libertyTrail/platform_app_api.c                                                         \
 platforms/libertyTrail/platform_config.c                                                          \
 platforms/libertyTrail/platform_config_nvm.c                                                      \
+platforms/libertyTrail/platform_config_tlv.c                                                      \
 platforms/libertyTrail/platform_debug.c                                                           \
 platforms/libertyTrail/platform_gpio.c                                                            \
 platforms/libertyTrail/platform_led.c                                                             \
@@ -233,6 +233,7 @@ platforms/libertyTrail/platform_timestamp.c                                     
 platforms/libertyTrail/shared-libs/standard/fm_platform_standard_lib.c                            \
 platforms/util/fm10000/fm10000_util_spi.c                                                         \
 platforms/util/fm10000/fm10000_util_bsm.c                                                         \
+platforms/util/fm_util_config_tlv.c                                                               \
 platforms/util/fm_util_device_lock.c                                                              \
 platforms/util/fm_util_pca.c                                                                      \
 platforms/util/retimer/fm_util_gn2412.c

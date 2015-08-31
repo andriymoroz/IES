@@ -156,7 +156,7 @@
 #define FM10000_SPICO_SERDES_INTR_0X11_b_BIT_0      0
 #define FM10000_SPICO_SERDES_INTR_0X11_b_BIT_1      1
 
-#define FM10000_SPICO_SERDES_INTR_0X13                      0x13
+#define FM10000_SPICO_SERDES_INTR_0X13             0x13
 
 #define FM10000_SPICO_SERDES_INTR_0X14                0x14
 #define FM10000_SPICO_SERDES_INTR_0X14_l_FIELD_1         0
@@ -179,17 +179,17 @@
 
 #define FM10000_SPICO_SERDES_INTR_0X1A              0x1A
 
-#define FM10000_SPICO_SERDES_INTR_0X1B                      0x1B
+#define FM10000_SPICO_SERDES_INTR_0X1B              0x1B
 
-#define FM10000_SPICO_SERDES_INTR_0X20                      0x20
+#define FM10000_SPICO_SERDES_INTR_0X20             0x20
 
 #define FM10000_SPICO_SERDES_INTR_0X26                 0x26
 
 #define FM10000_SPICO_SERDES_INTR_0X26_READ                  0x126
 
-#define FM10000_SPICO_SERDES_INTR_0X27                      0x27
-#define FM10000_SPICO_SERDES_INTR_0X27_b_BIT_0                  0
-#define FM10000_SPICO_SERDES_INTR_0X27_b_BIT_1                  1
+#define FM10000_SPICO_SERDES_INTR_0X27             0x27
+#define FM10000_SPICO_SERDES_INTR_0X27_b_BIT_0      0
+#define FM10000_SPICO_SERDES_INTR_0X27_b_BIT_1      1
 
 
 

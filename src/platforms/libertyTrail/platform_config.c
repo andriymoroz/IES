@@ -349,35 +349,47 @@ static fm_platformStrMap swagTopology[] =
  *
  * \param[in]       hexVal is whether to display value in hex format.
  *
+ * \param[out]      strBuf is the pointer to the buffer where the out is stored.
+ *
+ * \param[in]       strLen is the length of the strBuf.
+ *
  * \return          string representation of the value or UNKNOWN.
  *
  *****************************************************************************/
 static fm_text GetStrMap(fm_int             value,
                          fm_platformStrMap *strMap,
                          fm_int             size,
-                         fm_bool            hexVal)
+                         fm_bool            hexVal,
+                         fm_text            strBuf,
+                         fm_int             strLen)
 {
     fm_int         cnt;
-    static fm_int  strCnt = 0;
-    static fm_char strBuf[8][MAX_BUF_SIZE+1]; /* No multi-thread nor
-                                               * multi-calls in printf */
-    strCnt = (strCnt + 1) % 8;  /* Not a good way to support multi-calls in printf */
+
     for (cnt = 0 ; cnt < size ; cnt++)
     {
         if (value == strMap[cnt].value)
         {
-            FM_SPRINTF_S(strBuf[strCnt],
-                     sizeof(strBuf[strCnt]),
+            if (strBuf == NULL)
+            {
+                return strMap[cnt].desc;
+            }
+            FM_SPRINTF_S(strBuf,
+                     strLen,
                      hexVal?"%s(0x%x)":"%s(%d)",
                      strMap[cnt].desc,
                      value);
-            return strBuf[strCnt];
+            return strBuf;
         }
     }
 
-    FM_SNPRINTF_S(strBuf[strCnt], MAX_BUF_SIZE, "UNKNOWN(%d)", value);
+    if (strBuf == NULL)
+    {
+        return "UNKNOWN";
+    }
 
-    return strBuf[strCnt];
+    FM_SNPRINTF_S(strBuf, strLen, "UNKNOWN(%d)", value);
+
+    return strBuf;
 
 }   /* end GetStrMap */
 
@@ -398,16 +410,20 @@ static fm_text GetStrMap(fm_int             value,
  *
  * \param[in]       size is the size of the strMap array.
  *
+ * \param[out]      strBuf is the pointer to the buffer where the out is stored.
+ *
+ * \param[in]       strLen is the length of the strBuf.
+ *
  * \return          string representation of the bit mask separated by commas.
  *
  *****************************************************************************/
 static fm_text GetStrBitMap(fm_int             value,
                             fm_platformStrMap *strMap,
-                            fm_int             size)
+                            fm_int             size,
+                            fm_text            strBuf,
+                            fm_int             strLen)
 {
     fm_int         cnt;
-    static fm_char strBuf[MAX_BUF_SIZE+1]; /* No multi-thread nor
-                                            * multi-calls in printf */
 
     /* Empty string if no bit is set */
     strBuf[0] = '\0';
@@ -418,10 +434,10 @@ static fm_text GetStrBitMap(fm_int             value,
         {
             if (strBuf[0] != '\0')
             {
-                FM_STRCAT_S(strBuf, sizeof(strBuf), ",");
+                FM_STRCAT_S(strBuf, strLen, ",");
             }
 
-            FM_STRCAT_S(strBuf, sizeof(strBuf), strMap[cnt].desc);
+            FM_STRCAT_S(strBuf, strLen, strMap[cnt].desc);
         }
     }
 
@@ -534,6 +550,7 @@ static fm_status GetConfigStrMap(fm_text            name,
                                  fm_int             size)
 {
     fm_text valText;
+    fm_char  tmpStr[MAX_BUF_SIZE+1];
 
     valText = fmGetTextApiProperty(name, "UNDEF");
 
@@ -551,7 +568,12 @@ static fm_status GetConfigStrMap(fm_text            name,
             FM_LOG_PRINT("Invalid value '%s' for '%s'. Defaulting to %s\n", 
                          valText,
                          name,
-                         GetStrMap(defVal, strMap, size, TRUE));
+                         GetStrMap(defVal,
+                                   strMap,
+                                   size,
+                                   TRUE,
+                                   tmpStr,
+                                   sizeof(tmpStr) ));
         }
     }
 
@@ -599,6 +621,7 @@ static fm_status GetConfigStrBitMap(fm_text            name,
     fm_char *tokptr;
     fm_uint  strSize;
     fm_char  tmpText[MAX_BUF_SIZE+1];
+    fm_char  tmpStr[MAX_BUF_SIZE+1];
     fm_int   strLen;
 
     valText = fmGetTextApiProperty(name, "UNDEF");
@@ -647,7 +670,7 @@ static fm_status GetConfigStrBitMap(fm_text            name,
         FM_LOG_PRINT("Invalid value '%s' for '%s'. Defaulting to %s\n", 
                      token,
                      name,
-                     GetStrBitMap(defVal, strMap, size));
+                     GetStrBitMap(defVal, strMap, size, tmpStr, sizeof(tmpStr)));
         FM_LOG_EXIT(FM_LOG_CAT_PLATFORM, FM_ERR_INVALID_ARGUMENT);
     }
 
@@ -670,7 +693,7 @@ static fm_status GetConfigStrBitMap(fm_text            name,
             FM_LOG_PRINT("Invalid value '%s' for '%s'. Defaulting to %s\n", 
                          token,
                          name,
-                         GetStrBitMap(defVal, strMap, size));
+                         GetStrBitMap(defVal, strMap, size, tmpStr, sizeof(tmpStr)));
             FM_LOG_EXIT(FM_LOG_CAT_PLATFORM, FM_ERR_INVALID_ARGUMENT);
         }
     }
@@ -1962,6 +1985,7 @@ static fm_status LoadEplProperties(fm_int sw, fm_int port)
 
 
 
+
 /*****************************************************************************/
 /* LoadGN2412Config
  * \ingroup intPlatform
@@ -2206,6 +2230,96 @@ static fm_status LoadPhyConfiguration(fm_int sw)
 }   /* end LoadPhyConfiguration */
 
 
+
+
+/*****************************************************************************/
+/* CheckHwResourceId
+ * \ingroup intPlatform
+ *
+ * \desc            Check if hwResourceId is valid.
+ *
+ * \param[in]       portCfg is the pointer to the port config.
+ *                  This pointer is inserted to hwResourceIdList if the HW ID
+ *                  is used for the first time.
+ *
+ * \param[in,out]   hwResourceIdList points to an array of ''fm_platformCfgPort''
+ *                  structures. The array must be large enough to hold the
+ *                  maximum number of possible HW Resource ID entries
+ *                  (''FM_NUM_HW_RES_ID'').
+ *
+ * \param[in]       defaultId is the default hwResourceId value.
+ *
+ * \return          FM_OK if ID is valid.
+ * \return          FM_ERR_UNINITIALIZED if NULL pointer is passed as an argument
+ * \return          FM_ERR_INVALID_ARGUMENT if ID is not valid.
+ * \return          FM_ERR_ALREADY_EXISTS if ID already exists and cannot be used
+ *                  again.
+ *
+ *****************************************************************************/
+static fm_status CheckHwResourceId(fm_platformCfgPort *  portCfg,
+                                   fm_platformCfgPort ** hwResourceIdList,
+                                   fm_uint32             defaultId)
+{
+    fm_uint hwIdx;
+
+    if ( (portCfg          == NULL) ||
+         (hwResourceIdList == NULL) )
+    {
+        return FM_ERR_UNINITIALIZED;
+    }
+
+    hwIdx = HW_RESOURCE_ID_TO_IDX(portCfg->hwResourceId);
+
+    /* Try to insert the non-default HW ID
+     * to the array and check if it is unique */
+    if (portCfg->hwResourceId != defaultId)
+    {
+        if (hwIdx >= FM_NUM_HW_RES_ID)
+        {
+            return FM_ERR_INVALID_ARGUMENT;
+        }
+
+        if (hwResourceIdList[hwIdx] == NULL)
+        {
+            hwResourceIdList[hwIdx] = portCfg;
+        }
+        else
+        {
+            /* The ID already exists, if ports are not part
+             * of the same QSFP interface, then return error */
+            if ( portCfg->epl != hwResourceIdList[hwIdx]->epl ||
+                 ( portCfg->intfType != FM_PLAT_INTF_TYPE_QSFP_LANE0 &&
+                   portCfg->intfType != FM_PLAT_INTF_TYPE_QSFP_LANE1 &&
+                   portCfg->intfType != FM_PLAT_INTF_TYPE_QSFP_LANE2 &&
+                   portCfg->intfType != FM_PLAT_INTF_TYPE_QSFP_LANE3 ) ||
+                 ( hwResourceIdList[hwIdx]->intfType != FM_PLAT_INTF_TYPE_QSFP_LANE0 &&
+                   hwResourceIdList[hwIdx]->intfType != FM_PLAT_INTF_TYPE_QSFP_LANE1 &&
+                   hwResourceIdList[hwIdx]->intfType != FM_PLAT_INTF_TYPE_QSFP_LANE2 &&
+                   hwResourceIdList[hwIdx]->intfType != FM_PLAT_INTF_TYPE_QSFP_LANE3 ) )
+            {
+                FM_LOG_WARNING(FM_LOG_CAT_PLATFORM,
+                               "Ports %d and %d have the same hwResId - they "
+                               "are on %s (ports must be the part of the same "
+                               "QFSP interface, otherwise the hwResId should "
+                               "be unique).\n",
+                               hwResourceIdList[hwIdx]->port,
+                               portCfg->port,
+                               (portCfg->epl != hwResourceIdList[hwIdx]->epl ?
+                                "different EPLs" :
+                                "the same EPL, but the interfaceType of at "
+                                "least one of them is not set to QSFP_LANE"));
+
+                return FM_ERR_ALREADY_EXISTS;
+            }
+        }
+    }
+
+    return FM_OK;
+}
+
+
+
+
 /*****************************************************************************
  * Public Functions
  *****************************************************************************/
@@ -2224,7 +2338,13 @@ static fm_status LoadPhyConfiguration(fm_int sw)
  *****************************************************************************/
 fm_text fmPlatformGetEthModeStr(fm_ethMode mode)
 {
-    return GetStrMap( mode, ethModeMap, FM_NENTRIES(ethModeMap), TRUE);
+
+    return GetStrMap(mode,
+                     ethModeMap,
+                     FM_NENTRIES(ethModeMap),
+                     TRUE,
+                     NULL,
+                     0);
 
 }   /* end fmPlatformGetEthModeStr */
 
@@ -2254,6 +2374,7 @@ void fmPlatformCfgDump(void)
     fm_int                epl;
     fm_int                lane;
     fm_int                phyIdx;
+    fm_char               tmpStr[MAX_BUF_SIZE+1];
 
     platCfg = FM_PLAT_GET_CFG;
     PRINT_VALUE("debug", platCfg->debug);
@@ -2266,7 +2387,9 @@ void fmPlatformCfgDump(void)
                  GetStrMap( platCfg->topology,
                             swagTopology,
                             FM_NENTRIES(swagTopology),
-                            FALSE ) );
+                            FALSE,
+                            tmpStr,
+                            sizeof(tmpStr) ) );
 #endif
 
     for (swIdx = 0 ; swIdx < FM_PLAT_NUM_SW ; swIdx++)
@@ -2283,7 +2406,9 @@ void fmPlatformCfgDump(void)
                      GetStrMap( swCfg->ledBlinkMode,
                                 ledBlinkModeMap,
                                 FM_NENTRIES(ledBlinkModeMap),
-                                FALSE ) );
+                                FALSE,
+                                tmpStr,
+                                sizeof(tmpStr) ) );
         PRINT_VALUE(" xcvrPollPeriodMsec", swCfg->xcvrPollPeriodMsec);
         PRINT_VALUE(" intrPollPeriodMsec", swCfg->intrPollPeriodMsec);
         PRINT_STRING(" uioDevName", swCfg->uioDevName);
@@ -2297,7 +2422,9 @@ void fmPlatformCfgDump(void)
                      GetStrMap( swCfg->switchRole,
                                 swagRole,
                                 FM_NENTRIES(swagRole),
-                                FALSE ) );
+                                FALSE,
+                                tmpStr,
+                                sizeof(tmpStr) ) );
 #endif
 
         for (portIdx = 0 ; portIdx < FM_PLAT_NUM_PORT(swIdx) ; portIdx++)
@@ -2315,31 +2442,48 @@ void fmPlatformCfgDump(void)
             PRINT_VALUE("  pep", portCfg->pep);
             PRINT_VALUE("  tunnel", portCfg->tunnel);
             PRINT_VALUE("  loopback", portCfg->loopback);
+            PRINT_VALUE("  speed", portCfg->speed);
             PRINT_VALUE("  autodetect", portCfg->autodetect);
-            PRINT_STRING( "  ethMode", fmPlatformGetEthModeStr(portCfg->ethMode) );
+            PRINT_STRING( "  ethMode",
+                         GetStrMap( portCfg->ethMode,
+                                    ethModeMap,
+                                    FM_NENTRIES(ethModeMap),
+                                    TRUE,
+                                    tmpStr,
+                                    sizeof(tmpStr) ) );
             PRINT_STRING( "  portType",
                          GetStrMap( portCfg->portType,
                                     portTypeMap,
                                     FM_NENTRIES(portTypeMap),
-                                    FALSE ) );
+                                    FALSE,
+                                    tmpStr,
+                                    sizeof(tmpStr) ) );
             PRINT_STRING( "  intfType",
                          GetStrMap( portCfg->intfType,
                                     intfTypeMap,
                                     FM_NENTRIES(intfTypeMap),
-                                    FALSE ) );
+                                    FALSE,
+                                    tmpStr,
+                                    sizeof(tmpStr)  ) );
             PRINT_STRING( "  capability",
                          GetStrBitMap( portCfg->cap,
                                        portCapMap,
-                                       FM_NENTRIES(portCapMap) ) );
+                                       FM_NENTRIES(portCapMap),
+                                       tmpStr,
+                                       sizeof(tmpStr) ) );
             PRINT_STRING("  dfeMode",
                          GetStrMap(portCfg->dfeMode, 
                                    dfeModeMap, 
                                    FM_NENTRIES(dfeModeMap), 
-                                   FALSE));
+                                   FALSE,
+                                   tmpStr,
+                                   sizeof(tmpStr) ) );
             PRINT_STRING( "  an73Ability",
                          GetStrBitMap( portCfg->an73Ability,
                                        an73AbilityMap,
-                                       FM_NENTRIES(an73AbilityMap) ) );
+                                       FM_NENTRIES(an73AbilityMap),
+                                       tmpStr,
+                                       sizeof(tmpStr) ) );
             PRINT_VALUE("  phyNum", portCfg->phyNum);
             PRINT_VALUE("  phyPort", portCfg->phyPort);
 
@@ -2348,7 +2492,9 @@ void fmPlatformCfgDump(void)
                          GetStrMap( portCfg->swagLink.type,
                                     swagLinkType,
                                     FM_NENTRIES(swagLinkType),
-                                    FALSE ) );
+                                    FALSE,
+                                    tmpStr,
+                                    sizeof(tmpStr) ) );
             if (portCfg->swagLink.type == FM_SWAG_LINK_INTERNAL)
             {
                 FM_LOG_PRINT("   SWAG port %d <--> SWAG port %d\n",
@@ -2386,12 +2532,16 @@ void fmPlatformCfgDump(void)
                              GetStrMap(laneCfg->lanePolarity, 
                                        lanePolarityMap, 
                                        FM_NENTRIES(lanePolarityMap), 
-                                       FALSE));
+                                       FALSE,
+                                    tmpStr,
+                                    sizeof(tmpStr)));
                 PRINT_STRING("  rxTermination",
                              GetStrMap(laneCfg->rxTermination, 
                                        rxTerminationMap, 
                                        FM_NENTRIES(rxTerminationMap), 
-                                       FALSE));
+                                       FALSE,
+                                    tmpStr,
+                                    sizeof(tmpStr)));
                 PRINT_VALUE("  preCursor1GCopper", 
                             laneCfg->copper[BPS_1G].preCursor);
                 PRINT_VALUE("  preCursor10GCopper", 
@@ -2445,7 +2595,9 @@ void fmPlatformCfgDump(void)
                          GetStrMap( phyCfg->model,
                                     phyModelMap,
                                     FM_NENTRIES(phyModelMap),
-                                    FALSE ) );
+                                    FALSE,
+                                    tmpStr,
+                                    sizeof(tmpStr) ) );
             PRINT_VALUE("  addr", phyCfg->addr);
             PRINT_VALUE("  hwResourceId", phyCfg->hwResourceId);
 
@@ -2473,10 +2625,11 @@ void fmPlatformCfgDump(void)
         libCfg = FM_PLAT_GET_LIBS_CFG(swIdx);
         PRINT_STRING("  sharedLibraryName", libCfg->libName);
         PRINT_STRING("  disableFuncIntf",
-                     GetStrMap( libCfg->disableFuncIntf,
-                                disableFuncIntfMap,
-                                FM_NENTRIES(disableFuncIntfMap),
-                                FALSE ) );
+                     GetStrBitMap( libCfg->disableFuncIntf,
+                                   disableFuncIntfMap,
+                                   FM_NENTRIES(disableFuncIntfMap),
+                                   tmpStr,
+                                   sizeof(tmpStr) )  );
 
         FM_LOG_PRINT("#######################################################################\n\n");
     }
@@ -2517,11 +2670,30 @@ fm_status fmPlatformCfgLoad(void)
     fm_int                lane;
     fm_text               devName;
     fm_uint64             categoryMask;
+    fm_platformCfgPort ** tempHwResourceIdList;
 #ifdef FM_SUPPORT_SWAG
     fm_int                internalPortIdx;
     fm_int                valInt2;
     fm_platformCfgPort   *portCfg2;
 #endif
+
+    status = FM_OK;
+
+    /* Allocate and initialize the temporary array used to check the resIs
+     * uniqueness, the size is FM_NUM_HW_RES_ID */
+    tempHwResourceIdList = (fm_platformCfgPort **)
+            fmAlloc(FM_NUM_HW_RES_ID * sizeof(fm_platformCfgPort *));
+
+    if (tempHwResourceIdList == NULL)
+    {
+        status = FM_ERR_NO_MEM;
+        FM_LOG_ABORT(FM_LOG_CAT_PLATFORM, status);
+    }
+
+    FM_MEMSET_S(tempHwResourceIdList,
+                FM_NUM_HW_RES_ID * sizeof(fm_platformCfgPort *),
+                0,
+                FM_NUM_HW_RES_ID * sizeof(fm_platformCfgPort *));
 
     /* Global configuration */
     platCfg = FM_PLAT_GET_CFG;
@@ -2532,7 +2704,7 @@ fm_status fmPlatformCfgLoad(void)
                                 0,
                                 debugMap,
                                 FM_NENTRIES(debugMap));
-    FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
 
     platCfg->debug = valInt;
 
@@ -2572,7 +2744,7 @@ fm_status fmPlatformCfgLoad(void)
                                   &valInt,
                                   0,
                                   256);
-    FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
 
     platCfg->numSwitches = valInt;
 
@@ -2608,7 +2780,7 @@ fm_status fmPlatformCfgLoad(void)
 
     if (fmRootPlatform->cfg.switches == NULL)
     {
-        FM_LOG_EXIT(FM_LOG_CAT_PLATFORM, FM_ERR_NO_MEM);
+        FM_LOG_ABORT(FM_LOG_CAT_PLATFORM, FM_ERR_NO_MEM);
     }
 
 
@@ -2629,9 +2801,14 @@ fm_status fmPlatformCfgLoad(void)
 
         FM_SNPRINTF_S(buf, MAX_BUF_SIZE, FM_AAK_API_PLATFORM_SW_NUM, swIdx);
         status = GetRequiredConfigInt(buf, &valInt, 0, 256);
-        FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
         swCfg->swNum = valInt;
 
+        /* switch MSI enabled */
+
+        FM_SNPRINTF_S(buf, MAX_BUF_SIZE, FM_AAK_API_PLATFORM_MSI_ENABLED, swIdx);
+        swCfg->msiEnabled = fmGetBoolApiProperty(buf,
+                                FM_AAD_API_PLATFORM_MSI_ENABLED);
         /* Get the switch boot mode */
 
         GetStringValue(FM_AAD_API_PLATFORM_BOOT_MODE,
@@ -2778,7 +2955,7 @@ fm_status fmPlatformCfgLoad(void)
                                       &valInt,
                                       0,
                                       platCfg->numSwitches * (FM10000_MAX_PORT+1));
-        FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
         swCfg->numPorts = valInt;
 
 #ifdef FM_SUPPORT_SWAG
@@ -2808,7 +2985,7 @@ fm_status fmPlatformCfgLoad(void)
         /* PHY configuration must be loaded before port configuration as the
            number of PHYs (numPhys) is used below */
         status = LoadPhyConfiguration(swIdx);
-        FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
 
 
         /* Initialize some of the EPL fields */
@@ -2831,7 +3008,7 @@ fm_status fmPlatformCfgLoad(void)
 
         if (fmRootPlatform->cfg.switches[swIdx].ports == NULL)
         {
-            FM_LOG_EXIT(FM_LOG_CAT_PLATFORM, FM_ERR_NO_MEM);
+            FM_LOG_ABORT(FM_LOG_CAT_PLATFORM, FM_ERR_NO_MEM);
         }
 
         for (portIdx = 0 ; portIdx < swCfg->numPorts ; portIdx++)
@@ -2862,7 +3039,7 @@ fm_status fmPlatformCfgLoad(void)
              **************************************************/
 
             status = GetPortMapping(swIdx, portIdx);
-            FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
 
             if (portCfg->port > swCfg->maxLogicalPortValue)
             {
@@ -2885,7 +3062,7 @@ fm_status fmPlatformCfgLoad(void)
                         FM_LOG_FATAL(FM_LOG_CAT_PLATFORM,
                                      "CPU port %d is not mapped to a PCIE port\n",
                                      swCfg->cpuPort);
-                        FM_LOG_EXIT(FM_LOG_CAT_PLATFORM, FM_ERR_INVALID_ARGUMENT);
+                        FM_LOG_ABORT(FM_LOG_CAT_PLATFORM, FM_ERR_INVALID_ARGUMENT);
                     }
                 }
 #endif
@@ -2930,20 +3107,41 @@ fm_status fmPlatformCfgLoad(void)
              * Get resource ID
              **************************************************/
 
+            defVal = FM_DEFAULT_HW_RES_ID;
+
             FM_SNPRINTF_S(buf, 
                           MAX_BUF_SIZE, 
-                          FM_AAK_API_PLATFORM_HW_RESOURCE_ID_DEFAULT, 
+                          FM_AAK_API_PLATFORM_HW_RESOURCE_ID_DEFAULT,
                           swIdx);
-            defVal = portIdx;
             defVal = fmGetIntApiProperty(buf, defVal);
 
             FM_SNPRINTF_S(buf,
                           MAX_BUF_SIZE,
-                          FM_AAK_API_PLATFORM_HW_RESOURCE_ID,
+                          FM_AAK_API_PLATFORM_PORT_HW_RESOURCE_ID_DEFAULT,
+                          swIdx);
+            defVal = fmGetIntApiProperty(buf, defVal);
+
+            FM_SNPRINTF_S(buf,
+                          MAX_BUF_SIZE,
+                          FM_AAK_API_PLATFORM_PORT_HW_RESOURCE_ID,
                           swIdx,
                           portIdx);
             GetOptionalConfigInt(buf, &valInt, defVal);
-            portCfg->hwResourceId = valInt;
+            portCfg->hwResourceId = (fm_uint32) valInt;
+
+            status = CheckHwResourceId(portCfg,
+                                       tempHwResourceIdList,
+                                       (fm_uint32) defVal);
+            FM_LOG_ASSERT(FM_LOG_CAT_PLATFORM,
+                          status == FM_OK,
+                          "0x%X - invalid HW ID: %s "
+                          "(sw=%d, port=%d, hwResourceId=0x%X)\n",
+                          HW_RESOURCE_ID_TO_IDX(portCfg->hwResourceId),
+                          fmErrorMsg(status),
+                          swIdx,
+                          portCfg->port,
+                          portCfg->hwResourceId);
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
 
             /**************************************************
              * Get ethernet mode
@@ -3112,7 +3310,7 @@ fm_status fmPlatformCfgLoad(void)
             if (portCfg->portType == FM_PLAT_PORT_TYPE_EPL)
             {
                 status = LoadEplProperties(swIdx, portIdx);
-                FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
+                FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
             }
 
         }   /* end for (portIdx = 0 ; portIdx < swCfg->numPorts ; portIdx++) */
@@ -3139,7 +3337,7 @@ fm_status fmPlatformCfgLoad(void)
                                                &valInt,
                                                0,
                                                FM_PLAT_MAX_LOGICAL_PORT);
-            FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
 
             /* Get second SWAG logical port number*/
             status = GetAndValidateObjectValue(valText + 5,
@@ -3148,7 +3346,7 @@ fm_status fmPlatformCfgLoad(void)
                                                &valInt2,
                                                0,
                                                FM_PLAT_MAX_LOGICAL_PORT);
-            FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
 
             portCfg  = FM_PLAT_GET_PORT_CFG(swIdx, valInt);
             portCfg2 = FM_PLAT_GET_PORT_CFG(swIdx, valInt2);
@@ -3192,12 +3390,12 @@ fm_status fmPlatformCfgLoad(void)
                                     0,
                                     disableFuncIntfMap,
                                     FM_NENTRIES(disableFuncIntfMap));
-        FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
         libCfg->disableFuncIntf = valInt;
 
         /* Load the cold boot config properties */
         status = fm10000LoadBootCfg(swIdx, &swCfg->bootCfg);
-        FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
 
 
         /* Get the /dev/mem offset */
@@ -3273,7 +3471,13 @@ fm_status fmPlatformCfgLoad(void)
         fmPlatformCfgDump();
     }
 
-    return FM_OK;
+ABORT:
+    if(tempHwResourceIdList != NULL)
+    {
+        fmFree(tempHwResourceIdList);
+    }
+
+    return status;
 
 }   /* end fmPlatformCfgLoad */
 

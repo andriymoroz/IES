@@ -114,12 +114,8 @@
 
 /** The maximum allowed size for variable sized ECMP groups.
  *  
- * Note that the size of fixed size ECMP groups is
- * given by:
- *    sizeFixedEcmpGroup = 1 << n;
- * where (1 <= n <= 12). 
- * Possible values are: 
- * (2,4,8,16,32,64,128,256,512,1024,2048,4096).
+ * Note that valid size values for fixed size ECMP groups are:
+ * (1..16,32,64,128,256,512,1024,2048,4096).
  * \ingroup  constSystem  */
 #define FM10000_MAX_ECMP_GROUP_SIZE     16
 
@@ -702,5 +698,15 @@ enum
 /* SKU fields in FUSE_DATA_0 register */
 #define FM10000_FUSE_DATA_0_l_Sku               11
 #define FM10000_FUSE_DATA_0_h_Sku               15
+
+/**************************************************
+ * FM10000_PCIE_CLK_CTRL.Mode Values
+ **************************************************/
+#define FM10000_PCIE_CLK_CTRL_MODE_PCIE_REFCLK          0
+#define FM10000_PCIE_CLK_CTRL_MODE_PCIE_XREFCLK         1
+#define FM10000_PCIE_CLK_CTRL_MODE_PCIE_CHECK_VALID     2
+#define FM10000_PCIE_CLK_CTRL_MODE_PCIE_CHECK_RESET     3
+
+
 
 #endif /* __FM_FM10000_API_HW_INT_H */

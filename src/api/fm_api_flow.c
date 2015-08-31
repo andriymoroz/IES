@@ -29,7 +29,7 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
+ *****************************************************************************/
 
 #include <fm_sdk_int.h>
 
@@ -1485,8 +1485,8 @@ fm_status fmGetFlowAttribute(fm_int sw,
  *
  * \chips           FM10000
  *
- * \desc            Creates an ECMP balance group for use with the
- *                  ''FM_FLOW_ACTION_BALANCE'' action.
+ * \desc            Creates a variable sized ECMP balance group for use with
+ *                  the ''FM_FLOW_ACTION_BALANCE'' action.
  *
  * \param[in]       sw is the switch on which to operate.
  *

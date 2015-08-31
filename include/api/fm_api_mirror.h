@@ -243,10 +243,10 @@ enum _fm_mirrorAttr
     FM_MIRROR_TRUNCATE_MASK,
 
     /** Type fm_int: Specifies the mirrored frame encapsulation vlan id.
-     *  This value ranges from 1 to 4095, with the default being
-     *  FM_MIRROR_NO_VLAN_ENCAP. When set, the mirrored traffic will have an
-     *  additional vlan tag added in front of the existing packet. The
-     *  Ethertype used in this case is the VLAN Ethertype configured for the
+     *  Valid values range from 1 to 4095 or FM_MIRROR_NO_VLAN_ENCAP
+     *  (default). When set, the mirrored traffic
+     *  will have an additional vlan tag added in front of the existing packet.
+     *  The Ethertype used in this case is the VLAN Ethertype configured for the
      *  port. The vlan priority of such encapsulated frame can be set using
      *  mirror attribute ''FM_MIRROR_VLAN_PRI''.
      *                                                                  \lb\lb

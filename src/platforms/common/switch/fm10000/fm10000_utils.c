@@ -42,7 +42,7 @@
  * Macros, Constants & Types
  *****************************************************************************/
 
-#define FM10000_VPD             0xAE20
+#define FM10000_VPD             0xAE21
 
 #define MAX_BUF_SIZE            256
 
@@ -540,10 +540,9 @@ fm_status fm10000GetSwitchId(fm_int                     sw,
                              fm_registerReadUINT32Func  readFunc,
                              fm_registerWriteUINT32Func writeFunc)
 {
-#if 0
-    fm_status err;
-    fm_uint32 idReg;
-    fm_uint32 vpd;
+    fm_status   err;
+    fm_uint32   rv;
+    fm_uint32   chipVersion;
 
     FM_NOT_USED(writeFunc);
 
@@ -552,35 +551,42 @@ fm_status fm10000GetSwitchId(fm_int                     sw,
     *model   = FM_SWITCH_MODEL_UNKNOWN;
     *version = FM_SWITCH_VERSION_UNKNOWN;
 
-    idReg = FM10000_VITAL_PRODUCT_DATA;
-
-    err = readFunc(sw, idReg, &vpd);
+    err = readFunc(sw, FM10000_VITAL_PRODUCT_DATA(), &rv);
     FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_PLATFORM, err);
 
-    if (vpd == FM10000_VPD)
+    if (rv == FM10000_VPD)
     {
         FM_LOG_DEBUG(FM_LOG_CAT_PLATFORM,
                      "Identified this device as an FM10000 series device\n");
         *family = FM_SWITCH_FAMILY_FM10000;
         *model  = FM_SWITCH_MODEL_FM10440;
-        *version = FM_SWITCH_VERSION_FM10440_A0;
 
+        err = readFunc(sw, FM10000_CHIP_VERSION(), &rv);
+        FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_PLATFORM, err);
+
+        chipVersion = FM_GET_FIELD(rv, FM10000_CHIP_VERSION, Version);
+
+        if (chipVersion == FM10000_CHIP_VERSION_A0)
+        {
+            *version = FM_SWITCH_VERSION_FM10440_A0;
+        }
+        else if (chipVersion == FM10000_CHIP_VERSION_B0)
+        {
+            *version = FM_SWITCH_VERSION_FM10440_B0;
+        }
+        else
+        {
+            FM_LOG_ERROR(FM_LOG_CAT_PLATFORM,
+                         "Unable to identify switch %d: Version=0x%x\n",
+                         sw, chipVersion);
+        }
     }
     else
     {
         FM_LOG_FATAL(FM_LOG_CAT_PLATFORM,
-                     "Unable to identify switch %d: VPD=0x%08x\n", sw, vpd);
+                     "Unable to identify switch %d: VPD=0x%08x\n", sw, rv);
         FM_LOG_EXIT(FM_LOG_CAT_PLATFORM, FM_FAIL);
     }
-#else
-    FM_NOT_USED(sw);
-    FM_NOT_USED(readFunc);
-    FM_NOT_USED(writeFunc);
-
-    *family = FM_SWITCH_FAMILY_FM10000;
-    *model  = FM_SWITCH_MODEL_FM10440;
-    *version = FM_SWITCH_VERSION_FM10440_A0;
-#endif
 
     FM_LOG_EXIT(FM_LOG_CAT_PLATFORM, FM_OK);
 

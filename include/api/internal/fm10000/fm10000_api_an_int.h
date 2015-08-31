@@ -68,16 +68,20 @@
 #define FM10000_AN73_ABILITY_100GBASE_KP4   (1 << 6)
 #define FM10000_AN73_ABILITY_100GBASE_KR4   (1 << 7)
 #define FM10000_AN73_ABILITY_100GBASE_CR4   (1 << 8)
-/* internal, subject to change */
-#define FM10000_AN73_ABILITY_25GBASE_KR     (1 << 9)
+/* IEEE draft D1.0 14th April 2015:
+ * Note: same bit is used for KR and CR
+ * Short reach (KR-S and CR-S) not supported */
+#define FM10000_AN73_ABILITY_25GBASE_KR     (1 << 10)
+#define FM10000_AN73_ABILITY_25GBASE_CR     (1 << 10)
+
 
 /* supported abilities */
 #define FM10000_AN73_SUPPORTED_ABILITIES      \
     ( FM10000_AN73_ABILITY_1000BASE_KX      | \
       FM10000_AN73_ABILITY_10GBASE_KR       | \
+      FM10000_AN73_ABILITY_25GBASE_KR       | \
       FM10000_AN73_ABILITY_40GBASE_KR4      | \
       FM10000_AN73_ABILITY_40GBASE_CR4      | \
-      FM10000_AN73_ABILITY_25GBASE_KR       | \
       FM10000_AN73_ABILITY_100GBASE_KR4     | \
       FM10000_AN73_ABILITY_100GBASE_CR4 )
 
@@ -87,13 +91,20 @@
       FM10000_AN73_ABILITY_100GBASE_CR10    | \
       FM10000_AN73_ABILITY_100GBASE_KP4 ) 
    
-/* multi-lane abilities */
-#define FM10000_AN73_ABILITY_MULTI_LANE       \
-    ( FM10000_AN73_ABILITY_40GBASE_KR4      | \
-      FM10000_AN73_ABILITY_40GBASE_CR4      | \
-      FM10000_AN73_ABILITY_100GBASE_KR4     | \
+/* 100G abilities */
+#define FM10000_AN73_ABILITIES_100G           \
+    ( FM10000_AN73_ABILITY_100GBASE_KR4     | \
       FM10000_AN73_ABILITY_100GBASE_CR4  )
 
+/* 40G abilities */
+#define FM10000_AN73_ABILITIES_40G            \
+    ( FM10000_AN73_ABILITY_40GBASE_KR4      | \
+      FM10000_AN73_ABILITY_40GBASE_CR4 )
+
+/* multi-lane abilities */
+#define FM10000_AN73_ABILITY_MULTI_LANE       \
+    ( FM10000_AN73_ABILITIES_100G           | \
+      FM10000_AN73_ABILITIES_40G )
 
 #define FM10000_AN37_LINK_TIMER_TIMEOUT_MAX        0x7F
 #define FM10000_AN73_BREAK_LINK_TIMEOUT_MAX        0x7F
@@ -102,21 +113,26 @@
 
 enum
 {
+    /* Must be in order of speed */
     AN73_HCD_INCOMPATIBLE_LINK = 0,
-    AN73_HCD_10_KR,
-    AN73_HCD_KX4,
     AN73_HCD_KX,
+    AN73_HCD_KX4,
+    AN73_HCD_10_KR,
+    AN73_HCD_25_KR,
+    AN73_HCD_25_CR,
     AN73_HCD_40_KR4,
     AN73_HCD_40_CR4,
     AN73_HCD_100_CR10,
     AN73_HCD_100_KP4, 
     AN73_HCD_100_KR4, 
     AN73_HCD_100_CR4,
-    AN73_HCD_25_KR
 };
 
+/* Organizationally Unique Identifier (OUI) tag code */
+#define FM10000_AN_NEXTPAGE_OUI_MSG_CODE        0x5
+
 /* EEE technology message code (10)*/
-#define FM10000_AN_NEXTPAGE_EEE_MSG_CODE    0xA
+#define FM10000_AN_NEXTPAGE_EEE_MSG_CODE        0xA
 /*
  *      AN-73
  * Advertise that the 10GBASE-KR has EEE capability : U6 (0x4)
@@ -187,6 +203,20 @@ fm_text fm10000An73HCDStr(fm_uint value);
 
 fm_status fm10000AnAddNextPage(fm_int sw, fm_int port, fm_uint64 nextPage);
 fm_status fm10000AnVerifyEeeNegotiation(fm_int sw, fm_int port, fm_int ethMode);
+fm_status fm10000AnGetMaxSpeedAbilityAndMode(fm_int                sw,
+                                             fm_int                port,
+                                             fm_uint32             mode,
+                                             fm_uint64             basepage,
+                                             fm_anNextPages        nextPages,
+                                             fm_uint32            *maxSpeed,
+                                             fm_schedulerPortMode *laneMode);
+
+fm_status fm10000AnGetNextPageExtTechAbilityIndex(fm_int sw,
+                                                  fm_int port,
+                                                  fm_uint64 *nextPages,
+                                                  fm_int numPages,
+                                                  fm_uint *extTechAbIndex,
+                                                  fm_text dbgStr);
 
 #endif /* __FM_FM10000_API_AN_INT_H */
 

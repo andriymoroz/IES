@@ -214,9 +214,8 @@ typedef struct _fm_portCounters
 
     /** Number of class-based pause packets received.
      *                                                                  \lb\lb
-     *  Note: On FM6000 devices, ''FM_PORT_PARSE_PAUSE'' and 
-     *  ''FM_PORT_PARSE_CBP_PAUSE'' must be enabled for this counter to 
-     *  work.
+     *  Note: On FM6000 devices, FM_PORT_PARSE_PAUSE and
+     *  FM_PORT_PARSE_CBP_PAUSE must be enabled for this counter to work.
      *  
      *  \counterGroups FM4000:Group1, FM6000:Group1, FM10000:Group1 */
     fm_uint64 cntRxCBPausePkts;
@@ -484,8 +483,8 @@ typedef struct _fm_portCounters
 
     /** Number of class-based pause octets received.
      *                                                                  \lb\lb
-     *  Note: ''FM_PORT_PARSE_PAUSE'' and ''FM_PORT_PARSE_CBP_PAUSE'' must 
-     *  be enabled for this counter to work.
+     *  Note: FM_PORT_PARSE_PAUSE and FM_PORT_PARSE_CBP_PAUSE must be
+     *  enabled for this counter to work.
      *  
      *  \counterGroups FM6000:Group3, FM10000:Group3 */
     fm_uint64 cntRxCBPauseOctets;

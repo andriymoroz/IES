@@ -4647,6 +4647,9 @@ static fm_status AnStateMachineS5E23Callback( fm_smEventInfo *eventInfo, void *u
     fm_status status = FM_OK;
     fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
         
+    status = ReconfigureScheduler( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+            
     status = AnStop( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
             

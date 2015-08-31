@@ -2202,6 +2202,10 @@ fm_status fmFreeStackMcastGroups(fm_int    sw,
  *                  multicast group structure.
  * \return          FM_ERR_LOG_PORT_REQUIRED if mcastGroup is equal to
  *                  FM_LOGICAL_PORT_NONE.
+ * \return          FM_ERR_NO_MCAST_RESOURCES if no more multicast group
+ *                  resoures are available.
+ * \return          FM_ERR_LPORT_DESTS_UNAVAILABLE if a block of logical port
+ *                  destination table entries cannot be allocated.
  *
  *****************************************************************************/
 fm_status fmCreateStackMcastGroup(fm_int sw, 
@@ -2261,6 +2265,10 @@ fm_status fmCreateStackMcastGroup(fm_int sw,
  * \return          FM_ERR_INVALID_SWITCH if sw is invalid.
  * \return          FM_ERR_NO_MEM if not enough memory is available for the
  *                  multicast group structure.
+ * \return          FM_ERR_NO_MCAST_RESOURCES if no more multicast group
+ *                  resoures are available.
+ * \return          FM_ERR_LPORT_DESTS_UNAVAILABLE if a block of logical port
+ *                  destination table entries cannot be allocated.
  *
  *****************************************************************************/
 fm_status fmCreateStackMcastGroupExt(fm_int  sw,

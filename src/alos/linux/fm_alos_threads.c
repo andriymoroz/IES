@@ -3,7 +3,7 @@
 /*****************************************************************************
  * File:            fm_alos_threads.c
  * Creation Date:   2005
- * Description:     O/S abstraction for creating and managing threads.
+ * Description:     OS abstraction for creating and managing threads.
  *
  * Copyright (c) 2005 - 2015, Intel Corporation
  *
@@ -70,6 +70,7 @@ pthread_key_t fmTLSKeyLock;
  * Local Functions
  *****************************************************************************/
 
+
 /*****************************************************************************/
 /** fmGetCurrentThreadState
  * \ingroup intAlosTask
@@ -100,7 +101,7 @@ static fm_thread *fmGetCurrentThreadState(void)
     handle = (pthread_t) fmGetCurrentThreadId();
 
     err = fmTreeFind(&fmAlosThreadState.dbgThreadTree,
-                     (fm_uint64) handle, 
+                     (fm_uint64) handle,
                      (void *) &thread);
 
     if (err != FM_OK)
@@ -119,6 +120,7 @@ static fm_thread *fmGetCurrentThreadState(void)
 
 
 
+
 /*****************************************************************************/
 /** fmGetThreadStateCopy
  * \ingroup intAlosTask
@@ -132,6 +134,7 @@ static fm_thread *fmGetCurrentThreadState(void)
  *
  * \return          FM_OK if successful.
  * \return          FM_FAIL if thread not found.
+ * \return          FM_ERR_UNINITIALIZED if thread subsystem not initialized.
  *
  *****************************************************************************/
 static fm_status fmGetThreadStateCopy(pthread_t handle, fm_thread *thread)
@@ -139,13 +142,17 @@ static fm_status fmGetThreadStateCopy(pthread_t handle, fm_thread *thread)
     fm_status  err;
     fm_thread *foundThread;
 
+    if (!fmAlosThreadState.initialized)
+    {
+        return FM_ERR_UNINITIALIZED;
+    }
+
     err = FM_FAIL;
 
-    if (fmAlosThreadState.initialized &&
-        pthread_mutex_lock(&fmAlosThreadState.threadTreeLock) == 0)
+    if (pthread_mutex_lock(&fmAlosThreadState.threadTreeLock) == 0)
     {
         err = fmTreeFind(&fmAlosThreadState.dbgThreadTree,
-                         (fm_uint64) handle, 
+                         (fm_uint64) handle,
                          (void *) &foundThread);
         
         if (err == FM_OK)
@@ -174,6 +181,7 @@ static fm_status fmGetThreadStateCopy(pthread_t handle, fm_thread *thread)
  * Public Functions
  *****************************************************************************/
 
+
 /*****************************************************************************/
 /** fmAlosThreadInit
  * \ingroup intAlosTask
@@ -196,7 +204,9 @@ fm_status fmAlosThreadInit(void)
     FM_LOG_ENTRY(FM_LOG_CAT_ALOS_THREAD, "(no arguments)\n");
 
     /* Initialize a tree for the calling process. */
-    fmTreeInitWithAllocator(&fmAlosThreadState.dbgThreadTree, (fmAllocFunc) malloc, free);
+    fmTreeInitWithAllocator(&fmAlosThreadState.dbgThreadTree,
+                            (fmAllocFunc) malloc,
+                            free);
 
     /* Default attributes are fine-- doesn't need to be process-shared,
      * doesn't need to be recursive. */
@@ -1356,10 +1366,9 @@ fm_status fmGetThreadName(void *threadId, fm_text *threadName)
             *threadName = thread->name;
         }
 
-        if (pthread_mutex_unlock(&fmAlosThreadState.threadTreeLock) != 0 &&
-            err == FM_OK)
+        if (pthread_mutex_unlock(&fmAlosThreadState.threadTreeLock) != 0)
         {
-            err = FM_ERR_UNABLE_TO_UNLOCK;
+            FM_ERR_COMBINE(err, FM_ERR_UNABLE_TO_UNLOCK);
         }
     }
     else
@@ -1370,6 +1379,7 @@ fm_status fmGetThreadName(void *threadId, fm_text *threadName)
     FM_LOG_EXIT(FM_LOG_CAT_ALOS_THREAD, err);
 
 }   /* end fmGetThreadName */
+
 
 
 
@@ -1424,6 +1434,7 @@ fm_status fmInitThreadLockCollection(void)
     FM_LOG_EXIT(FM_LOG_CAT_ALOS_THREAD, FM_OK);
     
 }   /* end fmInitThreadLockCollection */
+
 
 
 

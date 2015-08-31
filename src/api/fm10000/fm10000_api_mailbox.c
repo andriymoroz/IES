@@ -37,6 +37,12 @@
  * Macros, Constants & Types
  *****************************************************************************/
 
+/* The delay to wait in nsec before retrying if we detect PEP is in reset*/
+#define PEP_RESET_RECOVERY_DELAY                (1000 * 1000)
+
+/* The number of retries if we we detect the PEP is in reset */
+#define PEP_RESET_RECOVERY_RETRIES              3
+
 #define FM_GET_OFFSET_FIELD(rvalue, offset)     \
     (offset == 0) ?                             \
         FM_GET_FIELD(rvalue,                    \
@@ -1005,6 +1011,7 @@ static fm_status PCIeMailboxProcessRequest(fm_int sw,
     fm_bool                 startOfMessage;
     fm_bool                 useLoopback;
     fm_bool                 pepResetState;
+    fm_uint32               retries;
 
     FM_LOG_ENTRY(FM_LOG_CAT_MAILBOX,
                  "sw=%d, pepNb=%d\n",
@@ -1223,6 +1230,26 @@ ABORT:
     status = fm10000GetPepResetState(sw,
                                      pepNb,
                                      &pepResetState);
+    FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+    retries = 0;
+    while (pepResetState == 0 && retries < PEP_RESET_RECOVERY_RETRIES)
+    {
+        /* The PEP could be in DataPathReset, retry every 1ms */
+        FM_LOG_DEBUG2(FM_LOG_CAT_MAILBOX,
+                      "PEP %d is in reset while trying to re-enable mailbox "
+                      "interrupts, retyring in 1ms\n",
+                      pepNb);
+
+        fmDelay(0, PEP_RESET_RECOVERY_DELAY);
+
+        status = fm10000GetPepResetState(sw,
+                                         pepNb,
+                                         &pepResetState);
+        FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+        retries++;
+    }
 
     /* If pep is in active state*/
     if (pepResetState)
@@ -1244,6 +1271,13 @@ ABORT:
                          "MaskUINT32 error(%d)\n",
                          maskStatus);
         }
+    }
+    else
+    {
+        FM_LOG_DEBUG2(FM_LOG_CAT_MAILBOX,
+                      "Failed to re-enable interrupts on PEP %d in %d retries\n",
+                      pepNb, 
+                      retries);
     }
 
     FM_LOG_EXIT(FM_LOG_CAT_MAILBOX, status);
@@ -1274,6 +1308,7 @@ static fm_status PCIeMailboxProcessGlobalAck(fm_int sw,
     fm_uint64 regAddr;
     fm_uint32 rv;
     fm_bool   pepResetState;
+    fm_uint32 retries;
 
     FM_LOG_ENTRY(FM_LOG_CAT_MAILBOX,
                  "sw=%d, pepNb=%d\n",
@@ -1304,6 +1339,25 @@ ABORT:
                                      &pepResetState);
     FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
 
+    retries = 0;
+    while (pepResetState == 0 && retries < PEP_RESET_RECOVERY_RETRIES)
+    {
+        /* The PEP could be in DataPathReset, retry every 1ms */
+        FM_LOG_DEBUG2(FM_LOG_CAT_MAILBOX,
+                      "PEP %d is in reset while trying to re-enable mailbox "
+                      "interrupts, retyring in 1ms\n",
+                      pepNb);
+
+        fmDelay(0, PEP_RESET_RECOVERY_DELAY);
+
+        status = fm10000GetPepResetState(sw,
+                                         pepNb,
+                                         &pepResetState);
+        FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+        retries++;
+    }
+
     /* If pep is in active state*/
     if (pepResetState)
     {
@@ -1326,6 +1380,13 @@ ABORT:
                          "MaskUINT32 error(%d)\n",
                          maskStatus);
         }
+    }
+    else
+    {
+        FM_LOG_DEBUG2(FM_LOG_CAT_MAILBOX,
+                      "Failed to re-enable interrupts on PEP %d in %d retries\n",
+                      pepNb, 
+                      retries);
     }
 
     FM_LOG_EXIT(FM_LOG_CAT_MAILBOX, status);
@@ -1378,6 +1439,7 @@ static fm_status AllocateMailboxGlortCams(fm_int sw)
 
     mailboxInfo = GET_MAILBOX_INFO(sw);
     lportInfo   = GET_LPORT_INFO(sw);
+    destEntry   = NULL;
 
     numberOfPeps    = FM10000_NUM_PEPS;
     numberOfGlorts  = numberOfPeps * mailboxInfo->glortsPerPep;
@@ -1412,7 +1474,6 @@ static fm_status AllocateMailboxGlortCams(fm_int sw)
         destEntriesUsed  = 1;
         calculationDone  = FALSE;
         glortsToAllocate = mailboxInfo->glortsPerPep;
-        destEntry        = NULL;
         dividedValue     = currentMinGlort / mailboxInfo->glortsPerPep;
 
         /* Calculate, how many glorts can be programmed in one CAM entry. */
@@ -1511,6 +1572,11 @@ static fm_status AllocateMailboxGlortCams(fm_int sw)
     status = FM_OK;
 
 ABORT:
+
+    if (destEntry != NULL)
+    {
+        fmFree(destEntry);
+    }
 
     FM_LOG_EXIT(FM_LOG_CAT_MAILBOX, status);
 
@@ -1674,6 +1740,7 @@ static fm_status CleanupFloodingListsWhenDeletingLport(fm_int sw,
         }
     }
 
+    doSearching = TRUE;
     /* Cleanup of ucast flood list.*/
     status = fmGetMcastGroupListenerFirst(sw,
                                           info->mcastGroupForUcastFlood,
@@ -1757,6 +1824,7 @@ static fm_status CleanupFloodingListsWhenDeletingLport(fm_int sw,
         }
     }
 
+    doSearching = TRUE;
     /* Cleanup of bcast flood list.*/
     status = fmGetMcastGroupListenerFirst(sw,
                                           info->mcastGroupForBcastFlood,

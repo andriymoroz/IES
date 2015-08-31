@@ -29,7 +29,7 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
+ *****************************************************************************/
 
 #include <fm_sdk_int.h>
 
@@ -2012,11 +2012,18 @@ fm_status fmPlatformGetHardwareLbgGlortRange(fm_uint32 *lbgGlortBase,
  *****************************************************************************/
 fm_status fmPlatformSwitchInserted(fm_int sw)
 {
-    FM_NOT_USED(sw);
+    fm_status status;
 
     FM_LOG_ENTRY(FM_LOG_CAT_PLATFORM, "sw = %d\n", sw);
 
-    FM_LOG_EXIT(FM_LOG_CAT_PLATFORM, FM_OK);
+    status = FM_OK;
+#ifdef FM_SUPPORT_SWAG
+    /* Allow the platform to complete SWAG initialization */
+    status = fmPlatformSWAGInitialize(sw);
+    FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
+#endif
+
+    FM_LOG_EXIT(FM_LOG_CAT_PLATFORM, status);
 
 }   /* end fmPlatformSwitchInserted */
 
@@ -2158,7 +2165,7 @@ fm_status fmPlatformGetHardwareMailboxGlortRange(fm_uint16 *mailboxGlortBase,
  * \ingroup platform
  *
  * \desc            Returns number of PEP ports for the platform. 
- *                  Default value is 0, which means that there is no PEP ports
+ *                  Default value is 0, which means that there are no PEP ports
  *                  available. Chips with PEP ports available, 
  *                  such as FM10000, will override this function with a 
  *                  platform/chip-specific function in platform_api_stubs.h.
@@ -2179,8 +2186,8 @@ fm_uint16 fmPlatformGetHardwareNumberOfPeps(void)
 /** fmPlatformGetHardwareMaxMailboxGlort
  * \ingroup platform
  *
- * \desc            Returns the max mailbox glort value for the platform. 
- *                  Default value is 0, which means that there is no mailbox
+ * \desc            Returns the maximum mailbox GloRT value for the platform. 
+ *                  Default value is 0, which means that there are no mailbox
  *                  registers available. Chips with mailbox available, 
  *                  such as FM10000, will override this function with a 
  *                  platform/chip-specific function in platform_api_stubs.h.
@@ -2207,3 +2214,32 @@ fm_status fmPlatformGetHardwareMaxMailboxGlort(fm_uint32 *glort)
     FM_LOG_EXIT(FM_LOG_CAT_MAILBOX, FM_OK);
 
 }   /* end fmPlatformGetHardwareMaxMailboxGlort */
+
+
+
+
+#if !defined(FM_HAVE_fmPlatformTerminate)
+
+/*****************************************************************************/
+/** fmPlatformTerminate
+ * \ingroup platform
+ *
+ * \desc            Called as part of API termination for processes other than
+ *                  the first process that have called ''fmPlatformInitialize''.
+ *                  Performs basic platform-specific clean-up.
+ *
+ * \param[in]       None
+ *
+ * \return          FM_OK if successful.
+ *
+ *****************************************************************************/
+fm_status fmPlatformTerminate(void)
+{
+    FM_LOG_ENTRY_NOARGS(FM_LOG_CAT_PLATFORM);
+
+    FM_LOG_EXIT(FM_LOG_CAT_PLATFORM, FM_OK);
+
+}   /* end fmPlatformTerminate */
+
+#endif
+

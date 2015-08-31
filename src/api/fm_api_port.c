@@ -30,7 +30,7 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
+ *****************************************************************************/
 
 #include <fm_sdk_int.h>
 
@@ -2781,7 +2781,7 @@ fm_status fmDbgEnablePortEee(fm_int sw, fm_int port, fm_int mode)
 fm_bool fmIsValidPortAttribute(fm_uint attr)
 {
 
-    return (attr >= FM_UC_PORT_ATTRIBUTE_MAX) ? FALSE : TRUE;
+    return (attr >= FM_PORT_ATTRIBUTE_MAX) ? FALSE : TRUE;
 
 }   /* end fmIsValidPortAttribute */
 

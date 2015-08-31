@@ -6,7 +6,7 @@
  * Description:     Contains internal functions for manipulating the IP
  *                  multicast table.
  *
- * Copyright (c) 2005 - 2014, Intel Corporation
+ * Copyright (c) 2005 - 2015, Intel Corporation
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -5163,6 +5163,13 @@ fm_status fm10000MTableUpdateListenerState(fm_int sw,
             }   /* end for (entryListNode = entryList->head ; entryListNode ; ) */
 
         }   /* end  while ((err = fmTreeIterNext(&treeIter, ... */
+
+        if (err == FM_ERR_NO_MORE)
+        {
+            /* Not a true error. It indicates we have iterated over all tree
+             * nodes. */
+            err = FM_OK;
+        }
 
         lastVlan = vlan+1;
     }

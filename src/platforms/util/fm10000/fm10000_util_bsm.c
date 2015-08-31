@@ -46,7 +46,12 @@
 /* dbg BSM_SCRATCH nvm version supported */ 
 #define NVM_VERSION_MAX     0xFFFF
 
+
 /* BSM_SCRATCH registers definition */
+#define SPI_LOCK_STATE              0
+#define PCIE_SBUS_LOCK_STATE        1
+#define SOFT_RESET_LOCK_STATE       2
+
 #define BSM_STATUS                  400
 #define EEPROM_IMAGE_VERSION        401
 #define MASTER_FW_VERSION           402
@@ -79,10 +84,15 @@
 #define PCIE_ISR_STATUS_8           449
 #define SERDES_OOR_STATUS_PASS_1    450
 #define SERDES_OOR_STATUS_PASS_2    451
+#define SW_LOCK_ERR_STATUS          452
+#define PCIE_EN_REFCLK_STATUS       453
 
 /* BSM_STATUS step bits */
 #define FM10000_BSM_STATUS_l_Step   0
 #define FM10000_BSM_STATUS_h_Step   7
+
+/* Space of 38 characters */
+#define LARGE_SPACE                 "                                        "
 
 #define TIME_PASSED(a, b)            \
     (((a.sec < b.sec) || ((a.sec == b.sec) && (a.usec < b.usec))) ? 0 : 1)
@@ -181,19 +191,19 @@ const regStrMap bsmStatusMap[] =
         {0x0010000D, 0xFFFFFFFF, "Memory init running"},
         {0x0110000D, 0xFFFFFFFF, "Memory init stopped"},
         {0x0009000D, 0xFFFFFFFF, "Disable PCIe PCS interrupts starting"},
-        {0x0009000D, 0x000FFFFF, "PCIe PCS interrupts disabled,"},
+        {0x0009000D, 0x000FFFFF, "PCIe PCS interrupts disabled"},
         {0x0101000E, 0xFFFFFFFF, "PCIe Master SPICO Pre-firmware download"},
         {0x0102000E, 0xFFFFFFFF, "PCIe Master SPICO firmware download"},
         {0x0103000E, 0xFFFFFFFF, "PCIe Master SPICO Post-firmware download"},
         {0x0108000E, 0xFFFFFFFF, "PCIe Master SPICO firmware download complete and successful"},
-        {0x0108FFFE, 0x0000FFFF, "PCIe Master SPICO Firmware download error: "},
+        {0x0108FFFE, 0x0000FFFF, "PCIe Master SPICO Firmware download error"},
         {0x0001000E, 0xFFFFFFFF, "PCIe SerDes Pre-firmware download"},
         {0x0002000E, 0xFFFFFFFF, "PCIe SerDes firmware download"},
         {0x0003000E, 0xFFFFFFFF, "PCIe SerDes Post-firmware download"},
         {0x0004000E, 0xFFFFFFFF, "PCIe SerDes firmware Verification (Version and CRC)"},
         {0x0004000E, 0xF00FFFFF, "PCIe SerDes Firmware Verification Status"},
         {0x0008000E, 0xFFFFFFFF, "PCIe SerDes Firmware download complete and successful"},
-        {0x0008FFFE, 0x000FFFFF, "PCIe SerDes Firmware download error."},
+        {0x0008FFFE, 0x000FFFFF, "PCIe SerDes Firmware download error"},
         {0x0000000F, 0xFFFFFFFF, "PCIe SerDes Initialization starting"},
         {0x0001000F, 0xFFFFFFFF, "PCIe SerDes RX & TX reflck ratio"},
         {0x0002000F, 0xFFFFFFFF, "PCIe SerDes Equalization seed"},
@@ -220,7 +230,7 @@ const regStrMap bsmStatusMap[] =
         {0x00000811, 0x0000FFFF, "Interrupt Complete, DeviceStateChange"},
         {0x00001011, 0x0000FFFF, "Interrupt Complete, DataPathReset"},
         {0x00002011, 0x0000FFFF, "Interrupt Complete, PFLR"},
-        {0x00000000, 0x00000000, "(Unrecognized)"}   /* must be the last one */
+        {0x00000000, 0x00000000, "Unrecognized"}   /* must be the last one */
 };
 
 /*****************************************************************************
@@ -277,20 +287,53 @@ static void DumpBsmSerdesStatusRegister(fm_uint32 value, fm_uint32 value2)
 {
     fm_int i;
     fm_int lane;
+    fm_bool pass;
+    fm_char passList[20];
+    fm_char failList[20];
+    fm_int  nbPass;
+    fm_int  nbFail;
+    fm_int  len;
     
     for (i = 0 ; i < 4 ; i++)
     {
+        FM_CLEAR(passList);
+        FM_CLEAR(failList);
+        nbPass = 0;
+        nbFail = 0;
+
         for (lane = 0 ; lane < 8 ; lane++)
         {
-            FM_LOG_PRINT("\n      PCIE%d.LANE[%d] : %s   ",
-                         i,
-                         lane,
-                         ((value >> (8 * i + lane)) & 0x01) ? "pass" : "fail");
+            pass = ((value >> (8 * i + lane)) & 0x01);
+            
+            len = strlen(passList);
+
+            if (pass)
+            {
+                nbPass++;
+                FM_SPRINTF_S(passList + len, sizeof(passList) - len, "%d ", lane); 
+                FM_SPRINTF_S(failList + len, sizeof(failList) - len, "%s", "  "); 
+            }
+            else
+            {
+                nbFail++;
+                FM_SPRINTF_S(passList + len, sizeof(passList) - len, "%s", "  "); 
+                FM_SPRINTF_S(failList + len, sizeof(failList) - len, "%d ", lane); 
+            }
+        }
+
+        if (nbPass != 0)
+        {
+            FM_LOG_PRINT("\n%sPCIE%d.LANE[%-16s] : pass", LARGE_SPACE, i, passList);
+        }
+
+        if (nbFail != 0)
+        {
+            FM_LOG_PRINT("\n%sPCIE%d.LANE[%-16s] : fail", LARGE_SPACE, i, failList);
         }
     }
-    FM_LOG_PRINT("\n      PCIE4.LANE[0] : %s   ",
-                 (value2 & 0x01) ? "pass" : "fail");
-    FM_LOG_PRINT("\n");
+
+    FM_LOG_PRINT("\n%sPCIE4.LANE[%-16d] : %s   ",
+                 LARGE_SPACE, 0, (value2 & 0x01) ? "pass" : "fail");
     
 }   /* end DumpBsmSerdesStatusRegister */
 
@@ -374,56 +417,64 @@ static void DumpBsmStatusRegister(fm_text   msg,
     
     if (BsmStatusToStr(bsmStatus, &bsmRegData) == FM_OK)
     {
-        FM_LOG_PRINT("\n    0x%08x : %s", bsmStatus, bsmRegData.msg);
+        FM_LOG_PRINT("(%s)",  bsmRegData.msg);
         if (bsmRegData.value != bsmStatus)
         {
             /* must extract additional info from bsmStatus value*/
             switch (bsmBootStep)
             {
                 case 0x0D:
+                case 0x0F:
                     core = (bsmStatus >> 20 ) & 0xFFF;
-                    FM_LOG_PRINT("core bitmap  0x%03x", core);
-                    for (i = 0 ; i < 8 ; i++)
+                    FM_LOG_PRINT("\n" LARGE_SPACE "core bitmask 0x%03x", core);
+                    FM_LOG_PRINT("\n" LARGE_SPACE);
+                    for (i = 0 ; i < 9 ; i++)
                     {
-                        FM_LOG_PRINT("\n\tcore[%d] %s",
+                        FM_LOG_PRINT("%d=%s ",
                                     i,
-                                    ((core >> i) & 0x01) ? "enabled" : "disabled"); 
+                                    ((core >> i) & 0x01) ? "en" : "dis"); 
                     }
                     break;
     
                 case 0x0E:
-                    FM_LOG_PRINT("\n    version ");
-                    switch ((bsmStatus >> 24 ) & 0xF)
+                    FM_LOG_PRINT("\n" LARGE_SPACE "Master version:     ");
+                    if ((bsmStatus >> 24) & 0x1)
                     {
-                        case 1:
-                            FM_LOG_PRINT("Master OK, ");
-                            break;
-                        case 2:
-                            FM_LOG_PRINT("All Serdes OK, ");
-                            break;
-                        default:
-                            FM_LOG_PRINT("<unspecified>, ");
+                        FM_LOG_PRINT("OK");
                     }
-                    switch ((bsmStatus >> 20 ) & 0xF)
+                    else
                     {
-                        case 1:
-                            FM_LOG_PRINT("Master OK, ");
-                            break;
-                        case 2:
-                            FM_LOG_PRINT("All Serdes OK, ");
-                            break;
-                        default:
-                            FM_LOG_PRINT("<unspecified>, ");
+                        FM_LOG_PRINT("FAIL");
                     }
-                    break;
-    
-                case 0x0F:
-                    core = (bsmStatus >> 20 ) & 0xFFF;
-                    for (i = 0 ; i < 8 ; i++)
+
+                    FM_LOG_PRINT("\n" LARGE_SPACE "Master CRC:         ");
+                    if ((bsmStatus >> 20) & 0x1)
                     {
-                        FM_LOG_PRINT("\n\tPEP[%d] %s",
-                                    i,
-                                    (((core >> i) & 0x01) == 1) ? "enabled" : "disabled"); 
+                        FM_LOG_PRINT("OK");
+                    }
+                    else
+                    {
+                        FM_LOG_PRINT("FAIL");
+                    }
+
+                    FM_LOG_PRINT("\n" LARGE_SPACE "All Serdes version: ");
+                    if ((bsmStatus >> 24) & 0x2)
+                    {
+                        FM_LOG_PRINT("OK ");
+                    }
+                    else
+                    {
+                        FM_LOG_PRINT("FAIL ");
+                    }
+
+                    FM_LOG_PRINT("\n" LARGE_SPACE "All Serdes CRC:     ");
+                    if ((bsmStatus >> 20) & 0x2)
+                    {
+                        FM_LOG_PRINT("OK ");
+                    }
+                    else
+                    {
+                        FM_LOG_PRINT("FAIL ");
                     }
                     break;
     
@@ -445,7 +496,7 @@ static void DumpBsmStatusRegister(fm_text   msg,
     else
     {
         /* register status value unrecognized */ 
-        FM_LOG_PRINT(" (Unrecognized)");
+        FM_LOG_PRINT("ERROR");
     }
     
 }   /* end DumpBsmStatusRegister */
@@ -503,6 +554,8 @@ static fm_status DbgLtssmRegPollDefault(fm_int                    sw,
     fm_uint32    devCfg;
     fm_int       start;
     fm_int       end;
+    ltssmRegDataOld.msg = NULL;
+    ltssmRegDataNew.msg = NULL;
 
     FM_LOG_ENTRY(FM_LOG_CAT_PLATFORM, "sw=%d\n", sw);
 
@@ -522,12 +575,12 @@ static fm_status DbgLtssmRegPollDefault(fm_int                    sw,
     err = readFunc(sw, FM10000_BSM_SCRATCH(EEPROM_IMAGE_VERSION), &nvmVer);
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PLATFORM, err);
 
-    FM_LOG_PRINT("\n%-25s[%d]      : %02x.%02x (0x%08x)",
+    FM_LOG_PRINT("\n%-25s[%d]      : 0x%08x (%02x.%02x)",
                  "EEPROM VERSION",
                  EEPROM_IMAGE_VERSION,
+                 nvmVer, 
                  (nvmVer & 0xFF00) >> 8,
-                 (nvmVer & 0x00FF),
-                 nvmVer);
+                 (nvmVer & 0x00FF));
 
     FM_LOG_PRINT("\n");
 
@@ -695,12 +748,12 @@ static fm_status DbgBsmStatusRegPollDefault(fm_int                    sw,
                    tTresh.sec,
                    tTresh.usec);
     
-    FM_LOG_PRINT("\n%-25s[%d]      : %02x.%02x (0x%08x)",
+    FM_LOG_PRINT("\n%-25s[%d]      : 0x%08x (%02x.%02x)",
                  "EEPROM VERSION",
                  EEPROM_IMAGE_VERSION,
+                 nvmVer, 
                  (nvmVer & 0xFF00) >> 8,
-                 (nvmVer & 0x00FF),
-                 nvmVer);
+                 (nvmVer & 0x00FF));
 
     FM_LOG_PRINT("\n");
     
@@ -769,6 +822,7 @@ static fm_status DbgDumpBsmScratchDefault(fm_int                    sw,
 {
     fm_status err;
     fm_uint32 nvmVer;
+    fm_uint32 chipVer;
     fm_uint32 value;
     fm_uint32 value2;
     fm_uint32 rv;
@@ -781,23 +835,33 @@ static fm_status DbgDumpBsmScratchDefault(fm_int                    sw,
     {
         FM_LOG_EXIT(FM_LOG_CAT_PLATFORM, FM_ERR_INVALID_ARGUMENT);
     }
-
+    
     /* get nvmVersion */
     err = readFunc(sw, FM10000_BSM_SCRATCH(EEPROM_IMAGE_VERSION), &nvmVer);
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PLATFORM, err);
+
+    err = readFunc(sw, FM10000_CHIP_VERSION(), &chipVer);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PLATFORM, err);
     
-    FM_LOG_PRINT("\n");
-    FM_LOG_PRINT("\nBSM_SCRATCH registers dump\n");
-    FM_LOG_PRINT("\n%-25s[%d]      : %02x.%02x (0x%08x)",
+    FM_LOG_PRINT("\n\nVersions");
+    FM_LOG_PRINT("\n===================");
+    
+    FM_LOG_PRINT("\n%-25s[%d]      : 0x%08x (%02x.%02x)",
                  "EEPROM VERSION",
                  EEPROM_IMAGE_VERSION,
+                 nvmVer, 
                  (nvmVer & 0xFF00) >> 8,
-                 (nvmVer & 0x00FF),
-                 nvmVer);
+                 (nvmVer & 0x00FF));
+    FM_LOG_PRINT("\n%-25s           : %s",
+                 "CHIP_VERSION",
+                 chipVer == 0x0 ? "A0" : "B0");
 
     /* dump BSM_STATUS registers */
     if (regMask & REG_MASK_BSM_INIT_STATUS)
     {
+        FM_LOG_PRINT("\n\nInit Status");
+        FM_LOG_PRINT("\n===================");
+
         err = readFunc(sw, FM10000_BSM_SCRATCH(BSM_STATUS), &value);
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PLATFORM, err);
         
@@ -825,32 +889,26 @@ static fm_status DbgDumpBsmScratchDefault(fm_int                    sw,
         err = readFunc(sw, FM10000_BSM_SCRATCH(SERDES_STATUS_2), &value2);
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PLATFORM, err);
         
-        FM_LOG_PRINT("\n%-25s[%d]      : 0x%08x",
-                     "SERDES_STATUS_1",
-                     SERDES_STATUS_1,
-                     value);      /* [404] */
-        FM_LOG_PRINT("\n%-25s[%d]      : 0x%08x",
-                     "SERDES_STATUS_2",
+        FM_LOG_PRINT("\n%-25s[%d,%d]  : 0x%08x 0x%08x (%s)",
+                     "SERDES_STATUS_{2,1}",
                      SERDES_STATUS_2,
-                     value2);      /* [405] */
-        FM_LOG_PRINT("\n    PCIe firmware CRC check status");
+                     SERDES_STATUS_1,
+                     value2, value,
+                     "PCIe firmware CRC check status");      /* [405,404] */
         DumpBsmSerdesStatusRegister(value, value2);
-        
+
         err = readFunc(sw, FM10000_BSM_SCRATCH(SERDES_STATUS_3), &value);
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PLATFORM, err);
         
         err = readFunc(sw, FM10000_BSM_SCRATCH(SERDES_STATUS_4), &value2);
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PLATFORM, err);
         
-        FM_LOG_PRINT("\n%-25s[%d]      : 0x%08x",
-                     "SERDES_STATUS_3",
+        FM_LOG_PRINT("\n%-25s[%d,%d]  : 0x%08x 0x%08x (%s)",
+                     "SERDES_STATUS_{4,3}",
+                     SERDES_STATUS_4,
                      SERDES_STATUS_3,
-                     value);      /* [406] */
-        FM_LOG_PRINT("\n%-25s[%d]      : 0x%08x",
-                     "SERDES_STATUS_4",
-                      SERDES_STATUS_4,
-                      value2);      /* [407] */
-        FM_LOG_PRINT("\n  PCIe firmware version check status");
+                     value2, value, 
+                     "PCIe firmware version check status");   /* [407],[406] */
         DumpBsmSerdesStatusRegister(value, value2);
     
         err = readFunc(sw, FM10000_BSM_SCRATCH(PCIE_MASTER_STATUS), &value);
@@ -860,7 +918,7 @@ static fm_status DbgDumpBsmScratchDefault(fm_int                    sw,
                      "PCIE_MASTER_STATUS",
                       PCIE_MASTER_STATUS,
                       value);   /* [408] */
-        FM_LOG_PRINT("\n    %s: %s",
+        FM_LOG_PRINT("\n" LARGE_SPACE "%s: %s",
                      "PCIe Master SPICO firmware download status",
                      (value == 0) ? "pass" : "fail");
         
@@ -871,7 +929,7 @@ static fm_status DbgDumpBsmScratchDefault(fm_int                    sw,
                      "PCIE_SERDES_STATUS",
                      PCIE_SERDES_STATUS,
                      value);   /* [409] */
-        FM_LOG_PRINT("\n    %s: %s",
+        FM_LOG_PRINT("\n" LARGE_SPACE "%s: %s",
                      "PCIe SerDes firmware download and initialization status",
                      (value == 0) ? "pass" : "fail");
     }
@@ -880,6 +938,7 @@ static fm_status DbgDumpBsmScratchDefault(fm_int                    sw,
     if (regMask & REG_MASK_BSM_INIT_STATUS_ARCHIVE)
     {
         FM_LOG_PRINT("\n\nArchive registers");
+        FM_LOG_PRINT("\n===================");
         
         err = readFunc(sw, FM10000_BSM_SCRATCH(DE_COLD_RESET_STATUS), &value);
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PLATFORM, err);
@@ -950,6 +1009,34 @@ static fm_status DbgDumpBsmScratchDefault(fm_int                    sw,
         DumpBsmStatusRegister("PCIE_PCS_EN_STATUS",
                                PCIE_PCS_EN_STATUS,
                                value);
+
+        /* B0 sequence implemented in rrcBig v02.00 */
+        if ( (nvmVer & 0xFFFF) >= 0x0200)
+        {
+            err = readFunc(sw, FM10000_BSM_SCRATCH(PCIE_EN_REFCLK_STATUS), &value); 
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PLATFORM, err);
+
+            FM_LOG_PRINT("\n%-25s[%d]      : 0x%08x ",
+                         "PCIE_EN_REFCLK_STATUS",
+                         PCIE_EN_REFCLK_STATUS,
+                         value);
+            if (value == 0x1)
+            {
+                FM_LOG_PRINT("(Init XREFCLK completed)"); 
+            }
+            else if (value == 0x2)
+            {
+                FM_LOG_PRINT("(Init XREFCLK skipped - A0 only)"); 
+                if (chipVer != 0)
+                {
+                    FM_LOG_PRINT("\n" LARGE_SPACE "WARNING: this is B0\n"); 
+                }
+            }
+            else
+            {
+                FM_LOG_PRINT("(Unexpected value)"); 
+            }
+        }
 
         err = readFunc(sw, FM10000_BSM_SCRATCH(PCIE_DE_WARM_RESET_STATUS), &value);
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PLATFORM, err);
@@ -1084,22 +1171,115 @@ static fm_status DbgDumpBsmScratchDefault(fm_int                    sw,
         err = readFunc(sw, FM10000_BSM_SCRATCH(SERDES_OOR_STATUS_PASS_2), &value2);
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PLATFORM, err);
         
-        FM_LOG_PRINT("\n%-25s[%d]      : 0x%08x",
-                     "SERDES_OOR_STATUS_PASS_1",
-                     SERDES_OOR_STATUS_PASS_1,
-                     value);
-        FM_LOG_PRINT("\n%-25s[%d]      : 0x%08x",
-                     "SERDES_OOR_STATUS_PASS_2",
+        FM_LOG_PRINT("\n%-25s[%d,%d]  : 0x%08x 0x%08x (%s)",
+                     "SERDES_OOR_STATUS_PASS_{2,1}",
                      SERDES_OOR_STATUS_PASS_2,
-                     value2);
-        FM_LOG_PRINT("\n  Serdes on OutOfReset pass/fail status");
+                     SERDES_OOR_STATUS_PASS_1,
+                     value2, value,
+                     "Serdes on OutOfReset pass/fail status");
         DumpBsmSerdesStatusRegister(value, value2);
-        
     }
+
+    if (regMask & REG_MASK_BSM_LOCKS)
+    {
+        FM_LOG_PRINT("\n\nLock States");
+        FM_LOG_PRINT("\n===================");
+
+        err = readFunc(sw, FM10000_BSM_SCRATCH(SPI_LOCK_STATE), &value); 
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PLATFORM, err);
+    
+        FM_LOG_PRINT("\n%-25s[%d]        : 0x%08x (%s)",
+                     "SPI_LOCK_STATE",
+                     SPI_LOCK_STATE,
+                     value,
+                     "SPI Lock");
+        if (value & 0x1)
+        {
+            FM_LOG_PRINT("\n" LARGE_SPACE "Lock Taken by: %s", 
+                         ((value & 0x6) >> 1) == 0 ? "API" :
+                         ((value & 0x6) >> 1) == 1 ? "QV tools" :
+                         ((value & 0x6) >> 1) == 2 ? "Board-Manager":
+                         "error"); 
+        }
+        else
+        {
+            FM_LOG_PRINT("\n" LARGE_SPACE "Lock is free"); 
+        }
+
+        err = readFunc(sw, FM10000_BSM_SCRATCH(PCIE_SBUS_LOCK_STATE), &value); 
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PLATFORM, err);
+    
+        FM_LOG_PRINT("\n%-25s[%d]        : 0x%08x (%s)",
+                     "PCIE_SBUS_LOCK_STATE",
+                     PCIE_SBUS_LOCK_STATE,
+                     value,
+                     "PCIE SBUS Lock");
+
+        if (value & 0x3)
+        {
+            FM_LOG_PRINT("\n" LARGE_SPACE "Lock Taken by: %s", 
+                         (value & 0x3) == 1 ? "BSM" :
+                         (value & 0x3) == 2 ? "API" :
+                         "error"); 
+        }
+        else
+        {
+            FM_LOG_PRINT("\n" LARGE_SPACE "Lock is free");
+        }
+
+        err = readFunc(sw, FM10000_BSM_SCRATCH(SOFT_RESET_LOCK_STATE), &value); 
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PLATFORM, err);
+    
+        FM_LOG_PRINT("\n%-25s[%d]        : 0x%08x (%s)",
+                     "SOFT_RESET_LOCK_STATE",
+                     SOFT_RESET_LOCK_STATE,
+                     value,
+                     "SOFT_RESET Lock");
+
+        if (value & 0x3)
+        {
+            FM_LOG_PRINT("\n" LARGE_SPACE "Lock Taken by: %s", 
+                         (value & 0x3) == 1 ? "BSM" :
+                         (value & 0x3) == 2 ? "API" :
+                         "error"); 
+        }
+        else
+        {
+            FM_LOG_PRINT("\n" LARGE_SPACE "Lock is free");
+        }
+
+        /* Lock Status implemented in rrcBig v01.22 */
+        if ( (nvmVer & 0xFFFF) >= 0x0122)
+        {
+            err = readFunc(sw, FM10000_BSM_SCRATCH(SW_LOCK_ERR_STATUS), &value); 
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PLATFORM, err);
+        
+            FM_LOG_PRINT("\n%-25s[%d]      : 0x%08x (%s)",
+                         "SW_LOCK_ERR_STATUS",
+                         SW_LOCK_ERR_STATUS,
+                         value,
+                         "SBUS and SOFT_RESET lock error status");
+            if (value & 0x1)
+            {
+                FM_LOG_PRINT("\n" LARGE_SPACE "SBUS LOCK errors = %d", 
+                             ( (value >> 1) & 0x7F)); 
+            }
+            if (value & 0x100)
+            {
+                FM_LOG_PRINT("\n" LARGE_SPACE "SOFT_RESET LOCK errors = %d", 
+                             ( (value >> 9) & 0x7F)); 
+            }
+            if (value == 0 )
+            {
+                FM_LOG_PRINT("\n" LARGE_SPACE "No Lock Errors"); 
+            }
+        }
+    }
+    
     FM_LOG_PRINT("\n");
     
 ABORT:
-        FM_LOG_EXIT(FM_LOG_CAT_PLATFORM, err);
+    FM_LOG_EXIT(FM_LOG_CAT_PLATFORM, err);
     
 }   /* end DbgDumpBsmScratchDefault */
 

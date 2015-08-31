@@ -6,7 +6,7 @@
  * Description:     Header file for services to manage switch aggregates and
  *                  switch-aggregate topologies.
  *
- * Copyright (c) 2007 - 2011, Intel Corporation
+ * Copyright (c) 2007 - 2015, Intel Corporation
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -660,6 +660,8 @@ fm_status fmGetSWAGLinkFirst(fm_int swagId, fm_swagLink *link);
 fm_status fmGetSWAGLinkNext(fm_int          swagId,
                             fm_swagLink *startLink,
                             fm_swagLink *nextLink);
+fm_status fmGetSWAGDefaultTopologySolver(fm_swagTopology        topology,
+                                         fm_swagTopologySolver *solver);
 fm_status fmSetSWAGTopology(fm_int swagId, fm_swagTopology topology);
 fm_status fmGetSWAGTopology(fm_int swagId, fm_swagTopology *topology);
 fm_status fmSetSWAGTopologySolver(fm_int            swagId,

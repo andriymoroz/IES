@@ -46,7 +46,6 @@ api/fm_api_policer.h                                                        \
 api/fm_api_port.h                                                           \
 api/fm_api_portset.h                                                        \
 api/fm_api_qos.h                                                            \
-api/fm_api_rbridge.h                                                        \
 api/fm_api_regs.h                                                           \
 api/fm_api_replication.h                                                    \
 api/fm_api_routing.h                                                        \
@@ -59,7 +58,6 @@ api/fm_api_stp.h                                                            \
 api/fm_api_swag.h                                                           \
 api/fm_api_trigger.h                                                        \
 api/fm_api_tunnel.h                                                         \
-api/fm_api_uc_attr.h                                                        \
 api/fm_api_vlan.h                                                           \
 api/fm_api_vn.h                                                             \
 api/internal/fm10000/fm10000_api_acl_int.h                                  \
@@ -145,7 +143,6 @@ api/internal/fm_api_stp_int.h                                               \
 api/internal/fm_api_swag_int.h                                              \
 api/internal/fm_api_switch_int.h                                            \
 api/internal/fm_api_trig_int.h                                              \
-api/internal/fm_api_uc_stats_int.h                                          \
 api/internal/fm_api_vlan_int.h                                              \
 api/internal/fm_api_vn_int.h                                                \
 api/internal/swag/fmSWAG_api_acl_int.h                                      \
@@ -224,6 +221,7 @@ platforms/libertyTrail/platform_attr.h                                      \
 platforms/libertyTrail/platform_buffer_defs.h                               \
 platforms/libertyTrail/platform_config.h                                    \
 platforms/libertyTrail/platform_config_nvm.h                                \
+platforms/libertyTrail/platform_config_tlv.h                                \
 platforms/libertyTrail/platform_debug.h                                     \
 platforms/libertyTrail/platform_defines.h                                   \
 platforms/libertyTrail/platform_gpio.h                                      \
@@ -245,4 +243,5 @@ platforms/util/fm_util_device_lock.h                                        \
 platforms/util/fm_util_pca.h                                                \
 platforms/util/fm_util_spi_flash_pch.h                                      \
 platforms/util/retimer/fm_util_gn2412.h                                     \
+platforms/util/fm_util_config_tlv.h                                         \
 std/intel/fm_std.h

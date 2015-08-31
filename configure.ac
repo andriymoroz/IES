@@ -63,6 +63,8 @@ AC_CONFIG_FILES([Makefile
                  dist/ies-api.pc
                  dist/ies-api.spec
                  dist/Makefile
+                 dist/profile/environment
+                 dist/profile/ies.sh
                  include/Makefile
                  src/Makefile])
 AC_OUTPUT

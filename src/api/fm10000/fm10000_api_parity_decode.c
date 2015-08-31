@@ -3855,7 +3855,7 @@ static fm_status DecodeCrm(fm_switch * switchPtr)
      **************************************************/
 
     sliceMask = (fm_uint32)(crmInt & CRM_FFU_SLICE_TCAM_INT_MASK);
-    if (sliceMask)
+    if (sliceMask && switchExt->isCrmStarted)
     {
         errCount = CountBits(sliceMask);
 
@@ -3879,7 +3879,7 @@ static fm_status DecodeCrm(fm_switch * switchPtr)
      * Handle GLORT_CAM checksum errors.
      **************************************************/
 
-    if (crmInt & CRM_GLORT_CAM_INT_MASK)
+    if ( (crmInt & CRM_GLORT_CAM_INT_MASK ) && switchExt->isCrmStarted )
     {
         counters.errors     += 1;
         counters.repairable += 1;

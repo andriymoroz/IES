@@ -47,6 +47,7 @@ fm_status fmSWAGSetPortSetPortInt(fm_int sw,
                                   fm_int portSet,
                                   fm_int port,
                                   fm_bool state);
+fm_status fmSWAGFreePortSet(fm_int sw);
 
 
 #endif /* __FM_FMSWAG_API_PORTSET_INT_H */

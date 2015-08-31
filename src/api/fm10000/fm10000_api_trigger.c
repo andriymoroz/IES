@@ -2450,8 +2450,11 @@ ABORT:
  * \return          FM_OK if successful.
  * \return          FM_ERR_NOT_FOUND a trigger does not exist for the provided
  *                  group/rule combination.
- * \return          FM_ERR_INTERNAL_RESOURCE if the trigger is internal (
- *                  internal triggers can only be deleted by API internals).
+ * \return          FM_ERR_INTERNAL_RESOURCE if the trigger is internal
+ *                  (internal triggers can only be deleted by API internals).
+ * \return          FM_ERR_NO_FREE_TRIG_RES if the API is unable to allocate
+ *                  a mirror profile to use while updating the hardware
+ *                  configuration.
  * 
  *****************************************************************************/
 fm_status fm10000DeleteTrigger(fm_int  sw, 

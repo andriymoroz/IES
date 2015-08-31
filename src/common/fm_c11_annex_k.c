@@ -34,7 +34,7 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
+ *****************************************************************************/
 
 #include <fm_sdk_int.h>
 
@@ -72,7 +72,7 @@
 /** fmFprintf_s
  * \ingroup intCommon
  *
- * \desc            Function to format and print output to a file.
+ * \desc            Format and print output to a file.
  *
  * \note            This emulates fprintf_s.
  *
@@ -118,7 +118,7 @@ fm_int fmFprintf_s(FILE *stream, const char *format, ...)
 /** fmPrintf_s
  * \ingroup intCommon
  *
- * \desc            Function to format and print output to stdout.
+ * \desc            Format and print output to stdout.
  *
  * \note            This emulates printf_s.
  *
@@ -162,7 +162,7 @@ fm_int fmPrintf_s(const char *format, ...)
 /** fmSnprintf_s
  * \ingroup intCommon
  *
- * \desc            Function to format and print output to a string buffer.
+ * \desc            Format and print output to a string buffer.
  *
  * \note            This emulates snprintf_s.
  *
@@ -211,7 +211,7 @@ fm_int fmSnprintf_s(char *s, rsize_t n, const char *format, ...)
 /** fmSprintf_s
  * \ingroup intCommon
  *
- * \desc            Function to format and print output to a string buffer.
+ * \desc            Format and print output to a string buffer.
  *
  * \note            This emulates sprintf_s.
  *
@@ -260,7 +260,7 @@ fm_int fmSprintf_s(char *s, rsize_t n, const char *format, ...)
 /** fmSscanf_s
  * \ingroup intCommon
  *
- * \desc            Function to parse a string into component parts.
+ * \desc            Parse a string into component parts.
  *
  * \note            This emulates sscanf_s.
  *
@@ -318,7 +318,7 @@ fm_int fmSscanf_s(const char *s, const char *format, ...)
 /** fmVfprintf_s
  * \ingroup intCommon
  *
- * \desc            Function to format and print output to a file.
+ * \desc            Format and print output to a file.
  *
  * \note            This emulates fprintf_s.
  *
@@ -329,7 +329,9 @@ fm_int fmSscanf_s(const char *s, const char *format, ...)
  * \param[in]       arg contains to a va_list containing the parameters
  *                  needed for the format string.
  *
- * \return          0 if successful.
+ * \return          The number of characters written, or a negative number
+ *                  if an output error or runtime constraint violation
+ *                  occurred.
  *
  *****************************************************************************/
 fm_int fmVfprintf_s(FILE * stream, const char *format, va_list arg)
@@ -377,7 +379,7 @@ fm_int fmVfprintf_s(FILE * stream, const char *format, va_list arg)
 /** fmVprintf_s
  * \ingroup intCommon
  *
- * \desc            Function to format and print output to stdout.
+ * \desc            Format and print output to stdout.
  *
  * \note            This emulates vprintf_s.
  *
@@ -386,7 +388,9 @@ fm_int fmVfprintf_s(FILE * stream, const char *format, va_list arg)
  * \param[in]       arg contains to a va_list containing the parameters
  *                  needed for the format string.
  *
- * \return          0 if successful.
+ * \return          The number of characters written, or a negative number
+ *                  if an output error or runtime constraint violation
+ *                  occurred.
  *
  *****************************************************************************/
 fm_int fmVprintf_s(const char *format, va_list arg)
@@ -419,7 +423,7 @@ fm_int fmVprintf_s(const char *format, va_list arg)
 /** fmVsnprintf_s
  * \ingroup intCommon
  *
- * \desc            Function to format and store output into a string buffer.
+ * \desc            Format and store output into a string buffer.
  *
  * \note            This emulates vsnprintf_s.
  *
@@ -432,7 +436,10 @@ fm_int fmVprintf_s(const char *format, va_list arg)
  * \param[in]       arg contains to a va_list containing the parameters
  *                  needed for the format string.
  *
- * \return          0 if successful.
+ * \return          The number of characters that would have been written had
+ *                  n been sufficiently large, not counting the terminating
+ *                  null character, or a negative value if a runtime
+ *                  constraint violation occurred.
  *
  *****************************************************************************/
 fm_int fmVsnprintf_s(char *s, rsize_t n, const char *format, va_list arg)
@@ -487,7 +494,7 @@ fm_int fmVsnprintf_s(char *s, rsize_t n, const char *format, va_list arg)
 /** fmMemcpy_s
  * \ingroup intCommon
  *
- * \desc            Function to copy memory.
+ * \desc            Copy memory.
  *
  * \note            This emulates memcpy_s.
  *
@@ -581,7 +588,7 @@ errno_t fmMemcpy_s(void *s1, rsize_t s1max, const void *s2, rsize_t n)
 /** fmMemmove_s
  * \ingroup intCommon
  *
- * \desc            Function to copy memory between overlapping buffers.
+ * \desc            Copy memory between overlapping buffers.
  *
  * \note            This emulates memmove_s.
  *
@@ -651,7 +658,7 @@ errno_t fmMemmove_s(void *s1, rsize_t s1max, const void *s2, rsize_t n)
 /** fmMemset_s
  * \ingroup intCommon
  *
- * \desc            Function to set a memory buffer to a specified value.
+ * \desc            Set a memory buffer to a specified value.
  *
  * \note            This emulates memset_s.
  *
@@ -712,7 +719,7 @@ errno_t fmMemset_s(void *s, rsize_t smax, fm_int c, rsize_t n)
 /** fmStrcpy_s
  * \ingroup intCommon
  *
- * \desc            Function to copy a string.
+ * \desc            Copy a string.
  *
  * \note            This emulates strcpy_s.
  *
@@ -818,7 +825,7 @@ errno_t fmStrcpy_s(char *s1, rsize_t s1max, const char *s2)
 /** fmStrcat_s
  * \ingroup intCommon
  *
- * \desc            Function to concatenate string s2 onto the end of string s1.
+ * \desc            Concatenate string s2 onto the end of string s1.
  *
  * \note            This emulates strcat_s.
  *
@@ -934,7 +941,7 @@ errno_t fmStrcat_s(char *s1, rsize_t s1max, const char *s2)
 /** fmStrncpy_s
  * \ingroup intCommon
  *
- * \desc            Function to copy a string.
+ * \desc            Copy a string.
  *
  * \note            This emulates strncpy_s.
  *
@@ -1052,7 +1059,7 @@ errno_t fmStrncpy_s(char *s1, rsize_t s1max, const char *s2, rsize_t n)
 /** fmStrncat_s
  * \ingroup intCommon
  *
- * \desc            Function to concatenate string s2 onto the end of string s1.
+ * \desc            Concatenate string s2 onto the end of string s1.
  *
  * \note            This emulates strncat_s.
  *
@@ -1176,7 +1183,7 @@ errno_t fmStrncat_s(char *s1, rsize_t s1max, const char *s2, rsize_t n)
 /** fmStrnlen_s
  * \ingroup intCommon
  *
- * \desc            Function to determine the length of a string.
+ * \desc            Determine the length of a string.
  *
  * \note            This emulates strnlen_s.
  *
@@ -1208,7 +1215,7 @@ rsize_t fmStrnlen_s(const char *s, rsize_t maxsize)
 /** fmStrtok_s
  * \ingroup intCommon
  *
- * \desc            Function to break a string into a sequence of tokens.
+ * \desc            Break a string into a sequence of tokens.
  *
  * \note            This emulates strntok_s.
  *
@@ -1298,7 +1305,7 @@ fm_char * fmStrtok_s(char *s1, rsize_t *s1max, const char *s2, char **ptr)
 /** fmStrerror_s
  * \ingroup intCommon
  *
- * \desc            Function to map the value in errnum to a message string.
+ * \desc            Map an error number to a message string.
  *
  * \note            This emulates strerror_s.
  *

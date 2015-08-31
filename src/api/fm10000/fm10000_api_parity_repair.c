@@ -456,11 +456,12 @@ static fm_status RepairFfuSliceSram(fm_int sw, fm10000_repairData * auxData)
  *****************************************************************************/
 static fm_status RepairFfuSliceTcam(fm_int sw, fm10000_repairData * auxData)
 {
-    fm_status   retStatus;
-    fm_status   err;
-    fm_int      sliceId;
-    fm_uint32   bitMask;
-    fm_int      crmId;
+    fm_status          retStatus;
+    fm_status          err;
+    fm_int             sliceId;
+    fm_uint32          bitMask;
+    fm_int             crmId;
+    fm10000_switch *   switchExt;
 
     FM_LOG_ENTRY(FM_LOG_CAT_PARITY, "sw=%d\n", sw);
 
@@ -471,7 +472,14 @@ static fm_status RepairFfuSliceTcam(fm_int sw, fm10000_repairData * auxData)
                  auxData->uerrMask);
 #endif
 
+    switchExt = GET_SWITCH_EXT(sw);
     retStatus = FM_OK;
+
+    if (!switchExt->isCrmStarted)
+    {
+        retStatus = FM_ERR_UNINITIALIZED;
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PARITY, retStatus);
+    }
 
     for (sliceId = 0 ; sliceId < NUM_FFU_SLICES ; sliceId++)
     {
@@ -491,9 +499,10 @@ static fm_status RepairFfuSliceTcam(fm_int sw, fm10000_repairData * auxData)
 
             err = NotifyCRMEvent(sw, crmId, FM10000_CRM_EVENT_REPAIR_IND);
             FM_ERR_COMBINE(retStatus, err);
-
         }
     }
+
+ABORT:
 
     FM_LOG_EXIT(FM_LOG_CAT_PARITY, retStatus);
 
@@ -549,12 +558,21 @@ static fm_status RepairGlortRam(fm_int sw)
  *****************************************************************************/
 static fm_status RepairGlortCam(fm_int sw)
 {
-    fm_status   status;
-    fm_status   err;
-
+    fm_status          status;
+    fm_status          err;
+    fm10000_switch *   switchExt;
     FM_LOG_ENTRY(FM_LOG_CAT_PARITY, "sw=%d\n", sw);
 
+    switchExt = GET_SWITCH_EXT(sw);
+
+    if (!switchExt->isCrmStarted)
+    {
+        status = FM_ERR_UNINITIALIZED;
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PARITY, status);
+    }
+
 #if defined(FM10000_USE_GLORT_CAM_CACHE)
+
     status = RestoreFromCache(sw,
                               "GLORT_CAM",
                               &fm10000CacheGlortCam,
@@ -568,6 +586,7 @@ static fm_status RepairGlortCam(fm_int sw)
     status = FM_ERR_UNSUPPORTED;
 #endif
 
+ABORT:
     FM_LOG_EXIT(FM_LOG_CAT_PARITY, status);
 
 }   /* end RepairGlortCam */

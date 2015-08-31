@@ -3,7 +3,6 @@
 /*****************************************************************************
  * File:            fm_errno.c
  * Creation Date:   September 16, 2005
- * Last updated:    March 27, 2015
  * Description:     Constants and string table for error messages and
  *                  return constants
  *

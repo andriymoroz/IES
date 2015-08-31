@@ -40,6 +40,10 @@
 #define LOG_INITIALIZED(ls) \
     ( (ls) && (ls)->initMagicNumber == FM_LOG_MAGIC_NUMBER )
 
+#define GET_LOGGING_STATE() \
+    ((fmRootAlos) ? &fmRootAlos->fmLoggingState : NULL);
+
+
 /*****************************************************************************
  * Global Variables
  *****************************************************************************/
@@ -164,7 +168,7 @@ static fm_status LogMessage( fm_uint64   filteredCategoryMask,
                              const char *format,
                              va_list     ap)
 {
-    fm_loggingState *ls = (fmRootAlos ? &(fmRootAlos->fmLoggingState) : NULL);
+    fm_loggingState *ls = GET_LOGGING_STATE();
     fm_loggingType   logType;
     fm_bool          enabled;
     fm_char          dateStr[64];
@@ -242,8 +246,8 @@ static fm_status LogMessage( fm_uint64   filteredCategoryMask,
 
         if (verbosityMask & FM_LOG_VERBOSITY_THREAD)
         {
-            /* Get thread name before taking logging lock, to avoid possible
-             * deadly embrace between thread and logging code. */
+            /* Get the thread name before taking the access lock, to avoid
+             * possible lock inversion. */
             threadName = fmGetCurrentThreadName();
         }
 
@@ -261,12 +265,12 @@ static fm_status LogMessage( fm_uint64   filteredCategoryMask,
 
         if (!bypassFilter)
         {
-            if (filter && functionFilter && *functionFilter != '\0')
+            if (filter && functionFilter && *functionFilter)
             {
                 filter = ApplyLoggingFilter(functionFilter, srcFunction);
             }
     
-            if (filter && fileFilter && *fileFilter != '\0')
+            if (filter && fileFilter && *fileFilter)
             {
                 filter = ApplyLoggingFilter(fileFilter, srcFile);
             }
@@ -720,7 +724,7 @@ static fm_status LogMessage( fm_uint64   filteredCategoryMask,
  *****************************************************************************/
 fm_status fmAlosLoggingInit(void)
 {
-    fm_loggingState *   ls = (fmRootAlos ? &(fmRootAlos->fmLoggingState) : NULL);
+    fm_loggingState *   ls = GET_LOGGING_STATE();
     pthread_mutexattr_t attr;
     fm_int              i;
 
@@ -807,7 +811,7 @@ fm_status fmAlosLoggingInit(void)
  *****************************************************************************/
 fm_status fmLoggingEnable()
 {
-    fm_loggingState *ls = (fmRootAlos ? &(fmRootAlos->fmLoggingState) : NULL);
+    fm_loggingState *ls = GET_LOGGING_STATE();
 
     FM_LOG_ENTRY_API(FM_LOG_CAT_LOGGING,
                      "\n");
@@ -841,7 +845,7 @@ fm_status fmLoggingEnable()
  *****************************************************************************/
 fm_status fmLoggingDisable()
 {
-    fm_loggingState *ls = (fmRootAlos ? &(fmRootAlos->fmLoggingState) : NULL);
+    fm_loggingState *ls = GET_LOGGING_STATE();
 
     FM_LOG_ENTRY_API(FM_LOG_CAT_LOGGING, "\n");
 
@@ -881,7 +885,7 @@ fm_status fmLoggingDisable()
  *****************************************************************************/
 fm_status fmSetLoggingVerbosity(fm_uint32 verbosityMask)
 {
-    fm_loggingState *ls = (fmRootAlos ? &(fmRootAlos->fmLoggingState) : NULL);
+    fm_loggingState *ls = GET_LOGGING_STATE();
 
     FM_LOG_ENTRY_API(FM_LOG_CAT_LOGGING,
                      "verbosityMask=%08x\n",
@@ -919,7 +923,7 @@ fm_status fmSetLoggingVerbosity(fm_uint32 verbosityMask)
  *****************************************************************************/
 fm_status fmGetLoggingVerbosity(fm_uint32 *verbosityMask)
 {
-    fm_loggingState *ls = (fmRootAlos ? &(fmRootAlos->fmLoggingState) : NULL);
+    fm_loggingState *ls = GET_LOGGING_STATE();
 
     FM_LOG_ENTRY_API(FM_LOG_CAT_LOGGING,
                      "verbosityMask=%p\n",
@@ -969,92 +973,98 @@ fm_status fmSetLoggingType(fm_loggingType logType,
     fm_loggingState *   ls;
     int                 posixErr;
 
-    FM_LOG_ENTRY_API(FM_LOG_CAT_LOGGING,
-                     "logType=%d clear=%d arg=%p\n",
-                     logType,
-                     clear,
-                     arg);
+    /**************************************************
+     * This function takes the logging access lock. 
+     * It does not do any logging itself (and must not
+     * call any functions that do logging), to avoid 
+     * the possibility of lock inversion in LogMessage.
+     **************************************************/
 
+    ls  = GET_LOGGING_STATE();
     err = FM_OK;
-    ls  = (fmRootAlos != NULL) ? &fmRootAlos->fmLoggingState : NULL;
 
-    if ( LOG_INITIALIZED(ls) )
+    if ( !LOG_INITIALIZED(ls) )
     {
-        posixErr = pthread_mutex_lock( (pthread_mutex_t *) ls->accessLock );
-        if (posixErr != 0)
-        {
-            FM_LOG_EXIT_API(FM_LOG_CAT_LOGGING, FM_ERR_UNABLE_TO_LOCK);
-        }
-
-        ls->logType = logType;
-
-        switch (logType)
-        {
-            case FM_LOG_TYPE_CONSOLE:
-                break;
-
-            case FM_LOG_TYPE_FILE:
-
-                if (clear)
-                {
-                    fmStringCopy(ls->logFileName, (fm_text) arg,
-                                 FM_MAX_FILENAME_LENGTH);
-
-                    /* Create the file to empty it */
-                    log = fopen(ls->logFileName, "wt");
-
-                    if (log)
-                    {
-                        fclose(log);
-                    }
-                    else
-                    {
-                        /* In the event of a failure, default to console */
-                        ls->logType = FM_LOG_TYPE_CONSOLE;
-
-                        FM_LOG_ERROR(FM_LOG_CAT_LOGGING,
-                                     "Unable to create logfile %s",
-                                     ls->logFileName);
-                    }
-                }
-
-                break;
-
-            case FM_LOG_TYPE_MEMBUF:
-
-                if (clear)
-                {
-                    ls->maxLines = FM_LOG_MAX_LINES;
-
-                    FM_CLEAR(ls->logBuffer);
-                    ls->currentPos = 0;
-                }
-
-                break;
-
-            case FM_LOG_TYPE_CALLBACK:
-                cbSpec = (fm_logCallBackSpec *) arg;
-
-                ls->fmLogCallback = cbSpec->callBack;
-                ls->fmLogCookie1  = cbSpec->cookie1;
-                ls->fmLogCookie2  = cbSpec->cookie2;
-
-                break;
-
-        }   /* end switch (logType) */
-
-        posixErr = pthread_mutex_unlock( (pthread_mutex_t *) ls->accessLock );
-        if (posixErr != 0)
-        {
-            FM_LOG_EXIT_API(FM_LOG_CAT_LOGGING, FM_ERR_UNABLE_TO_UNLOCK);
-        }
-    }
-    else
-    {
-        err = FM_ERR_UNINITIALIZED;
+        return FM_ERR_UNINITIALIZED;
     }
 
-    FM_LOG_EXIT_API(FM_LOG_CAT_LOGGING, err);
+    posixErr = pthread_mutex_lock( (pthread_mutex_t *) ls->accessLock );
+    if (posixErr != 0)
+    {
+        return FM_ERR_UNABLE_TO_LOCK;
+    }
+
+    ls->logType = logType;
+
+    switch (logType)
+    {
+        case FM_LOG_TYPE_CONSOLE:
+            break;
+
+        case FM_LOG_TYPE_FILE:
+
+            if (clear)
+            {
+                fmStringCopy(ls->logFileName, (fm_text) arg,
+                             FM_MAX_FILENAME_LENGTH);
+
+                /* Create the file to empty it */
+                log = fopen(ls->logFileName, "wt");
+
+                if (log)
+                {
+                    fclose(log);
+                }
+                else
+                {
+                    /* In the event of a failure, default to console */
+                    ls->logType = FM_LOG_TYPE_CONSOLE;
+
+#if 0
+                    FM_LOG_ERROR(FM_LOG_CAT_LOGGING,
+                                 "Unable to create logfile %s",
+                                 ls->logFileName);
+#else
+                    /* If we attempt to log while holding the access lock,
+                     * we risk a lock inversion, so just return an error. */
+                    err = FM_FAIL;
+
+#endif
+                }
+            }
+
+            break;
+
+        case FM_LOG_TYPE_MEMBUF:
+
+            if (clear)
+            {
+                ls->maxLines = FM_LOG_MAX_LINES;
+
+                FM_CLEAR(ls->logBuffer);
+                ls->currentPos = 0;
+            }
+
+            break;
+
+        case FM_LOG_TYPE_CALLBACK:
+            cbSpec = (fm_logCallBackSpec *) arg;
+
+            ls->fmLogCallback = cbSpec->callBack;
+            ls->fmLogCookie1  = cbSpec->cookie1;
+            ls->fmLogCookie2  = cbSpec->cookie2;
+
+            break;
+
+    }   /* end switch (logType) */
+
+    posixErr = pthread_mutex_unlock( (pthread_mutex_t *) ls->accessLock );
+    if (posixErr != 0)
+    {
+        err = FM_ERR_UNABLE_TO_UNLOCK;
+    }
+
+    return err;
 
 }   /* end fmSetLoggingType */
 
@@ -1077,7 +1087,7 @@ fm_status fmSetLoggingType(fm_loggingType logType,
  *****************************************************************************/
 fm_status fmEnableLoggingCategory(fm_uint64 categories)
 {
-    fm_loggingState *ls = (fmRootAlos ? &(fmRootAlos->fmLoggingState) : NULL);
+    fm_loggingState *ls = GET_LOGGING_STATE();
 
     FM_LOG_ENTRY_API(FM_LOG_CAT_LOGGING,
                      "categories=%15" FM_FORMAT_64 "u\n",
@@ -1113,7 +1123,7 @@ fm_status fmEnableLoggingCategory(fm_uint64 categories)
  *****************************************************************************/
 fm_status fmDisableLoggingCategory(fm_uint64 categories)
 {
-    fm_loggingState *ls = (fmRootAlos ? &(fmRootAlos->fmLoggingState) : NULL);
+    fm_loggingState *ls = GET_LOGGING_STATE();
 
     FM_LOG_ENTRY_API(FM_LOG_CAT_LOGGING,
                      "categories=%15" FM_FORMAT_64 "u\n",
@@ -1149,7 +1159,7 @@ fm_status fmDisableLoggingCategory(fm_uint64 categories)
  *****************************************************************************/
 fm_status fmEnableLoggingLevel(fm_uint64 levels)
 {
-    fm_loggingState *ls = (fmRootAlos ? &(fmRootAlos->fmLoggingState) : NULL);
+    fm_loggingState *ls = GET_LOGGING_STATE();
 
     FM_LOG_ENTRY_API(FM_LOG_CAT_LOGGING,
                      "levels=%15" FM_FORMAT_64 "u\n",
@@ -1185,7 +1195,7 @@ fm_status fmEnableLoggingLevel(fm_uint64 levels)
  *****************************************************************************/
 fm_status fmDisableLoggingLevel(fm_uint64 levels)
 {
-    fm_loggingState *ls = (fmRootAlos ? &(fmRootAlos->fmLoggingState) : NULL);
+    fm_loggingState *ls = GET_LOGGING_STATE();
 
     FM_LOG_ENTRY_API(FM_LOG_CAT_LOGGING,
                      "levels=%15" FM_FORMAT_64 "u\n",
@@ -1235,39 +1245,31 @@ fm_status fmSetLoggingFilter(fm_uint64   categoryMask,
                              const char *functionFilter,
                              const char *fileFilter)
 {
+    fm_loggingState *ls = GET_LOGGING_STATE();
     int              posixErr;
-    fm_loggingState *ls = (fmRootAlos ? &(fmRootAlos->fmLoggingState) : NULL);
 
-    FM_LOG_ENTRY_API(FM_LOG_CAT_LOGGING,
-                     "categoryMask=%15" FM_FORMAT_64 "u, "
-                     "levelMask=%15" FM_FORMAT_64 "u, "
-                     "functionFilter=%s, "
-                     "fileFilter=%s\n",
-                     categoryMask,
-                     levelMask,
-                     functionFilter,
-                     fileFilter);
-
-    ls = (fmRootAlos != NULL) ? &fmRootAlos->fmLoggingState : NULL;
+    /**************************************************
+     * This function takes the logging access lock. 
+     * It does not do any logging itself (and must not
+     * call any functions that do logging), to avoid 
+     * the possibility of lock inversion in LogMessage.
+     **************************************************/
 
     if ( !LOG_INITIALIZED(ls) )
     {
-        FM_LOG_EXIT_API(FM_LOG_CAT_LOGGING, FM_ERR_UNINITIALIZED);
+        return FM_ERR_UNINITIALIZED;
     }
 
-    if ( LOG_INITIALIZED(ls) )
+    posixErr = pthread_mutex_lock( (pthread_mutex_t *) ls->accessLock );
+    if (posixErr != 0)
     {
-        posixErr = pthread_mutex_lock( (pthread_mutex_t *) ls->accessLock );
-        if (posixErr != 0)
-        {
-            FM_LOG_EXIT_API(FM_LOG_CAT_LOGGING, FM_ERR_UNABLE_TO_LOCK);
-        }
+        return FM_ERR_UNABLE_TO_LOCK;
     }
 
     ls->categoryMask = categoryMask;
     ls->levelMask    = levelMask;
 
-    if (functionFilter && (strcmp(functionFilter, "") != 0))
+    if (functionFilter && *functionFilter)
     {
         fmStringCopy(ls->functionFilter, functionFilter, FM_LOG_MAX_FILTER_LEN);
     }
@@ -1276,7 +1278,7 @@ fm_status fmSetLoggingFilter(fm_uint64   categoryMask,
         ls->functionFilter[0] = 0;
     }
 
-    if (fileFilter && (strcmp(fileFilter, "") != 0))
+    if (fileFilter && *fileFilter)
     {
         fmStringCopy(ls->fileFilter, fileFilter, FM_LOG_MAX_FILTER_LEN);
     }
@@ -1285,16 +1287,13 @@ fm_status fmSetLoggingFilter(fm_uint64   categoryMask,
         ls->fileFilter[0] = 0;
     }
 
-    if ( LOG_INITIALIZED(ls) )
+    posixErr = pthread_mutex_unlock( (pthread_mutex_t *) ls->accessLock );
+    if (posixErr != 0)
     {
-        posixErr = pthread_mutex_unlock( (pthread_mutex_t *) ls->accessLock );
-        if (posixErr != 0)
-        {
-            FM_LOG_EXIT_API(FM_LOG_CAT_LOGGING, FM_ERR_UNABLE_TO_UNLOCK);
-        }
+        return FM_ERR_UNABLE_TO_UNLOCK;
     }
 
-    FM_LOG_EXIT_API(FM_LOG_CAT_LOGGING, FM_OK);
+    return FM_OK;
 
 }   /* end fmSetLoggingFilter */
 
@@ -1344,7 +1343,7 @@ fm_status fmLogMessage( fm_uint64   categories,
                         const char *format,
                         ... )
 {
-    fm_loggingState *ls = (fmRootAlos ? &(fmRootAlos->fmLoggingState) : NULL);
+    fm_loggingState *ls = GET_LOGGING_STATE();
     fm_uint64        filteredCategoryMask;
     fm_status        status;
     va_list          ap;
@@ -1379,7 +1378,7 @@ fm_status fmLogMessage( fm_uint64   categories,
     va_end(ap);
     return status;
 
-}   /* end LogMessage()*/
+}   /* end fmLogMessage */
 
 
 
@@ -1417,7 +1416,7 @@ fm_status fmLogBufferDump(void *    threadID,
                           fm_text   srcFunction,
                           fm_uint32 srcLine)
 {
-    fm_loggingState *ls    = (fmRootAlos ? &(fmRootAlos->fmLoggingState) : NULL);
+    fm_loggingState *ls    = GET_LOGGING_STATE();
     fm_bool          valid = TRUE;
     fm_char          idTmp[16], lineTmp[16];
 
@@ -1505,7 +1504,7 @@ fm_status fmGetLogBuffer(fm_text buffer, fm_int size)
     fm_int           position;
     fm_char *        cursor;
 
-    ls = fmRootAlos ? &(fmRootAlos->fmLoggingState) : NULL;
+    ls = GET_LOGGING_STATE();
 
     if ( !LOG_INITIALIZED(ls) )
     {
@@ -1576,7 +1575,7 @@ fm_status fmGetLoggingAttribute(fm_int  attr,
                                 fm_int  size,
                                 void *  value)
 {
-    fm_loggingState *ls = (fmRootAlos ? &(fmRootAlos->fmLoggingState) : NULL);
+    fm_loggingState *ls = GET_LOGGING_STATE();
     fm_status err = FM_OK;
 
     FM_LOG_ENTRY_API(FM_LOG_CAT_LOGGING,
@@ -1649,7 +1648,7 @@ fm_status fmGetLoggingAttribute(fm_int  attr,
  *****************************************************************************/
 fm_status fmResetLogging(void)
 {
-    fm_loggingState *ls = (fmRootAlos ? &(fmRootAlos->fmLoggingState) : NULL);
+    fm_loggingState *ls = GET_LOGGING_STATE();
     fm_int           i;
 
     FM_LOG_ENTRY_API(FM_LOG_CAT_LOGGING, "\n");
@@ -1856,7 +1855,7 @@ fm_status fmLogMessageV2( fm_uint64   category,
                           const char *format,
                           ... )
 {
-    fm_loggingState *ls = (fmRootAlos ? &(fmRootAlos->fmLoggingState) : NULL);
+    fm_loggingState *ls = GET_LOGGING_STATE();
     fm_status   status;
     fm_int      categoryIdx;
     fm_uint64   filteredCategoryMask;
@@ -1987,7 +1986,7 @@ fm_status fmSetLoggingCategoryConfig( fm_uint64           categoryMask,
                                       fm_int              maxObjectId,
                                       fm_bool             legacyLoggingOn )
 {
-    fm_loggingState *ls = (fmRootAlos ? &(fmRootAlos->fmLoggingState) : NULL);
+    fm_loggingState *ls = GET_LOGGING_STATE();
     fm_int categories;
     fm_int idx;
     fm_int category;
@@ -2082,7 +2081,7 @@ fm_status fmGetLoggingCategoryConfig( fm_uint64            categoryMask,
                                       fm_int              *maxObjectId,
                                       fm_bool             *legacyLoggingOn )
 {
-    fm_loggingState *ls = (fmRootAlos ? &(fmRootAlos->fmLoggingState) : NULL);
+    fm_loggingState *ls = GET_LOGGING_STATE();
     fm_int categories;
     fm_int idx;
     fm_int category;
@@ -2139,10 +2138,11 @@ fm_status fmGetLoggingCategoryConfig( fm_uint64            categoryMask,
 
 
 
-#if defined(FM_ALOS_FAULT_INJECTION_POINTS) && (FM_ALOS_FAULT_INJECTION_POINTS==FM_ENABLED)
+#if defined(FM_ALOS_FAULT_INJECTION_POINTS) && (FM_ALOS_FAULT_INJECTION_POINTS)
+
 /*****************************************************************************/
-/** UNPUBLISHED: fmActivateFaultInjectionPoint
- * \ingroup alosLog
+/** fmActivateFaultInjectionPoint
+ * \ingroup intAlosLog
  *
  * \desc            Activates fault injection point.
  *
@@ -2161,11 +2161,12 @@ fm_status fmActivateFaultInjectionPoint(const char *functionName, fm_status erro
 {
     fm_status err = FM_OK;
 
-    fm_loggingState *ls = (fmRootAlos ? &(fmRootAlos->fmLoggingState) : NULL);
+    fm_loggingState *ls = GET_LOGGING_STATE();
+
     if ( LOG_INITIALIZED(ls) )
     {
         ls->failError = error;
-        if (functionName && (strcmp(functionName, "") != 0))
+        if (functionName && *functionName)
         {
             fmStringCopy(ls->failFunction, functionName, FM_MAX_FUNC_NAME_LENGTH);
         }
@@ -2186,8 +2187,8 @@ fm_status fmActivateFaultInjectionPoint(const char *functionName, fm_status erro
 
 
 /*****************************************************************************/
-/** UNPUBLISHED: fmFaultInjection
- * \ingroup alosLog
+/** fmFaultInjection
+ * \ingroup intAlosLog
  *
  * \desc            Returns an error for fault injection point.
  *
@@ -2203,7 +2204,8 @@ fm_status fmFaultInjection(const char *functionName)
 {
     fm_status err = FM_OK;
 
-    fm_loggingState *ls = (fmRootAlos ? &(fmRootAlos->fmLoggingState) : NULL);
+    fm_loggingState *ls = GET_LOGGING_STATE();
+
     if ( LOG_INITIALIZED(ls) )
     {
         if (functionName && (strcmp(functionName, ls->failFunction) == 0))
@@ -2220,4 +2222,5 @@ fm_status fmFaultInjection(const char *functionName)
     return err;
 
 }   /* end fmFaultInjection */
+
 #endif

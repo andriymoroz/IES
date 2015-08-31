@@ -29,7 +29,7 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
+ *****************************************************************************/
 
 #ifndef __FM_FM_API_TRIGGER_H
 #define __FM_FM_API_TRIGGER_H
@@ -365,15 +365,15 @@ typedef enum
      *  \note    This resource is currently reserved for internal use. */
     FM_TRIGGER_RES_VLAN,
 
-    /** Allocate a FFU trig ID action bit. FFU trigger ID's are made
+    /** Allocate an FFU trig ID action bit. FFU trigger ID's are made
      *  of a value and mask. When an action bit is allocated, the
-     *  position of the allocated bit is returned.  It is possible to
+     *  position of the allocated bit is returned. It is possible to
      *  allocate more than one bit for a feature. The allocated
      *  bit(s) can then be used in the FFU/Trigger in the value/mask
      *  form, where mask should only contain the allocated bit(s)
      *  and the value is the state of the bit(s). Note that this
      *  resource is shared between the API and application. Bits are
-     *  allocated on a first come basis and may not be contiguous.
+     *  allocated on a first come basis, and are not necessarily contiguous.
      *  There are 8 bits available. */
     FM_TRIGGER_RES_FFU, 
 
@@ -381,8 +381,10 @@ typedef enum
      *  available. */
     FM_TRIGGER_RES_RATE_LIMITER, 
 
-    /** Allocate a mirror profile. There are a maximum of 64 mirror profile
-     *  handles available.
+    /** Allocate a mirror profile ID. There are a maximum of 64 mirror
+     *  profiles available. Mirror profiles specify the modifications
+     *  to be made by mirror and logging triggers. The value returned is a
+     *  software handle.
      *  
      *  \note   This resource is currently reserved for internal use. */
     FM_TRIGGER_RES_MIRROR_PROFILE, 

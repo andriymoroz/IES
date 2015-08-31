@@ -159,6 +159,7 @@ typedef struct _fm_portAttribute
     fm_uint64      autoNegPartnerBasePage;
     fm_anNextPages autoNegNextPages;
     fm_anNextPages autoNegPartnerNextPages;
+    fm_uint32      autoNeg25GNxtPgOui;
     fm_int         bcastFlooding;
     fm_bool        bcastPruning;
     fm_bool        enableTxCutThrough;

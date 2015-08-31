@@ -67,7 +67,7 @@
  * \param[in]       key points to the key.
  *
  * \param[in,out]   value points to the structure to free.
- * 
+ *
  * \return          Nothing.
  *
  *****************************************************************************/
@@ -89,7 +89,7 @@ void fmFreeNatRuleCond(void *key, void *value)
  * \desc            Free a fm_tree structure.
  *
  * \param[in,out]   value points to the structure to free.
- * 
+ *
  * \return          Nothing.
  *
  *****************************************************************************/
@@ -114,7 +114,7 @@ void fmFreeNatPrefixRule(void *value)
  * \desc            Free a fm_fm10000NatPrefix structure.
  *
  * \param[in,out]   value points to the structure to free.
- * 
+ *
  * \return          Nothing.
  *
  *****************************************************************************/
@@ -374,7 +374,7 @@ static void FreeNatCfgStruct(fm_fm10000NatCfg *natCfg)
  * \ingroup intNat
  *
  * \desc            Initialize a fm_fm10000NatCfg structure.
- * 
+ *
  * \param[in,out]   natCfg points to the structure to initialize.
  *
  * \return          Nothing.
@@ -394,9 +394,9 @@ static void InitializeNatCfgStruct(fm_fm10000NatCfg *natCfg)
  * \ingroup intNat
  *
  * \desc            Translate natCondition type to tunnel condition.
- * 
+ *
  * \param[in]       natCond is the condition(s) to be translated.
- * 
+ *
  * \param[out]      tunCond is the translated condition(s).
  *
  * \return          FM_OK if successful.
@@ -486,15 +486,15 @@ static fm_status TranslateNatCondToTunCond(fm_natCondition     natCond,
  * \ingroup intNat
  *
  * \desc            Translate NAT Action field and structure to the Tunnel one.
- * 
+ *
  * \param[in]       sw is the switch on which to operate.
- * 
+ *
  * \param[in]       action is the actions(s) to be translated.
- * 
+ *
  * \param[in]       actParam is the actions(s) parameters to be translated.
- * 
+ *
  * \param[out]      tunAction is the translated actions(s).
- * 
+ *
  * \param[out]      tunActParam is the translated actions(s) parameters.
  *
  * \return          FM_OK if successful.
@@ -621,9 +621,9 @@ static fm_status TranslateNatActToTunAct(fm_int                sw,
  * \ingroup intNat
  *
  * \desc            Translate natCondition type to ACL Condition.
- * 
+ *
  * \param[in]       natCond is the condition(s) to be translated.
- * 
+ *
  * \param[out]      aclCond is the translated condition(s).
  *
  * \return          FM_OK if successful.
@@ -713,9 +713,9 @@ static fm_status TranslateNatCondToAclCond(fm_natCondition  natCond,
  * \ingroup intNat
  *
  * \desc            Configure default tunnel mode and behaviour.
- * 
+ *
  * \param[in]       sw is the switch on which to operate.
- * 
+ *
  * \param[in]       te is the tunnel engine on which to operate
  *
  * \param[in]       tunnelDefault refer to the various tunnel configuration
@@ -728,18 +728,13 @@ static fm_status SetNatTunnelDefault(fm_int               sw,
                                      fm_int               te,
                                      fm_natTunnelDefault *tunnelDefault)
 {
-    fm_status             err = FM_OK;
-    fm_fm10000TeTunnelCfg teTunnelCfg;
+    fm_status                err = FM_OK;
+    fm_fm10000TeTunnelCfg    teTunnelCfg;
+    fm_fm10000TeDefTunnelSel teTunnelCfgSel;
 
-    /* Only update the part that is currently used. */
-    err = fm10000GetTeDefaultTunnel(sw, te, &teTunnelCfg, TRUE);
-    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_NAT, err);
+    teTunnelCfgSel = 0;
 
-    if (tunnelDefault->type == FM_TUNNEL_TYPE_VXLAN)
-    {
-        teTunnelCfg.l4DstVxLan = FM10000_NAT_VXLAN_PORT;
-    }
-    else if (tunnelDefault->type == FM_TUNNEL_TYPE_NGE)
+    if (tunnelDefault->type == FM_TUNNEL_TYPE_NGE)
     {
         teTunnelCfg.l4DstNge = tunnelDefault->ngeCfg.l4Dst;
         teTunnelCfg.ngeMask = tunnelDefault->ngeCfg.ngeMask;
@@ -749,14 +744,15 @@ static fm_status SetNatTunnelDefault(fm_int               sw,
                     tunnelDefault->ngeCfg.ngeData,
                     sizeof(tunnelDefault->ngeCfg.ngeData));
         teTunnelCfg.encapProtocol = tunnelDefault->ngeCfg.protocol;
-        teTunnelCfg.encapVersion = 0;
+
+        teTunnelCfgSel |= (FM10000_TE_DEFAULT_TUNNEL_L4DST_NGE |
+                           FM10000_TE_DEFAULT_TUNNEL_NGE_DATA |
+                           FM10000_TE_DEFAULT_TUNNEL_NGE_MASK |
+                           FM10000_TE_DEFAULT_TUNNEL_NGE_TIME |
+                           FM10000_TE_DEFAULT_TUNNEL_PROTOCOL);
     }
-    else if (tunnelDefault->type == FM_TUNNEL_TYPE_NVGRE)
-    {
-        teTunnelCfg.encapProtocol = FM10000_NAT_NVGRE_PROTOCOL;
-        teTunnelCfg.encapVersion = 0;
-    }
-    else
+    else if ( (tunnelDefault->type != FM_TUNNEL_TYPE_VXLAN) &&
+              (tunnelDefault->type != FM_TUNNEL_TYPE_NVGRE) )
     {
         err = FM_ERR_INVALID_ARGUMENT;
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_NAT, err);
@@ -767,10 +763,16 @@ static fm_status SetNatTunnelDefault(fm_int               sw,
     teTunnelCfg.dmac = tunnelDefault->dmac;
     teTunnelCfg.smac = tunnelDefault->smac;
 
+    teTunnelCfgSel |= (FM10000_TE_DEFAULT_TUNNEL_TTL |
+                       FM10000_TE_DEFAULT_TUNNEL_TOS |
+                       FM10000_TE_DEFAULT_TUNNEL_DMAC |
+                       FM10000_TE_DEFAULT_TUNNEL_SMAC);
+
+
     err = fm10000SetTeDefaultTunnel(sw,
                                     te,
                                     &teTunnelCfg,
-                                    FM10000_TE_DEFAULT_TUNNEL_ALL,
+                                    teTunnelCfgSel,
                                     TRUE);
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_NAT, err);
 
@@ -790,18 +792,18 @@ ABORT:
  * \desc            Move Nat Index in a non disruptive way from the source
  *                  position to the destination. This function also update
  *                  the structure to refer to the new position.
- * 
+ *
  * \param[in]       sw is the switch on which to operate.
- * 
+ *
  * \param[in,out]   natTable refer to the table on which to operate.
  *
  * \param[in]       src is the Nat Index to move.
- * 
+ *
  * \param[in]       dst is the Nat Index destination.
- * 
+ *
  * \param[in]       natRuleTree is optional and refer to the NatRule that
  *                  belongs to the source Nat Index.
- * 
+ *
  * \return          FM_OK if successful.
  *
  *****************************************************************************/
@@ -964,15 +966,15 @@ ABORT:
  * \desc            Shift Nat Index in a non disruptive way from the start
  *                  position up to the end. The end position will be freed
  *                  after the completion of this function.
- * 
+ *
  * \param[in]       sw is the switch on which to operate.
- * 
+ *
  * \param[in,out]   natTable refer to the table on which to operate.
  *
  * \param[in]       start is the first Nat Index that must be filled.
- * 
+ *
  * \param[in]       end is the position that must be freed.
- * 
+ *
  * \return          FM_OK if successful.
  *
  *****************************************************************************/
@@ -1093,16 +1095,16 @@ ABORT:
  *
  * \desc            Free an ACL rule index by non disruptively moving the rule
  *                  and kept proper sorting.
- * 
+ *
  * \param[in]       sw is the switch on which to operate.
- * 
+ *
  * \param[in,out]   natTable refer to the table on which to operate.
  *
  * \param[out]      natIndex is the free position found.
- * 
+ *
  * \param[in]       prefix is the prefix position that belongs to the position
  *                  to free.
- * 
+ *
  * \return          FM_OK if successful.
  *
  *****************************************************************************/
@@ -1352,15 +1354,15 @@ ABORT:
  *                  updated. The position is related to SIP/DIP Prefix to make
  *                  sure 8-bit prefix have lower precedence than 24-bit and so
  *                  on.
- * 
+ *
  * \param[in]       sw is the switch on which to operate.
- * 
+ *
  * \param[in,out]   natTable refer to the table on which to operate.
  *
  * \param[in,out]   natIndex refer to the current position that may be updated.
- * 
+ *
  * \param[in]       aclCond is the translated ACL condition.
- * 
+ *
  * \param[in]       aclCondParam refer to the translated ACL condition
  *                  parameters.
  *
@@ -1578,7 +1580,7 @@ fm_status fm10000NatFree(fm_int sw)
  * \param[in]       sw is the switch on which to operate.
  *
  * \param[in]       table is the table ID.
- * 
+ *
  * \param[in]       natParam refer to the table parameters.
  *
  * \return          FM_OK if successful.
@@ -1605,7 +1607,6 @@ fm_status fm10000CreateNatTable(fm_int sw, fm_int table, fm_natParam *natParam)
     fm_int               aclId;
     fm_bool              keepUnusedKey;
     fm_bool              defaultDglort;
-    fm_fm10000TeGlortCfg teGlortCfg;
     fm_int               i;
     fm_fm10000NatTable * natTable;
     fm_char              statusText[1024];
@@ -1672,17 +1673,6 @@ fm_status fm10000CreateNatTable(fm_int sw, fm_int table, fm_natParam *natParam)
         }
     }
 
-    /* Force DGLORT to be 0 on TE egress to initiate Routing/Lookup */
-    teGlortCfg.encapDglort = 0;
-    teGlortCfg.decapDglort = 0;
-    err = fm10000SetTeDefaultGlort(sw,
-                                   tunnelParam.te,
-                                   &teGlortCfg,
-                                   FM10000_TE_DEFAULT_GLORT_ENCAP_DGLORT |
-                                   FM10000_TE_DEFAULT_GLORT_DECAP_DGLORT,
-                                   TRUE);
-    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_NAT, err);
-
     defaultDglort = TRUE;
     err = fm10000SetTunnelAttribute(sw,
                                     group,
@@ -1719,7 +1709,7 @@ fm_status fm10000CreateNatTable(fm_int sw, fm_int table, fm_natParam *natParam)
 
     /* Create an ACL with the specified size and all the keys. This ACL will
      * always uses the same number of resource during the whole process. Rule
-     * will be inserted/removed using update function for performance 
+     * will be inserted/removed using update function for performance
      * enhancement. */
     FM_MEMSET_S(&aclCondMask, sizeof(fm_aclValue), 0, sizeof(fm_aclValue));
 
@@ -1827,7 +1817,7 @@ ABORT:
  * \param[in]       sw is the switch on which to operate.
  *
  * \param[in]       table is the table ID.
- * 
+ *
  * \return          FM_OK if successful.
  *
  *****************************************************************************/
@@ -1910,7 +1900,7 @@ ABORT:
  *
  * \param[in]       tunnelDefault refer to the various tunnel configuration
  *                  to set.
- * 
+ *
  * \return          FM_OK if successful.
  * \return          FM_ERR_INVALID_ARGUMENT on NULL pointer or out of range
  *                  value.
@@ -1949,9 +1939,9 @@ ABORT:
  * \param[in]       sw is the switch on which to operate.
  *
  * \param[in]       table is the table ID.
- * 
+ *
  * \param[in]       tunnel is the tunnel ID.
- * 
+ *
  * \param[in]       param refer to the tunnel parameters.
  *
  * \return          FM_OK if successful.
@@ -2065,9 +2055,9 @@ ABORT:
  * \param[in]       sw is the switch on which to operate.
  *
  * \param[in]       table is the table ID.
- * 
+ *
  * \param[in]       tunnel is the tunnel ID.
- * 
+ *
  * \return          FM_OK if successful.
  *
  *****************************************************************************/
@@ -2121,17 +2111,17 @@ ABORT:
  * \param[in]       sw is the switch on which to operate.
  *
  * \param[in]       table is the table ID.
- * 
+ *
  * \param[in]       rule is the rule ID.
- * 
+ *
  * \param[in]       condition is a condition mask (see 'fm_natCondition').
- * 
+ *
  * \param[in]       cndParam points to the fm_natConditionParam structure
  *                  (see 'fm_natConditionParam') to match against for the
  *                  given condition.
- * 
+ *
  * \param[in]       action is an action mask (see 'fm_natAction').
- * 
+ *
  * \param[in]       actParam points to the fm_natActionParam structure
  *                  (see 'fm_natActionParam') to carry extended action
  *                  configuration.
@@ -2416,8 +2406,8 @@ fm_status fm10000AddNatRule(fm_int                sw,
 
                 /* Routing Lock is required to block either Routing or ACL
                  * from updating the ACL Ecmp Mapping structure. No need to
-                 * take the ACL Lock since Routing Lock is always required 
-                 * to do any modification. */ 
+                 * take the ACL Lock since Routing Lock is always required
+                 * to do any modification. */
                 fmCaptureWriteLock(&switchPtr->routingLock, FM_WAIT_FOREVER);
                 /* Find the acl rule that refer to this ecmp group */
                 err = fm10000ValidateAclEcmpId(sw,
@@ -2628,7 +2618,7 @@ fm_status fm10000AddNatRule(fm_int                sw,
                 fmFree(natRuleCondKey);
                 FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_NAT, err);
             }
-            
+
             err = fmSetACLRuleState(sw,
                                     natTable->acl,
                                     natIndex,
@@ -2757,7 +2747,7 @@ ABORT:
  * \param[in]       sw is the switch on which to operate.
  *
  * \param[in]       table is the table ID.
- * 
+ *
  * \param[in]       rule is the rule ID.
  *
  * \return          FM_OK if successful.
@@ -2993,11 +2983,11 @@ ABORT:
  * \param[in]       sw is the switch on which to operate.
  *
  * \param[in]       table is the table ID.
- * 
+ *
  * \param[in]       entry is the prefilter ID.
- * 
+ *
  * \param[in]       condition is a condition mask (see 'fm_natCondition').
- * 
+ *
  * \param[in]       cndParam points to the fm_natConditionParam structure
  *                  (see 'fm_natConditionParam') to match against for the
  *                  given condition.
@@ -3122,7 +3112,7 @@ fm_status fm10000AddNatPrefilter(fm_int                sw,
                               aclAction,
                               &aclActParam);
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_NAT, err);
-        
+
         err = fmSetACLRuleState(sw,
                                 natTable->acl,
                                 natIndex,
@@ -3173,7 +3163,7 @@ ABORT:
  * \param[in]       sw is the switch on which to operate.
  *
  * \param[in]       table is the table ID.
- * 
+ *
  * \param[in]       entry is the prefilter ID.
  *
  * \return          FM_OK if successful.
@@ -3263,9 +3253,9 @@ ABORT:
  * \param[in]       sw is the switch on which to operate.
  *
  * \param[in]       table is the table ID.
- * 
+ *
  * \param[in]       rule is the rule ID.
- * 
+ *
  * \param[out]      counters points to a caller-allocated structure of type
  *                  ''fm_tunnelCounters'' where this function should place the
  *                  counter values.
@@ -3324,7 +3314,7 @@ ABORT:
  * \param[in]       sw is the switch on which to operate.
  *
  * \param[in]       table is the table ID.
- * 
+ *
  * \param[in]       rule is the rule ID.
  *
  * \return          FM_OK if successful.

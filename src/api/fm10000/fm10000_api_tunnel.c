@@ -5,7 +5,7 @@
  * Creation Date:   January 15, 2014
  * Description:     FM10000 Tunnel API.
  *
- * Copyright (c) 2014, Intel Corporation
+ * Copyright (c) 2014 - 2015, Intel Corporation
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -29,7 +29,7 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
+ *****************************************************************************/
 
 #include <fm_sdk_fm10000_int.h>
 
@@ -42,6 +42,7 @@
 #define FM10000_TE_DATA_LENGTH_SIZE_32 (FM10000_TE_DATA_LENGTH_SIZE * FM10000_TE_DATA_WIDTH)
 
 #define BUFFER_SIZE                     1024
+
 
 /*****************************************************************************
  * Global Variables
@@ -73,13 +74,13 @@ static fm_status DefragTeData(fm_int     sw,
  * \ingroup intTunnel
  *
  * \desc            Print range style debug line
- * 
+ *
  * \param[in]       start is the first limit of the range.
- * 
+ *
  * \param[in]       end is the last limit of the range.
- * 
+ *
  * \param[in]       line refer to the buffer to append.
- * 
+ *
  * \return          None
  *
  *****************************************************************************/
@@ -201,7 +202,7 @@ static void FreeTunnelCfgStruct(fm_fm10000TunnelCfg *tunnelCfg)
  * \ingroup intTunnel
  *
  * \desc            Initialize a fm_fm10000TunnelCfg structure.
- * 
+ *
  * \param[in,out]   tunnelCfg points to the structure to initialize.
  *
  * \return          FM_OK if successful.
@@ -251,16 +252,16 @@ static fm_status InitializeTunnelCfgStruct(fm_fm10000TunnelCfg *tunnelCfg)
  * \ingroup intTunnel
  *
  * \desc            Translate tunnel hash key to te one.
- * 
+ *
  * \param[in]       hashKey is the tunnel hash key to translate
- * 
+ *
  * \param[in]       hashParam is a pointer to the parameters. Set to NULL
- *                  if unknown. 
+ *                  if unknown.
  *
  * \return          Translated hash key from tunnel to te representation.
  *
  *****************************************************************************/
-static fm_uint16 TunnelToTeHashKey(fm_tunnelCondition hashKey, 
+static fm_uint16 TunnelToTeHashKey(fm_tunnelCondition hashKey,
                                    fm_tunnelConditionParam const * const hashParam)
 {
     fm_uint16 transKey = 0;
@@ -339,11 +340,11 @@ static fm_uint16 TunnelToTeHashKey(fm_tunnelCondition hashKey,
  * \ingroup intTunnel
  *
  * \desc            Translate tunnel encap flow to low level teData.
- * 
+ *
  * \param[in]       field is the action bitmask
- * 
+ *
  * \param[in]       param refer to the value of each field.
- * 
+ *
  * \param[out]      teData refer to the teData structure to fill.
  *
  * \return          FM_OK if successful
@@ -369,6 +370,11 @@ static fm_status EncapFlowToTeData(fm_tunnelEncapFlow       field,
 
         case FM_TUNNEL_TYPE_NVGRE:
             teData->blockVal.tunnelVal.tunnelType = FM_FM10000_TE_TUNNEL_TYPE_NVGRE;
+            break;
+
+        case FM_TUNNEL_TYPE_GPE:
+        case FM_TUNNEL_TYPE_GPE_NSH:
+            teData->blockVal.tunnelVal.tunnelType = FM_FM10000_TE_TUNNEL_TYPE_GENERIC;
             break;
 
         default:
@@ -425,6 +431,86 @@ static fm_status EncapFlowToTeData(fm_tunnelEncapFlow       field,
         teData->blockVal.tunnelVal.tunnelConfig |= FM10000_TE_TUNNEL_ENCAP_COUNTER;
     }
 
+    /* NGE and GPE/NSH are mutually exclusive */
+    if ( (field & (FM_TUNNEL_ENCAP_FLOW_NGE |
+                   FM_TUNNEL_ENCAP_FLOW_NGE_TIME) ) &&
+         (field & FM_TUNNEL_ENCAP_FLOW_GPE_NSH_ALL) )
+    {
+        err = FM_ERR_INVALID_ARGUMENT;
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_TE, err);
+    }
+
+    if (field & FM_TUNNEL_ENCAP_FLOW_GPE_VNI)
+    {
+        teData->blockVal.tunnelVal.tunnelConfig |= FM10000_TE_TUNNEL_ENCAP_NGE;
+
+        teData->blockVal.tunnelVal.ngeMask |= FM10000_NGE_MASK_GPE_FLAGS_NEXT_PROT |
+                                              FM10000_NGE_MASK_GPE_VNI;
+
+        teData->blockVal.tunnelVal.ngeData[FM10000_NGE_POS_GPE_VNI] =
+            (param->gpeVni & 0xFFFFFF) << 8;
+
+        if (param->type == FM_TUNNEL_TYPE_GPE)
+        {
+            /* GPE: NextProt=Ethernet(3), Flags=0x0C */
+            teData->blockVal.tunnelVal.ngeData[FM10000_NGE_POS_GPE_FLAGS_NEXT_PROT] = 0x0C000003;
+        }
+        else if (param->type == FM_TUNNEL_TYPE_GPE_NSH)
+        {
+            /* GPE: NextProt=NSH(4), Flags=0x0C */
+            teData->blockVal.tunnelVal.ngeData[FM10000_NGE_POS_GPE_FLAGS_NEXT_PROT] = 0x0C000004;
+        }
+    }
+
+    if ( (field & FM_TUNNEL_ENCAP_FLOW_NSH_BASE_HDR) &&
+         (param->type == FM_TUNNEL_TYPE_GPE_NSH) )
+    {
+        if (param->nshLength > (FM_TUNNEL_NGE_DATA_SIZE -
+                                FM_TUNNEL_GPE_HDR_SIZE) )
+        {
+            err = FM_ERR_INVALID_ARGUMENT;
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_TE, err);
+        }
+
+        teData->blockVal.tunnelVal.tunnelConfig |= FM10000_TE_TUNNEL_ENCAP_NGE;
+
+        teData->blockVal.tunnelVal.ngeMask |= FM10000_NGE_MASK_NSH_BASE_HDR;
+
+        /* NSH: Flags=0x0, NextProt=3 */
+        teData->blockVal.tunnelVal.ngeData[FM10000_NGE_POS_NSH_BASE_HDR] =
+            ( (param->nshCritical & 1) << 28 )  |
+            ( (param->nshLength & 0x3F) << 16 ) |
+            ( (param->nshMdType & 0xFF) << 8 ) |
+            0x3;
+    }
+
+    if ( (field & FM_TUNNEL_ENCAP_FLOW_NSH_SERVICE_HDR) &&
+         (param->type == FM_TUNNEL_TYPE_GPE_NSH) )
+    {
+        teData->blockVal.tunnelVal.tunnelConfig |= FM10000_TE_TUNNEL_ENCAP_NGE;
+
+        teData->blockVal.tunnelVal.ngeMask |= FM10000_NGE_MASK_NSH_SERVICE_HDR;
+
+        teData->blockVal.tunnelVal.ngeData[FM10000_NGE_POS_NSH_SERVICE_HDR] =
+            ( (param->nshSvcPathId & 0xFFFFFF) << 8) |
+            (param->nshSvcIndex & 0xFF);
+    }
+
+    if ( (field & FM_TUNNEL_ENCAP_FLOW_NSH_DATA) &&
+         (param->type == FM_TUNNEL_TYPE_GPE_NSH) )
+    {
+        teData->blockVal.tunnelVal.tunnelConfig |= FM10000_TE_TUNNEL_ENCAP_NGE;
+
+        teData->blockVal.tunnelVal.ngeMask |=
+            (param->nshDataMask & FM10000_TE_NSH_DATA_MASK) << FM10000_NGE_POS_NSH_DATA;
+
+        FM_MEMCPY_S(&teData->blockVal.tunnelVal.ngeData[FM10000_NGE_POS_NSH_DATA],
+                    sizeof(teData->blockVal.tunnelVal.ngeData[0]) *
+                    FM_TUNNEL_NSH_DATA_SIZE,
+                    param->nshData,
+                    sizeof(param->nshData));
+    }
+
     if (field & FM_TUNNEL_ENCAP_FLOW_NGE)
     {
         teData->blockVal.tunnelVal.tunnelConfig |= FM10000_TE_TUNNEL_ENCAP_NGE;
@@ -440,7 +526,7 @@ static fm_status EncapFlowToTeData(fm_tunnelEncapFlow       field,
         teData->blockVal.tunnelVal.tunnelConfig |= FM10000_TE_TUNNEL_ENCAP_NGE_TIME;
     }
 
-
+ABORT:
     return err;
 
 }   /* end EncapFlowToTeData */
@@ -453,15 +539,15 @@ static fm_status EncapFlowToTeData(fm_tunnelEncapFlow       field,
  * \ingroup intTunnel
  *
  * \desc            Translate tunnel rule to low level teData.
- * 
+ *
  * \param[in]       tunnelGrp refer to the tunnel group this rule belong to.
- * 
+ *
  * \param[in]       tunnelRule refer to the rule to translate.
- * 
+ *
  * \param[out]      teData refer to the teData structure array to fill.
- * 
+ *
  * \param[in]       teDataSize is the teData array size.
- * 
+ *
  * \param[out]      teDataOut refer to the number of teData entries filled.
  *
  * \return          FM_OK if successful
@@ -473,10 +559,11 @@ static fm_status TunnelRuleToTeData(fm_fm10000TunnelGrp * tunnelGrp,
                                     fm_int                teDataSize,
                                     fm_int *              teDataOut)
 {
-    fm_status            err = FM_OK;
-    fm_int               teDataPos = 0;
-    void *               value;
-    fm_fm10000EncapFlow *encapFlow;
+    fm_status                     err = FM_OK;
+    fm_int                        teDataPos = 0;
+    void *                        value;
+    fm_fm10000EncapFlow *         encapFlow;
+    fm_fm10000TeDataFlowEncapVal *fevPtr;
 
     if (tunnelGrp->teDGlort.lookupType == FM_FM10000_TE_LOOKUP_HASH)
     {
@@ -489,7 +576,7 @@ static fm_status TunnelRuleToTeData(fm_fm10000TunnelGrp * tunnelGrp,
 
         teData[teDataPos].blockType = FM_FM10000_TE_DATA_BLOCK_FLOW_KEY;
 
-        teData[teDataPos].blockVal.flowKeyVal.searchKeyConfig = 
+        teData[teDataPos].blockVal.flowKeyVal.searchKeyConfig =
             TunnelToTeHashKey(tunnelRule->condition,
                               &tunnelRule->condParam);
 
@@ -652,6 +739,113 @@ static fm_status TunnelRuleToTeData(fm_fm10000TunnelGrp * tunnelGrp,
         {
             teData[teDataPos].blockVal.flowEncapVal.encapConfig |= FM10000_TE_FLOW_ENCAP_TTL;
             teData[teDataPos].blockVal.flowEncapVal.ttl = tunnelRule->actParam.ttl;
+        }
+
+        if (tunnelRule->action & FM_TUNNEL_SET_GPE_NSH_ALL)
+        {
+            /* NGE and GPE/NSH are mutually exclusive */
+            if (tunnelRule->action & (FM_TUNNEL_SET_NGE |
+                                      FM_TUNNEL_SET_NGE_TIME) )
+            {
+                err = FM_ERR_INVALID_ARGUMENT;
+                FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_TE, err);
+            }
+
+            /* Can only set a VNI if the rule refer to an encap flow */
+            if ((tunnelRule->action & FM_TUNNEL_ENCAP_FLOW) == 0)
+            {
+                err = FM_ERR_TUNNEL_NO_ENCAP_FLOW;
+                FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_TE, err);
+            }
+
+            /* EncapFlow needed to know the Tunnel Type*/
+            err = fmTreeFind(&tunnelGrp->encapFlows,
+                             tunnelRule->actParam.encapFlow,
+                             &value);
+            if (err == FM_ERR_NOT_FOUND)
+            {
+                /* Specified encap flow not currently specify in that group */
+                err =  FM_ERR_TUNNEL_NO_ENCAP_FLOW;
+                FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_TE, err);
+            }
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_TE, err);
+
+            encapFlow = (fm_fm10000EncapFlow *) value;
+
+            if (tunnelRule->action & FM_TUNNEL_SET_GPE_VNI)
+            {
+                fevPtr = &teData[teDataPos].blockVal.flowEncapVal;
+                fevPtr->encapConfig |= FM10000_TE_FLOW_ENCAP_NGE;
+
+                fevPtr->ngeMask |= FM10000_NGE_MASK_GPE_FLAGS_NEXT_PROT |
+                                   FM10000_NGE_MASK_GPE_VNI;
+                fevPtr->ngeData[FM10000_NGE_POS_GPE_VNI] =
+                    (tunnelRule->actParam.gpeVni & 0xFFFFFF) << 8;
+
+                if (encapFlow->param.type == FM_TUNNEL_TYPE_GPE)
+                {
+                    /* GPE: NextProt=Ethernet(3), Flags=0x0C */
+                    fevPtr->ngeData[FM10000_NGE_POS_GPE_FLAGS_NEXT_PROT] = 0x0C000003;
+                }
+                else if (encapFlow->param.type == FM_TUNNEL_TYPE_GPE_NSH)
+                {
+                    /* GPE: NextProt=NSH(4), Flags=0x0C */
+                    fevPtr->ngeData[FM10000_NGE_POS_GPE_FLAGS_NEXT_PROT] = 0x0C000004;
+                }
+            }
+
+            if ( (tunnelRule->action & FM_TUNNEL_SET_NSH_BASE_HDR) &&
+                 (encapFlow->param.type == FM_TUNNEL_TYPE_GPE_NSH) )
+            {
+                if (tunnelRule->actParam.nshLength > (FM_TUNNEL_NGE_DATA_SIZE -
+                                                      FM_TUNNEL_GPE_HDR_SIZE) )
+                {
+                    err = FM_ERR_INVALID_ARGUMENT;
+                    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_TE, err);
+                }
+
+                fevPtr = &teData[teDataPos].blockVal.flowEncapVal;
+                fevPtr->encapConfig |= FM10000_TE_FLOW_ENCAP_NGE;
+
+                fevPtr->ngeMask |= FM10000_NGE_MASK_NSH_BASE_HDR;
+
+                /* NSH: Flags=0x0, NextProt=3 */
+                fevPtr->ngeData[FM10000_NGE_POS_NSH_BASE_HDR] =
+                    ( (tunnelRule->actParam.nshCritical & 1) << 28 )  |
+                    ( (tunnelRule->actParam.nshLength & 0x3F) << 16 ) |
+                    ( (tunnelRule->actParam.nshMdType & 0xFF) << 8 )  |
+                    0x3;
+            }
+
+            if ( (tunnelRule->action & FM_TUNNEL_SET_NSH_SERVICE_HDR) &&
+                 (encapFlow->param.type == FM_TUNNEL_TYPE_GPE_NSH) )
+            {
+                fevPtr = &teData[teDataPos].blockVal.flowEncapVal;
+                fevPtr->encapConfig |= FM10000_TE_FLOW_ENCAP_NGE;
+
+                fevPtr->ngeMask |= FM10000_NGE_MASK_NSH_SERVICE_HDR;
+
+                fevPtr->ngeData[FM10000_NGE_POS_NSH_SERVICE_HDR] =
+                    ( (tunnelRule->actParam.nshSvcPathId & 0xFFFFFF) << 8 ) |
+                    (tunnelRule->actParam.nshSvcIndex & 0xFF);
+            }
+
+            if ( (tunnelRule->action & FM_TUNNEL_SET_NSH_DATA) &&
+                 (encapFlow->param.type == FM_TUNNEL_TYPE_GPE_NSH) )
+            {
+                fevPtr = &teData[teDataPos].blockVal.flowEncapVal;
+                fevPtr->encapConfig |= FM10000_TE_FLOW_ENCAP_NGE;
+
+                fevPtr->ngeMask |= (tunnelRule->actParam.nshDataMask &
+                                    FM10000_TE_NSH_DATA_MASK) <<
+                                    FM10000_NGE_POS_NSH_DATA;
+
+                FM_MEMCPY_S(&fevPtr->ngeData[FM10000_NGE_POS_NSH_DATA],
+                            sizeof(fevPtr->ngeData[0]) *
+                            FM_TUNNEL_NSH_DATA_SIZE,
+                            tunnelRule->actParam.nshData,
+                            sizeof(tunnelRule->actParam.nshData));
+            }
         }
 
         if (tunnelRule->action & FM_TUNNEL_SET_NGE)
@@ -849,6 +1043,7 @@ static fm_status TunnelRuleToTeData(fm_fm10000TunnelGrp * tunnelGrp,
 
     *teDataOut = teDataPos;
 
+ABORT:
     return err;
 
 }   /* end TunnelRuleToTeData */
@@ -861,11 +1056,11 @@ static fm_status TunnelRuleToTeData(fm_fm10000TunnelGrp * tunnelGrp,
  * \ingroup intTunnel
  *
  * \desc            Compute the hash based on the condition mask and value.
- * 
+ *
  * \param[in]       cond is the condition bitmask
- * 
+ *
  * \param[in]       condParam refer to the value of each field.
- * 
+ *
  * \return          The computer hash result
  *
  *****************************************************************************/
@@ -881,9 +1076,9 @@ static fm_uint16 ComputeTunnelHash(fm_tunnelCondition       cond,
 
     /* The packed hash key used to generate lookupIndex.
      * W[0]  = key[7:0]
-     * W[1]  = key[15:8] 
-     * W[14] = key[479:472] */ 
-    
+     * W[1]  = key[15:8]
+     * W[14] = key[479:472] */
+
     pos = 0;
 
     hashKeyConfig = TunnelToTeHashKey(cond, condParam);
@@ -1049,17 +1244,17 @@ static fm_uint16 ComputeTunnelHash(fm_tunnelCondition       cond,
  * \ingroup intTunnel
  *
  * \desc            Move a TeData Block from one position to the other.
- * 
+ *
  * \param[in]       sw is the switch on which to operate.
- * 
+ *
  * \param[in]       te is the tunneling engine on which to operate.
- * 
+ *
  * \param[in]       srcIndex is the position of the source block.
- * 
+ *
  * \param[in]       length is the size of the moved block.
- * 
+ *
  * \param[in]       dstIndex is the position of the destination block.
- * 
+ *
  * \return          FM_OK if successful
  *
  *****************************************************************************/
@@ -1117,9 +1312,9 @@ static fm_status MoveTeDataBlock(fm_int     sw,
 
     /* Moving a bin data block is achieved by copying the block to the new
      * location and updating the lookup after. The update of the lookup will
-     * validate the register write to be completed prior to return. At that 
-     * point, the old location is not used anymore. The old block is not 
-     * cleared but virtually set as free. */ 
+     * validate the register write to be completed prior to return. At that
+     * point, the old location is not used anymore. The old block is not
+     * cleared but virtually set as free. */
     if (teDataBlkCtrl->tunnelDataType == FM_FM10000_TUNNEL_TE_DATA_TYPE_BIN)
     {
         err = fmTreeFind(&tunnelGrp->lookupBins,
@@ -1261,8 +1456,8 @@ static fm_status MoveTeDataBlock(fm_int     sw,
 
         /* Go over all the rules that refer to that shared encap flow and
          * update them. The update is done without any movement since the
-         * block is rebuilt exactly as the original except for the shared 
-         * encap flow pointer which is updated atomically. */ 
+         * block is rebuilt exactly as the original except for the shared
+         * encap flow pointer which is updated atomically. */
         for (fmTreeIterInit(&itRule, &encapFlow->rules) ;
               (err = fmTreeIterNext(&itRule, &nextKey, &value)) == FM_OK ; )
         {
@@ -1354,13 +1549,13 @@ ABORT:
  * \ingroup intTunnel
  *
  * \desc            Update the Swap size and adjust TeData Control variable.
- * 
+ *
  * \param[in]       sw is the switch on which to operate.
- * 
+ *
  * \param[in]       te is the tunneling engine on which to operate.
- * 
+ *
  * \param[in]       size is the new swap size.
- * 
+ *
  * \return          FM_OK if successful
  *
  *****************************************************************************/
@@ -1427,11 +1622,11 @@ ABORT:
  *
  * \desc            Defrag the teData table entirely starting at the first free
  *                  slot.
- * 
+ *
  * \param[in]       sw is the switch on which to operate.
- * 
+ *
  * \param[in]       te is the tunneling engine on which to operate.
- * 
+ *
  * \return          FM_OK if successful
  *
  *****************************************************************************/
@@ -1570,15 +1765,15 @@ ABORT:
  *
  * \desc            Defrag the teData table to make room for a block size as
  *                  defined with "size" argument and return the index.
- * 
+ *
  * \param[in]       sw is the switch on which to operate.
- * 
+ *
  * \param[in]       te is the tunneling engine on which to operate.
- * 
+ *
  * \param[in]       size is the number of consecutive block needed.
- * 
+ *
  * \param[out]      index refer to the block starting index.
- * 
+ *
  * \return          FM_OK if successful
  *
  *****************************************************************************/
@@ -1766,15 +1961,15 @@ ABORT:
  * \ingroup intTunnel
  *
  * \desc            Find a TeData Block with size number of consecutive entry.
- * 
+ *
  * \param[in]       sw is the switch on which to operate.
- * 
+ *
  * \param[in]       te is the tunneling engine on which to operate.
- * 
+ *
  * \param[in]       size is the number of consecutive block needed.
- * 
+ *
  * \param[out]      index refer to the block starting index found.
- * 
+ *
  * \return          FM_OK if successful
  *
  *****************************************************************************/
@@ -1796,8 +1991,8 @@ static fm_status FindTeDataBlock(fm_int     sw,
 
     /* Always keep some kind of buffer in the table to avoid continuous defrag
      * of the table at every add/remove rule when the usage is pretty high.
-     * The current scheme reserve 1% of the table as buffer. This is only for 
-     * performance enhancement. */ 
+     * The current scheme reserve 1% of the table as buffer. This is only for
+     * performance enhancement. */
     if (teDataCtrl->teDataFreeEntryCount < (FM10000_TUNNEL_TE_DATA_MIN_FREE_SIZE + size) )
     {
         err = FM_ERR_TUNNEL_FLOW_FULL;
@@ -1863,13 +2058,13 @@ ABORT:
  * \ingroup intTunnel
  *
  * \desc            Reserve a TeData Block with size number of consecutive entry.
- * 
+ *
  * \param[in]       sw is the switch on which to operate.
- * 
+ *
  * \param[in]       te is the tunneling engine on which to operate.
- * 
+ *
  * \param[in]       teDataBlkCtrl refer to the block configuration to reserve.
- * 
+ *
  * \return          FM_OK if successful
  *
  *****************************************************************************/
@@ -1970,18 +2165,18 @@ ABORT:
  * \ingroup intTunnel
  *
  * \desc            Free a TeData Block with size number of consecutive entry.
- * 
+ *
  * \param[in]       sw is the switch on which to operate.
- * 
+ *
  * \param[in]       te is the tunneling engine on which to operate.
- * 
+ *
  * \param[in]       index is the block starting index to free.
- * 
+ *
  * \param[in]       size is the number of consecutive block to free.
- * 
+ *
  * \param[out]      teDataBlkCtrl refer to the control block previously assigned
  *                  to that entry.
- * 
+ *
  * \return          FM_OK if successful
  *
  *****************************************************************************/
@@ -2077,28 +2272,33 @@ ABORT:
  *****************************************************************************/
 fm_status fm10000TunnelInit(fm_int sw)
 {
-    fm_switch *         switchPtr = GET_SWITCH_PTR(sw);
-    fm10000_switch *    switchExt = (fm10000_switch *) switchPtr->extension;
-    fm_status           err = FM_OK;
-    fm_int              destBase;
-    fm_glortDestEntry * destEntry[FM10000_TE_DGLORT_MAP_ENTRIES_1];
-    fm_uint32           camIndex;
-    fm_int              i;
-    fm_logicalPortInfo *lportInfo;
-    fm_portmask         activeDestMask;
-    fm_islTagFormat     islTagFormat;
-    fm_fm10000TeSGlort  teSGlort;
-    fm_fm10000TeTrapCfg teTrapCfg;
-    fm_bool             learning;
-    fm_uint32           parser;
-    fm_bool             isInternal;
-    fm_bool             routable;
-    fm_bool             lbs;
-    fm_bitArray         portMask;
-    fm_bool             portMaskAllocated = FALSE;
-    fm_int              cpi;
-    fm_int              logPort;
-    fm_int              fabricPort;
+    fm_switch *             switchPtr = GET_SWITCH_PTR(sw);
+    fm10000_switch *        switchExt = (fm10000_switch *) switchPtr->extension;
+    fm_status               err = FM_OK;
+    fm_int                  destBase;
+    fm_glortDestEntry *     destEntry[FM10000_TE_DGLORT_MAP_ENTRIES_1];
+    fm_uint32               camIndex;
+    fm_int                  i;
+    fm_logicalPortInfo *    lportInfo;
+    fm_portmask             activeDestMask;
+    fm_islTagFormat         islTagFormat;
+    fm_fm10000TeSGlort      teSGlort;
+    fm_fm10000TeTrapCfg     teTrapCfg;
+    fm_bool                 learning;
+    fm_uint32               parser;
+    fm_bool                 isInternal;
+    fm_bool                 routable;
+    fm_bool                 lbs;
+    fm_bitArray             portMask;
+    fm_bool                 portMaskAllocated = FALSE;
+    fm_int                  cpi;
+    fm_int                  logPort;
+    fm_int                  fabricPort;
+    fm_uint32               routeUpdateFields;
+    fm_fm10000TeGlortCfg    teGlortCfg;
+    fm_fm10000TeTunnelCfg   tunnelCfg;
+    fm_fm10000TeChecksumCfg teChecksumCfg;
+    fm_fm10000TeParserCfg   parserCfg;
 
     FM_LOG_ENTRY(FM_LOG_CAT_TE, "sw = %d\n", sw);
 
@@ -2125,7 +2325,7 @@ fm_status fm10000TunnelInit(fm_int sw)
     {
         /* Get logical port number */
         logPort = GET_LOGICAL_PORT(sw, cpi);
-        
+
         err = fm10000MapLogicalPortToFabricPort(sw, logPort, &fabricPort);
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_TE, err);
 
@@ -2161,6 +2361,7 @@ fm_status fm10000TunnelInit(fm_int sw)
     isInternal = TRUE;
     routable = TRUE;
     lbs = FALSE;
+    routeUpdateFields = 0;
 
     err = fmCreateBitArray(&portMask, switchPtr->numCardinalPorts);
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_TE, err);
@@ -2175,32 +2376,32 @@ fm_status fm10000TunnelInit(fm_int sw)
             continue;
         }
 
-        err = fm10000GetPortAttribute(sw, 
-                                  switchExt->tunnelCfg->tunnelPort[i], 
-                                  FM_PORT_ACTIVE_MAC, 
-                                  FM_PORT_LANE_NA, 
+        err = fm10000GetPortAttribute(sw,
+                                  switchExt->tunnelCfg->tunnelPort[i],
+                                  FM_PORT_ACTIVE_MAC,
+                                  FM_PORT_LANE_NA,
                                   FM_PORT_MASK_WIDE,
                                   (void *) &portMask);
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_TE, err);
 
         if ((switchExt->tunnelCfg->tunnelPort[0] != -1))
         {
-            err = fmSetBitArrayBit(&portMask, 
-                                   switchExt->tunnelCfg->tunnelPort[0], 
+            err = fmSetBitArrayBit(&portMask,
+                                   switchExt->tunnelCfg->tunnelPort[0],
                                    FALSE);
             FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_TE, err);
         }
 
         if ((switchExt->tunnelCfg->tunnelPort[1] != -1))
         {
-            err = fmSetBitArrayBit(&portMask, 
-                                   switchExt->tunnelCfg->tunnelPort[1], 
+            err = fmSetBitArrayBit(&portMask,
+                                   switchExt->tunnelCfg->tunnelPort[1],
                                    FALSE);
             FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_TE, err);
         }
 
-        err = fmAssignPortToPortMask(sw, 
-                                     &activeDestMask, 
+        err = fmAssignPortToPortMask(sw,
+                                     &activeDestMask,
                                      switchExt->tunnelCfg->tunnelPort[i]);
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_TE, err);
 
@@ -2209,58 +2410,66 @@ fm_status fm10000TunnelInit(fm_int sw)
                                       &activeDestMask);
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_TE, err);
 
-        err = fm10000SetPortAttribute(sw, 
-                                      switchExt->tunnelCfg->tunnelPort[i], 
-                                      FM_PORT_ACTIVE_MAC, 
-                                      FM_PORT_LANE_NA, 
+        err = fm10000SetPortAttribute(sw,
+                                      switchExt->tunnelCfg->tunnelPort[i],
+                                      FM_PORT_ACTIVE_MAC,
+                                      FM_PORT_LANE_NA,
                                       FM_PORT_ISL_TAG_FORMAT,
                                       (void *) &islTagFormat);
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_TE, err);
 
-        err = fm10000SetPortAttribute(sw, 
-                                      switchExt->tunnelCfg->tunnelPort[i], 
-                                      FM_PORT_ACTIVE_MAC, 
-                                      FM_PORT_LANE_NA, 
+        err = fm10000SetPortAttribute(sw,
+                                      switchExt->tunnelCfg->tunnelPort[i],
+                                      FM_PORT_ACTIVE_MAC,
+                                      FM_PORT_LANE_NA,
                                       FM_PORT_INTERNAL,
                                       (void *) &isInternal);
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_TE, err);
 
-        err = fm10000SetPortAttribute(sw, 
-                                      switchExt->tunnelCfg->tunnelPort[i], 
-                                      FM_PORT_ACTIVE_MAC, 
-                                      FM_PORT_LANE_NA, 
+        err = fm10000SetPortAttribute(sw,
+                                      switchExt->tunnelCfg->tunnelPort[i],
+                                      FM_PORT_ACTIVE_MAC,
+                                      FM_PORT_LANE_NA,
                                       FM_PORT_LEARNING,
                                       (void *) &learning);
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_TE, err);
 
-        err = fm10000SetPortAttribute(sw, 
-                                      switchExt->tunnelCfg->tunnelPort[i], 
-                                      FM_PORT_ACTIVE_MAC, 
-                                      FM_PORT_LANE_NA, 
+        err = fm10000SetPortAttribute(sw,
+                                      switchExt->tunnelCfg->tunnelPort[i],
+                                      FM_PORT_ACTIVE_MAC,
+                                      FM_PORT_LANE_NA,
                                       FM_PORT_PARSER,
                                       (void *) &parser);
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_TE, err);
 
-        err = fm10000SetPortAttribute(sw, 
-                                      switchExt->tunnelCfg->tunnelPort[i], 
-                                      FM_PORT_ACTIVE_MAC, 
-                                      FM_PORT_LANE_NA, 
+        err = fm10000SetPortAttribute(sw,
+                                      switchExt->tunnelCfg->tunnelPort[i],
+                                      FM_PORT_ACTIVE_MAC,
+                                      FM_PORT_LANE_NA,
                                       FM_PORT_ROUTABLE,
                                       (void *) &routable);
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_TE, err);
 
-        err = fm10000SetPortAttribute(sw, 
-                                      switchExt->tunnelCfg->tunnelPort[i], 
-                                      FM_PORT_ACTIVE_MAC, 
-                                      FM_PORT_LANE_NA, 
+        err = fm10000SetPortAttribute(sw,
+                                      switchExt->tunnelCfg->tunnelPort[i],
+                                      FM_PORT_ACTIVE_MAC,
+                                      FM_PORT_LANE_NA,
+                                      FM_PORT_ROUTED_FRAME_UPDATE_FIELDS,
+                                      (void *) &routeUpdateFields);
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_TE, err);
+
+        err = fm10000SetPortAttribute(sw,
+                                      switchExt->tunnelCfg->tunnelPort[i],
+                                      FM_PORT_ACTIVE_MAC,
+                                      FM_PORT_LANE_NA,
                                       FM_PORT_LOOPBACK_SUPPRESSION,
                                       (void *) &lbs);
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_TE, err);
 
-        err = fm10000SetPortAttribute(sw, 
-                                      switchExt->tunnelCfg->tunnelPort[i], 
-                                      FM_PORT_ACTIVE_MAC, 
-                                      FM_PORT_LANE_NA, 
+        err = fm10000SetPortAttribute(sw,
+                                      switchExt->tunnelCfg->tunnelPort[i],
+                                      FM_PORT_ACTIVE_MAC,
+                                      FM_PORT_LANE_NA,
                                       FM_PORT_MASK_WIDE,
                                       (void *) &portMask);
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_TE, err);
@@ -2300,12 +2509,70 @@ fm_status fm10000TunnelInit(fm_int sw)
     teSGlort.vsiLength = 0;
     teSGlort.vsiOffset = 0;
 
+    teGlortCfg.decapDglort = 0;
+    teGlortCfg.encapDglort = 0;
+
+    FM_CLEAR(tunnelCfg);
+    tunnelCfg.l4DstVxLan     = switchExt->vnVxlanUdpPort;
+    tunnelCfg.l4DstNge       = switchExt->vnGeneveUdpPort;
+    tunnelCfg.ttl            = switchExt->vnOuterTTL;
+    tunnelCfg.tos            = 0;
+    tunnelCfg.deriveOuterTOS = TRUE;
+    tunnelCfg.ngeMask        = 0;
+    tunnelCfg.ngeTime        = FALSE;
+    tunnelCfg.dmac           = 0;
+    tunnelCfg.smac           = 0;
+    tunnelCfg.encapProtocol  = fmGetIntApiProperty(FM_AAK_API_VN_ENCAP_PROTOCOL,
+                                                   FM_AAD_API_VN_ENCAP_PROTOCOL);
+    tunnelCfg.encapVersion   = fmGetIntApiProperty(FM_AAK_API_VN_ENCAP_VERSION,
+                                                   FM_AAD_API_VN_ENCAP_VERSION);
+
+    teChecksumCfg.notIp = FM_FM10000_TE_CHECKSUM_COMPUTE;
+    teChecksumCfg.notTcpOrUdp = FM_FM10000_TE_CHECKSUM_COMPUTE;
+    teChecksumCfg.tcpOrUdp = FM_FM10000_TE_CHECKSUM_HEADER;
+
+    parserCfg.vxLanPort      = switchExt->vnVxlanUdpPort;
+    parserCfg.ngePort        = switchExt->vnGeneveUdpPort;
+
     for (i = 0 ; i < FM10000_TE_DGLORT_MAP_ENTRIES_1 ; i++)
     {
         destEntry[i]->owner = &lportInfo->camEntries[camIndex];
 
         /* Entry 0 is always match by default */
         err = fm10000SetTeSGlort(sw, i, 0, &teSGlort, FALSE);
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_TE, err);
+
+        err = fm10000SetTeDefaultGlort(sw,
+                                       i,
+                                       &teGlortCfg,
+                                       FM10000_TE_DEFAULT_GLORT_ENCAP_DGLORT |
+                                       FM10000_TE_DEFAULT_GLORT_DECAP_DGLORT,
+                                       FALSE);
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_TE, err);
+
+        err = fm10000SetTeDefaultTunnel(sw,
+                                        i,
+                                        &tunnelCfg,
+                                        FM10000_TE_DEFAULT_TUNNEL_ALL |
+                                        FM10000_TE_DEFAULT_TUNNEL_NGE_ALL,
+                                        FALSE);
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_TE, err);
+
+        err = fm10000SetTeChecksum(sw,
+                                   i,
+                                   &teChecksumCfg,
+                                   FM10000_TE_CHECKSUM_NOT_IP |
+                                   FM10000_TE_CHECKSUM_NOT_TCP_OR_UDP |
+                                   FM10000_TE_CHECKSUM_TCP_OR_UDP,
+                                   FALSE);
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_TE, err);
+
+        err = fm10000SetTeParser(sw,
+                                 i,
+                                 &parserCfg,
+                                 FM10000_TE_PARSER_VXLAN_PORT |
+                                 FM10000_TE_PARSER_NGE_PORT,
+                                 FALSE);
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_TE, err);
     }
 
@@ -2369,8 +2636,6 @@ fm_status fm10000TunnelFree(fm_int sw)
 /** fm10000CreateTunnel
  * \ingroup intTunnel
  *
- * \chips           FM10000
- *
  * \desc            Create a Tunnel Group. The Group will be created with an
  *                  empty rule and flow encap list. This function will return
  *                  a group handler that would be used to specify this set.
@@ -2379,7 +2644,7 @@ fm_status fm10000TunnelFree(fm_int sw)
  *
  * \param[out]      group points to caller-allocated storage where this
  *                  function should place the group handler.
- * 
+ *
  * \param[in]       tunnelParam refer to the group parameters.
  *
  * \return          FM_OK if successful.
@@ -2454,7 +2719,7 @@ fm_status fm10000CreateTunnel(fm_int          sw,
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_TE, err);
     }
 
-    if ( tunnelParam->tepSize && 
+    if ( tunnelParam->tepSize &&
          ((tunnelParam->hashKeyConfig & FM_TUNNEL_MATCH_VSI_TEP) == 0) )
     {
         err = FM_ERR_TUNNEL_TEP_SIZE;
@@ -2763,7 +3028,7 @@ fm_status fm10000CreateTunnel(fm_int          sw,
 
     *group = (tunnelParam->te * FM10000_TE_DGLORT_MAP_ENTRIES_0) + index;
     insertedGrp->active = TRUE;
-    
+
 
 ABORT:
     if (tunnelLockTaken)
@@ -2782,14 +3047,12 @@ ABORT:
 /** fm10000DeleteTunnel
  * \ingroup intTunnel
  *
- * \chips           FM10000
- *
  * \desc            Delete a Tunnel Group.
  *
  * \param[in]       sw is the switch on which to operate.
  *
  * \param[in]       group is the handler that identify the entity to be deleted.
- * 
+ *
  * \return          FM_OK if successful.
  * \return          FM_ERR_INVALID_ARGUMENT on out of range value.
  * \return          FM_ERR_TUNNEL_INVALID_ENTRY if group is invalid.
@@ -2877,7 +3140,7 @@ fm_status fm10000DeleteTunnel(fm_int sw, fm_int group)
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_TE, err);
 
     removedGrp->active = FALSE;
-    
+
 
 ABORT:
     if (tunnelLockTaken)
@@ -2896,17 +3159,15 @@ ABORT:
 /** fm10000GetTunnel
  * \ingroup intTunnel
  *
- * \chips           FM10000
- *
  * \desc            Get the Tunnel Group parameter as specified on creation.
  *
  * \param[in]       sw is the switch on which to operate.
  *
  * \param[in]       group is the group handler.
- * 
+ *
  * \param[out]      tunnelParam points to caller-allocated storage where this
  *                  function should place the group parameters.
- * 
+ *
  * \return          FM_OK if successful.
  * \return          FM_ERR_INVALID_ARGUMENT on NULL pointer or out of range
  *                  value.
@@ -2970,15 +3231,13 @@ ABORT:
 /** fm10000GetTunnelFirst
  * \ingroup intTunnel
  *
- * \chips           FM10000
- *
  * \desc            Get the First Tunnel Group handler.
  *
  * \param[in]       sw is the switch on which to operate.
  *
  * \param[out]      firstGroup points to caller-allocated storage where this
  *                  function should place the first group handler.
- * 
+ *
  * \return          FM_OK if successful.
  * \return          FM_ERR_INVALID_ARGUMENT on NULL pointer.
  * \return          FM_ERR_NO_MORE if no tunnel group are actually created.
@@ -3042,18 +3301,16 @@ ABORT:
 /** fm10000GetTunnelNext
  * \ingroup intTunnel
  *
- * \chips           FM10000
- *
  * \desc            Find the next Tunnel Group handler.
  *
  * \param[in]       sw is the switch on which to operate.
- * 
+ *
  * \param[in]       currentGroup is the last Group found by a previous
  *                  call to this function or to ''fmGetTunnelFirst''.
  *
  * \param[out]      nextGroup points to caller-allocated storage where this
  *                  function should place the next group handler.
- * 
+ *
  * \return          FM_OK if successful.
  * \return          FM_ERR_INVALID_ARGUMENT on NULL pointer or out of range
  *                  value.
@@ -3128,18 +3385,16 @@ ABORT:
 /** fm10000AddTunnelEncapFlow
  * \ingroup intTunnel
  *
- * \chips           FM10000
- *
  * \desc            Add a Tunnel Encap Flow to a group.
  *
  * \param[in]       sw is the switch on which to operate.
  *
  * \param[in]       group is the group handler.
- * 
+ *
  * \param[in]       encapFlow is the encap flow id used to identify that entity.
- * 
+ *
  * \param[in]       field is an encap flow action mask (see 'fm_tunnelEncapFlow').
- * 
+ *
  * \param[in]       param is a parameter associated with the action (see
  *                  ''fm_tunnelEncapFlowParam'').
  *
@@ -3192,6 +3447,27 @@ fm_status fm10000AddTunnelEncapFlow(fm_int                   sw,
 
     TAKE_TUNNEL_LOCK(sw);
     tunnelLockTaken = TRUE;
+
+    /* Verify Tunnel Mode is compatible */
+    if (param->type == FM_TUNNEL_TYPE_NGE ||
+        param->type == FM_TUNNEL_TYPE_NVGRE)
+    {
+        if (switchExt->tunnelCfg->tunnelMode[group >> 3] !=
+            FM_TUNNEL_API_MODE_VXLAN_NVGRE_NGE)
+        {
+            err = FM_ERR_TUNNEL_TYPE;
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_TE, err);
+        }
+    }
+    else if (param->type == FM_TUNNEL_TYPE_GPE_NSH)
+    {
+        if (switchExt->tunnelCfg->tunnelMode[group >> 3] !=
+            FM_TUNNEL_API_MODE_VXLAN_GPE_NSH)
+        {
+            err = FM_ERR_TUNNEL_TYPE;
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_TE, err);
+        }
+    }
 
     tunnelGrp = &switchExt->tunnelCfg->tunnelGrp[group >> 3][group & 0x7];
 
@@ -3367,16 +3643,14 @@ ABORT:
 /** fm10000DeleteTunnelEncapFlow
  * \ingroup intTunnel
  *
- * \chips           FM10000
- *
  * \desc            Delete a Tunnel Encap Flow.
  *
  * \param[in]       sw is the switch on which to operate.
  *
  * \param[in]       group is the group handler.
- * 
+ *
  * \param[in]       encapFlow is the encap flow id used to identify that entity.
- * 
+ *
  * \return          FM_OK if successful.
  * \return          FM_ERR_INVALID_ARGUMENT on out of range value.
  * \return          FM_ERR_TUNNEL_INVALID_ENTRY if group or encap flow is invalid.
@@ -3476,20 +3750,18 @@ ABORT:
 /** fm10000UpdateTunnelEncapFlow
  * \ingroup intTunnel
  *
- * \chips           FM10000
- *
  * \desc            Update a Tunnel Encap Flow in a non disruptive and atomic
  *                  way.
  *
  * \param[in]       sw is the switch on which to operate.
  *
  * \param[in]       group is the group handler.
- * 
+ *
  * \param[in]       encapFlow is the encap flow id to update.
- * 
+ *
  * \param[in]       field is an updated encap flow action mask
  *                  (see 'fm_tunnelEncapFlow').
- * 
+ *
  * \param[in]       param is a parameter associated with the updated action
  *                  (see ''fm_tunnelEncapFlowParam'').
  *
@@ -3657,8 +3929,8 @@ fm_status fm10000UpdateTunnelEncapFlow(fm_int                   sw,
 
         /* Write the updated block to a new location if free block found.
          * Otherwise, the position used will be the same as the previous
-         * block. In case no free block was found, the swap copy is the one 
-         * that currently handle that flow. */ 
+         * block. In case no free block was found, the swap copy is the one
+         * that currently handle that flow. */
         err = fm10000SetTeData(sw,
                                group >> 3,
                                baseIndex,
@@ -3677,8 +3949,8 @@ fm_status fm10000UpdateTunnelEncapFlow(fm_int                   sw,
 
         /* Go over all the rules that refer to that shared encap flow and
          * update them. The update is done without any movement since the
-         * block is rebuilt exactly as the original except for the shared 
-         * encap flow pointer which is updated atomically. */ 
+         * block is rebuilt exactly as the original except for the shared
+         * encap flow pointer which is updated atomically. */
         for (fmTreeIterInit(&itRule, &encapFlowEntry->rules) ;
               (err = fmTreeIterNext(&itRule, &nextKey, &value)) == FM_OK ; )
         {
@@ -3818,9 +4090,9 @@ fm_status fm10000UpdateTunnelEncapFlow(fm_int                   sw,
 
         /* Go over all the rules that refer to that unshared encap flow and
          * update them. The update is done by rebuilding updated blocks into
-         * a new location if one free position is found. If no room is found 
-         * and the original block has the same size as the updated version, 
-         * the update will uses the swap area to complete. */ 
+         * a new location if one free position is found. If no room is found
+         * and the original block has the same size as the updated version,
+         * the update will uses the swap area to complete. */
         for (fmTreeIterInit(&itRule, &encapFlowEntry->rules) ;
               (err = fmTreeIterNext(&itRule, &nextKey, &value)) == FM_OK ; )
         {
@@ -3926,8 +4198,8 @@ fm_status fm10000UpdateTunnelEncapFlow(fm_int                   sw,
 
             /* Write the updated block to a new location if free block found.
              * Otherwise, the position used will be the same as the previous
-             * block. In case no free block was found, the swap copy is the one 
-             * that currently handle that flow. */ 
+             * block. In case no free block was found, the swap copy is the one
+             * that currently handle that flow. */
             err = fm10000SetTeData(sw,
                                    group >> 3,
                                    baseIndex,
@@ -3992,22 +4264,20 @@ ABORT:
 /** fm10000GetTunnelEncapFlow
  * \ingroup intTunnel
  *
- * \chips           FM10000
- *
  * \desc            Get the Tunnel Encap Flow action and parameters.
  *
  * \param[in]       sw is the switch on which to operate.
  *
  * \param[in]       group is the group handler.
- * 
+ *
  * \param[in]       encapFlow is the encap flow id to retrieve.
- * 
+ *
  * \param[out]      field points to caller-allocated storage where this
  *                  function should place the encap flow action mask.
- * 
+ *
  * \param[out]      param points to caller-allocated storage where this
  *                  function should place the action parameters.
- * 
+ *
  * \return          FM_OK if successful.
  * \return          FM_ERR_INVALID_ARGUMENT on NULL pointer or out of range value.
  * \return          FM_ERR_TUNNEL_INVALID_ENTRY if group or encap flow is invalid.
@@ -4084,23 +4354,21 @@ ABORT:
 /** fm10000GetTunnelEncapFlowFirst
  * \ingroup intTunnel
  *
- * \chips           FM10000
- *
  * \desc            Get the First Tunnel Encap Flow action and parameters.
  *
  * \param[in]       sw is the switch on which to operate.
  *
  * \param[in]       group is the group handler.
- * 
+ *
  * \param[out]      firstEncapFlow points to caller-allocated storage where this
  *                  function should place the first encap flow id retrieved.
- * 
+ *
  * \param[out]      field points to caller-allocated storage where this
  *                  function should place the encap flow action mask.
- * 
+ *
  * \param[out]      param points to caller-allocated storage where this
  *                  function should place the action parameters.
- * 
+ *
  * \return          FM_OK if successful.
  * \return          FM_ERR_INVALID_ARGUMENT on NULL pointer or out of range value.
  * \return          FM_ERR_TUNNEL_INVALID_ENTRY if group is invalid.
@@ -4178,26 +4446,24 @@ ABORT:
 /** fm10000GetTunnelEncapFlowNext
  * \ingroup intTunnel
  *
- * \chips           FM10000
- *
  * \desc            Find the next Tunnel Encap Flow action and parameters.
  *
  * \param[in]       sw is the switch on which to operate.
  *
  * \param[in]       group is the group handler.
- * 
+ *
  * \param[in]       currentEncapFlow is the last encap flow found by a previous
  *                  call to this function or to ''fmGetTunnelEncapFlowFirst''.
- * 
+ *
  * \param[out]      nextEncapFlow points to caller-allocated storage where this
  *                  function should place the next encap flow id retrieved.
- * 
+ *
  * \param[out]      field points to caller-allocated storage where this
  *                  function should place the encap flow action mask.
- * 
+ *
  * \param[out]      param points to caller-allocated storage where this
  *                  function should place the action parameters.
- * 
+ *
  * \return          FM_OK if successful.
  * \return          FM_ERR_INVALID_ARGUMENT on NULL pointer or out of range value.
  * \return          FM_ERR_TUNNEL_INVALID_ENTRY if group is invalid.
@@ -4280,25 +4546,23 @@ ABORT:
 /** fm10000AddTunnelRule
  * \ingroup intTunnel
  *
- * \chips           FM10000
- *
  * \desc            Add a Tunnel rule to a group.
  *
  * \param[in]       sw is the switch on which to operate.
  *
  * \param[in]       group is the group handler.
- * 
+ *
  * \param[in]       rule is the id used to identify that entity.
- * 
+ *
  * \param[in]       cond is a rule condition mask (see 'fm_tunnelCondition').
  *                  This is only used on rules inserted into hash lookup
  *                  group type.
- * 
+ *
  * \param[in]       condParam refer to the parameter associated with the
  *                  match condition (see ''fm_tunnelConditionParam'').
- * 
+ *
  * \param[in]       action is a rule action mask (see 'fm_tunnelAction').
- * 
+ *
  * \param[in]       actParam refer to the parameter associated with the action
  *                  (see ''fm_tunnelActionParam'').
  *
@@ -5060,16 +5324,14 @@ ABORT:
 /** fm10000DeleteTunnelRule
  * \ingroup intTunnel
  *
- * \chips           FM10000
- *
  * \desc            Delete a Tunnel rule.
  *
  * \param[in]       sw is the switch on which to operate.
  *
  * \param[in]       group is the group handler.
- * 
+ *
  * \param[in]       rule is the id used to identify that entity.
- * 
+ *
  * \return          FM_OK if successful.
  * \return          FM_ERR_TUNNEL_INVALID_ENTRY if group or rule is invalid.
  *
@@ -5271,8 +5533,8 @@ fm_status fm10000DeleteTunnelRule(fm_int sw, fm_int group, fm_int rule)
 
             /* Write the updated block to a new location if free block found.
              * Otherwise, the position used will be the same as the previous
-             * block. In case no free block was found, the swap copy is the one 
-             * that currently handle that flow. */ 
+             * block. In case no free block was found, the swap copy is the one
+             * that currently handle that flow. */
             err = fm10000SetTeData(sw,
                                    group >> 3,
                                    baseIndex,
@@ -5413,7 +5675,7 @@ fm_status fm10000DeleteTunnelRule(fm_int sw, fm_int group, fm_int rule)
 
         err = fmTreeRemoveCertain(&tunnelGrp->rules, rule, fmFree);
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_TE, err);
-        
+
     }
 
 
@@ -5434,25 +5696,23 @@ ABORT:
 /** fm10000UpdateTunnelRule
  * \ingroup intTunnel
  *
- * \chips           FM10000
- *
  * \desc            Update a Tunnel rule in a non disruptive and atomic way.
  *
  * \param[in]       sw is the switch on which to operate.
  *
  * \param[in]       group is the group handler.
- * 
+ *
  * \param[in]       rule is the id to update.
- * 
+ *
  * \param[in]       cond is an updated rule condition mask
  *                  (see 'fm_tunnelCondition'). This is only used on rules
  *                  inserted into hash lookup group type.
- * 
+ *
  * \param[in]       condParam refer to the updated parameter associated with the
  *                  match condition (see ''fm_tunnelConditionParam'').
- * 
+ *
  * \param[in]       action is an updated rule action mask (see 'fm_tunnelAction').
- * 
+ *
  * \param[in]       actParam refer to the updated parameter associated with the
  *                  action (see ''fm_tunnelActionParam'').
  *
@@ -5745,8 +6005,8 @@ fm_status fm10000UpdateTunnelRule(fm_int                   sw,
 
         /* Write the updated block to a new location if free block found.
          * Otherwise, the position used will be the same as the previous
-         * block. In case no free block was found, the swap copy is the one 
-         * that currently handle that flow. */ 
+         * block. In case no free block was found, the swap copy is the one
+         * that currently handle that flow. */
         err = fm10000SetTeData(sw,
                                group >> 3,
                                baseIndex,
@@ -5923,7 +6183,7 @@ fm_status fm10000UpdateTunnelRule(fm_int                   sw,
                 }
 
                 /* Write the updated block to the previous location since the
-                 * size must be lower or equal than the created hole. */ 
+                 * size must be lower or equal than the created hole. */
                 err = fm10000SetTeData(sw,
                                        group >> 3,
                                        baseIndex,
@@ -6095,8 +6355,8 @@ fm_status fm10000UpdateTunnelRule(fm_int                   sw,
 
         /* Write the updated block to a new location if free block found.
          * Otherwise, the position used will be the same as the previous
-         * block. In case no free block was found, the swap copy is the one 
-         * that currently handle that flow. */ 
+         * block. In case no free block was found, the swap copy is the one
+         * that currently handle that flow. */
         err = fm10000SetTeData(sw,
                                group >> 3,
                                baseIndex,
@@ -6221,28 +6481,26 @@ ABORT:
 /** fm10000GetTunnelRule
  * \ingroup intTunnel
  *
- * \chips           FM10000
- *
  * \desc            Get the Tunnel rule condition, action and parameters.
  *
  * \param[in]       sw is the switch on which to operate.
  *
  * \param[in]       group is the group handler.
- * 
+ *
  * \param[in]       rule is the id to retrieve.
- * 
+ *
  * \param[out]      cond points to caller-allocated storage where this
  *                  function should place the condition mask.
- * 
+ *
  * \param[out]      condParam points to caller-allocated storage where this
  *                  function should place the condition parameters.
- * 
+ *
  * \param[out]      action points to caller-allocated storage where this
  *                  function should place the action mask.
- * 
+ *
  * \param[out]      actParam points to caller-allocated storage where this
  *                  function should place the action parameters.
- * 
+ *
  * \return          FM_OK if successful.
  * \return          FM_ERR_INVALID_ARGUMENT on NULL pointer or out of range value.
  * \return          FM_ERR_TUNNEL_INVALID_ENTRY if group or rule is invalid.
@@ -6324,29 +6582,27 @@ ABORT:
 /** fm10000GetTunnelRuleFirst
  * \ingroup intTunnel
  *
- * \chips           FM10000
- *
  * \desc            Get the First Tunnel rule condition, action and parameters.
  *
  * \param[in]       sw is the switch on which to operate.
  *
  * \param[in]       group is the group handler.
- * 
+ *
  * \param[out]      firstRule points to caller-allocated storage where this
  *                  function should place the first rule id retrieved.
- * 
+ *
  * \param[out]      cond points to caller-allocated storage where this
  *                  function should place the condition mask.
- * 
+ *
  * \param[out]      condParam points to caller-allocated storage where this
  *                  function should place the condition parameters.
- * 
+ *
  * \param[out]      action points to caller-allocated storage where this
  *                  function should place the action mask.
- * 
+ *
  * \param[out]      actParam points to caller-allocated storage where this
  *                  function should place the action parameters.
- * 
+ *
  * \return          FM_OK if successful.
  * \return          FM_ERR_INVALID_ARGUMENT on NULL pointer or out of range value.
  * \return          FM_ERR_TUNNEL_INVALID_ENTRY if group is invalid.
@@ -6429,32 +6685,30 @@ ABORT:
 /** fm10000GetTunnelRuleNext
  * \ingroup intTunnel
  *
- * \chips           FM10000
- *
  * \desc            Find the next Tunnel rule condition, action and parameters.
  *
  * \param[in]       sw is the switch on which to operate.
  *
  * \param[in]       group is the group handler.
- * 
+ *
  * \param[in]       currentRule is the last rule id found by a previous
  *                  call to this function or to ''fmGetTunnelRuleFirst''.
- * 
+ *
  * \param[out]      nextRule points to caller-allocated storage where this
  *                  function should place the next rule id retrieved.
- * 
+ *
  * \param[out]      cond points to caller-allocated storage where this
  *                  function should place the condition mask.
- * 
+ *
  * \param[out]      condParam points to caller-allocated storage where this
  *                  function should place the condition parameters.
- * 
+ *
  * \param[out]      action points to caller-allocated storage where this
  *                  function should place the action mask.
- * 
+ *
  * \param[out]      actParam points to caller-allocated storage where this
  *                  function should place the action parameters.
- * 
+ *
  * \return          FM_OK if successful.
  * \return          FM_ERR_INVALID_ARGUMENT on NULL pointer or out of range value.
  * \return          FM_ERR_TUNNEL_INVALID_ENTRY if group is invalid.
@@ -6542,21 +6796,19 @@ ABORT:
 /** fm10000GetTunnelRuleCount
  * \ingroup intTunnel
  *
- * \chips           FM10000
- *
  * \desc            Retrieve the frame and octet counts associated with an
  *                  ''FM_TUNNEL_COUNT'' tunnel rule action.
  *
  * \param[in]       sw is the switch on which to operate.
  *
  * \param[in]       group is the group handler.
- * 
+ *
  * \param[in]       rule is the id to retrieve.
- * 
+ *
  * \param[out]      counters points to a caller-allocated structure of type
  *                  ''fm_tunnelCounters'' where this function should place the
  *                  counter values.
- * 
+ *
  * \return          FM_OK if successful.
  * \return          FM_ERR_INVALID_ARGUMENT on NULL pointer or out of range value.
  * \return          FM_ERR_TUNNEL_INVALID_ENTRY if group or rule is invalid.
@@ -6647,21 +6899,19 @@ ABORT:
 /** fm10000GetTunnelEncapFlowCount
  * \ingroup intTunnel
  *
- * \chips           FM10000
- *
  * \desc            Retrieve the frame and octet counts associated with an
  *                  ''FM_TUNNEL_ENCAP_FLOW_COUNTER'' encap flow action.
  *
  * \param[in]       sw is the switch on which to operate.
  *
  * \param[in]       group is the group handler.
- * 
+ *
  * \param[in]       encapFlow is the encap flow id to retrieve.
- * 
+ *
  * \param[out]      counters points to a caller-allocated structure of type
  *                  ''fm_tunnelCounters'' where this function should place the
  *                  counter values.
- * 
+ *
  * \return          FM_OK if successful.
  * \return          FM_ERR_INVALID_ARGUMENT on NULL pointer or out of range value.
  * \return          FM_ERR_TUNNEL_INVALID_ENTRY if group or encap flow is invalid.
@@ -6752,8 +7002,6 @@ ABORT:
 /** fm10000GetTunnelRuleUsed
  * \ingroup intTunnel
  *
- * \chips           FM10000
- *
  * \desc            Retrieve the used bit associated with a specified tunnel
  *                  rule. This is only supported if the rule is part of a
  *                  direct lookup tunnel type.
@@ -6761,12 +7009,12 @@ ABORT:
  * \param[in]       sw is the switch on which to operate.
  *
  * \param[in]       group is the group handler.
- * 
+ *
  * \param[in]       rule is the id to retrieve.
- * 
+ *
  * \param[out]      used points to a caller-allocated storage where this
  *                  function should set the current rule usage.
- * 
+ *
  * \return          FM_OK if successful.
  * \return          FM_ERR_INVALID_ARGUMENT on NULL pointer or out of range value.
  * \return          FM_ERR_TUNNEL_INVALID_ENTRY if group or rule is invalid.
@@ -6855,17 +7103,15 @@ ABORT:
 /** fm10000ResetTunnelRuleCount
  * \ingroup intTunnel
  *
- * \chips           FM10000
- *
  * \desc            Reset the frame and octet counter associated with an
  *                  ''FM_TUNNEL_COUNT'' tunnel rule action.
  *
  * \param[in]       sw is the switch on which to operate.
  *
  * \param[in]       group is the group handler.
- * 
+ *
  * \param[in]       rule is the id to reset.
- * 
+ *
  * \return          FM_OK if successful.
  * \return          FM_ERR_TUNNEL_INVALID_ENTRY if group or rule is invalid.
  * \return          FM_ERR_TUNNEL_NO_COUNT if the rule does not have count action.
@@ -6946,17 +7192,15 @@ ABORT:
 /** fm10000ResetTunnelEncapFlowCount
  * \ingroup intTunnel
  *
- * \chips           FM10000
- *
  * \desc            Reset the frame and octet counter associated with an
  *                  ''FM_TUNNEL_ENCAP_FLOW_COUNTER'' encap flow action.
  *
  * \param[in]       sw is the switch on which to operate.
  *
  * \param[in]       group is the group handler.
- * 
+ *
  * \param[in]       encapFlow is the encap flow id to reset.
- * 
+ *
  * \return          FM_OK if successful.
  * \return          FM_ERR_TUNNEL_INVALID_ENTRY if group or encap flow is invalid.
  * \return          FM_ERR_TUNNEL_NO_COUNT if the encap flow does not have count action.
@@ -7039,8 +7283,6 @@ ABORT:
 /** fm10000ResetTunnelRuleUsed
  * \ingroup intTunnel
  *
- * \chips           FM10000
- *
  * \desc            Reset the used bit associated with a specified tunnel
  *                  rule. This is only supported if the rule is part of a
  *                  direct lookup tunnel type.
@@ -7048,9 +7290,9 @@ ABORT:
  * \param[in]       sw is the switch on which to operate.
  *
  * \param[in]       group is the group handler.
- * 
+ *
  * \param[in]       rule is the id to reset.
- * 
+ *
  * \return          FM_OK if successful.
  * \return          FM_ERR_INVALID_ARGUMENT on out of range value.
  * \return          FM_ERR_TUNNEL_INVALID_ENTRY if group or rule is invalid.
@@ -7130,21 +7372,19 @@ ABORT:
 /** fm10000SetTunnelAttribute
  * \ingroup intTunnel
  *
- * \chips           FM10000
- *
  * \desc            Set a Tunnel attribute.
  *
  * \param[in]       sw is the switch on which to operate.
  *
  * \param[in]       group is the group handler.
- * 
+ *
  * \param[in]       rule is the id on which to operate.
- * 
- * \param[in]       attr is the Tunnel attribute (see 'Tunnel Attributes') to
- *                  set.
- * 
+ *
+ * \param[in]       attr is the Tunnel attribute (see ''Tunnel Attributes'')
+ *                  to set.
+ *
  * \param[in]       value points to the attribute value to set.
- * 
+ *
  * \return          FM_OK if successful.
  * \return          FM_ERR_INVALID_ARGUMENT on NULL pointer or out of range value.
  * \return          FM_ERR_TUNNEL_INVALID_ENTRY if group or rule is invalid.
@@ -7237,21 +7477,19 @@ ABORT:
 /** fm10000GetTunnelAttribute
  * \ingroup intTunnel
  *
- * \chips           FM10000
- *
  * \desc            Get a Tunnel attribute.
  *
  * \param[in]       sw is the switch on which to operate.
  *
  * \param[in]       group is the group handler.
- * 
+ *
  * \param[in]       rule is the id on which to operate.
- * 
- * \param[in]       attr is the Tunnel attribute (see 'Tunnel Attributes') to
- *                  get.
- * 
+ *
+ * \param[in]       attr is the Tunnel attribute (see ''Tunnel Attributes'')
+ *                  to get.
+ *
  * \param[out]      value points to the attribute value to get.
- * 
+ *
  * \return          FM_OK if successful.
  * \return          FM_ERR_INVALID_ARGUMENT on NULL pointer or out of range value.
  * \return          FM_ERR_TUNNEL_INVALID_ENTRY if group or rule is invalid.
@@ -7536,10 +7774,184 @@ ABORT:
 
 
 /*****************************************************************************/
+/** fm10000SetTunnelApiAttribute
+ * \ingroup intTunnel
+ *
+ * \desc            Set a Tunnel Api attribute.
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \param[in]       attr is the Tunnel API Attribute (see ''fm_tunnelApiAttr'')
+ *                  to set.
+ *
+ * \param[in]       value points to the attribute value to set.
+ *
+ * \return          FM_OK if successful.
+ * \return          FM_ERR_INVALID_ARGUMENT on NULL pointer or out of range value.
+ * \return          FM_ERR_UNSUPPORTED if attribute is invalid.
+ *
+ *****************************************************************************/
+fm_status fm10000SetTunnelApiAttribute(fm_int sw,
+                                       fm_int attr,
+                                       void * value)
+{
+    fm_status             err = FM_OK;
+    fm_bool               tunnelLockTaken = FALSE;
+    fm_switch *           switchPtr = GET_SWITCH_PTR(sw);
+    fm10000_switch *      switchExt = (fm10000_switch *) switchPtr->extension;
+    fm_int                i;
+    fm_tunnelModeAttr *   modeAttr;
+    fm_fm10000TeTunnelCfg tunDefCfg;
+
+    FM_LOG_ENTRY(FM_LOG_CAT_TE,
+                 "sw = %d, attr = %d\n",
+                 sw, attr);
+
+    if (value == NULL)
+    {
+       err = FM_ERR_INVALID_ARGUMENT;
+       FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_TE, err);
+    }
+
+    TAKE_TUNNEL_LOCK(sw);
+    tunnelLockTaken = TRUE;
+
+    switch (attr)
+    {
+        case FM_TUNNEL_API_MODE:
+            modeAttr = (fm_tunnelModeAttr *) value;
+
+            if (modeAttr->te >= FM10000_TE_TUN_HEADER_CFG_ENTRIES)
+            {
+                err = FM_ERR_INVALID_ARGUMENT;
+                FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_TE, err);
+            }
+
+            if (modeAttr->mode >= FM_TUNNEL_API_MODE_MAX)
+            {
+                err = FM_ERR_INVALID_ARGUMENT;
+                FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_TE, err);
+            }
+
+            for (i = 0; i < FM10000_TE_DGLORT_MAP_ENTRIES_0; i++)
+            {
+                if (switchExt->tunnelCfg->tunnelGrp[modeAttr->te][i].active == TRUE)
+                {
+                    err = FM_ERR_TUNNEL_IN_USE;
+                    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_TE, err);
+                }
+            }
+
+            tunDefCfg.mode = modeAttr->mode;
+
+            err = fm10000SetTeDefaultTunnel(sw,
+                                            modeAttr->te,
+                                            &tunDefCfg,
+                                            FM10000_TE_DEFAULT_TUNNEL_MODE,
+                                            TRUE);
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_TE, err);
+
+            switchExt->tunnelCfg->tunnelMode[modeAttr->te] = modeAttr->mode;
+            break;
+
+        default:
+            err = FM_ERR_UNSUPPORTED;
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_TE, err);
+            break;
+    }
+
+ABORT:
+    if (tunnelLockTaken)
+    {
+        DROP_TUNNEL_LOCK(sw);
+    }
+
+    FM_LOG_EXIT(FM_LOG_CAT_TE, err);
+
+}   /* end fm10000SetTunnelApiAttribute */
+
+
+
+
+/*****************************************************************************/
+/** fm10000GetTunnelApiAttribute
+ * \ingroup intTunnel
+ *
+ * \desc            Get a Tunnel Api attribute.
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \param[in]       attr is the Tunnel API Attribute (see ''fm_tunnelApiAttr'')
+ *                  to set.
+ *
+ * \param[out]      value points to the attribute value to get.
+ *
+ * \return          FM_OK if successful.
+ * \return          FM_ERR_INVALID_ARGUMENT on NULL pointer or out of range value.
+ * \return          FM_ERR_UNSUPPORTED if attribute is invalid.
+ *
+ *****************************************************************************/
+fm_status fm10000GetTunnelApiAttribute(fm_int sw,
+                                       fm_int attr,
+                                       void * value)
+{
+    fm_status          err = FM_OK;
+    fm_bool            tunnelLockTaken = FALSE;
+    fm_switch *        switchPtr = GET_SWITCH_PTR(sw);
+    fm10000_switch *   switchExt = (fm10000_switch *) switchPtr->extension;
+    fm_tunnelModeAttr *modeAttr;
+
+    FM_LOG_ENTRY(FM_LOG_CAT_TE,
+                 "sw = %d, attr = %d\n",
+                 sw, attr);
+
+    if (value == NULL)
+    {
+       err = FM_ERR_INVALID_ARGUMENT;
+       FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_TE, err);
+    }
+
+    TAKE_TUNNEL_LOCK(sw);
+    tunnelLockTaken = TRUE;
+
+    switch (attr)
+    {
+        case FM_TUNNEL_API_MODE:
+            modeAttr = (fm_tunnelModeAttr *) value;
+
+            /* Sanity Check on input */
+            if (modeAttr->te >= FM10000_TE_TUN_HEADER_CFG_ENTRIES)
+            {
+                err = FM_ERR_INVALID_ARGUMENT;
+                FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_TE, err);
+            }
+
+            /* Return the mode */
+            modeAttr->mode = switchExt->tunnelCfg->tunnelMode[modeAttr->te];
+            break;
+
+        default:
+            err = FM_ERR_UNSUPPORTED;
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_TE, err);
+            break;
+    }
+
+ABORT:
+    if (tunnelLockTaken)
+    {
+        DROP_TUNNEL_LOCK(sw);
+    }
+
+    FM_LOG_EXIT(FM_LOG_CAT_TE, err);
+
+}   /* end fm10000GetTunnelApiAttribute */
+
+
+
+
+/*****************************************************************************/
 /** fm10000DbgDumpTunnel
  * \ingroup intDiagTunnel
- *
- * \chips           FM10000
  *
  * \desc            Display the tunnel engine status of a switch
  *

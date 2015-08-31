@@ -46,9 +46,6 @@ typedef enum
 } fm_pcaMuxModel;
 
 
-/* This bit indicates whether the PCA is a I2C LED driver or not */
-#define FM_PCA_LED_DRIVER_BIT_MASK     0x010000
-
 typedef enum
 {
     PCA_IO_UNKNOWN,
@@ -59,8 +56,7 @@ typedef enum
     PCA_IO_9554,
     PCA_IO_9555,
     PCA_IO_9698,
-    /* All the PCA I2C LED driver model must be defined starting here  */
-    PCA_IO_9634 = FM_PCA_LED_DRIVER_BIT_MASK,
+    PCA_IO_9634,
     PCA_IO_9635,
     PCA_IO_9551,
 

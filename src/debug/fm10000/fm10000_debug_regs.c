@@ -48,10 +48,12 @@
           (strcasestr(pReg->regname, "FM10000_EPL") != NULL) )
 
 /* Virtual Function regs, not visible in global space */
-#define IS_REG_PCIE_VF(regName) ((strncasecmp(regName, "FM10000_PCIE_VF", 15)  == 0) && \
-                                 (regName[15] != '_'))
-#define IS_REG_PCIE_INDEX(regName) ((strncasecmp(regName, "FM10000_PCIE_", 13)  == 0) && \
-                                    !IS_REG_PCIE_VF(regName))
+#define IS_REG_PCIE_VF(regName) (((strncasecmp(regName, "FM10000_PCIE_VF", 15)  == 0) && \
+                                  (regName[15] != '_')) ||                               \
+                                 (strncasecmp(regName, "FM10000_PCIE_VF_CFG_", 20)  == 0))
+#define IS_REG_PCIE_INDEX(pReg) (pReg->regAddr >= 0x100000 &&  \
+                                 pReg->regAddr < 0xa00000 &&   \
+                                 !IS_REG_PCIE_VF(pReg->regname))
 #define IS_REG_INDEX_BY_PCIE(regName) (strncasecmp(regName, "FM10000_INTERRUPT_MASK_PCIE", 27)  == 0)
 
 #define INDEX_AS_PORT_MASK              0x7f
@@ -694,7 +696,7 @@ static fm_status GetRegOffsetIdx(fm_int sw,
     fm_int    pepOffset = 0;
     fm_bool   pepActive;
 
-    if (IS_REG_PCIE_INDEX(regEntry->regname))
+    if (IS_REG_PCIE_INDEX(regEntry))
     {
         if (indexByPort)
         {
@@ -1022,7 +1024,7 @@ static fm_status fm10000DbgDumpRegisterInt(fm_int             sw,
     }
 
     /* PCIE registers */
-    if (IS_REG_PCIE_INDEX(pReg->regname))
+    if (IS_REG_PCIE_INDEX(pReg))
     {
         if (pepIdx < 0 || pepIdx > FM10000_MAX_PEP)
         {
@@ -1043,7 +1045,7 @@ static fm_status fm10000DbgDumpRegisterInt(fm_int             sw,
   
     for (pep = pepStart ; pep <= pepEnd; pep++)
     {
-        if (IS_REG_PCIE_INDEX(pReg->regname))
+        if (IS_REG_PCIE_INDEX(pReg))
         {
             if ((fm10000GetPepResetState(sw, pep, &pepActive) != FM_OK) || !pepActive)
             {
@@ -2068,7 +2070,7 @@ fm_status fm10000DbgDumpRegisterV3(fm_int  sw,
                 FM_LOG_EXIT(FM_LOG_CAT_DEBUG, FM_ERR_UNKNOWN_REGISTER);
             }
             exactMatch = TRUE;
-            if (IS_REG_PCIE_INDEX(pReg->regname))
+            if (IS_REG_PCIE_INDEX(pReg))
             {
                 if (!indexByPort)
                 {
@@ -2130,7 +2132,7 @@ fm_status fm10000DbgDumpRegisterV3(fm_int  sw,
     {
         if (strcasestr(pReg->regname, registerName) != NULL && !IS_REG_PCIE_VF(pReg->regname))
         {
-            if (IS_REG_PCIE_INDEX(pReg->regname))
+            if (IS_REG_PCIE_INDEX(pReg))
             {
                 pepIdx = indexA;
                 idxA = indexB;
@@ -3252,7 +3254,7 @@ fm_status fm10000DbgWriteRegisterField(fm_int    sw,
         }
         else
         {
-            if (IS_REG_PCIE_INDEX(pReg->regname))
+            if (IS_REG_PCIE_INDEX(pReg))
             {
                 pep = indexA;
                 if (pep < 0 || pep > FM10000_MAX_PEP)
@@ -3598,7 +3600,7 @@ void fm10000DbgGetRegisterName(fm_int   sw,
 
     port = -1;
 
-    if (IS_REG_PCIE_INDEX(regEntry->regname))
+    if (IS_REG_PCIE_INDEX(regEntry))
     {
         pepIdx = offset / FM10000_PCIE_PF_SIZE;
         offset = offset - (pepIdx * FM10000_PCIE_PF_SIZE);

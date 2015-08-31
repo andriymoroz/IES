@@ -1522,6 +1522,12 @@ struct _fm_switch
                                       fm_int rule,
                                       fm_int attr,
                                       void *value);
+    fm_status   (*SetTunnelApiAttribute)(fm_int sw,
+                                         fm_int attr,
+                                         void *value);
+    fm_status   (*GetTunnelApiAttribute)(fm_int sw,
+                                         fm_int attr,
+                                         void *value);
     fm_status   (*DbgDumpTunnel)(fm_int sw);
 
     /**************************************************
@@ -1627,51 +1633,6 @@ struct _fm_switch
                                            fm_stormAction *currentAction, 
                                            fm_stormAction *nextAction );
     void        (*DbgDumpStormCtrl)(fm_int sw, fm_int stormController);
-
-    /**************************************************
-     * RBridge API Support
-     **************************************************/
-    fm_status   (*CreateRBridge)(fm_int            sw, 
-                                 fm_remoteRBridge *rbridge, 
-                                 fm_int *          tunnelId);
-    fm_status   (*DeleteRBridge)(fm_int sw, fm_int tunnelId);
-    fm_status   (*UpdateRBridgeEntry)(fm_int            sw, 
-                                      fm_int            tunnelId,
-                                      fm_remoteRBridge *rbridge);
-    fm_status   (*GetRBridgeEntry)(fm_int            sw, 
-                                   fm_int            tunnelId,
-                                   fm_remoteRBridge *rbridge);
-    fm_status   (*GetRBridgeFirst)(fm_int            sw, 
-                                   fm_int *          tunnelId,
-                                   fm_remoteRBridge *rbridge);
-    fm_status   (*GetRBridgeNext)(fm_int            sw, 
-                                  fm_int            currentTunnelId,
-                                  fm_int *          nextTunnelId,
-                                  fm_remoteRBridge *rbridge);
-
-    fm_status   (*CreateRBridgeDistTree)(fm_int       sw, 
-                                         fm_distTree *distTree, 
-                                         fm_int *     tunnelId);
-    fm_status   (*DeleteRBridgeDistTree)(fm_int sw, fm_int tunnelId);
-    fm_status   (*UpdateRBridgeDistTree)(fm_int       sw, 
-                                         fm_int       tunnelId,
-                                         fm_distTree *distTree);
-    fm_status   (*GetRBridgeDistTree)(fm_int       sw, 
-                                      fm_int       tunnelId,
-                                      fm_distTree *distTree);
-    fm_status   (*GetRBridgeDistTreeFirst)(fm_int       sw,
-                                           fm_int *     tunnelId, 
-                                           fm_distTree *distTree);
-    fm_status   (*GetRBridgeDistTreeNext)(fm_int       sw,
-                                          fm_int       currentTunnelId,
-                                          fm_int *     nextTunnelId,
-                                          fm_distTree *distTree);
-    fm_status   (*SetRBridgePortHopCount)(fm_int    sw,
-                                          fm_int    port,
-                                          fm_uint32 value);
-    fm_status   (*GetRBridgePortHopCount)(fm_int     sw,
-                                          fm_int     port,
-                                          fm_uint32 *value);
 
     /**************************************************
      * Interrupt Handling
@@ -2203,7 +2164,43 @@ struct _fm_switch
                                             fm_virtualNetwork *vn,
                                             fm_vnAddress *     baseAddr,
                                             fm_vnAddress *     addrMask);
+    fm_status (*GetVNRemoteAddressList)(fm_int             sw,
+                                        fm_virtualNetwork *vn,
+                                        fm_int             maxAddresses,
+                                        fm_int *           numAddresses,
+                                        fm_vnAddress *     addrList,
+                                        fm_int *           tunnelIdList);
+    fm_status (*GetVNRemoteAddressFirst)(fm_int             sw,
+                                         fm_virtualNetwork *vn,
+                                         fm_voidptr *       searchToken,
+                                         fm_vnAddress *     addr,
+                                         fm_int *           tunnelId);
+    fm_status (*GetVNRemoteAddressNext)(fm_int             sw,
+                                        fm_virtualNetwork *vn,
+                                        fm_voidptr *       searchToken,
+                                        fm_vnAddress *     addr,
+                                        fm_int *           tunnelId);
+    fm_status (*GetVNRemoteAddressMaskList)(fm_int             sw,
+                                            fm_virtualNetwork *vn,
+                                            fm_int             maxAddrMasks,
+                                            fm_int *           numAddrMasks,
+                                            fm_vnAddress *     addrList,
+                                            fm_vnAddress *     addrMaskList,
+                                            fm_int *           tunnelIdList);
+    fm_status (*GetVNRemoteAddressMaskFirst)(fm_int             sw,
+                                             fm_virtualNetwork *vn,
+                                             fm_voidptr *       searchToken,
+                                             fm_vnAddress *     addr,
+                                             fm_vnAddress *     addrMask,
+                                             fm_int *           tunnelId);
+    fm_status (*GetVNRemoteAddressMaskNext)(fm_int             sw,
+                                            fm_virtualNetwork *vn,
+                                            fm_voidptr *       searchToken,
+                                            fm_vnAddress *     addr,
+                                            fm_vnAddress *     addrMask,
+                                            fm_int *           tunnelId);
     fm_status  (*ConfigureVN)(fm_int sw, fm_vnConfiguration *config);
+    fm_status  (*GetVNConfiguration)(fm_int sw, fm_vnConfiguration *config);
     fm_status  (*FreeVNResources)(fm_int sw);
     fm_status  (*AddVNLocalPort)(fm_int             sw,
                                  fm_virtualNetwork *vn,
@@ -2211,12 +2208,38 @@ struct _fm_switch
     fm_status  (*DeleteVNLocalPort)(fm_int             sw,
                                     fm_virtualNetwork *vn,
                                     fm_int             port);
+    fm_status (*GetVNLocalPortList)(fm_int             sw,
+                                    fm_virtualNetwork *vn,
+                                    fm_int             maxPorts,
+                                    fm_int *           numPorts,
+                                    fm_int *           portList);
+    fm_status (*GetVNLocalPortFirst)(fm_int                 sw,
+                                     fm_virtualNetwork *    vn,
+                                     fm_mcastGroupListener *searchToken,
+                                     fm_int *               port);
+    fm_status (*GetVNLocalPortNext)(fm_int                 sw,
+                                    fm_virtualNetwork *    vn,
+                                    fm_mcastGroupListener *searchToken,
+                                    fm_int *               port);
     fm_status  (*AddVNVsi)(fm_int             sw,
                            fm_virtualNetwork *vn,
                            fm_int             vsi);
     fm_status  (*DeleteVNVsi)(fm_int             sw,
                               fm_virtualNetwork *vn,
                               fm_int             vsi);
+    fm_status (*GetVNVsiList)(fm_int    sw,
+                              fm_uint32 vni,
+                              fm_int    maxVsis,
+                              fm_int *  numVsis,
+                              fm_int *  vsiList);
+    fm_status (*GetVNVsiFirst)(fm_int    sw,
+                               fm_uint32 vni,
+                               fm_int *  searchToken,
+                               fm_int *  vsi);
+    fm_status (*GetVNVsiNext)(fm_int    sw,
+                              fm_uint32 vni,
+                              fm_int *  searchToken,
+                              fm_int *  vsi);
     fm_status  (*DbgDumpVN)(fm_int sw);
     fm_status  (*DbgDumpVirtualNetwork)(fm_int sw,
                                         fm_uint32 vni);

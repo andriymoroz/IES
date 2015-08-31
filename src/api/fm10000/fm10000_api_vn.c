@@ -1,9 +1,9 @@
 /* vim:ts=4:sw=4:expandtab
  * (No tabs, indent level is 4 spaces) */
 /*****************************************************************************
- * File: fm10000_api_vn.c
- * Creation Date: Mar. 4, 2014
- * Description: Virtual Network Services
+ * File:            fm10000_api_vn.c
+ * Creation Date:   Mar 4, 2014
+ * Description:     Virtual Network Services
  *
  * Copyright (c) 2014 - 2015, Intel Corporation
  *
@@ -29,7 +29,7 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
+ *****************************************************************************/
 
 #include <fm_sdk_fm10000_int.h>
 
@@ -39,7 +39,6 @@
  *****************************************************************************/
 #define ENCAP_TUNNEL                    0
 #define DECAP_TUNNEL                    1
-#define DEFAULT_ENCAP_TOS               0
 #define BASE_ENCAP_ACL_RULE             1
 #define BASE_FLOODSET_ENCAP_ACL_RULE    200000
 #define BASE_DECAP_ACL_RULE             1
@@ -191,7 +190,7 @@ static void FreeRemoteAddressRecord(void *key, void *record)
  * \return          The TE checksum action.
  *
  *****************************************************************************/
-fm_fm10000TeChecksumAction TranslateChecksumAction(fm_vnChecksumAction vnChksumAction)
+static fm_fm10000TeChecksumAction TranslateChecksumAction(fm_vnChecksumAction vnChksumAction)
 {
     fm_fm10000TeChecksumAction teChksumAction;
 
@@ -221,6 +220,51 @@ fm_fm10000TeChecksumAction TranslateChecksumAction(fm_vnChecksumAction vnChksumA
     return teChksumAction;
 
 }   /* end TranslateChecksumAction */
+
+
+
+
+/*****************************************************************************/
+/** TranslateTeChecksumAction
+ * \ingroup intVN
+ *
+ * \desc            Translates a TE checksum action into a VN checksum action.
+ *
+ * \param[in]       teChksumAction is the TE checksum action.
+ *
+ * \return          The VN checksum action.
+ *
+ *****************************************************************************/
+static fm_vnChecksumAction TranslateTeChecksumAction(fm_fm10000TeChecksumAction teChksumAction)
+{
+    fm_vnChecksumAction vnChksumAction;
+
+    switch (teChksumAction)
+    {
+        case FM_FM10000_TE_CHECKSUM_TRAP:
+            vnChksumAction = FM_VN_CHECKSUM_TRAP;
+            break;
+
+        case FM_FM10000_TE_CHECKSUM_ZERO:
+            vnChksumAction = FM_VN_CHECKSUM_ZERO;
+            break;
+
+        case FM_FM10000_TE_CHECKSUM_COMPUTE:
+            vnChksumAction = FM_VN_CHECKSUM_COMPUTE;
+            break;
+
+        case FM_FM10000_TE_CHECKSUM_HEADER:
+            vnChksumAction = FM_VN_CHECKSUM_HEADER;
+            break;
+
+        default:
+            vnChksumAction = FM_VN_CHECKSUM_MAX;
+            break;
+    }
+
+    return vnChksumAction;
+
+}   /* end TranslateTeChecksumAction */
 
 
 
@@ -960,115 +1004,6 @@ static fm_status GetTunnelGroupParams(fm_int          sw,
 
 
 /*****************************************************************************/
-/** WriteGlobalTunnelConfig
- * \ingroup intVN
- *
- * \desc            Writes the global tunnel configuration to the hardware.
- *
- * \param[in]       sw is the switch number.
- *
- * \return          FM_OK if successful.
- *
- *****************************************************************************/
-static fm_status WriteGlobalTunnelConfig(fm_int sw)
-{
-    fm_status               status;
-    fm_switch *             switchPtr;
-    fm10000_switch *        switchExt;
-    fm_fm10000TeTunnelCfg   tunnelCfg;
-    fm_uint32               tunnelCfgFieldSelectMask;
-    fm_fm10000TeGlortCfg    glortCfg;
-    fm_uint32               glortCfgFieldSelectMask;
-    fm_fm10000TeParserCfg   parserCfg;
-    fm_uint32               parserCfgFieldSelectMask;
-    fm_uint32               routeUpdateFields;
-
-    FM_LOG_ENTRY(FM_LOG_CAT_VN, "sw = %d\n", sw);
-
-    switchPtr = GET_SWITCH_PTR(sw);
-    switchExt = GET_SWITCH_EXT(sw);
-
-    /* Configure Encapsulation and Decapsulation Tunneling Engines. */
-    FM_CLEAR(tunnelCfg);
-    FM_CLEAR(glortCfg);
-    FM_CLEAR(parserCfg);
-
-    tunnelCfgFieldSelectMask = FM10000_TE_DEFAULT_TUNNEL_ALL;
-    tunnelCfg.l4DstVxLan     = switchExt->vnVxlanUdpPort;
-    tunnelCfg.l4DstNge       = switchExt->vnGeneveUdpPort;
-    tunnelCfg.ttl            = switchExt->vnOuterTTL;
-    tunnelCfg.tos            = DEFAULT_ENCAP_TOS;
-    tunnelCfg.deriveOuterTOS = TRUE;
-    tunnelCfg.ngeMask        = 0;
-    tunnelCfg.ngeTime        = FALSE;
-    tunnelCfg.dmac           = switchPtr->physicalRouterMac;
-    tunnelCfg.smac           = switchPtr->physicalRouterMac;
-    tunnelCfg.encapProtocol  = switchExt->vnEncapProtocol;
-    tunnelCfg.encapVersion   = switchExt->vnEncapVersion;
-    glortCfgFieldSelectMask  = FM10000_TE_DEFAULT_GLORT_ENCAP_DGLORT
-                                | FM10000_TE_DEFAULT_GLORT_DECAP_DGLORT;
-    parserCfgFieldSelectMask = FM10000_TE_PARSER_VXLAN_PORT
-                                | FM10000_TE_PARSER_NGE_PORT;
-    parserCfg.vxLanPort      = switchExt->vnVxlanUdpPort;
-    parserCfg.ngePort        = switchExt->vnGeneveUdpPort;
-    routeUpdateFields        = 0;
-
-    status = fm10000SetTeDefaultTunnel(sw,
-                                       ENCAP_TUNNEL,
-                                       &tunnelCfg,
-                                       tunnelCfgFieldSelectMask,
-                                       TRUE);
-    FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_VN, status);
-
-    status = fm10000SetTeDefaultGlort(sw,
-                                      ENCAP_TUNNEL,
-                                      &glortCfg,
-                                      glortCfgFieldSelectMask,
-                                      TRUE);
-    FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_VN, status);
-
-    status = fm10000SetTeParser(sw,
-                                ENCAP_TUNNEL,
-                                &parserCfg,
-                                parserCfgFieldSelectMask,
-                                TRUE);
-    FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_VN, status);
-
-    status = fm10000SetTeDefaultTunnel(sw,
-                                       DECAP_TUNNEL,
-                                       &tunnelCfg,
-                                       tunnelCfgFieldSelectMask,
-                                       TRUE);
-    FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_VN, status);
-
-    status = fm10000SetTeDefaultGlort(sw,
-                                      DECAP_TUNNEL,
-                                      &glortCfg,
-                                      glortCfgFieldSelectMask,
-                                      TRUE);
-    FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_VN, status);
-
-    status = fm10000SetTeParser(sw,
-                                DECAP_TUNNEL,
-                                &parserCfg,
-                                parserCfgFieldSelectMask,
-                                TRUE);
-    FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_VN, status);
-
-    status = fmSetPortAttributeInternal(sw,
-                                        switchExt->tunnelCfg->tunnelPort[ENCAP_TUNNEL],
-                                        FM_PORT_ROUTED_FRAME_UPDATE_FIELDS,
-                                        &routeUpdateFields);
-    FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_VN, status);
-
-    FM_LOG_EXIT(FM_LOG_CAT_VN, FM_OK);
-
-}   /* end WriteGlobalTunnelConfig */
-
-
-
-
-/*****************************************************************************/
 /** InitializeVNSubsystem
  * \ingroup intVN
  *
@@ -1267,10 +1202,6 @@ static fm_status InitializeVNSubsystem(fm_int sw)
                             | FM_ACL_SCENARIO_UCAST_ROUTED_GLORT,
                             FM_ACL_DEFAULT_PRECEDENCE,
                             TRUE);
-    FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_VN, status);
-
-    /* Configure Global Encapsulation and Decapsulation Tunneling Engines. */
-    status = WriteGlobalTunnelConfig(sw);
     FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_VN, status);
 
     /* Create Decap ACL Rule Tree. */
@@ -4643,32 +4574,6 @@ fm_status fm10000GetVNTunnelGroupAndRule(fm_int              sw,
 
 
 /*****************************************************************************/
-/** fm10000UpdateTunnelUdpPort
- * \ingroup intVN
- *
- * \desc            Updates the UDP port number used for VXLAN or Geneve traffic.
- *
- * \param[in]       sw is the switch on which to operate.
- *
- * \return          FM_OK if successful.
- *
- *****************************************************************************/
-fm_status fm10000UpdateTunnelUdpPort(fm_int sw)
-{
-    fm_status status;
-
-    FM_LOG_ENTRY(FM_LOG_CAT_VN, "sw = %d\n", sw);
-
-    status = WriteGlobalTunnelConfig(sw);
-
-    FM_LOG_EXIT(FM_LOG_CAT_VN, status);
-
-}   /* end fm10000UpdateTunnelUdpPort */
-
-
-
-
-/*****************************************************************************/
 /** fm10000AddVNRemoteAddress
  * \ingroup intVN
  *
@@ -5924,7 +5829,535 @@ ABORT:
 
 
 /*****************************************************************************/
-/** fmConfigureVN
+/** fm10000GetVNRemoteAddressList
+ * \ingroup intVN
+ *
+ * \desc            Returns a list of remote addresses of a virtual network.
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \param[in]       vn is the Virtual Network record.
+ *
+ * \param[in]       maxAddresses is the size of addrList and tunnelIdList,
+ *                  being the maximum number of remote addresses that can be
+ *                  contained inside these arrays.
+ *
+ * \param[out]      numAddresses points to caller-provided storage into which
+ *                  will be stored the number of remote addresses stored in
+ *                  addrList and tunnelIdList.
+ *
+ * \param[out]      addrList is an array, maxAddresses elements in length,
+ *                  that this function will fill with remote addresses.
+ *
+ * \param[out]      tunnelIdList is an array, maxAddresses elements in length,
+ *                  that this function will fill with tunnel IDs for each
+ *                  remote address returned in addrList.
+ *
+ * \return          FM_OK if successful.
+ * \return          FM_ERR_BUFFER_FULL if maxAddresses was too small
+ *                  to accommodate the entire list of remote addresses.
+ *
+ *****************************************************************************/
+fm_status fm10000GetVNRemoteAddressList(fm_int             sw,
+                                        fm_virtualNetwork *vn,
+                                        fm_int             maxAddresses,
+                                        fm_int *           numAddresses,
+                                        fm_vnAddress *     addrList,
+                                        fm_int *           tunnelIdList)
+{
+    fm_status                status;
+    fm10000_virtualNetwork * vnExt;
+    fm_customTreeIterator    iter;
+    fm10000_vnRemoteAddress *addrKey;
+    fm10000_vnRemoteAddress *addrRec;
+	fm_int                   i;
+
+    FM_LOG_ENTRY( FM_LOG_CAT_VN,
+                  "sw = %d, vn = %p, maxAddresses = %d, numAddresses = %p, "
+                  "addrList = %p, tunnelIdList = %p\n",
+                  sw,
+                  (void *) vn,
+                  maxAddresses,
+                  (void *) numAddresses,
+                  (void *) addrList,
+                  (void *) tunnelIdList );
+
+    vnExt = vn->extension;
+    i = 0;
+
+    fmCustomTreeIterInit(&iter, &vnExt->remoteAddresses);
+
+    while (1)
+    {
+        status = fmCustomTreeIterNext(&iter,
+                                      (void **) &addrKey,
+                                      (void **) &addrRec);
+
+        if (status == FM_ERR_NO_MORE)
+        {
+            status = FM_OK;
+            break;
+        }
+
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_VN, status);
+
+        if (i >= maxAddresses)
+        {
+            status = FM_ERR_BUFFER_FULL;
+            break;
+        }
+
+        tunnelIdList[i] = addrRec->tunnel->tunnelId;
+        addrList[i]     = addrRec->remoteAddress;
+
+        i++;
+    }
+
+ABORT:
+
+    *numAddresses = i;
+
+    FM_LOG_EXIT(FM_LOG_CAT_VN, status);
+
+}   /* end fm10000GetVNRemoteAddressList */
+
+
+
+
+/*****************************************************************************/
+/** fm10000GetVNRemoteAddressFirst
+ * \ingroup intVN
+ *
+ * \desc            Gets the first remote address of a virtual network.
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \param[in]       vn is the Virtual Network record.
+ *
+ * \param[out]      searchToken points to caller-allocated storage of type
+ *                  fm_voidptr, where this function will store a token
+ *                  to be used in a subsequent call to
+ *                  ''fm10000GetVNRemoteAddressNext''.
+ *
+ * \param[out]      addr points to caller-provided storage into which the
+ *                  function will write the first remote address.
+ *
+ * \param[out]      tunnelId points to caller-provided storage into which
+ *                  the tunnel ID of the remote address will be written.
+ *
+ * \return          FM_OK if successful.
+ * \return          FM_ERR_NO_MORE if there are no remote addresses.
+ *
+ *****************************************************************************/
+fm_status fm10000GetVNRemoteAddressFirst(fm_int             sw,
+                                         fm_virtualNetwork *vn,
+                                         fm_voidptr *       searchToken,
+                                         fm_vnAddress *     addr,
+                                         fm_int *           tunnelId)
+{
+    fm_status                status;
+    fm10000_virtualNetwork * vnExt;
+    fm_customTreeIterator    iter;
+    fm10000_vnRemoteAddress *addrKey;
+    fm10000_vnRemoteAddress *addrRec;
+
+    FM_LOG_ENTRY( FM_LOG_CAT_VN,
+                  "sw = %d, vn = %p, searchToken = %p, addr = %p, "
+                  "tunnelId = %p\n",
+                  sw,
+                  (void *) vn,
+                  (void *) searchToken,
+                  (void *) addr,
+                  (void *) tunnelId );
+
+    vnExt = vn->extension;
+
+    fmCustomTreeIterInit(&iter, &vnExt->remoteAddresses);
+
+    status = fmCustomTreeIterNext(&iter,
+                                  (void **) &addrKey,
+                                  (void **) &addrRec);
+    FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_VN, status);
+
+    *tunnelId = addrRec->tunnel->tunnelId;
+    *addr     = addrRec->remoteAddress;
+
+    *searchToken = (fm_voidptr) addrKey;
+
+    FM_LOG_EXIT(FM_LOG_CAT_VN, status);
+
+}   /* end fm10000GetVNRemoteAddressFirst */
+
+
+
+
+/*****************************************************************************/
+/** fm10000GetVNRemoteAddressNext
+ * \ingroup intVN
+ *
+ * \desc            Gets the next remote address of a virtual network.
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \param[in]       vn is the Virtual Network record.
+ *
+ * \param[in,out]   searchToken points to caller-allocated storage of type
+ *                  fm_voidptr that has been filled in by a prior call to
+ *                  this function or to ''fm10000GetVNRemoteAddressFirst''.
+ *                  It will be updated by this function with a new value
+ *                  to be used in a subsequent call to this function.
+ *
+ * \param[out]      addr points to caller-provided storage into which the
+ *                  function will write the next remote address.
+ *
+ * \param[out]      tunnelId points to caller-provided storage into which
+ *                  the tunnel ID of the remote address will be written.
+ *
+ * \return          FM_OK if successful.
+ * \return          FM_ERR_NOT_FOUND if searchToken is invalid.
+ * \return          FM_ERR_NO_MORE if there are no more remote addresses.
+ *
+ *****************************************************************************/
+fm_status fm10000GetVNRemoteAddressNext(fm_int             sw,
+                                        fm_virtualNetwork *vn,
+                                        fm_voidptr *       searchToken,
+                                        fm_vnAddress *     addr,
+                                        fm_int *           tunnelId)
+{
+    fm_status                status;
+    fm10000_virtualNetwork * vnExt;
+    fm_customTreeIterator    iter;
+    fm10000_vnRemoteAddress *addrKey;
+    fm10000_vnRemoteAddress *addrRec;
+
+    FM_LOG_ENTRY( FM_LOG_CAT_VN,
+                  "sw = %d, vn = %p, searchToken = %p, addr = %p, "
+                  "tunnelId = %p\n",
+                  sw,
+                  (void *) vn,
+                  (void *) searchToken,
+                  (void *) addr,
+                  (void *) tunnelId );
+
+    vnExt = vn->extension;
+
+    addrKey = (fm10000_vnRemoteAddress *) *searchToken;
+
+    status = fmCustomTreeIterInitFromKey(&iter,
+                                         &vnExt->remoteAddresses,
+                                         (void *) addrKey);
+    FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_VN, status);
+
+    /* Get the previous record */
+    status = fmCustomTreeIterNext(&iter,
+                                  (void **) &addrKey,
+                                  (void **) &addrRec);
+    FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_VN, status);
+
+    /* Get the next record */
+    status = fmCustomTreeIterNext(&iter,
+                                  (void **) &addrKey,
+                                  (void **) &addrRec);
+    FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_VN, status);
+
+    *tunnelId = addrRec->tunnel->tunnelId;
+    *addr     = addrRec->remoteAddress;
+
+    *searchToken = (fm_voidptr) addrKey;
+
+    FM_LOG_EXIT(FM_LOG_CAT_VN, status);
+
+}   /* end fm10000GetVNRemoteAddressNext */
+
+
+
+
+/*****************************************************************************/
+/** fm10000GetVNRemoteAddressMaskList
+ * \ingroup intVN
+ *
+ * \desc            Returns a list of remote address masks of a virtual
+ *                  network.
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \param[in]       vn is the Virtual Network record.
+ *
+ * \param[in]       maxAddrMasks is the size of addrList, addrMaskList
+ *                  and tunnelIdList, being the maximum number of remote
+ *                  address masks that can be contained inside these arrays.
+ *
+ * \param[out]      numAddrMasks points to caller-provided storage into which
+ *                  will be stored the number of remote address masks stored
+ *                  in baseAddrList, addrMaskList and tunnelIdList.
+ *
+ * \param[out]      addrList is an array, maxAddrMasks elements in length,
+ *                  that this function will fill with addresses.
+ *
+ * \param[out]      addrMaskList is an array, maxAddrMasks elements in length,
+ *                  that this function will fill with bit-masks used with each address.
+ *
+ * \param[out]      tunnelIdList is an array, maxAddrMasks elements in length,
+ *                  that this function will fill with tunnel IDs for each
+ *                  address mask returned in addrList and addrMaskList.
+ *
+ * \return          FM_OK if successful.
+ * \return          FM_ERR_BUFFER_FULL if maxAddrMasks was too small
+ *                  to accommodate the entire list of remote address masks.
+ *
+ *****************************************************************************/
+fm_status fm10000GetVNRemoteAddressMaskList(fm_int             sw,
+                                            fm_virtualNetwork *vn,
+                                            fm_int             maxAddrMasks,
+                                            fm_int *           numAddrMasks,
+                                            fm_vnAddress *     addrList,
+                                            fm_vnAddress *     addrMaskList,
+                                            fm_int *           tunnelIdList)
+{
+    fm_status                    status;
+    fm10000_virtualNetwork *     vnExt;
+    fm_customTreeIterator        iter;
+    fm10000_vnRemoteAddressMask *ruleKey;
+    fm10000_vnRemoteAddressMask *addressMask;
+	fm_int                       i;
+
+    FM_LOG_ENTRY( FM_LOG_CAT_VN,
+                  "sw = %d, vn = %p, maxAddrMasks = %d, numAddrMasks = %p, "
+                  "addrList = %p, addrMaskList = %p, tunnelIdList = %p\n",
+                  sw,
+                  (void *) vn,
+                  maxAddrMasks,
+                  (void *) numAddrMasks,
+                  (void *) addrList,
+                  (void *) addrMaskList,
+                  (void *) tunnelIdList );
+
+    vnExt = vn->extension;
+    i = 0;
+
+    fmCustomTreeIterInit(&iter, &vnExt->addressMasks);
+
+    while (1)
+    {
+        status = fmCustomTreeIterNext(&iter,
+                                      (void **) &ruleKey,
+                                      (void **) &addressMask);
+
+        if (status == FM_ERR_NO_MORE)
+        {
+            status = FM_OK;
+            break;
+        }
+
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_VN, status);
+
+        if (i >= maxAddrMasks)
+        {
+            status = FM_ERR_BUFFER_FULL;
+            break;
+        }
+
+        if (addressMask->tunnel == NULL)
+        {
+            tunnelIdList[i] = -1;
+        }
+        else
+        {
+            tunnelIdList[i] = addressMask->tunnel->tunnelId;
+        }
+        addrList[i]     = addressMask->remoteAddress;
+        addrMaskList[i] = addressMask->addrMask;
+
+        i++;
+    }
+
+ABORT:
+
+    *numAddrMasks = i;
+
+    FM_LOG_EXIT(FM_LOG_CAT_VN, status);
+
+}   /* end fm10000GetVNRemoteAddressMaskList */
+
+
+
+
+/*****************************************************************************/
+/** fm10000GetVNRemoteAddressMaskFirst
+ * \ingroup intVN
+ *
+ * \desc            Gets the first remote address mask of a virtual network.
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \param[in]       vn is the Virtual Network record.
+ *
+ * \param[out]      searchToken points to caller-allocated storage of type
+ *                  fm_voidptr, where this function will store a token
+ *                  to be used in a subsequent call to
+ *                  ''fm10000GetVNRemoteAddressMaskNext''.
+ *
+ * \param[out]      addr points to caller-provided storage into which the
+ *                  function will write the first address.
+ *
+ * \param[out]      addrMask points to caller-provided storage into which the
+ *                  function will write the bit-mask used with the address.
+ *
+ * \param[out]      tunnelId points to caller-provided storage into which
+ *                  the tunnel ID for the address mask will be written.
+ *
+ * \return          FM_OK if successful.
+ * \return          FM_ERR_NO_MORE if there are no remote address masks.
+ *
+ *****************************************************************************/
+fm_status fm10000GetVNRemoteAddressMaskFirst(fm_int             sw,
+                                             fm_virtualNetwork *vn,
+                                             fm_voidptr *       searchToken,
+                                             fm_vnAddress *     addr,
+                                             fm_vnAddress *     addrMask,
+                                             fm_int *           tunnelId)
+{
+    fm_status                    status;
+    fm10000_virtualNetwork *     vnExt;
+    fm_customTreeIterator        iter;
+    fm10000_vnRemoteAddressMask *ruleKey;
+    fm10000_vnRemoteAddressMask *addressMask;
+
+    FM_LOG_ENTRY( FM_LOG_CAT_VN,
+                  "sw = %d, vn = %p, searchToken = %p, addr = %p, "
+                  "addrMask = %p, tunnelId = %p\n",
+                  sw,
+                  (void *) vn,
+                  (void *) searchToken,
+                  (void *) addr,
+                  (void *) addrMask,
+                  (void *) tunnelId );
+
+    vnExt = vn->extension;
+
+    fmCustomTreeIterInit(&iter, &vnExt->addressMasks);
+
+        status = fmCustomTreeIterNext(&iter,
+                                      (void **) &ruleKey,
+                                      (void **) &addressMask);
+    FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_VN, status);
+
+    if (addressMask->tunnel == NULL)
+    {
+        *tunnelId = -1;
+    }
+    else
+    {
+        *tunnelId = addressMask->tunnel->tunnelId;
+    }
+    *addr     = addressMask->remoteAddress;
+    *addrMask = addressMask->addrMask;
+
+    *searchToken = (fm_voidptr) ruleKey;
+
+    FM_LOG_EXIT(FM_LOG_CAT_VN, status);
+
+}   /* end fm10000GetVNRemoteAddressMaskFirst */
+
+
+
+
+/*****************************************************************************/
+/** fm10000GetVNRemoteAddressMaskNext
+ * \ingroup intVN
+ *
+ * \desc            Gets the next remote address mask of a virtual network.
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \param[in]       vn is the Virtual Network record.
+ *
+ * \param[in,out]   searchToken points to caller-allocated storage of type
+ *                  fm_voidptr that has been filled in by a prior call to
+ *                  this function or to ''fm10000GetVNRemoteAddressMaskFirst''.
+ *                  It will be updated by this function with a new value
+ *                  to be used in a subsequent call to this function.
+ *
+ * \param[out]      addr points to caller-provided storage into which the
+ *                  function will write the next base address.
+ *
+ * \param[out]      addrMask points to caller-provided storage into which the
+ *                  function will write the bit-mask used with the address.
+ *
+ * \param[out]      tunnelId points to caller-provided storage into which
+ *                  the tunnel ID for the address mask will be written.
+ *
+ * \return          FM_OK if successful.
+ * \return          FM_ERR_NOT_FOUND if searchToken is invalid.
+ * \return          FM_ERR_NO_MORE if there are no more remote address masks.
+ *
+ *****************************************************************************/
+fm_status fm10000GetVNRemoteAddressMaskNext(fm_int             sw,
+                                            fm_virtualNetwork *vn,
+                                            fm_voidptr *       searchToken,
+                                            fm_vnAddress *     addr,
+                                            fm_vnAddress *     addrMask,
+                                            fm_int *           tunnelId)
+{
+    fm_status                    status;
+    fm10000_virtualNetwork *     vnExt;
+    fm_customTreeIterator        iter;
+    fm10000_vnRemoteAddressMask *ruleKey;
+    fm10000_vnRemoteAddressMask *addressMask;
+
+    FM_LOG_ENTRY( FM_LOG_CAT_VN,
+                  "sw = %d, vn = %p, searchToken = %p, addr = %p, "
+                  "addrMask = %p, tunnelId = %p\n",
+                  sw,
+                  (void *) vn,
+                  (void *) searchToken,
+                  (void *) addr,
+                  (void *) addrMask,
+                  (void *) tunnelId );
+
+    vnExt = vn->extension;
+
+    ruleKey = (fm10000_vnRemoteAddressMask *) *searchToken;
+
+    status = fmCustomTreeIterInitFromKey(&iter,
+                                         &vnExt->addressMasks,
+                                         (void *) ruleKey);
+    FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_VN, status);
+
+    /* Get the previous mask */
+    status = fmCustomTreeIterNext(&iter,
+                                  (void **) &ruleKey,
+                                  (void **) &addressMask);
+    FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_VN, status);
+
+    /* Get the next mask */
+    status = fmCustomTreeIterNext(&iter,
+                                  (void **) &ruleKey,
+                                  (void **) &addressMask);
+    FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_VN, status);
+
+    if (addressMask->tunnel == NULL)
+    {
+        *tunnelId = -1;
+    }
+    else
+    {
+        *tunnelId = addressMask->tunnel->tunnelId;
+    }
+    *addr     = addressMask->remoteAddress;
+    *addrMask = addressMask->addrMask;
+
+    *searchToken = (fm_voidptr) ruleKey;
+
+    FM_LOG_EXIT(FM_LOG_CAT_VN, status);
+
+}   /* end fm10000GetVNRemoteAddressMaskNext */
+
+
+
+
+/*****************************************************************************/
+/** fm10000ConfigureVN
  * \ingroup intVN
  *
  * \desc            Configures the Virtual Networking API.
@@ -5966,6 +6399,7 @@ fm_status fm10000ConfigureVN(fm_int sw, fm_vnConfiguration *config)
                                            &parserDiCfg);
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_VN, status);
     }
+    switchExt->vnDeepInspectionCfgIndex = config->deepInspectionCfgIndex;
 
     FM_CLEAR(chksumCfg);
 
@@ -6010,6 +6444,50 @@ ABORT:
     FM_LOG_EXIT(FM_LOG_CAT_VN, status);
 
 }   /* end fm10000ConfigureVN */
+
+
+
+
+/*****************************************************************************/
+/** fm10000GetVNConfiguration
+ * \ingroup intVN
+ *
+ * \desc            Retrieves the Virtual Networking API configuration.
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \param[out]      config points to caller-provided storage into which
+ *                  the Virtual Networking API configuration will be written.
+ *
+ * \return          FM_OK if successful.
+ *
+ *****************************************************************************/
+fm_status fm10000GetVNConfiguration(fm_int sw, fm_vnConfiguration *config)
+{
+    fm_status               status;
+    fm10000_switch *        switchExt;
+    fm_fm10000TeChecksumCfg chksumCfg;
+
+    FM_LOG_ENTRY(FM_LOG_CAT_VN, "sw = %d, config = %p\n", sw, (void *) config);
+
+    switchExt = GET_SWITCH_EXT(sw);
+	config->outerTTL = switchExt->vnOuterTTL;
+    config->deepInspectionCfgIndex = switchExt->vnDeepInspectionCfgIndex;
+
+    FM_CLEAR(chksumCfg);
+
+    status = fm10000GetTeChecksum(sw, ENCAP_TUNNEL, &chksumCfg, FALSE);
+    FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_VN, status);
+
+    config->nonIP     = TranslateTeChecksumAction(chksumCfg.notIp);
+    config->nonTcpUdp = TranslateTeChecksumAction(chksumCfg.notTcpOrUdp);
+    config->tcpOrUdp  = TranslateTeChecksumAction(chksumCfg.tcpOrUdp);
+
+    config->outerChecksumValidation = chksumCfg.verifDecapChecksum;
+
+    FM_LOG_EXIT(FM_LOG_CAT_VN, status);
+
+}   /* end fm10000GetVNConfiguration */
 
 
 
@@ -6312,6 +6790,232 @@ fm_status fm10000DeleteVNLocalPort(fm_int             sw,
 
 
 /*****************************************************************************/
+/** fm10000GetVNLocalPortList
+ * \ingroup intVN
+ *
+ * \desc            Returns a list of local port listeners in a virtual
+ *                  network's broadcast/flooding floodset listener list.
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \param[in]       vn is the Virtual Network record.
+ *
+ * \param[in]       maxPorts is the size of portList, being the maximum number
+ *                  of local ports that can be contained inside the array.
+ *
+ * \param[out]      numPorts points to caller-provided storage into which
+ *                  will be stored the number of local ports stored
+ *                  in portList.
+ *
+ * \param[out]      portList is an array, maxPorts elements in length,
+ *                  that this function will fill with logical port numbers
+ *                  for each local port.
+ *
+ * \return          FM_OK if successful.
+ * \return          FM_ERR_BUFFER_FULL if maxPorts was too small to accommodate
+ *                  the entire list of local ports.
+ *
+ *****************************************************************************/
+fm_status fm10000GetVNLocalPortList(fm_int             sw,
+                                    fm_virtualNetwork *vn,
+                                    fm_int             maxPorts,
+                                    fm_int *           numPorts,
+                                    fm_int *           portList)
+{
+    fm_status               status;
+    fm10000_virtualNetwork *vnExt;
+    fm_mcastGroupListener   listener;
+    fm_mcastGroupListener   prevListener;
+	fm_int                  i;
+
+    FM_LOG_ENTRY( FM_LOG_CAT_VN,
+                  "sw = %d, vn = %p, maxPorts = %d, numPorts = %p, "
+                  "portList = %p\n",
+                  sw,
+                  (void *) vn,
+                  maxPorts,
+                  (void *) numPorts,
+                  (void *) portList );
+
+    vnExt = vn->extension;
+    i = 0;
+
+    status = fmGetMcastGroupListenerFirstV2(sw,
+                                            vnExt->floodsetMcastGroup,
+                                            &listener);
+    while (status == FM_OK)
+    {
+        if (listener.listenerType == FM_MCAST_GROUP_LISTENER_PORT_VLAN)
+        {
+			if (i >= maxPorts)
+			{
+                status = FM_ERR_BUFFER_FULL;
+                break;
+			}
+
+            portList[i++] = listener.info.portVlanListener.port;
+        }
+
+        prevListener = listener;
+        status = fmGetMcastGroupListenerNextV2(sw,
+                                               vnExt->floodsetMcastGroup,
+                                               &prevListener,
+                                               &listener);
+    }
+
+    *numPorts = i;
+
+    if (status == FM_ERR_NO_MORE)
+    {
+        status = FM_OK;
+    }
+
+    FM_LOG_EXIT(FM_LOG_CAT_VN, status);
+
+}   /* end fm10000GetVNLocalPortList */
+
+
+
+
+/*****************************************************************************/
+/** fm10000GetVNLocalPortFirst
+ * \ingroup intVN
+ *
+ * \desc            Gets the first local port listener in a virtual network's
+ *                  broadcast/flooding floodset listener list.
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \param[in]       vn is the Virtual Network record.
+ *
+ * \param[out]      searchToken points to caller-allocated storage of type
+ *                  fm_mcastGroupListener, where this function will store
+ *                  a token to be used in a subsequent call to
+ *                  ''fm10000GetVNLocalPortNext''.
+ *
+ * \param[out]      port points to caller-provided storage into which the
+ *                  function will write the logical port number of the first
+ *                  local port.
+ *
+ * \return          FM_OK if successful.
+ * \return          FM_ERR_NO_MORE if there are no local ports.
+ *
+ *****************************************************************************/
+fm_status fm10000GetVNLocalPortFirst(fm_int                 sw,
+                                     fm_virtualNetwork *    vn,
+                                     fm_mcastGroupListener *searchToken,
+                                     fm_int *               port)
+{
+    fm_status               status;
+    fm10000_virtualNetwork *vnExt;
+    fm_mcastGroupListener   listener;
+
+    FM_LOG_ENTRY( FM_LOG_CAT_VN,
+                  "sw = %d, vn = %p, searchToken = %p, port = %p\n",
+                  sw,
+                  (void *) vn,
+                  (void *) searchToken,
+                  (void *) port );
+
+    vnExt = vn->extension;
+
+    status = fmGetMcastGroupListenerFirstV2(sw,
+                                            vnExt->floodsetMcastGroup,
+                                            &listener);
+    while (status == FM_OK)
+    {
+        *searchToken = listener;
+
+        if (listener.listenerType == FM_MCAST_GROUP_LISTENER_PORT_VLAN)
+        {
+            *port = listener.info.portVlanListener.port;
+			break;
+        }
+
+        status = fmGetMcastGroupListenerNextV2(sw,
+                                               vnExt->floodsetMcastGroup,
+                                               searchToken,
+                                               &listener);
+    }
+
+    FM_LOG_EXIT(FM_LOG_CAT_VN, status);
+
+}   /* end fm10000GetVNLocalPortFirst */
+
+
+
+
+/*****************************************************************************/
+/** fm10000GetVNLocalPortNext
+ * \ingroup intVN
+ *
+ * \desc            Gets the next local port listener in a virtual network's
+ *                  broadcast/flooding floodset listener list.
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \param[in]       vn is the Virtual Network record.
+ *
+ * \param[in,out]   searchToken points to caller-allocated storage of type
+ *                  fm_mcastGroupListener that has been filled in by a prior
+ *                  call to this function or to ''fm10000GetVNLocalPortFirst''.
+ *                  It will be updated by this function with a new value
+ *                  to be used in a subsequent call to this function.
+ *
+ * \param[out]      port points to caller-provided storage into which the
+ *                  function will write the logical port number of the next
+ *                  local port.
+ *
+ * \return          FM_OK if successful.
+ * \return          FM_ERR_NOT_FOUND if searchToken is invalid.
+ * \return          FM_ERR_NO_MORE if there are no more local ports.
+ *
+ *****************************************************************************/
+fm_status fm10000GetVNLocalPortNext(fm_int                 sw,
+                                    fm_virtualNetwork *    vn,
+                                    fm_mcastGroupListener *searchToken,
+                                    fm_int *               port)
+{
+    fm_status               status;
+    fm10000_virtualNetwork *vnExt;
+    fm_mcastGroupListener   listener;
+
+    FM_LOG_ENTRY( FM_LOG_CAT_VN,
+                  "sw = %d, vn = %p, searchToken = %p, port = %p\n",
+                  sw,
+                  (void *) vn,
+                  (void *) searchToken,
+                  (void *) port );
+
+    vnExt = vn->extension;
+
+    while (1)
+    {
+        status = fmGetMcastGroupListenerNextV2(sw,
+                                               vnExt->floodsetMcastGroup,
+                                               searchToken,
+                                               &listener);
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_VN, status);
+
+        *searchToken = listener;
+
+        if (listener.listenerType == FM_MCAST_GROUP_LISTENER_PORT_VLAN)
+        {
+            *port = listener.info.portVlanListener.port;
+			break;
+        }
+    }
+
+ABORT:
+
+    FM_LOG_EXIT(FM_LOG_CAT_VN, status);
+
+}   /* end fm10000GetVNLocalPortNext */
+
+
+
+
+/*****************************************************************************/
 /** fm10000AddVNVsi
  * \ingroup intVN
  *
@@ -6532,6 +7236,201 @@ fm_status fm10000DeleteVNVsi(fm_int             sw,
 
 
 /*****************************************************************************/
+/** fm10000GetVNVsiList
+ * \ingroup intVN
+ *
+ * \desc            Returns a list of VSIs in a virtual network.
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \param[in]       vni is the Virtual Network ID number.
+ *
+ * \param[in]       maxVsis is the size of vsiList, being the maximum number
+ *                  of VSI numbers that can be contained inside the array.
+ *
+ * \param[out]      numVsis points to caller-provided storage into which
+ *                  will be stored the number of VSIs stored in vsiList.
+ *
+ * \param[out]      vsiList is an array, maxVsis elements in length,
+ *                  that this function will fill with VSI numbers.
+ *
+ * \return          FM_OK if successful.
+ * \return          FM_ERR_BUFFER_FULL if maxVsis was too small to accommodate
+ *                  the entire list of VSIs.
+ *
+ *****************************************************************************/
+fm_status fm10000GetVNVsiList(fm_int    sw,
+                              fm_uint32 vni,
+                              fm_int    maxVsis,
+                              fm_int *  numVsis,
+                              fm_int *  vsiList)
+{
+    fm_status       status;
+    fm10000_switch *switchExt;
+	fm_int          vsi;
+    fm_int          i;
+
+    FM_LOG_ENTRY( FM_LOG_CAT_VN,
+                  "sw = %d, vni = %u, maxVsis = %d, numVsis = %p, vsiList = %p\n",
+                  sw, vni, maxVsis, (void *) numVsis, (void *) vsiList );
+
+    status = FM_OK;
+    switchExt = GET_SWITCH_EXT(sw);
+	i = 0;
+
+    for (vsi = 0; vsi < FM10000_TE_VNI_ENTRIES_0; vsi++)
+    {
+        if ( (switchExt->vnVsi[vsi] != NULL)
+             && (switchExt->vnVsi[vsi]->vsId == vni) )
+        {
+			if (i >= maxVsis)
+			{
+                status = FM_ERR_BUFFER_FULL;
+                break;
+			}
+
+            vsiList[i++] = vsi;
+        }
+    }
+
+    *numVsis = i;
+
+    FM_LOG_EXIT(FM_LOG_CAT_VN, status);
+
+}   /* end fm10000GetVNVsiList */
+
+
+
+
+/*****************************************************************************/
+/** fm10000GetVNVsiFirst
+ * \ingroup intVN
+ *
+ * \desc            Gets the first VSI in a virtual network.
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \param[in]       vni is the Virtual Network ID number.
+ *
+ * \param[out]      searchToken points to caller-allocated storage where this
+ *                  function will store a token to be used in a subsequent
+ *                  call to ''fm10000GetVNVsiNext''.
+ *
+ * \param[out]      vsi points to caller-provided storage into which the
+ *                  function will write the first VSI number.
+ *
+ * \return          FM_OK if successful.
+ * \return          FM_ERR_NO_MORE if there are no VSIs.
+ *
+ *****************************************************************************/
+fm_status fm10000GetVNVsiFirst(fm_int    sw,
+                               fm_uint32 vni,
+                               fm_int *  searchToken,
+                               fm_int *  vsi)
+{
+    fm_status       status;
+    fm10000_switch *switchExt;
+    fm_int          i;
+
+    FM_LOG_ENTRY( FM_LOG_CAT_VN,
+                  "sw = %d, vni = %u, searchToken = %p, vsi = %p\n",
+                  sw, vni, (void *) searchToken, (void *) vsi );
+
+    switchExt = GET_SWITCH_EXT(sw);
+
+    status = FM_ERR_NO_MORE;
+    for (i = 0; i < FM10000_TE_VNI_ENTRIES_0; i++)
+    {
+        if ( (switchExt->vnVsi[i] != NULL)
+             && (switchExt->vnVsi[i]->vsId == vni) )
+        {
+            *vsi = i;
+            status = FM_OK;
+			break;
+        }
+    }
+
+    *searchToken = i;
+
+    FM_LOG_EXIT(FM_LOG_CAT_VN, status);
+
+}   /* end fm10000GetVNVsiFirst */
+
+
+
+
+/*****************************************************************************/
+/** fm10000GetVNVsiNext
+ * \ingroup intVN
+ *
+ * \desc            Gets the next VSI in a virtual network.
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \param[in]       vni is the Virtual Network ID number.
+ *
+ * \param[in,out]   searchToken points to caller-allocated storage that has
+ *                  been filled in by a prior call to this function or to
+ *                  ''fm10000GetVNVsiFirst''. It will be updated by this
+ *                  function with a new value to be used in a subsequent call
+ *                  to this function.
+ *
+ * \param[out]      vsi points to caller-provided storage into which the
+ *                  function will write the next VSI number.
+ *
+ * \return          FM_OK if successful.
+ * \return          FM_ERR_NOT_FOUND if searchToken is invalid.
+ * \return          FM_ERR_NO_MORE if there are no more VSIs.
+ *
+ *****************************************************************************/
+fm_status fm10000GetVNVsiNext(fm_int    sw,
+                              fm_uint32 vni,
+                              fm_int *  searchToken,
+                              fm_int *  vsi)
+{
+    fm_status       status;
+    fm10000_switch *switchExt;
+    fm_int          i;
+
+    FM_LOG_ENTRY( FM_LOG_CAT_VN,
+                  "sw = %d, vni = %u, searchToken = %p, vsi = %p\n",
+                  sw, vni, (void *) searchToken, (void *) vsi );
+
+    switchExt = GET_SWITCH_EXT(sw);
+
+    if ((*searchToken < 0) || (*searchToken >= FM10000_TE_VNI_ENTRIES_0))
+    {
+        FM_LOG_EXIT(FM_LOG_CAT_VN, FM_ERR_NOT_FOUND);
+    }
+
+    status = FM_ERR_NO_MORE;
+
+	if (*searchToken == (FM10000_TE_VNI_ENTRIES_0 - 1))
+	{
+        FM_LOG_EXIT(FM_LOG_CAT_VN, status);
+	}
+
+    for (i = (*searchToken + 1); i < FM10000_TE_VNI_ENTRIES_0; i++)
+    {
+        if ( (switchExt->vnVsi[i] != NULL)
+             && (switchExt->vnVsi[i]->vsId == vni) )
+        {
+            *vsi = i;
+            status = FM_OK;
+			break;
+        }
+    }
+
+    *searchToken = i;
+
+    FM_LOG_EXIT(FM_LOG_CAT_VN, status);
+
+}   /* end fm10000GetVNVsiNext */
+
+
+
+
+/*****************************************************************************/
 /** fm10000IsVNTunnelInUseByACLs
  * \ingroup intAcl
  *
@@ -6730,8 +7629,6 @@ fm_status fm10000FreeVNResources(fm_int sw)
 /** fm10000DbgDumpVN
  * \ingroup intDebug
  *
- * \chips           FM10000
- *
  * \desc            Display the virtual networks status of a switch
  *
  * \param[in]       sw is the switch on which to operate.
@@ -6863,8 +7760,6 @@ fm_status fm10000DbgDumpVN(fm_int sw)
 /*****************************************************************************/
 /** fm10000DbgDumpVirtualNetwork
  * \ingroup intDebug
- *
- * \chips           FM10000
  *
  * \desc            Display a virtual network status
  *
@@ -7158,8 +8053,6 @@ fm_status fm10000DbgDumpVirtualNetwork(fm_int sw, fm_uint32 vni)
 /*****************************************************************************/
 /** fm10000DbgDumpVNTunnel
  * \ingroup intDebug
- *
- * \chips           FM10000
  *
  * \desc            Display a virtual network tunnel status
  *

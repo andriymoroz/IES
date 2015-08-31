@@ -248,6 +248,9 @@ typedef struct _fm_fm10000TunnelCfg
     /**  Logical Port associated to each TE, -1 if none associated */
     fm_int                     tunnelPort[FM10000_TE_DGLORT_MAP_ENTRIES_1];
 
+    /**  The tunnel engine's protocol mode */
+    fm_teMode                  tunnelMode[FM10000_NUM_TE];
+
 } fm_fm10000TunnelCfg;
 
 
@@ -369,6 +372,13 @@ fm_status fm10000GetTunnelAttribute(fm_int sw,
                                     fm_int rule,
                                     fm_int attr,
                                     void * value);
+
+fm_status fm10000SetTunnelApiAttribute(fm_int sw,
+                                       fm_int attr,
+                                       void * value);
+fm_status fm10000GetTunnelApiAttribute(fm_int sw,
+                                       fm_int attr,
+                                       void * value);
 
 fm_status fm10000DbgDumpTunnel(fm_int sw);
 

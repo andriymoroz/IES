@@ -465,10 +465,7 @@ static fm_status GetVNList(fm_int           sw,
 
 ABORT:
 
-    if (numVNs != NULL)
-    {
-        *numVNs = curVN;
-    }
+    *numVNs = curVN;
 
     FM_LOG_EXIT(FM_LOG_CAT_VN, status);
 
@@ -553,10 +550,7 @@ static fm_status GetVNTunnelList(fm_int  sw,
 
 ABORT:
 
-    if (numTunnels != NULL)
-    {
-        *numTunnels = index;
-    }
+    *numTunnels = index;
 
     FM_LOG_EXIT(FM_LOG_CAT_VN, status);
 
@@ -717,6 +711,11 @@ ABORT:
             if (addedToTree)
             {
                 fmTreeRemoveCertain(&switchPtr->virtualNetworks, vsId, NULL);
+
+                if ( descriptor->internalId != (fm_uint) ~0 )
+                {
+                    switchPtr->vnInternalIds[descriptor->internalId] = NULL;
+                }
             }
 
             fmFree(vn);
@@ -3237,6 +3236,710 @@ ABORT:
 
 
 /*****************************************************************************/
+/** fmGetVNRemoteAddressList
+ * \ingroup virtualNetwork
+ *
+ * \chips           FM10000
+ *
+ * \desc            Returns a list of remote addresses of a virtual network.
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \param[in]       vni is the Virtual Network ID number.
+ *
+ * \param[in]       maxAddresses is the size of addrList and tunnelIdList,
+ *                  being the maximum number of remote addresses that can be
+ *                  contained inside these arrays.
+ *
+ * \param[out]      numAddresses points to caller-provided storage into which
+ *                  will be stored the number of remote addresses stored in
+ *                  addrList and tunnelIdList.
+ *
+ * \param[out]      addrList is an array, maxAddresses elements in length,
+ *                  that this function will fill with remote addresses.
+ *
+ * \param[out]      tunnelIdList is an array, maxAddresses elements in length,
+ *                  that this function will fill with tunnel IDs for each
+ *                  remote address returned in addrList.
+ *
+ * \return          FM_OK if successful.
+ * \return          FM_ERR_INVALID_SWITCH if sw is invalid.
+ * \return          FM_ERR_INVALID_ARGUMENT if maxAddresses is <= 0, vni is not
+ *                  a valid virtual network ID, or either of the pointer
+ *                  arguments is NULL.
+ * \return          FM_ERR_UNSUPPORTED if virtual networks are not supported.
+ * \return          FM_ERR_BUFFER_FULL if maxAddresses was too small
+ *                  to accommodate the entire list of remote addresses.
+ *
+ *****************************************************************************/
+fm_status fmGetVNRemoteAddressList(fm_int        sw,
+                                   fm_uint32     vni,
+                                   fm_int        maxAddresses,
+                                   fm_int *      numAddresses,
+                                   fm_vnAddress *addrList,
+                                   fm_int *      tunnelIdList)
+{
+    fm_switch *        switchPtr;
+    fm_status          status;
+    fm_bool            lockTaken;
+    fm_virtualNetwork *vn;
+
+    FM_LOG_ENTRY_API( FM_LOG_CAT_VN,
+                      "sw = %d, vni = %u, maxAddresses = %d, numAddresses = %p, "
+                      "addrList = %p, tunnelIdList = %p\n",
+                      sw,
+                      vni,
+                      maxAddresses,
+                      (void *) numAddresses,
+                      (void *) addrList,
+                      (void *) tunnelIdList );
+
+    VALIDATE_AND_PROTECT_SWITCH(sw);
+
+    switchPtr = GET_SWITCH_PTR(sw);
+    lockTaken = FALSE;
+
+    if (switchPtr->maxVNTunnels <= 0)
+    {
+        status = FM_ERR_UNSUPPORTED;
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_VN, status);
+    }
+
+    if ( (maxAddresses <= 0) || (numAddresses == NULL) ||
+         (addrList == NULL) || (tunnelIdList == NULL) )
+    {
+        status = FM_ERR_INVALID_ARGUMENT;
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_VN, status);
+    }
+
+    status = fmCaptureReadLock(&switchPtr->routingLock, FM_WAIT_FOREVER);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_VN, status);
+
+    lockTaken = TRUE;
+
+    /* Get the VN record */
+    vn = fmGetVN(sw, vni);
+
+    if (vn == NULL)
+    {
+        /* VN doesn't exist */
+        status = FM_ERR_INVALID_ARGUMENT;
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_VN, status);
+    }
+
+    FM_API_CALL_FAMILY(status,
+                       switchPtr->GetVNRemoteAddressList,
+                       sw,
+                       vn,
+                       maxAddresses,
+                       numAddresses,
+                       addrList,
+                       tunnelIdList);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_VN, status);
+
+ABORT:
+
+    if (lockTaken)
+    {
+        fmReleaseReadLock(&switchPtr->routingLock);
+    }
+
+    UNPROTECT_SWITCH(sw);
+
+    FM_LOG_EXIT_API(FM_LOG_CAT_VN, status);
+
+}   /* end fmGetVNRemoteAddressList */
+
+
+
+
+/*****************************************************************************/
+/** fmGetVNRemoteAddressFirst
+ * \ingroup virtualNetwork
+ *
+ * \chips           FM10000
+ *
+ * \desc            Gets the first remote address of a virtual network.
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \param[in]       vni is the Virtual Network ID number.
+ *
+ * \param[out]      searchToken points to caller-allocated storage of type
+ *                  fm_voidptr, where this function will store a token
+ *                  to be used in a subsequent call to
+ *                  ''fmGetVNRemoteAddressNext''.
+ *
+ * \param[out]      addr points to caller-provided storage into which the
+ *                  function will write the first remote address.
+ *
+ * \param[out]      tunnelId points to caller-provided storage into which
+ *                  the tunnel ID of the remote address will be written.
+ *
+ * \return          FM_OK if successful.
+ * \return          FM_ERR_INVALID_SWITCH if sw is invalid.
+ * \return          FM_ERR_INVALID_ARGUMENT if vni is not a valid virtual
+ *                  network ID, or either of the pointer arguments is NULL.
+ * \return          FM_ERR_UNSUPPORTED if virtual networks are not supported.
+ * \return          FM_ERR_NO_MORE if there are no remote addresses.
+ *
+ *****************************************************************************/
+fm_status fmGetVNRemoteAddressFirst(fm_int        sw,
+                                    fm_uint32     vni,
+                                    fm_voidptr *  searchToken,
+                                    fm_vnAddress *addr,
+                                    fm_int *      tunnelId)
+{
+    fm_switch *        switchPtr;
+    fm_status          status;
+    fm_bool            lockTaken;
+    fm_virtualNetwork *vn;
+
+    FM_LOG_ENTRY_API( FM_LOG_CAT_VN,
+                      "sw = %d, vni = %u, searchToken = %p, addr = %p, tunnelId = %p\n",
+                      sw,
+                      vni,
+                      (void *) searchToken,
+                      (void *) addr,
+                      (void *) tunnelId );
+
+    VALIDATE_AND_PROTECT_SWITCH(sw);
+
+    switchPtr = GET_SWITCH_PTR(sw);
+    lockTaken = FALSE;
+
+    if (switchPtr->maxVNTunnels <= 0)
+    {
+        status = FM_ERR_UNSUPPORTED;
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_VN, status);
+    }
+
+    if ( (searchToken == NULL) || (addr == NULL) || (tunnelId == NULL) )
+    {
+        status = FM_ERR_INVALID_ARGUMENT;
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_VN, status);
+    }
+
+    status = fmCaptureReadLock(&switchPtr->routingLock, FM_WAIT_FOREVER);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_VN, status);
+
+    lockTaken = TRUE;
+
+    /* Get the VN record */
+    vn = fmGetVN(sw, vni);
+
+    if (vn == NULL)
+    {
+        /* VN doesn't exist */
+        status = FM_ERR_INVALID_ARGUMENT;
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_VN, status);
+    }
+
+    FM_API_CALL_FAMILY(status,
+                       switchPtr->GetVNRemoteAddressFirst,
+                       sw,
+                       vn,
+                       searchToken,
+                       addr,
+                       tunnelId);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_VN, status);
+
+ABORT:
+
+    if (lockTaken)
+    {
+        fmReleaseReadLock(&switchPtr->routingLock);
+    }
+
+    UNPROTECT_SWITCH(sw);
+
+    FM_LOG_EXIT_API(FM_LOG_CAT_VN, status);
+
+}   /* end fmGetVNRemoteAddressFirst */
+
+
+
+
+/*****************************************************************************/
+/** fmGetVNRemoteAddressNext
+ * \ingroup virtualNetwork
+ *
+ * \chips           FM10000
+ *
+ * \desc            Gets the next remote address of a virtual network.
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \param[in]       vni is the Virtual Network ID number.
+ *
+ * \param[in,out]   searchToken points to caller-allocated storage of type
+ *                  fm_voidptr that has been filled in by a prior call to
+ *                  this function or to ''fmGetVNRemoteAddressFirst''.
+ *                  It will be updated by this function with a new value
+ *                  to be used in a subsequent call to this function.
+ *
+ * \param[out]      addr points to caller-provided storage into which the
+ *                  function will write the next remote address.
+ *
+ * \param[out]      tunnelId points to caller-provided storage into which
+ *                  the tunnel ID of the remote address will be written.
+ *
+ * \return          FM_OK if successful.
+ * \return          FM_ERR_INVALID_SWITCH if sw is invalid.
+ * \return          FM_ERR_INVALID_ARGUMENT if vni is not a valid virtual
+ *                  network ID, or either of the pointer arguments is NULL.
+ * \return          FM_ERR_UNSUPPORTED if virtual networks are not supported.
+ * \return          FM_ERR_NOT_FOUND if searchToken is invalid.
+ * \return          FM_ERR_NO_MORE if there are no more remote addresses.
+ *
+ *****************************************************************************/
+fm_status fmGetVNRemoteAddressNext(fm_int        sw,
+                                   fm_uint32     vni,
+                                   fm_voidptr *  searchToken,
+                                   fm_vnAddress *addr,
+                                   fm_int *      tunnelId)
+{
+    fm_switch *        switchPtr;
+    fm_status          status;
+    fm_bool            lockTaken;
+    fm_virtualNetwork *vn;
+
+    FM_LOG_ENTRY_API( FM_LOG_CAT_VN,
+                      "sw = %d, vni = %u, searchToken = %p, addr = %p, tunnelId = %p\n",
+                      sw,
+                      vni,
+                      (void *) searchToken,
+                      (void *) addr,
+                      (void *) tunnelId );
+
+    VALIDATE_AND_PROTECT_SWITCH(sw);
+
+    switchPtr = GET_SWITCH_PTR(sw);
+    lockTaken = FALSE;
+
+    if (switchPtr->maxVNTunnels <= 0)
+    {
+        status = FM_ERR_UNSUPPORTED;
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_VN, status);
+    }
+
+    if ( (searchToken == NULL) || (addr == NULL) || (tunnelId == NULL) )
+    {
+        status = FM_ERR_INVALID_ARGUMENT;
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_VN, status);
+    }
+
+    status = fmCaptureReadLock(&switchPtr->routingLock, FM_WAIT_FOREVER);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_VN, status);
+
+    lockTaken = TRUE;
+
+    /* Get the VN record */
+    vn = fmGetVN(sw, vni);
+
+    if (vn == NULL)
+    {
+        /* VN doesn't exist */
+        status = FM_ERR_INVALID_ARGUMENT;
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_VN, status);
+    }
+
+    FM_API_CALL_FAMILY(status,
+                       switchPtr->GetVNRemoteAddressNext,
+                       sw,
+                       vn,
+                       searchToken,
+                       addr,
+                       tunnelId);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_VN, status);
+
+ABORT:
+
+    if (lockTaken)
+    {
+        fmReleaseReadLock(&switchPtr->routingLock);
+    }
+
+    UNPROTECT_SWITCH(sw);
+
+    FM_LOG_EXIT_API(FM_LOG_CAT_VN, status);
+
+}   /* end fmGetVNRemoteAddressNext */
+
+
+
+
+/*****************************************************************************/
+/** fmGetVNRemoteAddressMaskList
+ * \ingroup virtualNetwork
+ *
+ * \chips           FM10000
+ *
+ * \desc            Returns a list of address ranges present in the remote
+ *                  address mask table of a virtual network.
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \param[in]       vni is the Virtual Network ID number.
+ *
+ * \param[in]       maxAddrMasks is the size of baseAddrList, addrMaskList
+ *                  and tunnelIdList, being the maximum number of remote
+ *                  address masks that can be contained inside these arrays.
+ *
+ * \param[out]      numAddrMasks points to caller-provided storage into which
+ *                  will be stored the number of remote address masks stored
+ *                  in baseAddrList, addrMaskList and tunnelIdList.
+ *
+ * \param[out]      baseAddrList is an array, maxAddrMasks elements in length,
+ *                  that this function will fill with base addresses of each
+ *                  address range.
+ *
+ * \param[out]      addrMaskList is an array, maxAddrMasks elements in length,
+ *                  that this function will fill with bit-masks of each address
+ *                  range.
+ *
+ * \param[out]      tunnelIdList is an array, maxAddrMasks elements in length,
+ *                  that this function will fill with tunnel IDs for each
+ *                  address range returned in baseAddrList and addrMaskList
+ *                  (-1 for address ranges not associated with one particular
+ *                  Tunneling Engine rule).
+ *
+ * \return          FM_OK if successful.
+ * \return          FM_ERR_INVALID_SWITCH if sw is invalid.
+ * \return          FM_ERR_INVALID_ARGUMENT if maxAddrMasks is <= 0, vni is not
+ *                  a valid virtual network ID, or either of the pointer
+ *                  arguments is NULL.
+ * \return          FM_ERR_UNSUPPORTED if virtual networks are not supported.
+ * \return          FM_ERR_BUFFER_FULL if maxAddrMasks was too small
+ *                  to accommodate the entire list of remote address masks.
+ *
+ *****************************************************************************/
+fm_status fmGetVNRemoteAddressMaskList(fm_int        sw,
+                                       fm_uint32     vni,
+                                       fm_int        maxAddrMasks,
+                                       fm_int *      numAddrMasks,
+                                       fm_vnAddress *baseAddrList,
+                                       fm_vnAddress *addrMaskList,
+                                       fm_int *      tunnelIdList)
+{
+    fm_switch *        switchPtr;
+    fm_status          status;
+    fm_bool            lockTaken;
+    fm_virtualNetwork *vn;
+
+    FM_LOG_ENTRY_API( FM_LOG_CAT_VN,
+                      "sw = %d, vni = %u, maxAddrMasks = %d, numAddrMasks = %p, "
+                      "baseAddrList = %p, addrMaskList = %p, tunnelIdList = %p\n",
+                      sw,
+                      vni,
+                      maxAddrMasks,
+                      (void *) numAddrMasks,
+                      (void *) baseAddrList,
+                      (void *) addrMaskList,
+                      (void *) tunnelIdList );
+
+    VALIDATE_AND_PROTECT_SWITCH(sw);
+
+    switchPtr = GET_SWITCH_PTR(sw);
+    lockTaken = FALSE;
+
+    if (switchPtr->maxVNTunnels <= 0)
+    {
+        status = FM_ERR_UNSUPPORTED;
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_VN, status);
+    }
+
+    if ( (maxAddrMasks <= 0) || (numAddrMasks == NULL) ||
+         (baseAddrList == NULL) ||(addrMaskList == NULL) ||
+         (tunnelIdList == NULL) )
+    {
+        status = FM_ERR_INVALID_ARGUMENT;
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_VN, status);
+    }
+
+    status = fmCaptureReadLock(&switchPtr->routingLock, FM_WAIT_FOREVER);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_VN, status);
+
+    lockTaken = TRUE;
+
+    /* Get the VN record */
+    vn = fmGetVN(sw, vni);
+
+    if (vn == NULL)
+    {
+        /* VN doesn't exist */
+        status = FM_ERR_INVALID_ARGUMENT;
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_VN, status);
+    }
+
+    FM_API_CALL_FAMILY(status,
+                       switchPtr->GetVNRemoteAddressMaskList,
+                       sw,
+                       vn,
+                       maxAddrMasks,
+                       numAddrMasks,
+                       baseAddrList,
+                       addrMaskList,
+                       tunnelIdList);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_VN, status);
+
+ABORT:
+
+    if (lockTaken)
+    {
+        fmReleaseReadLock(&switchPtr->routingLock);
+    }
+
+    UNPROTECT_SWITCH(sw);
+
+    FM_LOG_EXIT_API(FM_LOG_CAT_VN, status);
+
+}   /* end fmGetVNRemoteAddressMaskList */
+
+
+
+
+/*****************************************************************************/
+/** fmGetVNRemoteAddressMaskFirst
+ * \ingroup virtualNetwork
+ *
+ * \chips           FM10000
+ *
+ * \desc            Gets the first address range in the remote address mask
+ *                  table of a virtual network.
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \param[in]       vni is the Virtual Network ID number.
+ *
+ * \param[out]      searchToken points to caller-allocated storage of type
+ *                  fm_voidptr, where this function will store a token
+ *                  to be used in a subsequent call to
+ *                  ''fmGetVNRemoteAddressMaskNext''.
+ *
+ * \param[out]      baseAddr points to caller-provided storage into which the
+ *                  function will write the base address of the first address
+ *                  range.
+ *
+ * \param[out]      addrMask points to caller-provided storage into which the
+ *                  function will write the bit-mask of the first address
+ *                  range.
+ *
+ * \param[out]      tunnelId points to caller-provided storage into which
+ *                  the tunnel ID for the address range will be written
+ *                  (-1 if the address range is not associated with one
+ *                  particular Tunneling Engine rule).
+ *
+ * \return          FM_OK if successful.
+ * \return          FM_ERR_INVALID_SWITCH if sw is invalid.
+ * \return          FM_ERR_INVALID_ARGUMENT if vni is not a valid virtual
+ *                  network ID, or either of the pointer arguments is NULL.
+ * \return          FM_ERR_UNSUPPORTED if virtual networks are not supported.
+ * \return          FM_ERR_NO_MORE if there are no remote address masks.
+ *
+ *****************************************************************************/
+fm_status fmGetVNRemoteAddressMaskFirst(fm_int        sw,
+                                        fm_uint32     vni,
+                                        fm_voidptr *  searchToken,
+                                        fm_vnAddress *baseAddr,
+                                        fm_vnAddress *addrMask,
+                                        fm_int *      tunnelId)
+{
+    fm_switch *        switchPtr;
+    fm_status          status;
+    fm_bool            lockTaken;
+    fm_virtualNetwork *vn;
+
+    FM_LOG_ENTRY_API( FM_LOG_CAT_VN,
+                      "sw = %d, vni = %u, searchToken = %p, baseAddr = %p, addrMask = %p, tunnelId = %p\n",
+                      sw,
+                      vni,
+                      (void *) searchToken,
+                      (void *) baseAddr,
+                      (void *) addrMask,
+                      (void *) tunnelId );
+
+    VALIDATE_AND_PROTECT_SWITCH(sw);
+
+    switchPtr = GET_SWITCH_PTR(sw);
+    lockTaken = FALSE;
+
+    if (switchPtr->maxVNTunnels <= 0)
+    {
+        status = FM_ERR_UNSUPPORTED;
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_VN, status);
+    }
+
+    if ( (searchToken == NULL) || (baseAddr == NULL) ||
+         (addrMask == NULL) || (tunnelId == NULL) )
+    {
+        status = FM_ERR_INVALID_ARGUMENT;
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_VN, status);
+    }
+
+    status = fmCaptureReadLock(&switchPtr->routingLock, FM_WAIT_FOREVER);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_VN, status);
+
+    lockTaken = TRUE;
+
+    /* Get the VN record */
+    vn = fmGetVN(sw, vni);
+
+    if (vn == NULL)
+    {
+        /* VN doesn't exist */
+        status = FM_ERR_INVALID_ARGUMENT;
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_VN, status);
+    }
+
+    FM_API_CALL_FAMILY(status,
+                       switchPtr->GetVNRemoteAddressMaskFirst,
+                       sw,
+                       vn,
+                       searchToken,
+                       baseAddr,
+                       addrMask,
+                       tunnelId);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_VN, status);
+
+ABORT:
+
+    if (lockTaken)
+    {
+        fmReleaseReadLock(&switchPtr->routingLock);
+    }
+
+    UNPROTECT_SWITCH(sw);
+
+    FM_LOG_EXIT_API(FM_LOG_CAT_VN, status);
+
+}   /* end fmGetVNRemoteAddressMaskFirst */
+
+
+
+
+/*****************************************************************************/
+/** fmGetVNRemoteAddressMaskNext
+ * \ingroup virtualNetwork
+ *
+ * \chips           FM10000
+ *
+ * \desc            Gets the next address range in the remote address mask
+ *                  table of a virtual network.
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \param[in]       vni is the Virtual Network ID number.
+ *
+ * \param[in,out]   searchToken points to caller-allocated storage of type
+ *                  fm_voidptr that has been filled in by a prior call to
+ *                  this function or to ''fmGetVNRemoteAddressMaskFirst''.
+ *                  It will be updated by this function with a new value
+ *                  to be used in a subsequent call to this function.
+ *
+ * \param[out]      baseAddr points to caller-provided storage into which the
+ *                  function will write the base address of the next address
+ *                  range.
+ *
+ * \param[out]      addrMask points to caller-provided storage into which the
+ *                  function will write the bit-mask of the next address
+ *                  range.
+ *
+ * \param[out]      tunnelId points to caller-provided storage into which
+ *                  the tunnel ID for the address range will be written
+ *                  (-1 if the address range is not associated with one
+ *                  particular Tunneling Engine rule).
+ *
+ * \return          FM_OK if successful.
+ * \return          FM_ERR_INVALID_SWITCH if sw is invalid.
+ * \return          FM_ERR_INVALID_ARGUMENT if vni is not a valid virtual
+ *                  network ID, or either of the pointer arguments is NULL.
+ * \return          FM_ERR_UNSUPPORTED if virtual networks are not supported.
+ * \return          FM_ERR_NOT_FOUND if searchToken is invalid.
+ * \return          FM_ERR_NO_MORE if there are no more remote address masks.
+ *
+ *****************************************************************************/
+fm_status fmGetVNRemoteAddressMaskNext(fm_int        sw,
+                                       fm_uint32     vni,
+                                       fm_voidptr *  searchToken,
+                                       fm_vnAddress *baseAddr,
+                                       fm_vnAddress *addrMask,
+                                       fm_int *      tunnelId)
+{
+    fm_switch *        switchPtr;
+    fm_status          status;
+    fm_bool            lockTaken;
+    fm_virtualNetwork *vn;
+
+    FM_LOG_ENTRY_API( FM_LOG_CAT_VN,
+                      "sw = %d, vni = %u, searchToken = %p, baseAddr = %p, addrMask = %p, tunnelId = %p\n",
+                      sw,
+                      vni,
+                      (void *) searchToken,
+                      (void *) baseAddr,
+                      (void *) addrMask,
+                      (void *) tunnelId );
+
+    VALIDATE_AND_PROTECT_SWITCH(sw);
+
+    switchPtr = GET_SWITCH_PTR(sw);
+    lockTaken = FALSE;
+
+    if (switchPtr->maxVNTunnels <= 0)
+    {
+        status = FM_ERR_UNSUPPORTED;
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_VN, status);
+    }
+
+    if ( (searchToken == NULL) || (baseAddr == NULL) ||
+         (addrMask == NULL) || (tunnelId == NULL) )
+    {
+        status = FM_ERR_INVALID_ARGUMENT;
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_VN, status);
+    }
+
+    status = fmCaptureReadLock(&switchPtr->routingLock, FM_WAIT_FOREVER);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_VN, status);
+
+    lockTaken = TRUE;
+
+    /* Get the VN record */
+    vn = fmGetVN(sw, vni);
+
+    if (vn == NULL)
+    {
+        /* VN doesn't exist */
+        status = FM_ERR_INVALID_ARGUMENT;
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_VN, status);
+    }
+
+    FM_API_CALL_FAMILY(status,
+                       switchPtr->GetVNRemoteAddressMaskNext,
+                       sw,
+                       vn,
+                       searchToken,
+                       baseAddr,
+                       addrMask,
+                       tunnelId);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_VN, status);
+
+ABORT:
+
+    if (lockTaken)
+    {
+        fmReleaseReadLock(&switchPtr->routingLock);
+    }
+
+    UNPROTECT_SWITCH(sw);
+
+    FM_LOG_EXIT_API(FM_LOG_CAT_VN, status);
+
+}   /* end fmGetVNRemoteAddressMaskNext */
+
+
+
+
+/*****************************************************************************/
 /** fmConfigureVN
  * \ingroup virtualNetwork
  *
@@ -3312,6 +4015,76 @@ ABORT:
     FM_LOG_EXIT_API(FM_LOG_CAT_VN, status);
 
 }   /* end fmConfigureVN */
+
+
+
+
+/*****************************************************************************/
+/** fmGetVNConfiguration
+ * \ingroup virtualNetwork
+ *
+ * \chips           FM10000
+ *
+ * \desc            Retrieves the Virtual Networking API configuration.
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \param[out]      config points to caller-provided storage into which
+ *                  the Virtual Networking API configuration will be written.
+ *
+ * \return          FM_OK if successful.
+ * \return          FM_ERR_INVALID_SWITCH if sw is invalid.
+ * \return          FM_ERR_UNSUPPORTED if virtual networks are not supported.
+ * \return          FM_ERR_INVALID_ARGUMENT if config is NULL.
+ *
+ *****************************************************************************/
+fm_status fmGetVNConfiguration(fm_int sw, fm_vnConfiguration *config)
+{
+    fm_status  status;
+    fm_switch *switchPtr;
+    fm_bool    lockTaken;
+
+    FM_LOG_ENTRY_API(FM_LOG_CAT_VN,
+                     "sw = %d, config = %p\n",
+                     sw,
+                     (void *) config);
+
+    VALIDATE_AND_PROTECT_SWITCH(sw);
+
+    lockTaken = FALSE;
+    switchPtr = GET_SWITCH_PTR(sw);
+
+    if (switchPtr->maxVNTunnels <= 0)
+    {
+        status = FM_ERR_UNSUPPORTED;
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_VN, status);
+    }
+
+    if (config == NULL)
+    {
+        status = FM_ERR_INVALID_ARGUMENT;
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_VN, status);
+    }
+
+    status = fmCaptureReadLock(&switchPtr->routingLock, FM_WAIT_FOREVER);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_VN, status);
+
+    lockTaken = TRUE;
+
+    FM_API_CALL_FAMILY(status, switchPtr->GetVNConfiguration, sw, config);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_VN, status);
+
+ABORT:
+
+    if (lockTaken)
+    {
+        fmReleaseReadLock(&switchPtr->routingLock);
+    }
+
+    UNPROTECT_SWITCH(sw);
+    FM_LOG_EXIT_API(FM_LOG_CAT_VN, status);
+
+}   /* end fmGetVNConfiguration */
 
 
 
@@ -3481,6 +4254,325 @@ ABORT:
 
 
 /*****************************************************************************/
+/** fmGetVNLocalPortList
+ * \ingroup virtualNetwork
+ *
+ * \chips           FM10000
+ *
+ * \desc            Returns a list of local ports in the virtual network's
+ *                  broadcast and flooding flood-set.
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \param[in]       vni is the Virtual Network ID number.
+ *
+ * \param[in]       maxPorts is the size of portList, being the maximum number
+ *                  of local ports that can be contained inside the array.
+ *
+ * \param[out]      numPorts points to caller-provided storage into which
+ *                  will be stored the number of local ports stored
+ *                  in portList.
+ *
+ * \param[out]      portList is an array, maxPorts elements in length,
+ *                  that this function will fill with logical port numbers
+ *                  for each local port.
+ *
+ * \return          FM_OK if successful.
+ * \return          FM_ERR_INVALID_SWITCH if sw is invalid.
+ * \return          FM_ERR_INVALID_ARGUMENT if maxPorts is <= 0, vni is not
+ *                  a valid virtual network ID, or either of the pointer
+ *                  arguments is NULL.
+ * \return          FM_ERR_UNSUPPORTED if virtual networks are not supported.
+ * \return          FM_ERR_BUFFER_FULL if maxPorts was too small to accommodate
+ *                  the entire list of local ports.
+ *
+ *****************************************************************************/
+fm_status fmGetVNLocalPortList(fm_int    sw,
+                               fm_uint32 vni,
+                               fm_int    maxPorts,
+                               fm_int *  numPorts,
+                               fm_int *  portList)
+{
+    fm_switch *        switchPtr;
+    fm_status          status;
+    fm_bool            lockTaken;
+    fm_virtualNetwork *vn;
+
+    FM_LOG_ENTRY_API( FM_LOG_CAT_VN,
+                      "sw = %d, vni = %u, maxPorts = %d, numPorts = %p, "
+                      "portList = %p\n",
+                      sw,
+                      vni,
+                      maxPorts,
+                      (void *) numPorts,
+                      (void *) portList );
+
+    VALIDATE_AND_PROTECT_SWITCH(sw);
+
+    switchPtr = GET_SWITCH_PTR(sw);
+    lockTaken = FALSE;
+
+    if (switchPtr->maxVNTunnels <= 0)
+    {
+        status = FM_ERR_UNSUPPORTED;
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_VN, status);
+    }
+
+    if ( (maxPorts <= 0) || (numPorts == NULL) || (portList == NULL) )
+    {
+        status = FM_ERR_INVALID_ARGUMENT;
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_VN, status);
+    }
+
+    status = fmCaptureReadLock(&switchPtr->routingLock, FM_WAIT_FOREVER);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_VN, status);
+
+    lockTaken = TRUE;
+
+    /* Get the VN record */
+    vn = fmGetVN(sw, vni);
+
+    if (vn == NULL)
+    {
+        /* VN doesn't exist */
+        status = FM_ERR_INVALID_ARGUMENT;
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_VN, status);
+    }
+
+    FM_API_CALL_FAMILY(status,
+                       switchPtr->GetVNLocalPortList,
+                       sw,
+                       vn,
+                       maxPorts,
+                       numPorts,
+                       portList);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_VN, status);
+
+ABORT:
+
+    if (lockTaken)
+    {
+        fmReleaseReadLock(&switchPtr->routingLock);
+    }
+
+    UNPROTECT_SWITCH(sw);
+
+    FM_LOG_EXIT_API(FM_LOG_CAT_VN, status);
+
+}   /* end fmGetVNLocalPortList */
+
+
+
+
+/*****************************************************************************/
+/** fmGetVNLocalPortFirst
+ * \ingroup virtualNetwork
+ *
+ * \chips           FM10000
+ *
+ * \desc            Gets the first local port in the virtual network's
+ *                  broadcast and flooding flood-set.
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \param[in]       vni is the Virtual Network ID number.
+ *
+ * \param[out]      searchToken points to caller-allocated storage of type
+ *                  fm_mcastGroupListener, where this function will store
+ *                  a token to be used in a subsequent call to
+ *                  ''fmGetVNLocalPortNext''.
+ *
+ * \param[out]      port points to caller-provided storage into which the
+ *                  function will write the logical port number of the first
+ *                  local port.
+ *
+ * \return          FM_OK if successful.
+ * \return          FM_ERR_INVALID_SWITCH if sw is invalid.
+ * \return          FM_ERR_INVALID_ARGUMENT if vni is not a valid virtual
+ *                  network ID, or either of the pointer arguments is NULL.
+ * \return          FM_ERR_UNSUPPORTED if virtual networks are not supported.
+ * \return          FM_ERR_NO_MORE if there are no local ports.
+ *
+ *****************************************************************************/
+fm_status fmGetVNLocalPortFirst(fm_int                 sw,
+                                fm_uint32              vni,
+                                fm_mcastGroupListener *searchToken,
+                                fm_int *               port)
+{
+    fm_switch *        switchPtr;
+    fm_status          status;
+    fm_bool            lockTaken;
+    fm_virtualNetwork *vn;
+
+    FM_LOG_ENTRY_API( FM_LOG_CAT_VN,
+                      "sw = %d, vni = %u, searchToken = %p, port = %p\n",
+                      sw,
+                      vni,
+                      (void *) searchToken,
+                      (void *) port );
+
+    VALIDATE_AND_PROTECT_SWITCH(sw);
+
+    switchPtr = GET_SWITCH_PTR(sw);
+    lockTaken = FALSE;
+
+    if (switchPtr->maxVNTunnels <= 0)
+    {
+        status = FM_ERR_UNSUPPORTED;
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_VN, status);
+    }
+
+    if ( (searchToken == NULL) || (port == NULL) )
+    {
+        status = FM_ERR_INVALID_ARGUMENT;
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_VN, status);
+    }
+
+    status = fmCaptureReadLock(&switchPtr->routingLock, FM_WAIT_FOREVER);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_VN, status);
+
+    lockTaken = TRUE;
+
+    /* Get the VN record */
+    vn = fmGetVN(sw, vni);
+
+    if (vn == NULL)
+    {
+        /* VN doesn't exist */
+        status = FM_ERR_INVALID_ARGUMENT;
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_VN, status);
+    }
+
+    FM_API_CALL_FAMILY(status,
+                       switchPtr->GetVNLocalPortFirst,
+                       sw,
+                       vn,
+                       searchToken,
+                       port);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_VN, status);
+
+ABORT:
+
+    if (lockTaken)
+    {
+        fmReleaseReadLock(&switchPtr->routingLock);
+    }
+
+    UNPROTECT_SWITCH(sw);
+
+    FM_LOG_EXIT_API(FM_LOG_CAT_VN, status);
+
+}   /* end fmGetVNLocalPortFirst */
+
+
+
+
+/*****************************************************************************/
+/** fmGetVNLocalPortNext
+ * \ingroup virtualNetwork
+ *
+ * \chips           FM10000
+ *
+ * \desc            Gets the next local port in the virtual network's broadcast
+ *                  and flooding flood-set.
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \param[in]       vni is the Virtual Network ID number.
+ *
+ * \param[in,out]   searchToken points to caller-allocated storage of type
+ *                  fm_mcastGroupListener that has been filled in by a prior
+ *                  call to this function or to ''fmGetVNLocalPortFirst''.
+ *                  It will be updated by this function with a new value
+ *                  to be used in a subsequent call to this function.
+ *
+ * \param[out]      port points to caller-provided storage into which the
+ *                  function will write the logical port number of the next
+ *                  local port.
+ *
+ * \return          FM_OK if successful.
+ * \return          FM_ERR_INVALID_SWITCH if sw is invalid.
+ * \return          FM_ERR_INVALID_ARGUMENT if vni is not a valid virtual
+ *                  network ID, or either of the pointer arguments is NULL.
+ * \return          FM_ERR_UNSUPPORTED if virtual networks are not supported.
+ * \return          FM_ERR_NOT_FOUND if searchToken is invalid.
+ * \return          FM_ERR_NO_MORE if there are no more local ports.
+ *
+ *****************************************************************************/
+fm_status fmGetVNLocalPortNext(fm_int                 sw,
+                               fm_uint32              vni,
+                               fm_mcastGroupListener *searchToken,
+                               fm_int *               port)
+{
+    fm_switch *        switchPtr;
+    fm_status          status;
+    fm_bool            lockTaken;
+    fm_virtualNetwork *vn;
+
+    FM_LOG_ENTRY_API( FM_LOG_CAT_VN,
+                      "sw = %d, vni = %u, searchToken = %p, port = %p\n",
+                      sw,
+                      vni,
+                      (void *) searchToken,
+                      (void *) port );
+
+    VALIDATE_AND_PROTECT_SWITCH(sw);
+
+    switchPtr = GET_SWITCH_PTR(sw);
+    lockTaken = FALSE;
+
+    if (switchPtr->maxVNTunnels <= 0)
+    {
+        status = FM_ERR_UNSUPPORTED;
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_VN, status);
+    }
+
+    if ( (searchToken == NULL) || (port == NULL) )
+    {
+        status = FM_ERR_INVALID_ARGUMENT;
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_VN, status);
+    }
+
+    status = fmCaptureReadLock(&switchPtr->routingLock, FM_WAIT_FOREVER);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_VN, status);
+
+    lockTaken = TRUE;
+
+    /* Get the VN record */
+    vn = fmGetVN(sw, vni);
+
+    if (vn == NULL)
+    {
+        /* VN doesn't exist */
+        status = FM_ERR_INVALID_ARGUMENT;
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_VN, status);
+    }
+
+    FM_API_CALL_FAMILY(status,
+                       switchPtr->GetVNLocalPortNext,
+                       sw,
+                       vn,
+                       searchToken,
+                       port);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_VN, status);
+
+ABORT:
+
+    if (lockTaken)
+    {
+        fmReleaseReadLock(&switchPtr->routingLock);
+    }
+
+    UNPROTECT_SWITCH(sw);
+
+    FM_LOG_EXIT_API(FM_LOG_CAT_VN, status);
+
+}   /* end fmGetVNLocalPortNext */
+
+
+
+
+/*****************************************************************************/
 /** fmAddVNVsi
  * \ingroup virtualNetwork
  *
@@ -3635,6 +4727,317 @@ ABORT:
     FM_LOG_EXIT_API(FM_LOG_CAT_VN, status);
 
 }   /* end fmDeleteVNVsi */
+
+
+
+
+/*****************************************************************************/
+/** fmGetVNVsiList
+ * \ingroup virtualNetwork
+ *
+ * \chips           FM10000
+ *
+ * \desc            Returns a list of VSIs in a virtual network.
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \param[in]       vni is the Virtual Network ID number.
+ *
+ * \param[in]       maxVsis is the size of vsiList, being the maximum number
+ *                  of VSI numbers that can be contained inside the array.
+ *
+ * \param[out]      numVsis points to caller-provided storage into which
+ *                  will be stored the number of VSIs stored in vsiList.
+ *
+ * \param[out]      vsiList is an array, maxVsis elements in length,
+ *                  that this function will fill with VSI numbers.
+ *
+ * \return          FM_OK if successful.
+ * \return          FM_ERR_INVALID_SWITCH if sw is invalid.
+ * \return          FM_ERR_INVALID_ARGUMENT if maxVsis is <= 0, vni is not
+ *                  a valid virtual network ID, or either of the pointer
+ *                  arguments is NULL.
+ * \return          FM_ERR_UNSUPPORTED if virtual networks are not supported.
+ * \return          FM_ERR_BUFFER_FULL if maxVsis was too small to accommodate
+ *                  the entire list of VSIs.
+ *
+ *****************************************************************************/
+fm_status fmGetVNVsiList(fm_int    sw,
+                         fm_uint32 vni,
+                         fm_int    maxVsis,
+                         fm_int *  numVsis,
+                         fm_int *  vsiList)
+{
+    fm_switch *        switchPtr;
+    fm_status          status;
+    fm_bool            lockTaken;
+    fm_virtualNetwork *vn;
+
+    FM_LOG_ENTRY_API( FM_LOG_CAT_VN,
+                      "sw = %d, vni = %u, maxVsis = %d, numVsis = %p, "
+                      "vsiList = %p\n",
+                      sw,
+                      vni,
+                      maxVsis,
+                      (void *) numVsis,
+                      (void *) vsiList );
+
+    VALIDATE_AND_PROTECT_SWITCH(sw);
+
+    switchPtr = GET_SWITCH_PTR(sw);
+    lockTaken = FALSE;
+
+    if (switchPtr->maxVNTunnels <= 0)
+    {
+        status = FM_ERR_UNSUPPORTED;
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_VN, status);
+    }
+
+    if ( (maxVsis <= 0) || (numVsis == NULL) || (vsiList == NULL) )
+    {
+        status = FM_ERR_INVALID_ARGUMENT;
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_VN, status);
+    }
+
+    status = fmCaptureReadLock(&switchPtr->routingLock, FM_WAIT_FOREVER);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_VN, status);
+
+    lockTaken = TRUE;
+
+    /* Get the VN record */
+    vn = fmGetVN(sw, vni);
+
+    if (vn == NULL)
+    {
+        /* VN doesn't exist */
+        status = FM_ERR_INVALID_ARGUMENT;
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_VN, status);
+    }
+
+    FM_API_CALL_FAMILY(status,
+                       switchPtr->GetVNVsiList,
+                       sw,
+                       vni,
+                       maxVsis,
+                       numVsis,
+                       vsiList);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_VN, status);
+
+ABORT:
+
+    if (lockTaken)
+    {
+        fmReleaseReadLock(&switchPtr->routingLock);
+    }
+
+    UNPROTECT_SWITCH(sw);
+
+    FM_LOG_EXIT_API(FM_LOG_CAT_VN, status);
+
+}   /* end fmGetVNVsiList */
+
+
+
+
+/*****************************************************************************/
+/** fmGetVNVsiFirst
+ * \ingroup virtualNetwork
+ *
+ * \chips           FM10000
+ *
+ * \desc            Gets the first VSI in a virtual network.
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \param[in]       vni is the Virtual Network ID number.
+ *
+ * \param[out]      searchToken points to caller-allocated storage where this
+ *                  function will store a token to be used in a subsequent
+ *                  call to ''fmGetVNVsiNext''.
+ *
+ * \param[out]      vsi points to caller-provided storage into which the
+ *                  function will write the first VSI number.
+ *
+ * \return          FM_OK if successful.
+ * \return          FM_ERR_INVALID_SWITCH if sw is invalid.
+ * \return          FM_ERR_INVALID_ARGUMENT if vni is not a valid virtual
+ *                  network ID, or either of the pointer arguments is NULL.
+ * \return          FM_ERR_UNSUPPORTED if virtual networks are not supported.
+ * \return          FM_ERR_NO_MORE if there are no VSIs.
+ *
+ *****************************************************************************/
+fm_status fmGetVNVsiFirst(fm_int    sw,
+                          fm_uint32 vni,
+                          fm_int *  searchToken,
+                          fm_int *  vsi)
+{
+    fm_switch *        switchPtr;
+    fm_status          status;
+    fm_bool            lockTaken;
+    fm_virtualNetwork *vn;
+
+    FM_LOG_ENTRY_API( FM_LOG_CAT_VN,
+                      "sw = %d, vni = %u, searchToken = %p, vsi = %p\n",
+                      sw,
+                      vni,
+                      (void *) searchToken,
+                      (void *) vsi );
+
+    VALIDATE_AND_PROTECT_SWITCH(sw);
+
+    switchPtr = GET_SWITCH_PTR(sw);
+    lockTaken = FALSE;
+
+    if (switchPtr->maxVNTunnels <= 0)
+    {
+        status = FM_ERR_UNSUPPORTED;
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_VN, status);
+    }
+
+    if ( (searchToken == NULL) || (vsi == NULL) )
+    {
+        status = FM_ERR_INVALID_ARGUMENT;
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_VN, status);
+    }
+
+    status = fmCaptureReadLock(&switchPtr->routingLock, FM_WAIT_FOREVER);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_VN, status);
+
+    lockTaken = TRUE;
+
+    /* Get the VN record */
+    vn = fmGetVN(sw, vni);
+
+    if (vn == NULL)
+    {
+        /* VN doesn't exist */
+        status = FM_ERR_INVALID_ARGUMENT;
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_VN, status);
+    }
+
+    FM_API_CALL_FAMILY(status,
+                       switchPtr->GetVNVsiFirst,
+                       sw,
+                       vni,
+                       searchToken,
+                       vsi);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_VN, status);
+
+ABORT:
+
+    if (lockTaken)
+    {
+        fmReleaseReadLock(&switchPtr->routingLock);
+    }
+
+    UNPROTECT_SWITCH(sw);
+
+    FM_LOG_EXIT_API(FM_LOG_CAT_VN, status);
+
+}   /* end fmGetVNVsiFirst */
+
+
+
+
+/*****************************************************************************/
+/** fmGetVNVsiNext
+ * \ingroup virtualNetwork
+ *
+ * \chips           FM10000
+ *
+ * \desc            Gets the next VSI in a virtual network.
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \param[in]       vni is the Virtual Network ID number.
+ *
+ * \param[in,out]   searchToken points to caller-allocated storage that has
+ *                  been filled in by a prior call to this function or to
+ *                  ''fmGetVNVsiFirst''. It will be updated by this function
+ *                  with a new value to be used in a subsequent call to this
+ *                  function.
+ *
+ * \param[out]      vsi points to caller-provided storage into which the
+ *                  function will write the next VSI number.
+ *
+ * \return          FM_OK if successful.
+ * \return          FM_ERR_INVALID_SWITCH if sw is invalid.
+ * \return          FM_ERR_INVALID_ARGUMENT if vni is not a valid virtual
+ *                  network ID, or either of the pointer arguments is NULL.
+ * \return          FM_ERR_UNSUPPORTED if virtual networks are not supported.
+ * \return          FM_ERR_NOT_FOUND if searchToken is invalid.
+ * \return          FM_ERR_NO_MORE if there are no more VSIs.
+ *
+ *****************************************************************************/
+fm_status fmGetVNVsiNext(fm_int    sw,
+                         fm_uint32 vni,
+                         fm_int *  searchToken,
+                         fm_int *  vsi)
+{
+    fm_switch *        switchPtr;
+    fm_status          status;
+    fm_bool            lockTaken;
+    fm_virtualNetwork *vn;
+
+    FM_LOG_ENTRY_API( FM_LOG_CAT_VN,
+                      "sw = %d, vni = %u, searchToken = %p, vsi = %p\n",
+                      sw,
+                      vni,
+                      (void *) searchToken,
+                      (void *) vsi );
+
+    VALIDATE_AND_PROTECT_SWITCH(sw);
+
+    switchPtr = GET_SWITCH_PTR(sw);
+    lockTaken = FALSE;
+
+    if (switchPtr->maxVNTunnels <= 0)
+    {
+        status = FM_ERR_UNSUPPORTED;
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_VN, status);
+    }
+
+    if ( (searchToken == NULL) || (vsi == NULL) )
+    {
+        status = FM_ERR_INVALID_ARGUMENT;
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_VN, status);
+    }
+
+    status = fmCaptureReadLock(&switchPtr->routingLock, FM_WAIT_FOREVER);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_VN, status);
+
+    lockTaken = TRUE;
+
+    /* Get the VN record */
+    vn = fmGetVN(sw, vni);
+
+    if (vn == NULL)
+    {
+        /* VN doesn't exist */
+        status = FM_ERR_INVALID_ARGUMENT;
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_VN, status);
+    }
+
+    FM_API_CALL_FAMILY(status,
+                       switchPtr->GetVNVsiNext,
+                       sw,
+                       vni,
+                       searchToken,
+                       vsi);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_VN, status);
+
+ABORT:
+
+    if (lockTaken)
+    {
+        fmReleaseReadLock(&switchPtr->routingLock);
+    }
+
+    UNPROTECT_SWITCH(sw);
+
+    FM_LOG_EXIT_API(FM_LOG_CAT_VN, status);
+
+}   /* end fmGetVNVsiNext */
 
 
 

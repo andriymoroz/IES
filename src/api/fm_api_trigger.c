@@ -6,7 +6,7 @@
  * Description:     Application exposed functions for managing low-level
  *                  trigger resources.
  *
- * Copyright (c) 2005 - 2014, Intel Corporation
+ * Copyright (c) 2005 - 2015, Intel Corporation
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -30,7 +30,7 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
+ *****************************************************************************/
 
 #include <fm_sdk_int.h>
 
@@ -278,8 +278,11 @@ fm_status fmCreateTrigger(fm_int sw, fm_int group, fm_int rule)
  * \return          FM_OK if successful.
  * \return          FM_ERR_NOT_FOUND a trigger does not exist for the provided
  *                  group/rule combination.
- * \return          FM_ERR_INTERNAL_RESOURCE if the trigger is
- *                  internal (internal triggers cannot be modified/deleted). 
+ * \return          FM_ERR_INTERNAL_RESOURCE if the trigger is internal
+ *                  (internal triggers cannot be modified/deleted). 
+ * \return          FM_ERR_NO_FREE_TRIG_RES if the API is unable to allocate
+ *                  a mirror profile to use while updating the hardware
+ *                  configuration.
  * 
  *****************************************************************************/
 fm_status fmDeleteTrigger(fm_int sw, fm_int group, fm_int rule)

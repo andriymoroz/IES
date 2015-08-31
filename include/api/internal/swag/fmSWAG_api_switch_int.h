@@ -95,6 +95,7 @@ fm_status fmSWAGAllocVirtualLogicalPortsExt(fm_int  sw,
                                             fm_int  memberPortNumber,
                                             fm_int  useHandle,
                                             fm_int  firstGlort);
+fm_status fmSWAGFreeVirtualLogicalPortResources(fm_int sw);
 fm_status fmSWAGFreeLogicalPort(fm_int sw, fm_int port);
 fm_status fmSWAGGetLogicalPort(fm_int    sw,
                                fm_uint32 glort,
@@ -481,6 +482,7 @@ fm_status fmSWAGCreateInterface(fm_int  sw,
                                 fm_int ifNum);
 fm_status fmSWAGDeleteInterface(fm_int  sw,
                                 fm_int ifNum);
+fm_status fmSWAGFreeNextHops(fm_int sw);
 fm_status fmSWAGAddInterfaceAddr(fm_int     sw,
                                  fm_int     interface,
                                  fm_ipAddr *addr);

@@ -438,38 +438,41 @@ fm_status fm10000PacketReceiveProcess(fm_int              sw,
 
             if (dmac == BPDU_DMAC)
             {
-                err = fmFindInstanceForVlan(sw, vlan, &stpInstance);
-                if (err == FM_OK)
+                if (fmIsCardinalPort(sw, srcPort) )
                 {
-                    err = fmGetSpanningTreePortState(sw, 
-                                                     stpInstance, 
-                                                     srcPort, 
-                                                     &portState);
-
+                    err = fmFindInstanceForVlan(sw, vlan, &stpInstance);
                     if (err == FM_OK)
                     {
-                        /* Ingress port is disabled and DMAC == BPDU */
-                        if (portState == FM_STP_STATE_DISABLED)
+                        err = fmGetSpanningTreePortState(sw, 
+                                                         stpInstance, 
+                                                         srcPort, 
+                                                         &portState);
+    
+                        if (err == FM_OK)
                         {
-                            /* Dropping BPDU packet */
-                            fmDbgDiagCountIncr(sw, FM_CTR_RX_PKT_DROPS_NO_PORT, 1);
-                            goto ABORT;
+                            /* Ingress port is disabled and DMAC == BPDU */
+                            if (portState == FM_STP_STATE_DISABLED)
+                            {
+                                /* Dropping BPDU packet */
+                                fmDbgDiagCountIncr(sw, FM_CTR_RX_PKT_DROPS_NO_PORT, 1);
+                                goto ABORT;
+                            }
+                        }
+                        else
+                        {
+                            FM_LOG_ERROR(FM_LOG_CAT_PLATFORM,
+                                         "Unable to find STP port state for instance "
+                                         "%d, port %d\n",
+                                         stpInstance,
+                                         srcPort);
                         }
                     }
                     else
                     {
                         FM_LOG_ERROR(FM_LOG_CAT_PLATFORM,
-                                     "Unable to find STP port state for instance "
-                                     "%d, port %d\n",
-                                     stpInstance,
-                                     srcPort);
+                                     "Unable to find STP instance for vlan %d\n",
+                                     vlan);
                     }
-                }
-                else
-                {
-                    FM_LOG_ERROR(FM_LOG_CAT_PLATFORM,
-                                 "Unable to find STP instance for vlan %d\n",
-                                 vlan);
                 }
             }
         }

@@ -334,7 +334,7 @@ static const fm_ffuCaseLocation ipv6DVCaseLocation[] =
     FM_FFU_CASE_TOP_HIGH_NIBBLE,
     FM_FFU_CASE_TOP_HIGH_NIBBLE,
     FM_FFU_CASE_TOP_HIGH_NIBBLE,
-    FM_FFU_CASE_TOP_HIGH_NIBBLE   
+    FM_FFU_CASE_TOP_HIGH_NIBBLE
 };
 
 #endif
@@ -496,7 +496,7 @@ static const fm_ffuSliceInfo    ipv6DSVSliceInfo =
     ipv6DSVCaseLocation
 };
 
-static const fm_int triggerRuleArpRedirect = 
+static const fm_int triggerRuleArpRedirect =
                                      FM10000_TRIGGER_RULE_ROUTING_ARP_REDIRECT;
 
 /*****************************************************************************
@@ -536,7 +536,7 @@ static fm_status InitRouteTable(fm_int                 sw,
                                 const fm_ffuSliceInfo *pSliceInfo);
 static fm_status SetInitialSliceBoundaries(fm_int                sw,
                                            fm10000_RoutingState *pStateTable);
-static fm_int CompareTcamRoutesBySlice(const void *pFirstRoute, 
+static fm_int CompareTcamRoutesBySlice(const void *pFirstRoute,
                                        const void *pSecondRoute);
 static fm_status SetFFUSliceUsageForRoutingState(fm_int                  sw,
                                                  fm_ffuSliceAllocations *pNewAllocations,
@@ -547,7 +547,7 @@ static fm_bool RemoveSliceFromRoute(fm_int                sw,
                                     fm_bool               updateHardware);
 static fm_int ComparePrefixRoutes(const void *pFirstRoute,
                                   const void *pSecondRoute);
-static fm_int ComparePrefix(const void *first, 
+static fm_int ComparePrefix(const void *first,
                             const void *second);
 static void InsertTcamRouteCallback(const void *pKey,
                                     void *      pValue,
@@ -767,7 +767,7 @@ static fm_bool MoveRouteElsewhereWithinPrefix(fm_int                  sw,
                                               fm10000_TcamRouteEntry *route,
                                               fm_bool                 unauthSliceOK,
                                               fm_bool                 optimize);
-static fm_int ComparePrefix(const void *pFirstPrefix, 
+static fm_int ComparePrefix(const void *pFirstPrefix,
                             const void *pSecondPrefix);
 static fm_bool InvalidateRouteSliceRow(fm_int              sw,
                                        fm10000_RouteSlice *pRouteSlice,
@@ -905,7 +905,7 @@ static fm_int GetRouteCase(fm10000_RouteTypes routeType)
         case FM10000_ROUTE_TYPE_V4U:
             caseToUse = FM10000_ROUTE_TYPE_V4U - 1;
             break;
-            
+
         case FM10000_ROUTE_TYPE_V6U:
             caseToUse = FM10000_ROUTE_TYPE_V6U - 1;
             break;
@@ -913,7 +913,7 @@ static fm_int GetRouteCase(fm10000_RouteTypes routeType)
         case FM10000_ROUTE_TYPE_V4DSV:
             caseToUse =  FM10000_ROUTE_TYPE_V4DSV - 1;
             break;
-  
+
         case FM10000_ROUTE_TYPE_V6DSV:
             caseToUse = FM10000_ROUTE_TYPE_V6DSV - 1;
             break;
@@ -940,17 +940,17 @@ static fm_int GetRouteCase(fm10000_RouteTypes routeType)
  * \desc            Perform initialization of the specified route table.
  *
  * \param[in]       sw is the switch number.
- * 
+ *
  * \param[in]       routeType is the route type as defined by
  *                  ''fm10000_RouteTypes''.
- * 
+ *
  * \param[in]       routeTableSize is the number of entries of the route table.
- * 
+ *
  * \param[in]       pRouteTable points  to the table to be initialized
- * 
+ *
  * \param[in]       pSliceInfo points to the structure that contains FFU
  *                  user defined information.
- * 
+ *
  * \return          FM_OK if successful.
  *
  *****************************************************************************/
@@ -1383,10 +1383,10 @@ static fm_bool CopyRouteWithinSlice(fm_int                  sw,
 
             if (err == FM_OK)
             {
-                routeMoved = UpdateTcamRoutePosition(sw, 
-                                                     pRouteEntry, 
-                                                     pRouteSlice, 
-                                                     destRow, 
+                routeMoved = UpdateTcamRoutePosition(sw,
+                                                     pRouteEntry,
+                                                     pRouteSlice,
+                                                     destRow,
                                                      FALSE);
             }
         }
@@ -1721,7 +1721,7 @@ static fm_bool SelectCascadeFromSliceRangeFullSearch(fm_int               sw,
     /* Select the first non-NULL slice in the list. */
     rowFound = FALSE;
     sliceIndex = 0;
-    
+
     if (ppSliceSearchList != NULL &&
         ppDestSlice != NULL &&
         pSliceIndex != NULL &&
@@ -1923,7 +1923,7 @@ static fm_bool SelectCascadeFromSliceRange(fm_int               sw,
                         {
                             kaseRouteType =
                                 pCurTcamSlice->caseInfo[kase].routeType;
-                            
+
                             if ( (kaseRouteType != routeType)
                                  && (kaseRouteType != FM10000_ROUTE_TYPE_UNUSED) )
                             {
@@ -1951,7 +1951,7 @@ static fm_bool SelectCascadeFromSliceRange(fm_int               sw,
                                       pCurSlice->lastTcamSlice );
                         break;
                     }
-                }               
+                }
                 sliceIndex++;
             }
 
@@ -2000,12 +2000,12 @@ static fm_bool SelectCascadeFromSliceRange(fm_int               sw,
                             scanSlice = TRUE;
                             break;
                         }
-                        
+
                         if (kaseRouteType != routeType)
                         {
                             pOtherRouteSlice =
                                 pCurTcamSlice->caseInfo[kase].routeSlice;
-                            
+
                             if (pOtherRouteSlice != NULL)
                             {
                                 for (otherTcamSlice = pOtherRouteSlice->firstTcamSlice ;
@@ -2033,7 +2033,7 @@ static fm_bool SelectCascadeFromSliceRange(fm_int               sw,
                                 scanSlice = TRUE;
                             }
                         }
-                        
+
                     }   /* end for (kase = 0 ; kase < FM10000_NUM_ROUTE_CASES ; kase++) */
                 }  /* end for (curTcamSlice = pCurSlice->firstTcamSlice ;... */
 
@@ -2146,7 +2146,7 @@ fm_bool FindEmptyRowInSliceWithinSliceRange(fm_int              sw,
         pCurSlice == NULL   ||
         pDestRow == NULL    ||
         firstRow < 0        || firstRow >= FM10000_FFU_ENTRIES_PER_SLICE ||
-        lastRow < 0         || lastRow >= FM10000_FFU_ENTRIES_PER_SLICE ) 
+        lastRow < 0         || lastRow >= FM10000_FFU_ENTRIES_PER_SLICE )
     {
         FM_LOG_ERROR(FM_LOG_CAT_ROUTING,"Invalid argument: NULL pointer or argument out of range\n");
     }
@@ -2165,7 +2165,7 @@ fm_bool FindEmptyRowInSliceWithinSliceRange(fm_int              sw,
                      (void *) pCurSlice,
                      pCurSlice->firstTcamSlice,
                      pCurSlice->lastTcamSlice);
-        
+
         unauthRow   = -1;
         pStateTable = pFirstSlice->stateTable;
 
@@ -3313,7 +3313,7 @@ static void ClassifyRoute(fm_int             sw,
         fmGetRouteDestAddress(&pRoute->route, &destAddr);
 
         pRouteInfo->isIPv6 = destAddr.isIPv6;
-        pRouteInfo->ipAddrSize = destAddr.isIPv6 ? 4 : 1; 
+        pRouteInfo->ipAddrSize = destAddr.isIPv6 ? 4 : 1;
         pRouteInfo->routeType    = GetRouteType(&pRoute->route);
         pRouteInfo->prefixLength = pRoute->prefix;
 
@@ -3380,7 +3380,7 @@ static void ClassifyRoute(fm_int             sw,
         }
 
         pRouteInfo->vroff = fmGetVirtualRouterOffset(sw, pRouteInfo->vrid);
-        pRouteInfo->routeTable = (pRouteInfo->routeType != FM10000_ROUTE_TYPE_UNUSED) ? 
+        pRouteInfo->routeTable = (pRouteInfo->routeType != FM10000_ROUTE_TYPE_UNUSED) ?
                                 GetRouteTable(sw, pRouteInfo->routeType) : NULL;
 
         if (pRouteInfo->routeTable != NULL)
@@ -3491,17 +3491,17 @@ static fm_bool IsMcastRouteType(fm10000_RouteTypes routeType)
  * \param[in]       sw contains the switch number.
  *
  * \param[in]       pRoute points to the route to be validated.
- * 
+ *
  * \param[in]       pRouteInfo points to route information structure to be
  *                  validated.
- * 
+ *
  * \return          FM_OK if successful.
  * \return          FM_ERR_INVALID_ARGUMENT if pRouteInfo is a NULL pointer or
  *                  invalid vroff
  * \return          FM_ERR_NO_FFU_RES_FOUND if no suitable FFU resources are
  *                  available for this route.
  * \return          FM_ERR_ALREADY_EXISTS if the route already exists
- * 
+ *
  *****************************************************************************/
 static fm_status ValidateRouteInformation(fm_int             sw,
                                           fm_intRouteEntry * pRoute,
@@ -3532,7 +3532,7 @@ static fm_status ValidateRouteInformation(fm_int             sw,
      *  -there are slices attached to the route, otherwise the route type
      *   is not supported.  */
     else if (pRouteInfo->routeTable == NULL ||
-             pRouteInfo->routePrefix == NULL || 
+             pRouteInfo->routePrefix == NULL ||
              pRouteInfo->routeTable->firstSlice == NULL)
     {
         err = FM_ERR_NO_FFU_RES_FOUND;
@@ -3569,9 +3569,9 @@ static fm_status ValidateRouteInformation(fm_int             sw,
  * \ingroup intRouter
  *
  * \desc            Initializes a FFU action structure.
- * 
+ *
  * \param[in]       sw is the switch on which to operate
- * 
+ *
  * \param[in]       pRoute is the points to route.
  *
  * \param[in]       pRouteInfo points to the associated route info structure.
@@ -3582,7 +3582,7 @@ static fm_status ValidateRouteInformation(fm_int             sw,
  * \return          FM_ERR_INVALID_ARGUMENT if one or more argument are invalid.
  * \return          FM_FAIL If action is route-arp and the ECMP Group is not
  *                  defined.
- * 
+ *
  *****************************************************************************/
 static fm_status InitFfuRouteAction(fm_int             sw,
                                     fm_intRouteEntry * pRoute,
@@ -3720,24 +3720,24 @@ static fm_status InitFfuRouteAction(fm_int             sw,
  * \desc            Completes the initialization of a FFU action structure.
  *                  The FFU action structure must be previously intialized
  *                  by InitFfyRouteAction.
- * 
+ *
  * \param[in]       sw is the switch on which to operate
- * 
+ *
  * \param[in]       pRoute is the points to route.
  *
  * \param[in]       pRouteInfo points to the associated route info structure.
  *
  * \param[out]      pFfuAction points to the FFU action structure.
- * 
+ *
  * \param[out]      pRuleValid points to a caller allocated storage where this
  *                  function will return TRUE if the FFU rule is valid or FALSE
  *                  otherwise.
- * 
+ *
  * \return          FM_OK if successful.
  * \return          FM_ERR_INVALID_ARGUMENT if one or more argument are invalid.
  * \return          FM_FAIL If action is route-arp and the ECMP Group is not
  *                  defined.
- * 
+ *
  *****************************************************************************/
 static fm_status SetFfuRouteAction(fm_int             sw,
                                    fm_intRouteEntry * pRoute,
@@ -3777,10 +3777,10 @@ static fm_status SetFfuRouteAction(fm_int             sw,
     {
         arpIndex = 0;
         pathCount = 0;
-        if (pRoute->ecmpGroupId >= 0) 
+        if (pRoute->ecmpGroupId >= 0)
         {
-            err = fm10000ValidateEcmpGroupState(sw, 
-                                                pRoute->ecmpGroupId, 
+            err = fm10000ValidateEcmpGroupState(sw,
+                                                pRoute->ecmpGroupId,
                                                 &ecmpGroupValid);
             FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_ROUTING, err);
 
@@ -3853,7 +3853,7 @@ static fm_status SetFfuRouteAction(fm_int             sw,
                 {
                     err = FM_FAIL;
                     *pRuleValid = FALSE;
-                    
+
                     FM_LOG_ERROR(FM_LOG_CAT_ROUTING, "Invalid multicast group, mcastGropHandle=%d\n",
                                  mcastGroupHdnl);
                 }
@@ -3889,18 +3889,18 @@ static fm_status SetFfuRouteAction(fm_int             sw,
  * \ingroup intRouter
  *
  * \desc            Allocates and initializes a new TCAM route.
- * 
+ *
  * \param[in]       sw is the switch on which to operate
- * 
+ *
  * \param[in]       pRoute points to the new route.
  *
  * \param[in]       pRouteInfo points to the route info struture for the new
  *                  route.
- * 
+ *
  * \param[out]      ppTcamRoute caller allocated storage where this function
  *                  returns the pointer to the created TCAM route if
  *                  successful or NULL otherwhise.
- * 
+ *
  * \return          FM_OK if successful.
  * \return          FM_ERR_INVALID_ARGUMENT if one or more arguments is invalid.
  *
@@ -3962,7 +3962,7 @@ static fm_status AllocateAndInitTcamRoute(fm_int                   sw,
                 pTcamRouteLoc->ecmpGroup =
                     switchPtr->ecmpGroups[pRoute->ecmpGroupId]->extension;
             }
-            
+
             pTcamRouteLoc->tcamSliceRow      = -1;
             FM_DLL_INIT_NODE(pTcamRouteLoc, nextTcamRoute, prevTcamRoute);
             FM_DLL_INIT_NODE(pTcamRouteLoc, nextPrefixRoute, prevPrefixRoute);
@@ -3996,18 +3996,18 @@ static fm_status AllocateAndInitTcamRoute(fm_int                   sw,
  * \ingroup intRouter
  *
  * \desc            Tries to find a place for a new route in the FFU.
- * 
+ *
  * \param[in]       sw is the switch on which to operate
- * 
+ *
  * \param[in]       pRoute points to the route to be added.
  *
  * \param[in]       pRouteInfo points to the route info structure associated
  *                  to the route to be added.
- * 
+ *
  * \param[out]      ppDestSlice points to a caller allocater strorage where
  *                  this functions will return a pointer to the route slice
  *                  structure, if a place is found or NULL otherwise.
- * 
+ *
  * \param[out]      pDestRow points to a caller allocated storage wher this
  *                  function will return the slice destination row, if a place
  *                  is found or -1 otherwise.
@@ -4310,12 +4310,12 @@ static fm_status FindFfuEntryForNewRoute(fm_int                  sw,
  * \ingroup intRouter
  *
  * \desc            Configures a FFU rule key for the given route.
- * 
+ *
  * \param[in]       sw is the switch on which to operate
- * 
+ *
  * \param[in]       pRouteInfo points to the route info structure associated
  *                  to the route to be added.
- * 
+ *
  * \param[out]      ruleKeyArray points to caller allocated FFU key/mask array
  *                  to be filled by this function.
  *
@@ -4334,7 +4334,7 @@ static fm_status SetFFuRuleKeyForRoute(fm_int                sw,
     fm_int          index;
     fm_uint32       dstMask[4];
     fm_uint32       srcMask[4];
-    fm_int          kase;    
+    fm_int          kase;
 
     FM_LOG_ENTRY(FM_LOG_CAT_ROUTING,
                  "sw=%d, pRouteInfo=%p, ruleKeyArray=%p\n",
@@ -4352,7 +4352,7 @@ static fm_status SetFFuRuleKeyForRoute(fm_int                sw,
     if (err == FM_OK)
     {
         kase = GetRouteCase(pRouteInfo->routeType);
-        
+
         if (kase == TCAM_CASE_INVALID)
         {
             err = FM_ERR_INVALID_ARGUMENT;
@@ -4386,7 +4386,7 @@ static fm_status SetFFuRuleKeyForRoute(fm_int                sw,
                 ruleKeyArray[index + pRouteInfo->ipAddrSize].key     = (fm_uint64) ntohl(pRouteInfo->srcIpPtr[index]);
                 ruleKeyArray[index + pRouteInfo->ipAddrSize].keyMask = (fm_uint64) srcMask[index];
             }
-            
+
             if (!pRouteInfo->isUnicast)
             {
                 ruleKeyArray[index + pRouteInfo->ipAddrSize].kase.value = kase;
@@ -4403,7 +4403,7 @@ static fm_status SetFFuRuleKeyForRoute(fm_int                sw,
             ruleKeyArray[0].key |=
                 ( ((fm_uint64) pRouteInfo->vroff + 1 ) << 4)
                 << FM10000_FFU_TCAM_36_32;
-            
+
             if (pRouteInfo->vrid != FM_ROUTER_ANY)
             {
                 ruleKeyArray[0].keyMask |=
@@ -4470,7 +4470,7 @@ static fm_status SetFFuRuleKeyForRoute(fm_int                sw,
  * \return           1 if the first route sorts after the second.
  *
  *****************************************************************************/
-static fm_int CompareTcamRoutesBySlice(const void *pFirstRoute, 
+static fm_int CompareTcamRoutesBySlice(const void *pFirstRoute,
                                        const void *pSecondRoute)
 {
     fm_int  diff;
@@ -4483,7 +4483,7 @@ static fm_int CompareTcamRoutesBySlice(const void *pFirstRoute,
         FM_LOG_ERROR( FM_LOG_CAT_ROUTING,
                       "Invalid argument\n");
     }
-    else   
+    else
     {
             /* TCAM routes are sorted by slice and row,
              * from highest to lowest */
@@ -4578,8 +4578,8 @@ static fm_status SetFFUSliceUsageForRoutingState(fm_int                  sw,
             pRouteState->ipv6McastLastTcamSlice  = pNewAllocations->ipv6MulticastLastSlice;
 
             if ( (pRouteState->ipv4UcastFirstTcamSlice < 0) &&
-                 (pRouteState->ipv4McastFirstTcamSlice < 0) && 
-                 (pRouteState->ipv6UcastFirstTcamSlice < 0) && 
+                 (pRouteState->ipv4McastFirstTcamSlice < 0) &&
+                 (pRouteState->ipv6UcastFirstTcamSlice < 0) &&
                  (pRouteState->ipv6McastFirstTcamSlice < 0) )
             {
                 pRouteState->routeFirstTcamSlice = -1;
@@ -4599,8 +4599,8 @@ static fm_status SetFFUSliceUsageForRoutingState(fm_int                  sw,
                 pTcamSlice = &pRouteState->routeTcamSliceArray[index];
 
                 if (pTcamSlice->ipv4UcastOK ||
-                    pTcamSlice->ipv4McastOK || 
-                    pTcamSlice->ipv6UcastOK || 
+                    pTcamSlice->ipv4McastOK ||
+                    pTcamSlice->ipv6UcastOK ||
                     pTcamSlice->ipv6McastOK)
                 {
                     wasUsable = TRUE;
@@ -4612,7 +4612,7 @@ static fm_status SetFFUSliceUsageForRoutingState(fm_int                  sw,
 
                 isUsable = FALSE;
 
-                if ( (index >= pRouteState->ipv4UcastFirstTcamSlice) && 
+                if ( (index >= pRouteState->ipv4UcastFirstTcamSlice) &&
                      (index <= pRouteState->ipv4UcastLastTcamSlice) )
                 {
                     pTcamSlice->ipv4UcastOK = TRUE;
@@ -4663,8 +4663,8 @@ static fm_status SetFFUSliceUsageForRoutingState(fm_int                  sw,
                              (pTcamSlice->ipv4McastOK) ? " V4M" : "",
                              (pTcamSlice->ipv6UcastOK) ? " V6U" : "",
                              (pTcamSlice->ipv6McastOK) ? " V6M" : "",
-                             (pTcamSlice->ipv4UcastOK || 
-                              pTcamSlice->ipv4McastOK || 
+                             (pTcamSlice->ipv4UcastOK ||
+                              pTcamSlice->ipv4McastOK ||
                               pTcamSlice->ipv6UcastOK ||
                               pTcamSlice->ipv6McastOK) ? "" : " N/A",
                              (wasUsable) ? ( (isUsable) ? "" : " Now Unusable" ) : ( (isUsable) ? " Now Usable" : "" ) );
@@ -4721,7 +4721,7 @@ static fm_bool RemoveSliceFromRoute(fm_int                sw,
                   (void *) pSlice,
                   (pSlice != NULL) ? pSlice->firstTcamSlice : -1,
                   (pSlice != NULL) ? pSlice->lastTcamSlice : -1 );
-    
+
     if ((pSlice == NULL ) || (pRouteTable == NULL))
     {
         FM_LOG_EXIT_CUSTOM(FM_LOG_CAT_ROUTING,
@@ -4762,12 +4762,12 @@ static fm_bool RemoveSliceFromRoute(fm_int                sw,
     }
 
     caseUsed = GetRouteCase(pSlice->routeType);
-    
+
     if (caseUsed == TCAM_CASE_INVALID)
     {
         FM_LOG_EXIT_CUSTOM(FM_LOG_CAT_ROUTING,
                            FALSE,
-                           "FALSE\n"); 
+                           "FALSE\n");
     }
 
     /* Clear tcam slice information */
@@ -4775,12 +4775,12 @@ static fm_bool RemoveSliceFromRoute(fm_int                sw,
     {
         tcamSlicePtr = GetTcamSlicePtr(sw, pRouteTable->stateTable, i);
         curCasePtr   = &tcamSlicePtr->caseInfo[caseUsed];
-        
+
         curCasePtr->parentTcamSlice = -1;
         curCasePtr->routeType       = FM10000_ROUTE_TYPE_UNUSED;
         curCasePtr->routeSlice      = NULL;
         curCasePtr->tcamSlice       = NULL;
-        
+
         for (kase = 0 ; kase < FM10000_ROUTE_NUM_CASES ; kase++)
         {
             if (tcamSlicePtr->caseInfo[kase].routeType !=
@@ -4803,7 +4803,7 @@ static fm_bool RemoveSliceFromRoute(fm_int                sw,
     pSlice->inUse = FALSE;
 
     fmFree(pSlice);
-    
+
     FM_LOG_EXIT_CUSTOM(FM_LOG_CAT_ROUTING, TRUE, "TRUE\n");
 }   /* end RemoveSliceFromRoute */
 
@@ -4825,7 +4825,7 @@ static fm_bool RemoveSliceFromRoute(fm_int                sw,
  * \return           1 if the first route sorts after the second.
  *
  *****************************************************************************/
-static fm_int ComparePrefixRoutes(const void *pFirstRoute, 
+static fm_int ComparePrefixRoutes(const void *pFirstRoute,
                                   const void *pSecondRoute)
 {
     fm_int  diff;
@@ -4841,16 +4841,16 @@ static fm_int ComparePrefixRoutes(const void *pFirstRoute,
     else
     {
         /* sort by prefix, highest to lowest */
-        diff = ((fm10000_TcamRouteEntry*)pSecondRoute)->routePrefix->prefix - 
+        diff = ((fm10000_TcamRouteEntry*)pSecondRoute)->routePrefix->prefix -
                ((fm10000_TcamRouteEntry*)pFirstRoute)->routePrefix->prefix;
 
         if (diff == 0)
         {
-            diff = ((fm10000_TcamRouteEntry*)pSecondRoute)->routeSlice->firstTcamSlice - 
+            diff = ((fm10000_TcamRouteEntry*)pSecondRoute)->routeSlice->firstTcamSlice -
                    ((fm10000_TcamRouteEntry*)pFirstRoute)->routeSlice->firstTcamSlice;
             if (diff == 0)
             {
-                diff = ((fm10000_TcamRouteEntry*)pSecondRoute)->tcamSliceRow - 
+                diff = ((fm10000_TcamRouteEntry*)pSecondRoute)->tcamSliceRow -
                        ((fm10000_TcamRouteEntry*)pFirstRoute)->tcamSliceRow;
             }
         }
@@ -4886,7 +4886,7 @@ static fm_int ComparePrefixRoutes(const void *pFirstRoute,
  * \return           1 if the first prefix sorts after the second.
  *
  *****************************************************************************/
-static fm_int ComparePrefix(const void *pFirstPrefix, 
+static fm_int ComparePrefix(const void *pFirstPrefix,
                             const void *pSecondPrefix)
 {
     fm_int      diff;
@@ -5242,7 +5242,7 @@ static fm_status InsertSliceIntoRouteTable(fm10000_RoutingTable *pRouteTable,
                  "routeTable = %p, slicePtr = %p\n",
                  (void*)pRouteTable,
                  (void*)pSlice);
-    
+
     err = FM_OK;
 
     /* argument validation */
@@ -5254,7 +5254,7 @@ static fm_status InsertSliceIntoRouteTable(fm10000_RoutingTable *pRouteTable,
     else
     {
         FM_LOG_DEBUG( FM_LOG_CAT_ROUTING,
-                      "Slice info: (%d-%d)\n",             
+                      "Slice info: (%d-%d)\n",
                       pSlice->firstTcamSlice,
                       pSlice->lastTcamSlice );
 
@@ -5689,7 +5689,7 @@ static fm_status NormalizeFFUSliceRanges(fm_int                sw,
         if (pRouteState->ipv4UcastFirstTcamSlice >= 0)
         {
             /* Adjust last slice to even cascade boundary */
-            numCascades = (pRouteState->ipv4UcastLastTcamSlice + 1 - 
+            numCascades = (pRouteState->ipv4UcastLastTcamSlice + 1 -
                            pRouteState->ipv4UcastFirstTcamSlice) / RouteSliceWidths[FM10000_ROUTE_TYPE_V4U];
 
             if (numCascades <= 0)
@@ -5699,7 +5699,7 @@ static fm_status NormalizeFFUSliceRanges(fm_int                sw,
             }
             else
             {
-                pRouteState->ipv4UcastLastTcamSlice = pRouteState->ipv4UcastFirstTcamSlice - 1 + 
+                pRouteState->ipv4UcastLastTcamSlice = pRouteState->ipv4UcastFirstTcamSlice - 1 +
                                                       (numCascades * RouteSliceWidths[FM10000_ROUTE_TYPE_V4U]);
 
                 if (pRouteState->ipv4UcastFirstTcamSlice < pRouteState->routeFirstTcamSlice)
@@ -5717,7 +5717,7 @@ static fm_status NormalizeFFUSliceRanges(fm_int                sw,
         if (pRouteState->ipv4McastFirstTcamSlice >= 0)
         {
             /* Adjust last slice to even cascade boundary */
-            numCascades = (pRouteState->ipv4McastLastTcamSlice + 1 - 
+            numCascades = (pRouteState->ipv4McastLastTcamSlice + 1 -
                            pRouteState->ipv4McastFirstTcamSlice) / RouteSliceWidths[FM10000_ROUTE_TYPE_V4DSV];
 
             if (numCascades <= 0)
@@ -5745,7 +5745,7 @@ static fm_status NormalizeFFUSliceRanges(fm_int                sw,
         if (pRouteState->ipv6UcastFirstTcamSlice >= 0)
         {
             /* Adjust last slice to even cascade boundary */
-            numCascades = (pRouteState->ipv6UcastLastTcamSlice + 1 - 
+            numCascades = (pRouteState->ipv6UcastLastTcamSlice + 1 -
                            pRouteState->ipv6UcastFirstTcamSlice) / RouteSliceWidths[FM10000_ROUTE_TYPE_V6U];
 
             if (numCascades <= 0)
@@ -5755,7 +5755,7 @@ static fm_status NormalizeFFUSliceRanges(fm_int                sw,
             }
             else
             {
-                pRouteState->ipv6UcastLastTcamSlice = pRouteState->ipv6UcastFirstTcamSlice -1 + 
+                pRouteState->ipv6UcastLastTcamSlice = pRouteState->ipv6UcastFirstTcamSlice -1 +
                                                       (numCascades * RouteSliceWidths[FM10000_ROUTE_TYPE_V6U]);
 
                 if (pRouteState->ipv6UcastFirstTcamSlice < pRouteState->routeFirstTcamSlice)
@@ -6081,7 +6081,7 @@ static fm_status AllocateRouteSlice(fm_int                sw,
             err =  FM_ERR_NO_MEM;
         }
     }
-    
+
     if (err == FM_OK)
     {
         FM_MEMSET_S( slicePtr, sizeof(fm10000_RouteSlice), 0, sizeof(fm10000_RouteSlice) );
@@ -6100,7 +6100,7 @@ static fm_status AllocateRouteSlice(fm_int                sw,
 
         FM_MEMSET_S( &slicePtr->routes, sizeof(slicePtr->routes), 0, sizeof(slicePtr->routes) );
 
-        FM_MEMCPY_S( &slicePtr->sliceInfo, 
+        FM_MEMCPY_S( &slicePtr->sliceInfo,
                      sizeof(slicePtr->sliceInfo),
                      pRouteTable->defaultSliceInfo,
                      sizeof(fm_ffuSliceInfo) );
@@ -6157,8 +6157,8 @@ static fm_status AllocateRouteSlice(fm_int                sw,
 /** PreallocateRouteSlicesV2
  * \ingroup intRouter
  *
- * \desc            Pre-allocate all of the TCAM slices available to the route 
- *                  type. This function may be called during a slice 
+ * \desc            Pre-allocate all of the TCAM slices available to the route
+ *                  type. This function may be called during a slice
  *                  re-allocation operation during which some TCAM slices may
  *                  be used by route types that are no longer authorized .
  *                  to do so. Until the re-allocation operation is complete,
@@ -6248,7 +6248,7 @@ static fm_status PreallocateRouteSlicesV2(fm_int                sw,
     }
 
     caseToUse     = GetRouteCase(routeType);
-   
+
     if (caseToUse == TCAM_CASE_INVALID)
     {
         FM_LOG_EXIT(FM_LOG_CAT_ROUTING, FM_OK);;
@@ -6301,7 +6301,7 @@ static fm_status PreallocateRouteSlicesV2(fm_int                sw,
              * solution is to stop traffic, empty all routes from the
              * table, repartition the empty TCAM, then add them back in
              * and restart traffic, and even that is not guaranteed to
-             * work if insufficient slices have been allocated. */ 
+             * work if insufficient slices have been allocated. */
             if (caseUsed && !reAlloc)
             {
                 /* Slice is in use and we aren't in the middle of a
@@ -6389,7 +6389,7 @@ static fm_status PreallocateRouteSlicesV2(fm_int                sw,
             continue;
         }
 
-        /* cascade of slices is available, create a cascade record */ 
+        /* cascade of slices is available, create a cascade record */
         err = AllocateRouteSlice(sw,
                                  routeTable,
                                  tcamSlice,
@@ -6482,7 +6482,7 @@ static fm_status PreallocateRouteSlices(fm_int                sw,
     fm_int                    caseToUse;
     static fm10000_RouteTypes routePreallocationOrder[] =
     {
-        FM10000_ROUTE_TYPE_V6DSV, 
+        FM10000_ROUTE_TYPE_V6DSV,
         FM10000_ROUTE_TYPE_V6U,
 #ifdef ENABLE_DIVERSE_MCAST_SUPPORT
         FM10000_ROUTE_TYPE_V6DV,
@@ -6514,7 +6514,7 @@ static fm_status PreallocateRouteSlices(fm_int                sw,
      **********************************************************************/
     typeIndex = 0;
 
-    while ( (err == FM_OK) &&  
+    while ( (err == FM_OK) &&
            (routeType = routePreallocationOrder[typeIndex++]) != FM10000_ROUTE_TYPE_UNUSED)
     {
         pRouteTable = pStateTable->routeTables[routeType];
@@ -6577,7 +6577,7 @@ static fm_status PreallocateRouteSlices(fm_int                sw,
         {
             continue;
         }
-        
+
         pRouteTable = pStateTable->routeTables[routeType];
 
         err = PreallocateRouteSlicesV2(sw, pRouteTable, reAlloc);
@@ -6680,7 +6680,7 @@ static fm_status AllocateTemporaryCascade(fm_int                sw,
         skipSlice = TRUE;
 
         caseToUse = GetRouteCase(routeType);
-        
+
         if (caseToUse == TCAM_CASE_INVALID)
         {
             /* slice is not usable */
@@ -6871,7 +6871,7 @@ static fm_bool UpdateTcamSliceRow(fm_int                  sw,
  *
  * \param[in]       pRemovedRouteEntry points to the removed route. Cannot be
  *                  NULL.
- * 
+ *
  *****************************************************************************/
 static void UpdateTcamSliceRowInfoAfterRemoveRoute(fm_int                  sw,
                                                    fm10000_RouteSlice *    pOldSlice,
@@ -6954,7 +6954,7 @@ static void UpdateTcamSliceRowInfoAfterRemoveRoute(fm_int                  sw,
  *                  NULL. It is not required to update the slice and row
  *                  information, since it passed as a separate argument to this
  *                  function.
- * 
+ *
  *****************************************************************************/
 static void UpdateTcamSliceRowInfoAfterInsertRoute(fm_int                  sw,
                                                    fm10000_RouteSlice *    pDestSlice,
@@ -7012,7 +7012,7 @@ static void UpdateTcamSliceRowInfoAfterInsertRoute(fm_int                  sw,
  *
  * \param[in]       pRemovedRouteEntry points to the removed route. Cannot be
  *                  NULL.
- * 
+ *
  *****************************************************************************/
 static void UpdatePrefixTreeAfterRemoveRoute(fm_int                  sw,
                                              fm10000_TcamRouteEntry *pRemovedRouteEntry)
@@ -7122,7 +7122,7 @@ static fm_status ConfigureSliceCascade(fm_int              sw,
     }
 
     FM_LOG_EXIT(FM_LOG_CAT_ROUTING, status);
-    
+
 }   /* end ConfigureSliceCascade */
 
 
@@ -7160,7 +7160,7 @@ static fm_status UnconfigureSliceCascade(fm_int              sw,
                   slicePtr->routeType,
                   slicePtr->firstTcamSlice,
                   slicePtr->lastTcamSlice );
-    
+
     status = fm10000GetFFUMasterValid(sw, &sliceValid, &actionValid, TRUE);
     FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_ROUTING, status);
 
@@ -7189,7 +7189,7 @@ static fm_status UnconfigureSliceCascade(fm_int              sw,
 
     /* Disable the slice in the FFU */
     status = fm10000UnconfigureFFUSlice(sw, &slicePtr->sliceInfo, TRUE);
-    
+
     FM_LOG_EXIT(FM_LOG_CAT_ROUTING, status);
 
 }   /* end UnconfigureSliceCascade */
@@ -7374,7 +7374,7 @@ static fm_bool UpdateTcamRoutePosition(fm_int                  sw,
             tcamPositionUpdated = TRUE;
         }
         else
-        {   
+        {
 
             /* Insert the route into the "sort-by-slice" route tree */
             err = fmCustomTreeInsert(&pRouteEntry->routeTable->tcamSliceRouteTree,
@@ -7386,7 +7386,7 @@ static fm_bool UpdateTcamRoutePosition(fm_int                  sw,
                              "Cannot insert route into the sort-b-slice tree, pRouteEntry=%p %s\n",
                              (void *) pRouteEntry,
                              fmErrorMsg(err));
-                
+
             }
             else
             {
@@ -7403,8 +7403,8 @@ static fm_bool UpdateTcamRoutePosition(fm_int                  sw,
                 else
                 {
                     /* update destination information */
-                    UpdateTcamSliceRowInfoAfterInsertRoute(sw, 
-                                                           pDestSlice, 
+                    UpdateTcamSliceRowInfoAfterInsertRoute(sw,
+                                                           pDestSlice,
                                                            destRow,
                                                            pRouteEntry);
                     tcamPositionUpdated = TRUE;
@@ -7546,7 +7546,7 @@ static fm_status CopyRoutingTable(fm_int                sw,
             if (pRouteSliceXref[index][kase][0] != NULL)
             {
                 slicePtr = pRouteSliceXref[index][kase][1];
-                
+
                 if (slicePtr->routeType == pClone->routeType)
                 {
                     pTempSlice = pClone->firstSlice;
@@ -7559,11 +7559,11 @@ static fm_status CopyRoutingTable(fm_int                sw,
 
                         pTempSlice = pTempSlice->nextSlice;
                     }
-                    
+
                     if (pTempSlice == NULL)
                     {
                         err = InsertSliceIntoRouteTable(pClone, slicePtr);
-                        
+
                         FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_ROUTING, err);
                     }
                 }
@@ -7819,7 +7819,7 @@ static fm_status CloneRoutingState(fm_int                 sw,
     fm10000_RouteSlice     *srcRouteSlice;
     fm10000_RouteSlice     *pNewRouteSlice;
     fm10000_RouteSlice     *routeSliceXref[FM10000_MAX_FFU_SLICES][FM10000_ROUTE_NUM_CASES][2];
-    
+
 
     FM_LOG_ENTRY(FM_LOG_CAT_ROUTING,
                  "sw=%d, pSource=%p, ppClone=%p\n",
@@ -7884,12 +7884,12 @@ static fm_status CloneRoutingState(fm_int                 sw,
                     newSlice->caseInfo[kase].tcamSlice       = newSlice;
 
                     srcRouteSlice = srcSlice->caseInfo[kase].routeSlice;
-                    
+
                     if ( (srcRouteSlice != NULL)
                          && (routeSliceXref[index][kase][0] == NULL) )
                     {
                         pNewRouteSlice = fmAlloc( sizeof(fm10000_RouteSlice) );
-                        
+
                         if (pNewRouteSlice == NULL)
                         {
                             ReleaseRoutingState(sw, newState);
@@ -7897,7 +7897,7 @@ static fm_status CloneRoutingState(fm_int                 sw,
                         }
 
                         FM_CLEAR(*pNewRouteSlice);
-                        
+
                         for (i = srcRouteSlice->firstTcamSlice ;
                              i <= srcRouteSlice->lastTcamSlice ;
                              i++)
@@ -7966,7 +7966,7 @@ static fm_status CloneRoutingState(fm_int                 sw,
                                    &newState->ipv4SGRoutes);
             FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_ROUTING, err);
             newState->routeTables[FM10000_ROUTE_TYPE_V4SG] = &newState->ipv4SGRoutes;
-            
+
             err = CopyRoutingTable(sw,
                                    routeSliceXref,
                                    &pSource->ipv6SGRoutes,
@@ -7974,7 +7974,7 @@ static fm_status CloneRoutingState(fm_int                 sw,
                                    &newState->ipv6SGRoutes);
             FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_ROUTING, err);
             newState->routeTables[FM10000_ROUTE_TYPE_V6SG] = &newState->ipv6SGRoutes;
-            
+
             err = CopyRoutingTable(sw,
                                    routeSliceXref,
                                    &pSource->ipv4DVRoutes,
@@ -7982,7 +7982,7 @@ static fm_status CloneRoutingState(fm_int                 sw,
                                    &newState->ipv4DVRoutes);
             FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_ROUTING, err);
             newState->routeTables[FM10000_ROUTE_TYPE_V4DV] = &newState->ipv4DVRoutes;
-            
+
             err = CopyRoutingTable(sw,
                                    routeSliceXref,
                                    &pSource->ipv6DVRoutes,
@@ -7990,7 +7990,7 @@ static fm_status CloneRoutingState(fm_int                 sw,
                                    &newState->ipv6DVRoutes);
             FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_ROUTING, err);
             newState->routeTables[FM10000_ROUTE_TYPE_V6DV] = &newState->ipv6DVRoutes;
-    
+
 #endif
 
             err = CopyRoutingTable(sw,
@@ -8000,7 +8000,7 @@ static fm_status CloneRoutingState(fm_int                 sw,
                                    &newState->ipv4DSVRoutes);
             FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_ROUTING, err);
             newState->routeTables[FM10000_ROUTE_TYPE_V4DSV] = &newState->ipv4DSVRoutes;
-            
+
             err = CopyRoutingTable(sw,
                                    routeSliceXref,
                                    &pSource->ipv6DSVRoutes,
@@ -8196,7 +8196,7 @@ static fm_status MoveUnauthorizedRoutes(fm_int               sw,
                     FM_LOG_PRINT("MoveUnauthorizedRoutes FAILED, TCAM Dump Follows:\n");
                     DumpAllTcamSliceUsage(sw, pRouteTable->stateTable);
 
-                    err = IsMcastRouteType(routeType) ? 
+                    err = IsMcastRouteType(routeType) ?
                           FM_ERR_INSUFFICIENT_MULTICAST_ROUTE_SPACE :
                           FM_ERR_INSUFFICIENT_UNICAST_ROUTE_SPACE;
                     break;
@@ -8482,7 +8482,7 @@ static fm_bool ClearCascadeRowWithinSliceRange(fm_int               sw,
 
         /* Scan all route tables.  If the table isn't locked and it has at least
          * one route, save it as a movable route type.
-         * Note that if locked, the route type belongs to a parent route that 
+         * Note that if locked, the route type belongs to a parent route that
          * recursed down to this point. */
         for ( index = 0 ; index < FM10000_NUM_ROUTE_TYPES ; index++)
         {
@@ -8572,7 +8572,7 @@ static fm_bool ClearCascadeRowWithinSliceRange(fm_int               sw,
 
             for (tempSlice = pCurSlice->firstTcamSlice ; tempSlice <= pCurSlice->lastTcamSlice ; tempSlice++)
             {
-                
+
                 pTempSlice = GetTcamSlicePtr(sw, pStateTable, tempSlice);
                 tempStatus = pTempSlice->rowStatus[curRow];
 
@@ -9017,7 +9017,7 @@ static fm_status CreateRouterArpRedirectTrigger(fm_int sw)
                  sizeof(trigName),
                  "arpRedirectT%d",
                  triggerRuleArpRedirect);
-    
+
     /* Create the trigger */
     err = fm10000CreateTrigger(sw,
                                FM10000_TRIGGER_GROUP_ROUTING,
@@ -9130,9 +9130,9 @@ static fm_status SetRouterArpRedirectTrigger(fm_int sw)
     switchExt = GET_SWITCH_EXT(sw);
 
     /* Get the trigger's conditions */
-    err = fm10000GetTrigger(sw, 
-                            FM10000_TRIGGER_GROUP_ROUTING, 
-                            triggerRuleArpRedirect, 
+    err = fm10000GetTrigger(sw,
+                            FM10000_TRIGGER_GROUP_ROUTING,
+                            triggerRuleArpRedirect,
                             &trigCond,
                             &trigAction);
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_ROUTING, err);
@@ -9140,10 +9140,10 @@ static fm_status SetRouterArpRedirectTrigger(fm_int sw)
     /* Check if trap redirect event and state of arp redirect logging  */
     if ( switchPtr->routerTrapRedirectEvent )
     {
-        /* Disable the trigger when routerTrapRedirectEvent is set and 
-           arp redirect logging is disabled (which means that the 
+        /* Disable the trigger when routerTrapRedirectEvent is set and
+           arp redirect logging is disabled (which means that the
            trigger is enabled) */
-        
+
         /* Disable the trigger by setting trigger's list of source
            ports to match on none ports (the trigger will never hit) */
         trigCond.cfg.rxPortset = FM_PORT_SET_NONE;
@@ -9156,10 +9156,10 @@ static fm_status SetRouterArpRedirectTrigger(fm_int sw)
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_ROUTING, err);
 
     }
-    else 
+    else
     {
-        /* Enable the trigger when routerTrapRedirectEvent is not set and 
-           arp redirect logging is enabled (which means that the 
+        /* Enable the trigger when routerTrapRedirectEvent is not set and
+           arp redirect logging is enabled (which means that the
            trigger is disabled)*/
 
         /* Enable the trigger by setting trigger's list of source
@@ -9190,7 +9190,7 @@ ABORT:
  * \desc            Perform the initial routing slice boundary configuration.
  *
  * \param[in]       sw is the switch number.
- * 
+ *
  * \param[in]       pStateTable points to the routing state table.
  *
  * \return          FM_OK if successful.
@@ -9278,7 +9278,7 @@ fm_status SetInitialSliceBoundaries (fm_int                sw,
  *                  of a virtual router.
  *
  * \param[in]       sw is the switch on which to operate.
- * 
+ *
  * \param[in]       vroff is the offset of the virtual router in the table.
  *
  * \param[in]       vrMacId identifies which MAC address of the virtual router
@@ -9323,13 +9323,13 @@ static fm_status SetVirtualRouterMacRegisters(fm_int         sw,
         mapperMacCfg.validDMAC = TRUE;
         mapperMacCfg.mapMac = vroff + 1;
         mapperMacCfg.router = routerState;
-                        
-        err = fm10000SetMapMac(sw, 
-                               vroff + 1, 
-                               &mapperMacCfg, 
-                               FM_FM10000_MAP_MAC_ALL, 
+
+        err = fm10000SetMapMac(sw,
+                               vroff + 1,
+                               &mapperMacCfg,
+                               FM_FM10000_MAP_MAC_ALL,
                                TRUE);
-                        
+
         if (err != FM_OK)
         {
             FM_LOG_ERROR(FM_LOG_CAT_ROUTING,
@@ -9368,7 +9368,7 @@ static fm_status SetVirtualRouterMacRegisters(fm_int         sw,
 fm_status fm10000RouterAlloc(fm_int sw)
 {
     FM_NOT_USED(sw);
-    
+
     FM_LOG_ENTRY(FM_LOG_CAT_ROUTING,
                  "sw=%d\n",
                  sw);
@@ -9470,7 +9470,7 @@ fm_status fm10000RouterInit(fm_int sw)
     errCount = 0;
     swptr = GET_SWITCH_PTR(sw);
     pSwitchExt = GET_SWITCH_EXT(sw);
-    
+
     /* Get the unicast/multicast min precedence values */
     pSwitchExt->unicastMinPrecedence =
         fmGetIntApiProperty(FM_AAK_API_FM10000_FFU_UNICAST_PRECEDENCE_MIN,
@@ -9493,7 +9493,7 @@ fm_status fm10000RouterInit(fm_int sw)
         pStateTable->routeLastTcamSlice  = -1;
         err = FM_OK;
     }
-    
+
     if (err == FM_OK)
     {
 
@@ -9504,7 +9504,7 @@ fm_status fm10000RouterInit(fm_int sw)
         {
             err = NormalizeFFUSliceRanges(sw, &pSwitchExt->routeStateTable);
         }
-        
+
         if (err == FM_OK)
         {
             pStateTable->previousFirstTcamSlice = pStateTable->routeFirstTcamSlice;
@@ -9512,7 +9512,7 @@ fm_status fm10000RouterInit(fm_int sw)
 
             /* Initialize slice array */
             pSwitchExt->maxRoutes = FM10000_MAX_FFU_SLICES * FM10000_FFU_ENTRIES_PER_SLICE;
-            pSwitchExt->maxRouteSlices = pSwitchExt->maxRoutes; 
+            pSwitchExt->maxRouteSlices = pSwitchExt->maxRoutes;
 
             FM_CLEAR(pStateTable->routeTcamSliceArray);
 
@@ -9619,7 +9619,7 @@ fm_status fm10000RouterInit(fm_int sw)
 
             /* Create ARP redirect event trigger. */
             err = CreateRouterArpRedirectTrigger(sw);
-            
+
             if (err != FM_OK)
             {
                 FM_LOG_ERROR(FM_LOG_CAT_ROUTING,
@@ -9627,8 +9627,8 @@ fm_status fm10000RouterInit(fm_int sw)
                              fmErrorMsg(err));
                 errCount++;
             }
-            
-            /********************************************************** 
+
+            /**********************************************************
              * the following route types are not currently supported
              *  - FM10000_ROUTE_TYPE_V4SG
              *  - FM10000_ROUTE_TYPE_V6SG
@@ -9670,16 +9670,18 @@ fm_status fm10000RouterInit(fm_int sw)
  * \return          FM_ERR_INVALID_ATTRIB if attr is not a recognized attribute.
  *
  *****************************************************************************/
-fm_status fm10000SetRouterAttribute(fm_int  sw, 
-                                    fm_int  attr, 
+fm_status fm10000SetRouterAttribute(fm_int  sw,
+                                    fm_int  attr,
                                     void *  pValue)
 {
-    fm_switch          *switchPtr;
-    fm_status           err = FM_OK;
-    fm_uint32           reg;
-    fm_int              vroff;
-    fm_macaddr          tmpMac;
-    fm_fm10000MapMacCfg mapperMacCfg;
+    fm_switch *           switchPtr;
+    fm_status             err = FM_OK;
+    fm_uint32             reg;
+    fm_int                vroff;
+    fm_macaddr            tmpMac;
+    fm_fm10000MapMacCfg   mapperMacCfg;
+    fm_int                i;
+    fm_fm10000TeTunnelCfg tunnelCfg;
 
     FM_LOG_ENTRY(FM_LOG_CAT_ROUTING,
                  "sw = %d, attr=%d, pValue=%p\n",
@@ -9696,7 +9698,7 @@ fm_status fm10000SetRouterAttribute(fm_int  sw,
         case FM_ROUTER_TRAP_TTL1:
 
             err = switchPtr->ReadUINT32(sw, FM10000_SYS_CFG_ROUTER(), &reg);
-            
+
             if (err == FM_OK)
             {
                 /* set TTLdisposal field */
@@ -9714,7 +9716,7 @@ fm_status fm10000SetRouterAttribute(fm_int  sw,
         case FM_ROUTER_PHYSICAL_MAC_ADDRESS:
 
             tmpMac = switchPtr->physicalRouterMac;
-            
+
             /* set physical router SMAC */
             err = switchPtr->WriteUINT64(sw, FM10000_MOD_ROUTER_SMAC(1, 0), tmpMac);
 
@@ -9733,12 +9735,33 @@ fm_status fm10000SetRouterAttribute(fm_int  sw,
                 mapperMacCfg.mapMac = 1;
                 mapperMacCfg.router = TRUE;
 
-                err = fm10000SetMapMac(sw, 
-                                       1, 
-                                       &mapperMacCfg, 
-                                       FM_FM10000_MAP_MAC_ALL, 
+                err = fm10000SetMapMac(sw,
+                                       1,
+                                       &mapperMacCfg,
+                                       FM_FM10000_MAP_MAC_ALL,
                                        TRUE);
 
+            }
+
+            if (err == FM_OK)
+            {
+                /* Update the default outer header tunnel DMAC/SMAC to be the
+                 * Router MAC. */
+                tunnelCfg.dmac = switchPtr->physicalRouterMac;
+                tunnelCfg.smac = switchPtr->physicalRouterMac;
+                for (i = 0 ; i < FM10000_TE_DEFAULT_L4DST_ENTRIES ; i++)
+                {
+                    err = fm10000SetTeDefaultTunnel(sw,
+                                                    i,
+                                                    &tunnelCfg,
+                                                    FM10000_TE_DEFAULT_TUNNEL_DMAC |
+                                                    FM10000_TE_DEFAULT_TUNNEL_SMAC,
+                                                    TRUE);
+                    if (err != FM_OK)
+                    {
+                        break;
+                    }
+                }
             }
             break;
 
@@ -9792,7 +9815,7 @@ fm_status fm10000SetRouterAttribute(fm_int  sw,
             {
                 /* set TrapIPOptions field  */
                 FM_SET_BIT(reg, FM10000_SYS_CFG_ROUTER, trapIPOptions, switchPtr->routerTrapIpOptions? 1 : 0);
-                
+
                 err = switchPtr->WriteUINT32(sw, FM10000_SYS_CFG_ROUTER(), reg);
             }
 
@@ -10055,7 +10078,7 @@ fm_status fm10000DeleteRoute(fm_int            sw,
     fm10000_RoutingTable *  pRouteTable;
     fm10000_TcamRouteEntry  tcamRouteKey;
     fm10000_TcamRouteEntry *pTcamRoute;
-    
+
 
     FM_LOG_ENTRY(FM_LOG_CAT_ROUTING,
                  "sw=%d, pRoute=%p\n",
@@ -10146,7 +10169,7 @@ fm_status fm10000ReplaceECMPBaseRoute(fm_int            sw,
     fm10000_RoutingTable *  routeTable;
     fm10000_TcamRouteEntry  tcamRouteKey;
     fm10000_TcamRouteEntry *tcamRoute;
-    
+
     FM_LOG_ENTRY(FM_LOG_CAT_ROUTING,
                  "sw=%d, oldRoute=%p, pNewRoute=%p\n",
                  sw,
@@ -10247,12 +10270,12 @@ fm_status fm10000SetRouteActive(fm_int            sw,
                 {
                     if (pRoute->ecmpGroupId >= 0)
                     {
-                        err = fm10000ValidateEcmpGroupState(sw, 
-                                                            pRoute->ecmpGroupId, 
+                        err = fm10000ValidateEcmpGroupState(sw,
+                                                            pRoute->ecmpGroupId,
                                                             &valid);
                         if (err != FM_OK)
                         {
-                            /* on error, flag the route as NOT-valid */ 
+                            /* on error, flag the route as NOT-valid */
                             valid = FALSE;
                         }
                     }
@@ -10309,7 +10332,7 @@ fm_status fm10000AddVirtualRouter(fm_int sw,
 
     /*  New virtual router is always initialized for its default MAC mode:
      *  FM_ROUTER_MAC_MODE_VIRTUAL_MAC_ADDRESS_1
-     */ 
+     */
     err = SetVirtualRouterMacRegisters(sw,
                                        vroff,
                                        0,
@@ -10356,10 +10379,10 @@ fm_status fm10000RemoveVirtualRouter(fm_int sw,
         mapperMacCfg.mapMac = 0;
         mapperMacCfg.router = FALSE;
 
-        err = fm10000SetMapMac(sw, 
-                               vroff + 1, 
-                               &mapperMacCfg, 
-                               FM_FM10000_MAP_MAC_ALL, 
+        err = fm10000SetMapMac(sw,
+                               vroff + 1,
+                               &mapperMacCfg,
+                               FM_FM10000_MAP_MAC_ALL,
                                TRUE);
     }
 
@@ -10385,7 +10408,7 @@ fm_status fm10000RemoveVirtualRouter(fm_int sw,
  *
  *****************************************************************************/
 fm_status fm10000SetRouterState(fm_int          sw,
-                                fm_int          vroff, 
+                                fm_int          vroff,
                                 fm_routerState  state)
 {
     fm_status           err;
@@ -10432,10 +10455,10 @@ fm_status fm10000SetRouterState(fm_int          sw,
         mapperMacCfg.mapMac = vroff + 1;
         mapperMacCfg.router = routerState;
 
-        err = fm10000SetMapMac(sw, 
-                               vroff + 1, 
-                               &mapperMacCfg, 
-                               FM_FM10000_MAP_MAC_ALL, 
+        err = fm10000SetMapMac(sw,
+                               vroff + 1,
+                               &mapperMacCfg,
+                               FM_FM10000_MAP_MAC_ALL,
                                TRUE);
     }
 
@@ -10518,14 +10541,14 @@ fm_status fm10000SetRouterMacMode(fm_int sw,
  * \param[in]       sw is the switch number.
  *
  * \param[in]       groupId is the ECMP group to update.
- * 
+ *
  * \param[in]       newIndex is the new ARP index to use for this group.
  *
  * \param[in]       pathCount is the new ARP count to configure for this group.
- * 
+ *
  * \param[in]       pathCountType is the new ARP count type to configure for
  *                  this group.
- * 
+ *
  * \return          FM_OK if successful.
  *
  *****************************************************************************/
@@ -10928,11 +10951,11 @@ void fm10000DbgDumpPrefixLists(fm_int sw)
  *                  version).
  *
  * \param[in]       sw is the switch on which to operate.
- * 
+ *
  * \param[in]       flags contains a bit-field describing which internal
  *                  tables to dump.  See ''Router Debug Dump Flags'' for
  *                  a list of flag values.
- * 
+ *
  * \return          nothing.
  *
  *****************************************************************************/
@@ -11061,27 +11084,27 @@ void fm10000DbgDumpInternalRouteTables(fm_int sw,
 
         FM_LOG_PRINT("  numPrefixes = %d\n",
                      fmCustomTreeSize(&pRouteTable->prefixTree));
-        
+
         FM_LOG_PRINT("  Route Slice Table\n");
         pRouteSlice = GetFirstSlice(pRouteTable);
-        
+
         while (pRouteSlice != NULL)
         {
             pFirstTcamRoute = (pRouteSlice->highestRow >= 0) ? pRouteSlice->routes[pRouteSlice->highestRow] : NULL;
             pLastTcamRoute  = (pRouteSlice->highestRow >= 0) ? pRouteSlice->routes[pRouteSlice->lowestRow]  : NULL;
-            
+
             FM_LOG_PRINT("    Slice %p: first TCAM route %p, "
                          "last TCAM route %p\n",
                          (void *) pRouteSlice,
                          (void *) pFirstTcamRoute,
                          (void *) pLastTcamRoute);
-            
+
             FM_LOG_PRINT("      width = %d, first Tcam Slice = %d, "
                          "last Tcam Slice = %d\n      Routes:\n",
                          pRouteSlice->sliceWidth,
                          pRouteSlice->firstTcamSlice,
                          pRouteSlice->lastTcamSlice);
-            
+
             for (sliceRow = FM10000_FFU_ENTRIES_PER_SLICE - 1 ; sliceRow >= 0 ; sliceRow--)
             {
                 if (pRouteSlice->routes[sliceRow] != NULL)
@@ -11093,9 +11116,9 @@ void fm10000DbgDumpInternalRouteTables(fm_int sw,
             }
 
             pRouteSlice = GetNextSlice(pRouteSlice);
-            
+
         }   /* end while (pRouteSlice != NULL) */
-        
+
         FM_LOG_PRINT("  TCAM Routes\n");
         fmCustomTreeIterInit(&iter, &pRouteTable->tcamRouteRouteTree);
 
@@ -11103,7 +11126,7 @@ void fm10000DbgDumpInternalRouteTables(fm_int sw,
                                    (void **) &pTcamRouteKey,
                                    (void **) &pTcamRoute);
 
-        
+
         if (err != FM_OK)
         {
             if (err == FM_ERR_NO_MORE)
@@ -11182,7 +11205,7 @@ void fm10000DbgDumpInternalRouteTables(fm_int sw,
             fmCustomTreeIterInitBackwards(&iter, &pRouteTable->prefixTree);
             err = fmCustomTreeIterNext(&iter, (void **) &pPrefixKey, (void **) &pPrefix);
 
-           
+
             if (err != FM_OK)
             {
                 if (err == FM_ERR_NO_MORE)
@@ -11282,7 +11305,7 @@ void fm10000DbgDumpInternalRouteTables(fm_int sw,
  * \return          nothing.
  *
  *****************************************************************************/
-void fm10000DbgDumpHwFFUContent(fm_int sw, 
+void fm10000DbgDumpHwFFUContent(fm_int sw,
                                 fm_int flags)
 {
     FM_NOT_USED(sw);
@@ -11310,11 +11333,11 @@ void fm10000DbgDumpHwFFUContent(fm_int sw,
  * \return          nothing.
  *
  *****************************************************************************/
-void fm10000DbgDumpRouteTables(fm_int sw, 
+void fm10000DbgDumpRouteTables(fm_int sw,
                                fm_int flags)
 {
     fm10000_switch *      pSwitchExt;
-    
+
 
     pSwitchExt = GET_SWITCH_EXT(sw);
 
@@ -11974,7 +11997,7 @@ fm_status fm10000GetRouteAttribute(fm_int         sw,
                                    fm_int         attr,
                                    void *         pValue)
 {
-    
+
     FM_LOG_ENTRY(FM_LOG_CAT_ROUTING,
                  "sw=%d, pRoute=%p, attr=%d, pValue=%p\n",
                  sw,
@@ -12201,7 +12224,7 @@ fm_status fm10000RoutingProcessFFUPartitionChange(fm_int                  sw,
                 {
                     case FM10000_ROUTE_TYPE_UNUSED:
                         break;
-                        
+
                     case FM10000_ROUTE_TYPE_V4U:
                         if (routeSlicePtr->highestRow >= 0)
                         {
@@ -12213,21 +12236,21 @@ fm_status fm10000RoutingProcessFFUPartitionChange(fm_int                  sw,
                         {
                             rebuildNeeded = TRUE;
                         }
-                        
+
                         break;
-                        
+
                     case FM10000_ROUTE_TYPE_V6U:
                         if (routeSlicePtr->highestRow >= 0)
                         {
                             foundIPv6UnicastRoutes = TRUE;
                         }
-                        
+
                         if ( (index < newAllocations->ipv6UnicastFirstSlice)
                              || (index > newAllocations->ipv6UnicastFirstSlice) )
                         {
                             rebuildNeeded = TRUE;
                         }
-                        
+
                         break;
 
 #ifdef ENABLE_DIVERSE_MCAST_SUPPORT
@@ -12239,15 +12262,15 @@ fm_status fm10000RoutingProcessFFUPartitionChange(fm_int                  sw,
                         {
                             foundIPv4MulticastRoutes = TRUE;
                         }
-                        
+
                         if ( (index < newAllocations->ipv4MulticastFirstSlice)
                              || (index > newAllocations->ipv4MulticastFirstSlice) )
                         {
                             rebuildNeeded = TRUE;
                         }
-                        
+
                         break;
-                        
+
 #ifdef ENABLE_DIVERSE_MCAST_SUPPORT
                     case FM10000_ROUTE_TYPE_V6SG:
                     case FM10000_ROUTE_TYPE_V6DV:
@@ -12257,13 +12280,13 @@ fm_status fm10000RoutingProcessFFUPartitionChange(fm_int                  sw,
                         {
                             foundIPv6MulticastRoutes = TRUE;
                         }
-                        
+
                         if ( (index < newAllocations->ipv6MulticastFirstSlice)
                              || (index > newAllocations->ipv6MulticastFirstSlice) )
                         {
                             rebuildNeeded = TRUE;
                         }
-                        
+
                         break;
 
                     default:

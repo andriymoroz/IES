@@ -1887,6 +1887,42 @@ fm_status fm10000SerDesSetFarLoopbackModeOff(fm_smEventInfo *eventInfo,
 
 
 /*****************************************************************************/
+/** fm10000SerDesStartTimeoutTimerDebounce
+ * \ingroup intSerdes
+ *
+ * \desc            Action starting the SerDes timeout timer using the signalOk
+ *                  debounce time.
+ *
+ * \param[in]       eventInfo is a pointer the generic event descriptor (unused
+ *                  in this function)
+ *
+ * \param[in]       userInfo pointer a purpose specific event descriptor (must
+ *                  be casted to ''fm10000_serdesSmEventInfo'')
+ *
+ * \return          FM_OK if successful
+ * \return          Other ''Status Codes'' as appropriate in case of failure.
+ *
+ *****************************************************************************/
+fm_status fm10000SerDesStartTimeoutTimerDebounce(fm_smEventInfo *eventInfo,
+                                                 void           *userInfo )
+{
+    fm_status     err;
+    fm_timestamp  timeout;
+
+
+    timeout.sec  = 0;
+    timeout.usec = FM10000_SERDES_SIGNALOK_DEBOUNCE_DELAY;
+
+    err = StartTimeoutTimer(eventInfo, userInfo, &timeout);
+
+    return err;
+
+}
+
+
+
+
+/*****************************************************************************/
 /** fm10000SerDesStartTimeoutTimerShrt
  * \ingroup intSerdes
  *
@@ -5410,11 +5446,8 @@ fm_status fm10000SerDesProcessSignalOkAsserted(fm_smEventInfo *eventInfo,
 
             {
                 err = fm10000SerDesSendDfeStartTuningReq(eventInfo,userInfo);
-                if (err == FM_OK)
-                {
-                    *nextState = FM10000_SERDES_STATE_DFE_TUNING;
-                }
-                else
+
+                if (err != FM_OK)
                 {
                     FM_LOG_ERROR_V2(FM_LOG_CAT_SERDES,
                                     serDes,
@@ -5588,6 +5621,7 @@ fm_status fm10000SerDesProcessSignalOkDeasserted(fm_smEventInfo *eventInfo,
     fm10000_lane  *pLaneExt;
     fm_int         serDes;
     fm_int         curState;
+    fm_bool        debounceActive;
 
 
     pLaneExt = ((fm10000_serDesSmEventInfo *)userInfo)->laneExt;
@@ -5596,6 +5630,7 @@ fm_status fm10000SerDesProcessSignalOkDeasserted(fm_smEventInfo *eventInfo,
     err = FM_OK;
     locErr = FM_OK;
     curState = *nextState;
+    debounceActive = FALSE;
 
     if (!pLaneExt->eeeModeActive)
     {
@@ -5630,24 +5665,34 @@ fm_status fm10000SerDesProcessSignalOkDeasserted(fm_smEventInfo *eventInfo,
             case FM_DFE_MODE_CONTINUOUS:
             case FM_DFE_MODE_ICAL_ONLY:
             {
-                err = fm10000SerDesSetSignalDtctForcedBadC(eventInfo,userInfo);
-
-                if ( err == FM_OK )
+                if ( pLaneExt->signalOkDebounce > (2 * FM10000_SERDES_SIGNALOK_OFF_DEBOUNCE_THRESHOLD) ||
+                     pLaneExt->signalOkDebounce < 0)
                 {
-                    err = fm10000SerDesSendDfeStopTuningReq(eventInfo,userInfo);
+                    pLaneExt->signalOkDebounce = 0;
                 }
 
-                if ( err == FM_OK )
+                if ( pLaneExt->signalOkDebounce++ >= FM10000_SERDES_SIGNALOK_OFF_DEBOUNCE_THRESHOLD)
                 {
-                    *nextState = FM10000_SERDES_STATE_POWERED_UP;
+                    err = fm10000SerDesSetSignalDtctForcedBadC(eventInfo,userInfo);
+
+                    if ( err == FM_OK )
+                    {
+                        err = fm10000SerDesSendDfeStopTuningReq(eventInfo,userInfo);
+                    }
+
+                    if ( err == FM_OK )
+                    {
+                        *nextState = FM10000_SERDES_STATE_POWERED_UP;
+                    }
+                    else
+                    {
+                        FM_LOG_ERROR_V2(FM_LOG_CAT_SERDES,
+                                        serDes,
+                                        "Cannot change to POWERED_UP state on serdes=%d\n",
+                                        serDes);
+                    }
                 }
-                else
-                {
-                    FM_LOG_ERROR_V2(FM_LOG_CAT_SERDES,
-                                    serDes,
-                                    "Cannot change to POWERED_UP state on serdes=%d\n",
-                                    serDes);
-                }
+                debounceActive = TRUE;
                 break;
             }
             default:
@@ -5659,8 +5704,20 @@ fm_status fm10000SerDesProcessSignalOkDeasserted(fm_smEventInfo *eventInfo,
 
         }
 
+        if ( debounceActive == TRUE )
+        {
+            locErr = fm10000SerDesStartTimeoutTimerDebounce(eventInfo,userInfo);
 
-        locErr = fm10000SerDesStartTimeoutTimerShrt(eventInfo,userInfo);
+            if ( curState == *nextState )
+            {
+                err = fm10000SerDesDontSaveTransitionRecord(eventInfo,userInfo);
+            }
+        }
+        else
+        {
+
+            locErr = fm10000SerDesStartTimeoutTimerShrt(eventInfo,userInfo);
+        }
     }
     else
     {
@@ -5852,11 +5909,7 @@ fm_status fm10000SerDesProcessSignalOkTimeout(fm_smEventInfo *eventInfo,
                 {
 
                     err = fm10000SerDesSendDfeStartTuningReq(eventInfo,userInfo);
-                    if (err == FM_OK)
-                    {
-                        *nextState = FM10000_SERDES_STATE_DFE_TUNING;
-                    }
-                    else
+                    if (err != FM_OK)
                     {
                         FM_LOG_ERROR_V2(FM_LOG_CAT_SERDES,
                                         serDes,
@@ -5889,7 +5942,7 @@ fm_status fm10000SerDesProcessSignalOkTimeout(fm_smEventInfo *eventInfo,
 
         }
 
-        if ( currentState == *nextState )
+        if ( currentState == *nextState)
         {
             fm10000SerDesDontSaveTransitionRecord(eventInfo,userInfo);
         }
@@ -6723,6 +6776,7 @@ fm_status fm10000SerDesProcessSignalNokTimeout(fm_smEventInfo *eventInfo,
     fm_bool        signalOk;
     fm_int         sw;
     fm_int         currentState;
+    fm_bool        debounceActive;
 
 
     pLaneExt = ((fm10000_serDesSmEventInfo *)userInfo)->laneExt;
@@ -6731,6 +6785,7 @@ fm_status fm10000SerDesProcessSignalNokTimeout(fm_smEventInfo *eventInfo,
 
 
     currentState = *nextState;
+    debounceActive = FALSE;
 
 
     err = fm10000SerdesGetSignalOk(sw, serDes, &signalOk);
@@ -6757,25 +6812,35 @@ fm_status fm10000SerDesProcessSignalNokTimeout(fm_smEventInfo *eventInfo,
             case FM_DFE_MODE_ONE_SHOT:
             case FM_DFE_MODE_CONTINUOUS:
             case FM_DFE_MODE_ICAL_ONLY:
-
-                err = fm10000SerDesSetSignalDtctForcedBadC(eventInfo,userInfo);
-
-                if ( err == FM_OK )
+                if ( pLaneExt->signalOkDebounce > (2 * FM10000_SERDES_SIGNALOK_OFF_DEBOUNCE_THRESHOLD) ||
+                     pLaneExt->signalOkDebounce < 0)
                 {
-                    err = fm10000SerDesSendDfeStopTuningReq(eventInfo,userInfo);
+                    pLaneExt->signalOkDebounce = 0;
                 }
 
-                if ( err == FM_OK )
+                if ( pLaneExt->signalOkDebounce++ >= FM10000_SERDES_SIGNALOK_OFF_DEBOUNCE_THRESHOLD )
                 {
-                    *nextState = FM10000_SERDES_STATE_POWERED_UP;
+                    err = fm10000SerDesSetSignalDtctForcedBadC(eventInfo,userInfo);
+
+                    if ( err == FM_OK )
+                    {
+                        err = fm10000SerDesSendDfeStopTuningReq(eventInfo,userInfo);
+                    }
+
+                    if ( err == FM_OK )
+                    {
+                        *nextState = FM10000_SERDES_STATE_POWERED_UP;
+                    }
+                    else
+                    {
+                        FM_LOG_ERROR_V2(FM_LOG_CAT_SERDES,
+                                        serDes,
+                                        "Cannot change to POWERED_UP state on serdes=%d\n",
+                                        serDes);
+                    }
                 }
-                else
-                {
-                    FM_LOG_ERROR_V2(FM_LOG_CAT_SERDES,
-                                    serDes,
-                                    "Cannot change to POWERED_UP state on serdes=%d\n",
-                                    serDes);
-                }
+
+                debounceActive = TRUE;
                 break;
 
             default:
@@ -6804,7 +6869,17 @@ fm_status fm10000SerDesProcessSignalNokTimeout(fm_smEventInfo *eventInfo,
 
 
 
-    if (currentState != *nextState)
+    if (debounceActive == TRUE)
+    {
+        err = fm10000SerDesStartTimeoutTimerDebounce(eventInfo,userInfo);
+
+        if ( currentState == *nextState )
+        {
+
+            fm10000SerDesDontSaveTransitionRecord(eventInfo,userInfo);
+        }
+    }
+    else if (currentState != *nextState)
     {
         err = fm10000SerDesStartTimeoutTimerShrt(eventInfo,userInfo);
     }

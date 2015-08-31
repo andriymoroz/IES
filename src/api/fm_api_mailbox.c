@@ -1880,7 +1880,8 @@ ABORT:
  *
  * \return          FM_OK if successful.
  * \return          FM_ERR_INVALID_VALUE if there are not enough queue 
- *                  elements used to store proper message arguments.
+ * \return          FM_ERR_NO_MEM if there is no memory to allocate
+ *                  mailbox resources.
  *
  *****************************************************************************/
 fm_status fmCreateLportProcess(fm_int                   sw,
@@ -1891,6 +1892,7 @@ fm_status fmCreateLportProcess(fm_int                   sw,
     fm_switch *             switchPtr;
     fm_mailboxInfo *        info;
     fm_status               status;
+    fm_status               local_status;
     fm_status               abortStatus;
     fm_uint32               bytesRead;
     fm_uint32               argBytesRead;
@@ -1908,6 +1910,7 @@ fm_status fmCreateLportProcess(fm_int                   sw,
     fm_mailboxResources *   mailboxResource;
     fm_portAttr *           portAttr;
     fm_bool                 portAttrLockTaken;
+    fm_bool                 portsProcessed;
 
     FM_LOG_ENTRY(FM_LOG_CAT_MAILBOX,
                  "sw=%d, pepNb=%d, ctrlHdr=%p, pfTrHdr=%p\n",
@@ -1932,6 +1935,7 @@ fm_status fmCreateLportProcess(fm_int                   sw,
     mailboxResource   = NULL;
     portAttr          = NULL;
     portAttrLockTaken = FALSE;
+    portsProcessed    = FALSE;
 
     FM_API_CALL_FAMILY(status,
                        switchPtr->ValidateMailboxMessageLength,
@@ -1986,6 +1990,8 @@ fm_status fmCreateLportProcess(fm_int                   sw,
 
     if (fmTreeIsInitialized(&info->mailboxResourcesPerVirtualPort))
     {
+        portsProcessed = TRUE;
+
         /* create instances to track resources created on host interface request. */
         for (i = firstPort ; i < (firstPort + srvPort.glortCount) ; i++)
         {
@@ -1993,7 +1999,7 @@ fm_status fmCreateLportProcess(fm_int                   sw,
 
             if (mailboxResource == NULL)
             {
-                status = FM_ERR_INVALID_MULTICAST_GROUP;
+                status = FM_ERR_NO_MEM;
                 FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
             }
 
@@ -2057,7 +2063,7 @@ fm_status fmCreateLportProcess(fm_int                   sw,
     event = fmAllocateEvent(sw,
                             FM_EVID_HIGH_PORT,
                             FM_EVENT_LOGICAL_PORT,
-                            FM_EVENT_PRIORITY_LOW); 
+                            FM_EVENT_PRIORITY_LOW);
 
     if (event == NULL)
     {
@@ -2135,6 +2141,41 @@ ABORT:
                                sw,
                                pepNb,
                                ctrlHdr);
+        }
+    }
+    else
+    {
+        if ( fmTreeIsInitialized(&info->mailboxResourcesPerVirtualPort) &&
+             (portsProcessed == TRUE) )
+        {
+            for (i = firstPort ; i < (firstPort + srvPort.glortCount) ; i++)
+            {
+                if (fmTreeFind(&info->mailboxResourcesPerVirtualPort,
+                               i,
+                               (void **) &mailboxResource) == FM_OK)
+                {
+                    local_status = fmTreeRemove(&info->mailboxResourcesPerVirtualPort,
+                                                i,
+                                                fmFree);
+                    if (local_status != FM_OK)
+                    {
+                        FM_LOG_ERROR(FM_LOG_CAT_MAILBOX,
+                                     "Failed to free allocated resources. "
+                                     "Error=%d %s\n",
+                                     local_status,
+                                     fmErrorMsg(local_status));
+                    }
+                }
+                else if (mailboxResource != NULL)
+                {
+                    fmFree(mailboxResource);
+                    mailboxResource = NULL;
+                }
+                else
+                {
+                    break;
+                }
+            }
         }
     }
 

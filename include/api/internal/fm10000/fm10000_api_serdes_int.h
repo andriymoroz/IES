@@ -60,6 +60,10 @@
 
 
 
+#define FM10000_SERDES_SIGNALOK_DEBOUNCE_DELAY  10000
+
+
+
 #define FM10000_SERDES_SHORT_TIMEOUT            70000
 
 
@@ -75,7 +79,7 @@
 #define FM10000_SERDES_DEFERRED_KR_COMPLETE    200000
 
 
-#define FM10000_SERDES_RESET_DELAY             20000
+#define FM10000_SERDES_RESET_DELAY             22000
 
 
 #define FM10000_SERDES_PLL_CAL_CNT_THRESHOLD    200
@@ -105,7 +109,8 @@
 
 
 
-#define FM10000_SERDES_SIGNALOK_DEBOUNCE_THRESHOLD  3
+#define FM10000_SERDES_SIGNALOK_DEBOUNCE_THRESHOLD      3
+#define FM10000_SERDES_SIGNALOK_OFF_DEBOUNCE_THRESHOLD  1
 
 
 #define FM10000_EYE_DIAGRAM_SAMPLE_ARRAY_NUM    8
@@ -1541,6 +1546,8 @@ fm_status fm10000SerdesSendDfeEventReq(fm_int    sw,
 fm_status fm10000SerdesConfigureEeeInt(fm_int sw, fm_int serDes);
 fm_int    fm10000SerdesGetPepFromMap(fm_int serDes);
 fm_int    fm10000EnableSerDesTransitionDebugMode(fm_int debugMode);
+fm_status fm10000SerDesStartTimeoutTimerDebounce(fm_smEventInfo *eventInfo,
+                                                 void           *userInfo );
 
 
 

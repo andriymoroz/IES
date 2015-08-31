@@ -5,7 +5,7 @@
  * Creation Date:   June 2, 2014
  * Description:     Defines for platform shared library interfaces.
  *
- * Copyright (c) 2014, Intel Corporation
+ * Copyright (c) 2015, Intel Corporation
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -113,5 +113,14 @@ typedef enum
 
 #define HW_LED_STATE_TO_SPEED(x)        ((x & 0xF0) >> 4)
 #define HW_LED_STATE_SET_SPEED(x)       ((x & 0xF) << 4)
+
+/* Use bits 7..0 for HW resource ID
+ * Use bits 11..8 to store the LED number
+ */
+#define HW_RESOURCE_ID_TO_IDX(x)        (x & 0xFF)
+#define HW_RESOURCE_ID_SET_IDX(x)       (x & 0xFF)
+#define HW_RESOURCE_ID_TO_LEDNUM(x)     ((x & 0xF00) >> 8)
+#define HW_RESOURCE_ID_SET_LEDNUM(x)    ((x & 0xF) << 8)
+#define HW_RESOURCE_ID_TO_VRMSUBCHAN(x) ((x & 0xF00) >> 8)
 
 #endif /* __FM_PLATFORM_LIB_API_H */

@@ -1,15 +1,11 @@
 /* vim:ts=4:sw=4:expandtab
  * (No tabs, indent level is 4 spaces)  */
 /*****************************************************************************
- * File:            fm6000_api_uc_stats_int.h
- * Creation Date:   2009
- * Last updated:    November 20, 2014
- * Description:     Contains all of the exposed microcode defined
- *                  stats counter definitions.  THIS FILE IS AUTO-GENERATED.
- *                  EDIT THE MICROCODE TEMPLATE IF YOU NEED TO MODIFY THIS
- *                  FILE.
+ * File:            platform_config_tlv.h
+ * Creation Date:   May 29, 2015
+ * Description:     Platform functions to handle loading TLV configurations.
  *
- * Copyright (c) 2005 - 2014, Intel Corporation
+ * Copyright (c) 2015, Intel Corporation
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -33,14 +29,13 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
+ *****************************************************************************/
 
-#ifndef __FM_FM_API_UC_STATS_INT_H
-#define __FM_FM_API_UC_STATS_INT_H
+#ifndef __FM_PLATFORM_CONFIG_TLV_H
+#define __FM_PLATFORM_CONFIG_TLV_H
 
-typedef struct _fm_extPortCounters;
-{
+fm_status fmPlatformLoadTLV(fm_text fileName);
+fm_status fmPlatformCfgParseTlv(fm_byte *tlv);
+fm_status fmPlatformCfgVerifyAndUpdate(void);
 
-} fm_extPortCounters;
-
-#endif /* __FM_FM_API_UC_STATS_INT_H */
+#endif /* __FM_PLATFORM_CONFIG_TLV_H */

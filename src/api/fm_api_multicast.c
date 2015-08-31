@@ -1764,6 +1764,8 @@ fm_status fmFreeMcastGroupsInt(fm_int    sw,
  * \return          FM_ERR_INVALID_SWITCH if sw is invalid.
  * \return          FM_ERR_NO_MEM if not enough memory is available for the
  *                  multicast group structure.
+ * \return          FM_ERR_NO_MCAST_RESOURCES if no more multicast group
+ *                  resoures are available.
  * \return          FM_ERR_LPORT_DESTS_UNAVAILABLE if a block of logical port
  *                  destination table entries cannot be allocated.
  *
@@ -2227,6 +2229,12 @@ static fm_status UpdateMcastHNIFloodingGroups(fm_int                 sw,
                          FM_MAILBOX_DEF_VLAN_FOR_FLOOD_MCAST_GROUPS,
                          mcastGroup);
         }
+        else if (status == FM_ERR_PORT_IS_IN_LAG)
+        {
+            FM_LOG_DEBUG(FM_LOG_CAT_MULTICAST,
+                         "Port %d is a member of a Link Aggregation Group",
+                         listener->info.portVlanListener.port);
+        }
         else
         {
             FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MULTICAST, status);
@@ -2246,6 +2254,12 @@ static fm_status UpdateMcastHNIFloodingGroups(fm_int                 sw,
                          listener->info.portVlanListener.port,
                          FM_MAILBOX_DEF_VLAN_FOR_FLOOD_MCAST_GROUPS,
                          mcastGroup);
+        }
+        else if (status == FM_ERR_PORT_IS_IN_LAG)
+        {
+            FM_LOG_DEBUG(FM_LOG_CAT_MULTICAST,
+                         "Port %d is a member of a Link Aggregation Group",
+                         listener->info.portVlanListener.port);
         }
         else
         {
@@ -2801,6 +2815,8 @@ fm_status fmMcastGroupInit(fm_int sw)
  * \return          FM_ERR_INVALID_SWITCH if sw is invalid.
  * \return          FM_ERR_NO_MEM if not enough memory is available for the
  *                  multicast group structure.
+ * \return          FM_ERR_NO_MCAST_RESOURCES if no more multicast group
+ *                  resoures are available.
  * \return          FM_ERR_LPORT_DESTS_UNAVAILABLE if a block of logical port
  *                  destination table entries cannot be allocated.
  *
@@ -3964,7 +3980,6 @@ ABORT:
             err = fmConfigureMcastGroupAsHNIFlooding(sw,
                                                      group->handle,
                                                      TRUE);
-            FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_MULTICAST, err);
         }
         else if ( ( fmIsMcastGroupHNIFlooding(sw, group->handle) ) &&
                   ( !fmHasMcastGroupVirtualListeners(sw, group->handle) ) )
@@ -3973,7 +3988,6 @@ ABORT:
             err = fmConfigureMcastGroupAsHNIFlooding(sw,
                                                      group->handle,
                                                      FALSE);
-            FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_MULTICAST, err);
         }
     }
 

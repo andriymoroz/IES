@@ -5,7 +5,7 @@
  * Creation Date:   January 14, 2014
  * Description:     Tunnel API.
  *
- * Copyright (c) 2014, Intel Corporation
+ * Copyright (c) 2014 - 2015, Intel Corporation
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -29,7 +29,7 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
+ *****************************************************************************/
 
 #include <fm_sdk_int.h>
 
@@ -1389,8 +1389,8 @@ fm_status fmResetTunnelRuleUsed(fm_int sw, fm_int group, fm_int rule)
  * 
  * \param[in]       rule is the id on which to operate.
  * 
- * \param[in]       attr is the Tunnel attribute (see 'Tunnel Attributes') to
- *                  set.
+ * \param[in]       attr is the Tunnel attribute (see ''Tunnel Attributes'')
+ *                  to set.
  * 
  * \param[in]       value points to the attribute value to set.
  * 
@@ -1447,8 +1447,8 @@ fm_status fmSetTunnelAttribute(fm_int sw,
  * 
  * \param[in]       rule is the id on which to operate.
  * 
- * \param[in]       attr is the Tunnel attribute (see 'Tunnel Attributes') to
- *                  get.
+ * \param[in]       attr is the Tunnel attribute (see ''Tunnel Attributes'')
+ *                  to get.
  * 
  * \param[out]      value points to the attribute value to get.
  * 
@@ -1487,6 +1487,104 @@ fm_status fmGetTunnelAttribute(fm_int sw,
     FM_LOG_EXIT_API(FM_LOG_CAT_TE, err);
 
 }   /* end fmGetTunnelAttribute */
+
+
+
+
+/*****************************************************************************/
+/** fmSetTunnelApiAttribute
+ * \ingroup tunnel
+ *
+ * \chips           FM10000
+ *
+ * \desc            Set a Tunnel Api attribute.
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \param[in]       attr is the Tunnel API Attribute (see ''fm_tunnelApiAttr'')
+ *                  to set.
+ * 
+ * \param[in]       value points to the attribute value to set.
+ * 
+ * \return          FM_OK if successful.
+ * \return          FM_ERR_INVALID_ARGUMENT on NULL pointer or out of range value.
+ * \return          FM_ERR_UNSUPPORTED if attribute is invalid.
+ *
+ *****************************************************************************/
+fm_status fmSetTunnelApiAttribute(fm_int sw,
+                                  fm_int attr,
+                                  void * value)
+{
+    fm_status       err;
+    fm_switch *     switchPtr;
+
+    FM_LOG_ENTRY_API(FM_LOG_CAT_TE,
+                     "sw = %d, attr = %d\n",
+                     sw, attr);
+
+    VALIDATE_AND_PROTECT_SWITCH(sw);
+    switchPtr = GET_SWITCH_PTR(sw);
+
+    FM_API_CALL_FAMILY(err,
+                       switchPtr->SetTunnelApiAttribute,
+                       sw,
+                       attr,
+                       value);
+
+    UNPROTECT_SWITCH(sw);
+
+    FM_LOG_EXIT_API(FM_LOG_CAT_TE, err);
+
+}   /* end fmSetTunnelApiAttribute */
+
+
+
+
+/*****************************************************************************/
+/** fmGetTunnelApiAttribute
+ * \ingroup tunnel
+ *
+ * \chips           FM10000
+ *
+ * \desc            Get a Tunnel Api attribute.
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \param[in]       attr is the Tunnel API Attribute (see ''fm_tunnelApiAttr'')
+ *                  to set.
+ * 
+ * \param[out]      value points to the attribute value to get.
+ * 
+ * \return          FM_OK if successful.
+ * \return          FM_ERR_INVALID_ARGUMENT on NULL pointer or out of range value.
+ * \return          FM_ERR_UNSUPPORTED if attribute is invalid.
+ *
+ *****************************************************************************/
+fm_status fmGetTunnelApiAttribute(fm_int sw,
+                                  fm_int attr,
+                                  void * value)
+{
+    fm_status       err;
+    fm_switch *     switchPtr;
+
+    FM_LOG_ENTRY_API(FM_LOG_CAT_TE,
+                     "sw = %d, attr = %d\n",
+                     sw, attr);
+
+    VALIDATE_AND_PROTECT_SWITCH(sw);
+    switchPtr = GET_SWITCH_PTR(sw);
+
+    FM_API_CALL_FAMILY(err,
+                       switchPtr->GetTunnelApiAttribute,
+                       sw,
+                       attr,
+                       value);
+
+    UNPROTECT_SWITCH(sw);
+
+    FM_LOG_EXIT_API(FM_LOG_CAT_TE, err);
+
+}   /* end fmGetTunnelApiAttribute */
 
 
 

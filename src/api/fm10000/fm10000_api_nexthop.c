@@ -3652,7 +3652,7 @@ static fm_status SetEcmpGroupType(fm_int             sw,
  *                  extension
  * 
  * \return          FM_OK if successful.
- * \return          FM_ERR_INVALID_ARGUMENT
+ * \return          FM_ERR_INVALID_ARGUMENT if an argument is invalid.
  *                  
  *****************************************************************************/
 static fm_status AllocateEcmpGroupSpecRessources(fm_int             sw,
@@ -4153,8 +4153,13 @@ ABORT:
  *                  extension
  * 
  * \return          FM_OK if successful.
- * \return          FM_ERR_INVALID_ARGUMENT
- *                  
+ * \return          FM_ERR_INVALID_ARGUMENT if specified ECMP group is
+ *                  not valid.
+ * \return          FM_ERR_INVALID_VALUE if the number of next-hop entries is
+ *                  invalid for a fixed size ECMP group. Valid values for fixed
+ *                  size ECMP groups are: (1..16,32,64,128,256,512,1024,2048,
+ *                  4096).
+ *
  *****************************************************************************/
 static 
 fm_status AllocateFixedSizeEcmpGroupRessources(fm_int             sw,
@@ -4190,9 +4195,9 @@ fm_status AllocateFixedSizeEcmpGroupRessources(fm_int             sw,
          * included in the previous list. */
         err = fm10000CheckValidArpBlockSize(pParentEcmpGroup->maxNextHops);
 
-        if (blockSize != pParentEcmpGroup->maxNextHops)
+        if ( (err != FM_OK) || (blockSize != pParentEcmpGroup->maxNextHops) )
         {
-            err = FM_FAIL;
+            err = FM_ERR_INVALID_VALUE;
             FM_LOG_ERROR(FM_LOG_CAT_ROUTING, 
                          "Invalid ARP block size=%d\n",
                          pParentEcmpGroup->maxNextHops);
@@ -7810,6 +7815,13 @@ fm_status fm10000GetNextHopIndexUsed(fm_int   sw,
  *
  * \return          FM_OK if successful.
  * \return          FM_ERR_NO_MEM if unable to allocate memory.
+ * \return          FM_ERR_UNSUPPORTED if specified ECMP group's next-hops
+ *                  are wide next-hops.
+ * \return          FM_ERR_INVALID_ARGUMENT if an argument is invalid.
+ * \return          FM_ERR_INVALID_VALUE if the number of next-hop entries is
+ *                  invalid for a fixed size ECMP group. Valid values for fixed
+ *                  size ECMP groups are: (1..16,32,64,128,256,512,1024,2048,
+ *                  4096).
  *
  *****************************************************************************/
 fm_status fm10000CreateECMPGroup(fm_int           sw,
@@ -7828,12 +7840,15 @@ fm_status fm10000CreateECMPGroup(fm_int           sw,
     if (pEcmpGroup == NULL ||
         pEcmpGroup->maxNextHops <= 0)
     {
-        err = FM_ERR_INVALID_ARGUMENT;  
+        err = FM_ERR_INVALID_ARGUMENT;
     }
     else if (pEcmpGroup->wideGroup)
     {
         /* wide entries are not supported */
         err = FM_ERR_UNSUPPORTED;
+        FM_LOG_ERROR(FM_LOG_CAT_ROUTING,
+                     "Wide entries are not supported: %s\n",
+                     fmErrorMsg(err));
     }
     else
     {

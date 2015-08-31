@@ -478,14 +478,8 @@ fm_status fm10000UtilSpiWriteFlash(fm_uintptr             handle,
     fm_uint32 spiCtrl;
     fm_uint32 header;
 
-    if (len <= 0 && len > 256)
+    if (len <= 0)
     {
-        return FM_ERR_INVALID_ARGUMENT;
-    }
-
-    if ((address/256) != (address+len-1)/256)
-    {
-        printf("ERROR: Buffer cannot span two pages. Address 0x%x len %d\n", address, len);
         return FM_ERR_INVALID_ARGUMENT;
     }
 
@@ -673,6 +667,15 @@ fm_status fm10000UtilSpiPeripheralLock(fm_uintptr                    handle,
                 isSpiPeripheralLockTaken = TRUE;
                 break;
             }
+        }
+        else if ((FM_GET_FIELD(spiPeripheralLock,
+                             REG_RW_LOCK_SPI_PERIPHERAL,
+                             LockOwner) == owner) )
+        {
+            FM_LOG_WARNING(FM_LOG_CAT_PLATFORM,
+                 "Existing lock is the same owner %d\n", owner);
+            isSpiPeripheralLockTaken = TRUE;
+            break;
         }
         else
         {

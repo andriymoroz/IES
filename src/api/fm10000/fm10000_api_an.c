@@ -28,7 +28,7 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
+ *****************************************************************************/
 
 #include <fm_sdk_fm10000_int.h>
 
@@ -53,6 +53,11 @@
  *****************************************************************************/
 static fm_status NotifyClause73Events(fm_int sw, fm_int port, fm_uint32 anIp);
 static fm_status NotifyClause37Events(fm_int sw, fm_int port, fm_uint32 anIp);
+static fm_status IsAn25GConfiguredInNextPage(fm_int         sw,
+                                             fm_int         port,
+                                             fm_anNextPages nextPages,
+                                             fm_bool        *is25GConfigured);
+
 
 /*****************************************************************************
  * Local Functions
@@ -87,18 +92,6 @@ static fm_status NotifyClause73Events( fm_int sw, fm_int port, fm_uint32 anIp )
     portExt = GET_PORT_EXT( sw, port );
 
     status = FM_OK;
-
-    if ( FM_GET_BIT( anIp, FM10000_AN_IP, An73TransmitDisable ) )
-    {
-        /* Transmit Disable */
-        eventInfo.eventId = FM10000_AN_EVENT_TRANSMIT_DISABLE_IND;
-        portExt->eventInfo.regLockTaken = FALSE;
-        status = fmNotifyStateMachineEvent( portExt->anSmHandle,
-                                            &eventInfo,
-                                            &portExt->eventInfo,
-                                            &port );
-        FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-    }
 
     if ( FM_GET_BIT( anIp, FM10000_AN_IP, An73AbilityDetect ) )
     {
@@ -180,6 +173,18 @@ static fm_status NotifyClause73Events( fm_int sw, fm_int port, fm_uint32 anIp )
         FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, 
                                 port, 
                                 status );
+    }
+
+    if ( FM_GET_BIT( anIp, FM10000_AN_IP, An73TransmitDisable ) )
+    {
+        /* Transmit Disable */
+        eventInfo.eventId = FM10000_AN_EVENT_TRANSMIT_DISABLE_IND;
+        portExt->eventInfo.regLockTaken = FALSE;
+        status = fmNotifyStateMachineEvent( portExt->anSmHandle,
+                                            &eventInfo,
+                                            &portExt->eventInfo,
+                                            &port );
+        FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
     }
 
 ABORT:
@@ -334,6 +339,63 @@ ABORT:
     return status;
 
 }   /* end NotifyClause37Events */
+
+
+
+/*****************************************************************************/
+/** IsAn25GConfiguredInNextPage
+ * \ingroup intPort
+ *
+ * \desc            Helper function to determine if 25G is 
+ *                  configured in nextPages.
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \param[in]       port is the ID of the port to operate on.
+ *
+ * \param[in]       nextPages is the nextPages in which supported 25G is checked.
+ *
+ * \param[out]      is25GConfigured is where the result is returned.
+ *
+ * \return          FM_OK if successful
+ *
+ *****************************************************************************/
+static fm_status IsAn25GConfiguredInNextPage(fm_int         sw,
+                                             fm_int         port,
+                                             fm_anNextPages nextPages,
+                                             fm_bool        *is25GConfigured)
+{
+    fm_status status;
+    fm_uint   extTechAbIndex;
+    fm_uint64 page;
+
+    *is25GConfigured = FALSE;
+    status = fm10000AnGetNextPageExtTechAbilityIndex(sw,
+                                                     port,
+                                                     nextPages.nextPages,
+                                                     nextPages.numPages,
+                                                     &extTechAbIndex,
+                                                     "Tx");
+
+    if (status == FM_OK)
+    {
+        page = nextPages.nextPages[extTechAbIndex];
+        if ( FM_GET_UNNAMED_BIT64(page, 21) ||
+             FM_GET_UNNAMED_BIT64(page, 20) )
+        {
+            *is25GConfigured = TRUE;    
+        }
+    }
+    else if (status == FM_ERR_NOT_FOUND)
+    {
+        *is25GConfigured = FALSE;
+        status = FM_OK;
+    }
+
+    return status;
+
+}   /* end IsAn25GConfiguredInNextPage */
+
 
 
 
@@ -1004,6 +1066,21 @@ fm_status fm10000AnEventHandler( fm_int    sw,
 
             if ( portExt->anSmType == FM10000_CLAUSE73_AN_STATE_MACHINE )
             {
+                FM_LOG_DEBUG2_V2( FM_LOG_CAT_PORT_AUTONEG,
+                    port,
+                    "Sw#%d Port %d: AN73_IP: %s%s%s%s%s%s%s%s%s\n",
+                    sw,
+                    port,
+                    FM_GET_BIT(anIp, FM10000_AN_IP, An73TransmitDisable) ? "TxD " : "",
+                    FM_GET_BIT(anIp, FM10000_AN_IP, An73AbilityDetect) ? "AbiD " : "",
+                    FM_GET_BIT(anIp, FM10000_AN_IP, An73AcknowledgeDetect) ? "AckD " : "",
+                    FM_GET_BIT(anIp, FM10000_AN_IP, An73CompleteAcknowledge) ? "ComA " : "",
+                    FM_GET_BIT(anIp, FM10000_AN_IP, An73NextPageWait) ? "NxtW " : "",
+                    FM_GET_BIT(anIp, FM10000_AN_IP, An73MrPageRx) ? "PgRx " : "",
+                    FM_GET_BIT(anIp, FM10000_AN_IP, An73AnGoodCheck) ? "GoodC " : "",
+                    FM_GET_BIT(anIp, FM10000_AN_IP, An73AnGood) ? "Good " : "",
+                    FM_GET_BIT(anIp, FM10000_AN_IP, An73ReceiveIdle) ? "IdlRx " : "");
+
                 /* process the interrupts related to the Clause 73
                    state machine */
                 status = NotifyClause73Events( sw, port, anIp );
@@ -1012,6 +1089,20 @@ fm_status fm10000AnEventHandler( fm_int    sw,
             }
             else if ( portExt->anSmType == FM10000_CLAUSE37_AN_STATE_MACHINE )
             {
+                FM_LOG_DEBUG2_V2( FM_LOG_CAT_PORT_AUTONEG,
+                     port,
+                     "Sw#%d Port %d: IP: %s%s%s%s%s%s%s%s\n",
+                     sw,
+                     port,
+                     FM_GET_BIT(anIp, FM10000_AN_IP, An37AnRestart) ? "Rst " : "",
+                     FM_GET_BIT(anIp, FM10000_AN_IP, An37AbilityDetect) ? "AbiD " : "",
+                     FM_GET_BIT(anIp, FM10000_AN_IP, An37AcknowledgeDetect) ? "AckD " : "",
+                     FM_GET_BIT(anIp, FM10000_AN_IP, An37CompleteAcknowledge) ? "ComA " : "",
+                     FM_GET_BIT(anIp, FM10000_AN_IP, An37NextPageWait) ? "NxtW " : "",
+                     FM_GET_BIT(anIp, FM10000_AN_IP, An37IdleDetect) ? "IdleD " : "",
+                     FM_GET_BIT(anIp, FM10000_AN_IP, An37LinkOk) ? "LnkO " : "",
+                     FM_GET_BIT(anIp, FM10000_AN_IP, An37MrPageRx) ? "PgRx " : "");
+
                 /* process the interrupts related to the Clause 73
                    state machine */
                 status = NotifyClause37Events( sw, port, anIp );
@@ -1076,10 +1167,14 @@ fm_ethMode fm10000An73HcdToEthMode( fm_int hcd )
 
         case AN73_HCD_100_CR4:
             ethMode = FM_ETH_MODE_100GBASE_CR4;
-            break
-;
+            break;
+
         case AN73_HCD_25_KR:
             ethMode = FM_ETH_MODE_25GBASE_KR;
+            break;
+
+        case AN73_HCD_25_CR:
+            ethMode = FM_ETH_MODE_25GBASE_CR;
             break;
 
         default:
@@ -1132,6 +1227,8 @@ fm_text fm10000An73HCDStr(fm_uint value)
             return "AN73_HCD_100_CR4(9)";
         case AN73_HCD_25_KR:
             return "AN73_HCD_25_KR(10)";
+        case AN73_HCD_25_CR:
+            return "AN73_HCD_25_CR(11)";
         default: 
             return "AN73_HCD_INVALID";
 
@@ -1294,3 +1391,288 @@ fm_status fm10000AnVerifyEeeNegotiation(fm_int sw, fm_int port, fm_int ethMode)
 
     return status;
 }
+
+
+
+
+/*****************************************************************************/
+/** fm10000AnGetMaxSpeedAbilityAndMode
+ * \ingroup intPort
+ *
+ * \desc            Helper function to retrieve the maximum port speed and 
+ *                  laneMode based on the given basepage.
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \param[in]       port is the ID of the port to operate on.
+ *
+ * \param[in]       mode is the autoneg mode at which max speed to be 
+ *                  retrieved.
+ *
+ * \param[in]       basepage is the autonegotiation base page
+ *
+ * \param[out]      maxSpeed is where maximum configured speed as per basepage
+ *                  is returned.
+ *
+ * \param[out]      laneMode is where single or multilane mode is returned.
+ *
+ * \return          FM_OK if successful
+ *
+ *****************************************************************************/
+fm_status fm10000AnGetMaxSpeedAbilityAndMode(fm_int                sw, 
+                                             fm_int                port, 
+                                             fm_uint32             mode,
+                                             fm_uint64             basepage,
+                                             fm_anNextPages        nextPages,
+                                             fm_uint32            *maxSpeed,
+                                             fm_schedulerPortMode *laneMode)
+{
+    fm_status status;
+    fm_uint   ability;
+    fm_bool   is40GCapable;
+    fm_bool   is100GCapable;
+    fm_bool   is25GConfigInNextPage;
+
+    status    = FM_OK;
+    *maxSpeed = 0;
+    *laneMode = FM_SCHED_PORT_MODE_NONE;
+
+    switch(mode)
+    {
+        case FM_PORT_AUTONEG_CLAUSE_73:
+            if (basepage == 0)
+            {
+                status = fm10000GetMultiLaneCapabilities(sw, 
+                                                         port, 
+                                                         &is40GCapable,
+                                                         &is100GCapable);
+                FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status);
+
+                ability = FM10000_AN73_SUPPORTED_ABILITIES; 
+                if (!is40GCapable)
+                {
+                    ability &= ~FM10000_AN73_ABILITIES_40G; 
+                }
+
+                if (!is100GCapable)
+                {
+                    ability &= ~FM10000_AN73_ABILITIES_100G;
+                }
+            }
+            else
+            {
+                ability = FM_GET_FIELD64( basepage, FM10000_AN_73_BASE_PAGE_TX, A );
+            }
+
+            status  = IsAn25GConfiguredInNextPage(sw,
+                                                  port,
+                                                  nextPages, 
+                                                  &is25GConfigInNextPage);
+            FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status);
+
+            if ( ability & FM10000_AN73_ABILITIES_100G)
+            {
+                *maxSpeed = 100000;
+                *laneMode = FM_SCHED_PORT_MODE_QUAD;
+            }
+            else if (ability & FM10000_AN73_ABILITIES_40G)
+            {
+                *maxSpeed = 40000;
+                *laneMode = FM_SCHED_PORT_MODE_QUAD;
+            }
+            else if ( ( ability & 
+                        (FM10000_AN73_ABILITY_25GBASE_KR |
+                         FM10000_AN73_ABILITY_25GBASE_CR) ) ||
+                      ( is25GConfigInNextPage ) )
+            {
+                *maxSpeed = 25000;
+                *laneMode = FM_SCHED_PORT_MODE_SINGLE;
+            }
+            else if (ability & FM10000_AN73_ABILITY_10GBASE_KR)
+            {
+                *maxSpeed = 10000;
+                *laneMode = FM_SCHED_PORT_MODE_SINGLE;
+            }
+            else if (ability & FM10000_AN73_ABILITY_1000BASE_KX)
+            {
+                *maxSpeed = 2500;
+                *laneMode = FM_SCHED_PORT_MODE_SINGLE;
+            }
+            /* else *maxSpeed = 0 as assigned above. */
+            break;
+
+        case FM_PORT_AUTONEG_CLAUSE_37:
+            *maxSpeed = 1000;
+            *laneMode = FM_SCHED_PORT_MODE_SINGLE;
+            break;
+
+        case FM_PORT_AUTONEG_SGMII:
+            *maxSpeed = 1000;
+            *laneMode = FM_SCHED_PORT_MODE_SINGLE;
+            break;
+        
+        default:
+            status = FM_ERR_UNSUPPORTED;
+            break;
+    }
+
+ABORT:
+
+    return status;   
+
+}    /* end fm10000AnGetMaxSpeedAbilityAndMode */
+
+
+
+
+/*****************************************************************************/
+/** fm10000AnGetNextPageExtTechAbilityIndex
+ * \ingroup intPort
+ *
+ * \desc            Get the index to the extended technology ability in the
+ *                  next page array.
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \param[in]       port is the port on which to operate.
+ *
+ * \param[in]       nextPages is the array of next pages.
+ *
+ * \param[in]       numPages is the size of valid next pages.
+ *
+ * \param[in]       extTechAbIndex is caller-allocated storage where the
+ *                  function will place the index to the extended
+ *                  technology ability in the next page array. If not found,
+ *                  -1 is returned here.
+ *
+ * \param[in]       dbgStr is the debug string.
+ *
+ * \return          FM_OK if found.
+ * 
+ * \return          FM_ERR_NOT_FOUND if not found.
+ * 
+ *****************************************************************************/
+fm_status fm10000AnGetNextPageExtTechAbilityIndex(fm_int        sw,
+                                                  fm_int        port,
+                                                  fm_uint64    *nextPages,
+                                                  fm_int        numPages,
+                                                  fm_uint      *extTechAbIndex,
+                                                  fm_text       dbgStr)
+{
+    fm_status    err;
+    fm_int       pageNum;
+    fm_uint64    pageA;
+    fm_uint64    pageB;
+    fm_uint      val;
+    fm_uint      oui;
+    fm_uint      cnt;
+    fm_portAttr *portAttr;
+
+    if ( extTechAbIndex == NULL )
+    {
+        return FM_ERR_INVALID_ARGUMENT;
+    }
+
+    portAttr = GET_PORT_ATTR(sw, port);
+    *extTechAbIndex = -1;
+    err = FM_ERR_NOT_FOUND;
+
+    /* Go through all received next pages if HCD from basepage
+       resolved to less than 25G to find extended tech ability there */
+    for (pageNum = 0; pageNum < numPages; pageNum++)
+    {
+        pageA = nextPages[pageNum];
+
+        if (( FM_GET_FIELD64(pageA, FM10000_AN_73_NEXT_PAGE_RX, MU) == 
+                             FM10000_AN_NEXTPAGE_OUI_MSG_CODE ) )
+        {
+            if (pageNum >= numPages)
+            {
+                FM_LOG_DEBUG_V2( FM_LOG_CAT_PORT_AUTONEG,
+                                 port,
+                                 "Sw#%d port = %d, No unformatted next page\n",
+                                 sw,
+                                 port);
+            }
+            else
+            {
+                /* Got unformatted next page */
+                pageB = nextPages[pageNum+1];
+                val = FM_GET_UNNAMED_FIELD64(pageB, 0, 9);
+                FM_LOG_DEBUG_V2( FM_LOG_CAT_PORT_AUTONEG,
+                                 port,
+                                 "Sw#%d port = %d, OUI %sNextPage#%d=0x%016llx "
+                                 "NextPage#%d=0x%016llx, extTechAbi=0x%x\n",
+                                 sw,
+                                 port,
+                                 dbgStr,
+                                 pageNum,
+                                 pageA,
+                                 pageNum+1,
+                                 pageB,
+                                 val);
+                 /* Only if message is "Extended technology ability" */
+                if (val == 0x3)
+                {
+                    /* Bit ordering is a bit unexpected */
+                    oui = 0;
+                    for (cnt = 0; cnt < 2; cnt++)
+                    {
+                        oui |= (FM_GET_UNNAMED_BIT64(pageB, 9 + cnt) << cnt);
+                    }
+                    for (cnt = 0; cnt < 11; cnt++)
+                    {
+                        oui |= (FM_GET_UNNAMED_BIT64(pageA, 32 + cnt) << (cnt+2));
+                    }
+                    for (cnt = 0; cnt < 11; cnt++)
+                    {
+                        oui |= (FM_GET_UNNAMED_BIT64(pageA, 16 + cnt) << (cnt+13));
+                    }
+
+                    if ( oui == portAttr->autoNeg25GNxtPgOui )
+                    {
+                        FM_LOG_DEBUG2_V2( FM_LOG_CAT_PORT_AUTONEG,
+                                          port,
+                                          "Sw#%d port = %d, %s OUI=0x%8.8x "
+                                          "KR1=%llu CR1=%llu KR2=%llu CR2=%llu "
+                                          "AdvCL91=%llu AdvCL74=%llu ReqCL91=%llu ReqCL74=%llu\n",
+                                          sw,
+                                          port,
+                                          dbgStr,
+                                          oui,
+                                          FM_GET_UNNAMED_BIT64(pageB, 19),
+                                          FM_GET_UNNAMED_BIT64(pageB, 20),
+                                          FM_GET_UNNAMED_BIT64(pageB, 24),
+                                          FM_GET_UNNAMED_BIT64(pageB, 25),
+                                          FM_GET_UNNAMED_BIT64(pageB, 40),
+                                          FM_GET_UNNAMED_BIT64(pageB, 41),
+                                          FM_GET_UNNAMED_BIT64(pageB, 42),
+                                          FM_GET_UNNAMED_BIT64(pageB, 43));
+
+                        *extTechAbIndex = pageNum + 1;
+                        err = FM_OK;
+                    }
+                    else
+                    {
+                        FM_LOG_DEBUG2_V2( FM_LOG_CAT_PORT_AUTONEG,
+                                          port,
+                                          "Sw#%d port = %d, %s local OUI=0x%8.8x received OUI=0x%8.8x (not recognized)\n",
+                                          sw,
+                                          port,
+                                          dbgStr,
+                                          portAttr->autoNeg25GNxtPgOui,
+                                          oui);
+                        continue;
+                    }
+
+
+                }
+            }
+        }
+    }
+
+    return err;
+
+} /* fm10000AnGetNextPageExtTechAbilityIndex */
+
+

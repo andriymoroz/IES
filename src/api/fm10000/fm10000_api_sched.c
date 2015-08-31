@@ -29,7 +29,7 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
+ *****************************************************************************/
 
 #include <fm_sdk_fm10000_int.h>
 
@@ -1962,6 +1962,8 @@ ABORT:
  * 
  * \param[in]       slots100G is for 100G slots.
  * 
+ * \param[in]       slots60G is for 60G slots.
+ * 
  * \param[in]       slots40G is for 40G slots.
  * 
  * \param[in]       slots25G is for 25G slots.
@@ -1998,6 +2000,7 @@ static fm_status PopulateSpeedList(fm_int sw,
     sInfo     = &switchExt->schedInfo;
     slotsHS   = 0;
     speedHS   = FM10000_SCHED_SPEED_40G;
+
     /* Initialize all slots as unused */
     for (i = 0; i < sInfo->tmp.schedLen; i++)
     {
@@ -2027,9 +2030,12 @@ static fm_status PopulateSpeedList(fm_int sw,
 
     /* Split one speed bin into two. Jitter increases as 
      * the starting category gets sparser */
-    err = SplitBandwidth(sw, FM10000_SCHED_SPEED_ANY,
-                             slots10GRsvd, FM10000_SCHED_SPEED_10G_RSVD,
-                             slotsHS,      speedHS);
+    err = SplitBandwidth(sw,
+                         FM10000_SCHED_SPEED_ANY,
+                         slots10GRsvd,
+                         FM10000_SCHED_SPEED_10G_RSVD,
+                         slotsHS,
+                         speedHS);
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
 
     /* 10G reserved BW is a perfect multiple of 10G requirement,
@@ -2038,58 +2044,79 @@ static fm_status PopulateSpeedList(fm_int sw,
      * Extra jitter on highest speed (100G or 40G) is 
      * small, <10G of bandwidth */
 
-     if (slots100G > 0)
+    if (slots100G > 0)
     { 
-        err = SplitBandwidth(sw, FM10000_SCHED_SPEED_10G_RSVD,
-                                 slots10G,                FM10000_SCHED_SPEED_10G,
-                                 slots10GRsvd - slots10G, FM10000_SCHED_SPEED_NOT_10G_NOT_100G);
+         err = SplitBandwidth(sw,
+                              FM10000_SCHED_SPEED_10G_RSVD,
+                              slots10G,
+                              FM10000_SCHED_SPEED_10G,
+                              slots10GRsvd - slots10G,
+                              FM10000_SCHED_SPEED_NOT_10G_NOT_100G);
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
 
         /* 40G and 25G can have higher jitter. */
-        err = SplitBandwidth(sw, FM10000_SCHED_SPEED_NOT_10G_NOT_100G,
-                                 slots60G,  FM10000_SCHED_SPEED_60G,
-                                 slotsIdle + slots40G + slots25G + slots2500M, 
-                                 FM10000_SCHED_SPEED_NOT_10G_NOT_60G_NOT_100G);
+        err = SplitBandwidth(sw,
+                             FM10000_SCHED_SPEED_NOT_10G_NOT_100G,
+                             slots60G,
+                             FM10000_SCHED_SPEED_60G,
+                             slotsIdle + slots40G + slots25G + slots2500M,
+                             FM10000_SCHED_SPEED_NOT_10G_NOT_60G_NOT_100G);
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
 
-        err = SplitBandwidth(sw, FM10000_SCHED_SPEED_NOT_10G_NOT_60G_NOT_100G,
-                                 slots40G,  FM10000_SCHED_SPEED_40G,
-                                 slotsIdle + slots25G + slots2500M, 
-                                 FM10000_SCHED_SPEED_IDLE_25G_2500M);
+        err = SplitBandwidth(sw,
+                             FM10000_SCHED_SPEED_NOT_10G_NOT_60G_NOT_100G,
+                             slots40G,
+                             FM10000_SCHED_SPEED_40G,
+                             slotsIdle + slots25G + slots2500M,
+                             FM10000_SCHED_SPEED_IDLE_25G_2500M);
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
 
     }
     else if (slots60G > 0)
     {
-        err = SplitBandwidth(sw, FM10000_SCHED_SPEED_10G_RSVD,
-                                 slots10G,                FM10000_SCHED_SPEED_10G,
-                                 slots10GRsvd - slots10G, FM10000_SCHED_SPEED_NOT_10G_NOT_60G_NOT_100G);
+        err = SplitBandwidth(sw,
+                             FM10000_SCHED_SPEED_10G_RSVD,
+                             slots10G,
+                             FM10000_SCHED_SPEED_10G,
+                             slots10GRsvd - slots10G,
+                             FM10000_SCHED_SPEED_NOT_10G_NOT_60G_NOT_100G);
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
 
-        err = SplitBandwidth(sw, FM10000_SCHED_SPEED_NOT_10G_NOT_60G_NOT_100G,
-                                 slots40G,  FM10000_SCHED_SPEED_40G,
-                                 slotsIdle + slots25G + slots2500M,
-                                 FM10000_SCHED_SPEED_IDLE_25G_2500M);
+        err = SplitBandwidth(sw,
+                             FM10000_SCHED_SPEED_NOT_10G_NOT_60G_NOT_100G,
+                             slots40G,
+                             FM10000_SCHED_SPEED_40G,
+                             slotsIdle + slots25G + slots2500M,
+                             FM10000_SCHED_SPEED_IDLE_25G_2500M);
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
 
     }
     else
     {
-        err = SplitBandwidth(sw, FM10000_SCHED_SPEED_10G_RSVD, 
-                                 slots10G,                FM10000_SCHED_SPEED_10G,
-                                 slots10GRsvd - slots10G, FM10000_SCHED_SPEED_IDLE_25G_2500M);
+        err = SplitBandwidth(sw,
+                             FM10000_SCHED_SPEED_10G_RSVD,
+                             slots10G,
+                             FM10000_SCHED_SPEED_10G,
+                             slots10GRsvd - slots10G,
+                             FM10000_SCHED_SPEED_IDLE_25G_2500M);
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
     }
 
-    err = SplitBandwidth(sw, FM10000_SCHED_SPEED_IDLE_25G_2500M, 
-                             slots25G, FM10000_SCHED_SPEED_25G,
-                             slotsIdle + slots2500M, FM10000_SCHED_SPEED_IDLE_2500M);
+    err = SplitBandwidth(sw,
+                         FM10000_SCHED_SPEED_IDLE_25G_2500M,
+                         slots25G,
+                         FM10000_SCHED_SPEED_25G,
+                         slotsIdle + slots2500M,
+                         FM10000_SCHED_SPEED_IDLE_2500M);
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
 
     /* Idle and 2.5G don't repeat in schedule, hence can't jitter at all */
-    err = SplitBandwidth(sw, FM10000_SCHED_SPEED_IDLE_2500M, 
-                             slotsIdle,  FM10000_SCHED_SPEED_IDLE,
-                             slots2500M, FM10000_SCHED_SPEED_2500M);
+    err = SplitBandwidth(sw,
+                         FM10000_SCHED_SPEED_IDLE_2500M,
+                         slotsIdle,
+                         FM10000_SCHED_SPEED_IDLE,
+                         slots2500M,
+                         FM10000_SCHED_SPEED_2500M);
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
 
 ABORT:
@@ -2797,6 +2824,7 @@ static fm_status GenerateSchedule(fm_int sw)
     fm_uint64           logLvl;
     fm_uint32           rv;
     fm_uint32           pcieHost;
+    fm_uint32           pep;
     fm_bool             quad;
 
     fm_timestamp       tStart = {0,0};
@@ -3049,9 +3077,13 @@ static fm_status GenerateSchedule(fm_int sw)
 
             pcieHost = (sInfo->tmp.portList[i].fabricPort - 
                         FM10000_FIRST_PCIE_FABRIC_PORT) / 4;
+            pep      = (sInfo->tmp.portList[i].fabricPort - 
+                        FM10000_FIRST_PCIE_FABRIC_PORT) / 
+                        FM10000_PORTS_PER_PCIE_FABRIC_PORT;
 
             /* If in x4, there is one channel, if in x8, there are 4 channels */
-            if (rv & (1 << pcieHost))
+            if ( (pep % 2 == 1 ) ||
+                 (rv & (1 << pcieHost)) )
             {
                 quad = 0;
             }

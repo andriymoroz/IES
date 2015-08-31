@@ -86,6 +86,7 @@
 #include <platform_buffer_defs.h>
 #include <platform_config.h>
 #include <platform_config_nvm.h>
+#include <platform_config_tlv.h>
 #include <platform_lib_api.h>
 #include <platform_lib.h>
 #include <platform_port.h>
@@ -391,6 +392,8 @@ void fmPlatformOpenInstrumentation(void);
 #define FM_HAVE_fmPlatformSWAGInitialize
 #define FM_HAVE_fmPlatformSwitchPreInitialize
 #define FM_HAVE_fmPlatformSwitchTerminate
+#define FM_HAVE_fmPlatformTerminate
+
 
 /* 
  * These functions are platform-specific, and must be fully
