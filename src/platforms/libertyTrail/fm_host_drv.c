@@ -58,8 +58,8 @@
 #define FM10000_INTEL_PCIE_DEVICE_ID    0x15A4
 #endif
 
-#define BOULDER_RAPIDS_DEVICE_ID    0x15D0
-#define ATWOOD_CHANNEL_DEVICE_ID    0x15D5
+#define FM10000_DEV_ID_SDI_FM10420_QDA2    0x15D0
+#define FM10000_DEV_ID_SDI_FM10420_DA2     0x15D5
 
 /* The time threshold after which the VPD read
  * is considered slow. */
@@ -1157,8 +1157,8 @@ static fm_status FindNetDevFromPep(fm_int  sw,
             err = GetNetDevDevice(namelist[n]->d_name, &deviceId);
             if ( (err != FM_OK) || 
                  ( (deviceId != FM10000_INTEL_PCIE_DEVICE_ID) &&
-                   (deviceId != BOULDER_RAPIDS_DEVICE_ID) &&
-                   (deviceId != ATWOOD_CHANNEL_DEVICE_ID) ) )
+                   (deviceId != FM10000_DEV_ID_SDI_FM10420_QDA2) &&
+                   (deviceId != FM10000_DEV_ID_SDI_FM10420_DA2) ) )
             {
                 continue;
             }
