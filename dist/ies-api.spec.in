@@ -47,7 +47,7 @@ that uses the ies-api package.
 %post
 cd %{_sysconfdir}/ies/platforms
 if [ ! -h "default" ]; then
-    ln -sf boulderRapids default
+    ln -sf sdi_adapter_100g_br default
 fi
 /sbin/ldconfig
 
@@ -58,9 +58,9 @@ fi
 %{_libdir}/libLTStdPlatform-%{version}.so
 %{_libdir}/libLTStdPlatform.so
 %{_sysconfdir}/ies/environment
-%{_sysconfdir}/ies/platforms/atwoodChannel
-%{_sysconfdir}/ies/platforms/boulderRapids
-%{_sysconfdir}/ies/platforms/rubyRapids
+%{_sysconfdir}/ies/platforms/sdi_adapter_25g_ac
+%{_sysconfdir}/ies/platforms/sdi_adapter_100g_br
+%{_sysconfdir}/ies/platforms/sdv_100g_rr
 %{_sysconfdir}/profile.d/ies.sh
 %exclude %{_sysconfdir}/ies/platforms/default
 
