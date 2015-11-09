@@ -37,6 +37,7 @@ that uses the ies-api package.
 %setup -q
 
 %build
+chmod +x autogen.sh
 ./autogen.sh
 %configure
 %{__make} %{?_smp_mflags}
@@ -66,7 +67,6 @@ fi
 
 %files devel
 %{_includedir}/*
-%{_libdir}/*.a
 %{_libdir}/libFocalpointSDK.so
 %{_libdir}/pkgconfig/*.pc
 %exclude %{_libdir}/*.la
