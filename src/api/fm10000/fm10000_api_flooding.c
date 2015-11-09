@@ -46,6 +46,8 @@ enum
     RULE_UCAST_FLOOD_LOG,
     RULE_UCAST_FLOOD_DROP,
 
+    RULE_RESERVED_MAC_FWD,
+
     RULE_MCAST_FLOOD_TRAP,
     RULE_MCAST_FLOOD_LOG,
     RULE_MCAST_FLOOD_DROP,
@@ -65,6 +67,7 @@ enum
     TRIG_TYPE_TRAP,
     TRIG_TYPE_LOG,
     TRIG_TYPE_DROP,
+    TRIG_TYPE_NOACTION,
 };
 
 
@@ -232,6 +235,21 @@ static const triggerDesc ucastTrapDesc =
     .glort      = FM10000_GLORT_FLOOD,
     .trigType   = TRIG_TYPE_TRAP,
     .portSetOff = offsetof(fm10000_floodInfo, ucastTrapSet),
+};
+
+/**************************************************
+ * Reserved Mac trigger descriptors.
+ **************************************************/
+static const triggerDesc reservedMacFwdDesc = 
+{
+    .descName   = "RESERVED_FWD_NORMAL",
+    .trigName   = "reservedMacControlTrigger",
+    .group      = FM10000_TRIGGER_GROUP_MCAST_FLOOD,
+    .rule       = RULE_RESERVED_MAC_FWD,
+    .classMask  = FM_TRIGGER_FRAME_CLASS_MCAST,
+    .glort      = FM10000_GLORT_MCAST,
+    .trigType   = TRIG_TYPE_NOACTION,
+    .portSetOff = offsetof(fm10000_floodInfo, reservedSet),
 };
 
 
@@ -536,6 +554,99 @@ ABORT:
     return err;
 
 }   /* end ConfigFloodingTrigger */
+
+
+
+
+/*****************************************************************************/
+/** ConfigReservedMacControlTrigger
+ * \ingroup intSwitch
+ *
+ * \desc            Configures the reserved MAC control trigger.
+ *
+ * \param[in]       sw is the switch on which to operate.
+ * 
+ * \param[in]       desc points to the descriptor for the control trigger
+ *                  to be configured.
+ *
+ * \return          FM_OK if successful.
+ *
+ *****************************************************************************/
+static fm_status ConfigReservedMacControlTrigger(fm_int sw, const triggerDesc * desc)
+{
+    fm10000_switch *    switchExt;
+    fm10000_floodInfo * floodInfo;
+    fm_triggerCondition trigCond;
+    fm_triggerAction    trigAction;
+    fm_status           err;
+
+    switchExt = GET_SWITCH_EXT(sw);
+    floodInfo = &switchExt->floodInfo;
+
+    /**************************************************
+     * Configure trigger condition.
+     **************************************************/
+
+    err = fmInitTriggerCondition(sw, &trigCond);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
+
+    trigCond.cfg.rxPortset = *GET_PORTSET_PTR(floodInfo, desc);
+
+    trigCond.cfg.matchFrameClassMask = desc->classMask;
+
+    trigCond.cfg.matchRoutedMask = FM_TRIGGER_SWITCHED_FRAMES;
+
+    trigCond.cfg.HAMask = FM_TRIGGER_HA_TRAP_RESERVED_MAC;
+
+    trigCond.cfg.matchDestGlort  = FM_TRIGGER_MATCHCASE_MATCHIFEQUAL;
+    trigCond.param.destGlort     = desc->glort;
+    trigCond.param.destGlortMask = 0xffff;
+
+    if ( (desc->classMask == FM_TRIGGER_FRAME_CLASS_MCAST) &&
+         (floodInfo->trapAlwaysId >= 0) )
+    {
+        trigCond.cfg.matchFFU    = FM_TRIGGER_MATCHCASE_MATCHIFNOTEQUAL;
+        trigCond.param.ffuId     = floodInfo->trapAlwaysId;
+        trigCond.param.ffuIdMask = floodInfo->trapAlwaysId;
+    }
+
+    /**************************************************
+     * Configure trigger action.
+     **************************************************/
+
+    err = fmInitTriggerAction(sw, &trigAction);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
+
+    switch (desc->trigType)
+    {
+        case TRIG_TYPE_NOACTION:
+            trigAction.cfg.forwardingAction = FM_TRIGGER_FORWARDING_ACTION_ASIS;
+            break;
+
+        default:
+            err = FM_ERR_INVALID_ARGUMENT;
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
+    }
+
+    err = fm10000SetTriggerAction(sw,
+                                  desc->group,
+                                  desc->rule,
+                                  &trigAction,
+                                  TRUE);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
+
+    err = fm10000SetTriggerCondition(sw,
+                                     desc->group,
+                                     desc->rule,
+                                     &trigCond,
+                                     TRUE);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
+
+ABORT:
+    return err;
+
+
+}   /* end ConfigReservedMacControlTrigger */
 
 
 
@@ -1146,6 +1257,17 @@ static fm_status InitConfigTriggers(fm_int sw)
 
     }   /* end if (floodInfo->initBcastFlooding) */
 
+    if (floodInfo->initReservedMacControl) 
+    {
+        /**************************************************
+         * Configure the reserved MAC control triggers.
+         **************************************************/
+
+        err = ConfigReservedMacControlTrigger(sw, &reservedMacFwdDesc);
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
+
+    }   /* end if (floodInfo->initReservedMacControl) */
+
 ABORT:
     FM_LOG_EXIT(FM_LOG_CAT_SWITCH, err);
 
@@ -1234,6 +1356,16 @@ static fm_status InitCreateTriggers(fm_int sw)
 
     }   /* end if (floodInfo->initBcastFlooding) */
 
+    /**************************************************
+     * Create reserved MAC control triggers.
+     **************************************************/
+
+    if (floodInfo->initReservedMacControl) 
+    {
+        err = CreateFloodingTrigger(sw, &reservedMacFwdDesc);
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
+
+    }   /* end if (floodInfo->initReservedMacControl) */
 
 ABORT:
     FM_LOG_EXIT(FM_LOG_CAT_SWITCH, err);
@@ -1280,6 +1412,8 @@ static fm_status InitFloodStructures(fm_int sw)
     floodInfo->bcastLogSet  = FM_PORT_SET_NONE;
     floodInfo->bcastTrapSet = FM_PORT_SET_NONE;
 
+    floodInfo->reservedSet  = FM_PORT_SET_ALL_BUT_CPU;
+
     floodInfo->dropMaskSet  = FM_PORT_SET_NONE;
 
     floodInfo->trapAlwaysId = -1;
@@ -1288,22 +1422,16 @@ static fm_status InitFloodStructures(fm_int sw)
      * Cache API properties.
      **************************************************/
 
-    floodInfo->initUcastFlooding = fmGetBoolApiProperty(
-        FM_AAK_API_FM10000_INIT_UCAST_FLOODING_TRIGGERS,
-        FM_AAD_API_FM10000_INIT_UCAST_FLOODING_TRIGGERS);
+    floodInfo->initUcastFlooding = GET_FM10000_PROPERTY()->initUcastFloodTriggers;
 
-    floodInfo->initMcastFlooding = fmGetBoolApiProperty(
-        FM_AAK_API_FM10000_INIT_MCAST_FLOODING_TRIGGERS,
-        FM_AAD_API_FM10000_INIT_MCAST_FLOODING_TRIGGERS);
+    floodInfo->initMcastFlooding = GET_FM10000_PROPERTY()->initMcastFloodTriggers;
 
-    floodInfo->initBcastFlooding = fmGetBoolApiProperty(
-        FM_AAK_API_FM10000_INIT_BCAST_FLOODING_TRIGGERS,
-        FM_AAD_API_FM10000_INIT_BCAST_FLOODING_TRIGGERS);
+    floodInfo->initBcastFlooding = GET_FM10000_PROPERTY()->initBcastFloodTriggers;
+
+    floodInfo->initReservedMacControl = GET_FM10000_PROPERTY()->initResvdMacTriggers;
 
     /* Should this be a switch attribute, rather than a property? */
-    floodInfo->trapPri = fmGetIntApiProperty(
-        FM_AAK_API_FM10000_FLOODING_TRAP_PRIORITY, 
-        FM_AAD_API_FM10000_FLOODING_TRAP_PRIORITY);
+    floodInfo->trapPri = GET_FM10000_PROPERTY()->floodingTrapPriority;
 
     return FM_OK;
 
@@ -1746,8 +1874,7 @@ fm_status fm10000SetFloodDestPort(fm_int  sw,
                  port,
                  FM_BOOLSTRING(state));
 
-    mcastHNIFlooding = fmGetBoolApiProperty(FM_AAK_API_MULTICAST_HNI_FLOODING,
-                                            FM_AAD_API_MULTICAST_HNI_FLOODING);
+    mcastHNIFlooding = GET_PROPERTY()->hniMcastFlooding;
 
     /* Get destination mask for multicast flooding glort. */
     err = fm10000GetLogicalPortAttribute(sw,
@@ -1820,15 +1947,17 @@ fm_status fm10000DbgDumpFlooding(fm_int sw)
                  fmUcastFloodingToText(switchExt->ucastFlooding));
 
     FM_LOG_PRINT("\n");
-    FM_LOG_PRINT("initBcastFlooding   : %s\n",
+    FM_LOG_PRINT("initReservedMacControl     : %s\n",
+                 FM_BOOLSTRING(floodInfo->initReservedMacControl));
+    FM_LOG_PRINT("initBcastFlooding          : %s\n",
                  FM_BOOLSTRING(floodInfo->initBcastFlooding));
-    FM_LOG_PRINT("initMcastFlooding   : %s\n",
+    FM_LOG_PRINT("initMcastFlooding          : %s\n",
                  FM_BOOLSTRING(floodInfo->initMcastFlooding));
-    FM_LOG_PRINT("initUcastFlooding   : %s\n",
+    FM_LOG_PRINT("initUcastFlooding          : %s\n",
                  FM_BOOLSTRING(floodInfo->initUcastFlooding));
-    FM_LOG_PRINT("trapPri             : %d\n",
+    FM_LOG_PRINT("trapPri                    : %d\n",
                  floodInfo->trapPri);
-    FM_LOG_PRINT("trapAlwaysId        : %d\n",
+    FM_LOG_PRINT("trapAlwaysId               : %d\n",
                  floodInfo->trapAlwaysId);
 
     FM_LOG_PRINT("\n");

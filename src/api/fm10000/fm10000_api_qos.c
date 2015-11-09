@@ -577,8 +577,7 @@ static fm_status SetAutoPauseMode(fm_int    sw,
     if (switchPtr->autoPauseMode)
     {
         /* Get watermark schema */
-        wmScheme = fmGetTextApiProperty(FM_AAK_API_FM10000_WMSELECT,
-                                        FM_AAD_API_FM10000_WMSELECT);
+        wmScheme = GET_FM10000_PROPERTY()->wmSelect;
 
         if (!strcmp(wmScheme, "disabled"))
         {
@@ -655,8 +654,7 @@ static fm_status SetAutoPauseMode(fm_int    sw,
         }
     }
     else if ( (!switchPtr->autoPauseMode) &&
-              (fmGetBoolApiProperty(FM_AAK_API_RESET_WATERMARK_AT_PAUSE_OFF,
-                                    FM_AAD_API_RESET_WATERMARK_AT_PAUSE_OFF)) )
+              (GET_PROPERTY()->resetWmAtPauseOff) )
     {
         /* Auto Pause Mode disabled and 
            reset watermarks at autoPauseOff api attribute specified */
@@ -1369,31 +1367,17 @@ static fm_status GetWmParamsLossy(fm_int          sw,
     switchPtr = GET_SWITCH_PTR(sw);
 
     /* Get API attributes */
-    desiredRxSmpPrivate = 
-        fmGetIntApiProperty(FM_AAK_API_FM10000_CM_RX_SMP_PRIVATE_BYTES,
-                            FM_AAD_API_FM10000_CM_RX_SMP_PRIVATE_BYTES);
+    desiredRxSmpPrivate = GET_FM10000_PROPERTY()->cmRxSmpPrivBytes;
 
-    desiredTxTcHogBytes = 
-        fmGetIntApiProperty(FM_AAK_API_FM10000_CM_TX_TC_HOG_BYTES,
-                            FM_AAD_API_FM10000_CM_TX_TC_HOG_BYTES);
+    desiredTxTcHogBytes = GET_FM10000_PROPERTY()->cmTxTcHogBytes;
 
-    desiredSdVsHogPercent = 
-        fmGetIntApiProperty(FM_AAK_API_FM10000_CM_SMP_SD_VS_HOG_PERCENT,
-                            FM_AAD_API_FM10000_CM_SMP_SD_VS_HOG_PERCENT);
+    desiredSdVsHogPercent = GET_FM10000_PROPERTY()->cmSmpSdVsHogPercent;
 
-    desiredNumJitterBits = 
-        fmGetIntApiProperty(FM_AAK_API_FM10000_CM_SMP_SD_JITTER_BITS,
-                            FM_AAD_API_FM10000_CM_SMP_SD_JITTER_BITS);
+    desiredNumJitterBits = GET_FM10000_PROPERTY()->cmSmpSdJitterBits;
 
-    desiredSoftDropOnPrivate = 
-        (fmGetBoolApiProperty(FM_AAK_API_FM10000_CM_TX_SD_ON_PRIVATE,
-                              FM_AAD_API_FM10000_CM_TX_SD_ON_PRIVATE))
-        ? 1 : 0;
+    desiredSoftDropOnPrivate = GET_FM10000_PROPERTY()->cmTxSdOnPrivate ? 1 : 0;
     
-    desiredSoftDropOnSmpFree = 
-        (fmGetBoolApiProperty(FM_AAK_API_FM10000_CM_TX_SD_ON_SMP_FREE,
-                              FM_AAD_API_FM10000_CM_TX_SD_ON_SMP_FREE))
-        ? 1 : 0;
+    desiredSoftDropOnSmpFree = GET_FM10000_PROPERTY()->cmTxSdOnSmpFree ? 1 : 0;
 
     /* Set parameters asociated with specific registers resposible for the
        watermark schema configuration */
@@ -1755,13 +1739,9 @@ static fm_status GetWmParamsLossless(fm_int         sw,
     switchPtr = GET_SWITCH_PTR(sw);
 
     /* Get API attributes */
-    desiredPauseBufferBytes = 
-        fmGetIntApiProperty(FM_AAK_API_FM10000_CM_PAUSE_BUFFER_BYTES,
-                            FM_AAD_API_FM10000_CM_PAUSE_BUFFER_BYTES);
+    desiredPauseBufferBytes = GET_FM10000_PROPERTY()->cmPauseBufferBytes;
 
-    desiredTxTcHogBytes = 
-        fmGetIntApiProperty(FM_AAK_API_FM10000_CM_TX_TC_HOG_BYTES,
-                            FM_AAD_API_FM10000_CM_TX_TC_HOG_BYTES);
+    desiredTxTcHogBytes = GET_FM10000_PROPERTY()->cmTxTcHogBytes;
 
     /* Get bitmask of ouase enabled for lossless smp */
     err = fm10000GetSMPPauseState(sw, smpPauseEn);
@@ -3794,23 +3774,30 @@ ABORT:
 static fm_status ESchedGroupApplyNewConfig(fm_int sw,
                                            fm_int physPort)
 {
-    fm_switch *    switchPtr;
-    fm_uint32      regValue;
-    fm_int         i;
-    fm_int         qid;
-    fm_int         curQid;
-    fm_int         drrWeight[FM_MAX_TRAFFIC_CLASSES];
-    fm_int         grpBoundary    = 0;
-    fm_int         priSetBoundary = 0;
-    fm_int         strictBits     = 0;
-    fm_status      err            = FM_OK;
-    fm_bool        regLockTaken   = FALSE;
+    fm_switch             *switchPtr;
+    fm_uint32              regValue;
+    fm_int                 i;
+    fm_int                 qid;
+    fm_int                 curQid;
+    fm_int                 drrWeight[FM_MAX_TRAFFIC_CLASSES];
+    fm_int                 grpBoundary;
+    fm_int                 priSetBoundary;
+    fm_int                 strictBits;
+    fm_status              err;
+    fm_bool                regLockTaken;
+    fm_registerSGListEntry sgList;
     
     FM_LOG_ENTRY( FM_LOG_CAT_QOS,
                   "sw=%d, physPort=%d\n",
                   sw, 
                   physPort);
 
+    /* Initialize local variables */
+    err = FM_OK;
+    regLockTaken = FALSE;
+    grpBoundary    = 0;
+    priSetBoundary = 0;
+    strictBits     = 0;
     switchPtr = GET_SWITCH_PTR(sw);
 
     for (i = 0 ; i < FM_MAX_TRAFFIC_CLASSES ; i++)
@@ -3859,11 +3846,18 @@ static fm_status ESchedGroupApplyNewConfig(fm_int sw,
      * fill groupBoundary fields of register 
      * FM10000_SCHED_MONITOR_DRR_CFG_PERPORT
      ****************************************************************/
-    err = switchPtr->ReadUINT32(sw, 
-                                FM10000_SCHED_MONITOR_DRR_CFG_PERPORT(physPort),
-                                &regValue); 
+    FM_REGS_CACHE_FILL_SGLIST(&sgList,
+                              &fm10000CacheSchedMonitorDrrCfg,
+                              1,
+                              physPort,
+                              FM_REGS_CACHE_INDEX_UNUSED,
+                              FM_REGS_CACHE_INDEX_UNUSED,
+                              &regValue,
+                              FALSE);
+
+    err = fmRegCacheRead(sw, 1, &sgList, TRUE);
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_QOS, err);
-    
+
     FM_SET_FIELD(regValue,
                  FM10000_SCHED_MONITOR_DRR_CFG_PERPORT,
                  groupBoundary,
@@ -3874,9 +3868,19 @@ static fm_status ESchedGroupApplyNewConfig(fm_int sw,
                  zeroLength,
                  strictBits);
 
-    err = switchPtr->WriteUINT32(sw, 
-                                FM10000_SCHED_MONITOR_DRR_CFG_PERPORT(physPort),
-                                regValue); 
+    FM_REGS_CACHE_FILL_SGLIST(&sgList,
+                              &fm10000CacheSchedMonitorDrrCfg,
+                              1,
+                              physPort,
+                              FM_REGS_CACHE_INDEX_UNUSED,
+                              FM_REGS_CACHE_INDEX_UNUSED,
+                              &regValue,
+                              FALSE);
+
+    err = fmRegCacheWrite(sw,
+                          1,
+                          &sgList,
+                          TRUE);
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_QOS, err);
 
 
@@ -3955,22 +3959,24 @@ ABORT:
 static fm_status ESchedGroupRetrieveActiveConfig(fm_int sw,
                                                  fm_int physPort)
 {
-    fm_switch *     switchPtr;
-    fm10000_switch *switchExt;
-    fm_status       err;
-    fm_int          grpBoundary;
-    fm_int          grpBoundary1;
-    fm_int          strictBits;
-    fm_int          drrWeight[FM_MAX_TRAFFIC_CLASSES] = {0};
-    fm_uint32       regValue;
-    fm_int          i;
-    fm_int          qid;
-    fm_int          curQid;
-    fm_bool         regLockTaken = FALSE;
+    fm_switch             *switchPtr;
+    fm10000_switch        *switchExt;
+    fm_status              err;
+    fm_int                 grpBoundary;
+    fm_int                 grpBoundary1;
+    fm_int                 strictBits;
+    fm_int                 drrWeight[FM_MAX_TRAFFIC_CLASSES] = {0};
+    fm_uint32              regValue;
+    fm_int                 i;
+    fm_int                 qid;
+    fm_int                 curQid;
+    fm_bool                regLockTaken;
+    fm_registerSGListEntry sgList;
 
     switchPtr = GET_SWITCH_PTR(sw);
     switchExt = GET_SWITCH_EXT(sw);
-    
+    regLockTaken = FALSE;
+
     FM_FLAG_TAKE_REG_LOCK(sw);
 
     err = switchPtr->ReadUINT32(sw, 
@@ -3982,10 +3988,17 @@ static fm_status ESchedGroupRetrieveActiveConfig(fm_int sw,
     grpBoundary = (regValue >> FM_MAX_TRAFFIC_CLASSES) & 0xff; 
 
     /* Get group boundary */
-    err = switchPtr->ReadUINT32(sw, 
-                                FM10000_SCHED_MONITOR_DRR_CFG_PERPORT(physPort),
-                                &regValue); 
+    FM_REGS_CACHE_FILL_SGLIST(&sgList,
+                              &fm10000CacheSchedMonitorDrrCfg,
+                              1,
+                              physPort,
+                              FM_REGS_CACHE_INDEX_UNUSED,
+                              FM_REGS_CACHE_INDEX_UNUSED,
+                              &regValue,
+                              FALSE);
+    err = fmRegCacheRead(sw, 1, &sgList, TRUE);
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_QOS, err);
+
     grpBoundary1 = (regValue >> FM_MAX_TRAFFIC_CLASSES) & 0xff; 
 
     if (grpBoundary != grpBoundary1)
@@ -4160,8 +4173,7 @@ static fm_status CheckGlobalWm(fm_int    sw,
     }
 
     /* Get watermark schema */
-    wmScheme = fmGetTextApiProperty(FM_AAK_API_FM10000_WMSELECT,
-                                    FM_AAD_API_FM10000_WMSELECT);
+    wmScheme = GET_FM10000_PROPERTY()->wmSelect;
 
     /* For the disabled scheme print warning when value is less than 
        auto mode calculation */
@@ -4253,20 +4265,21 @@ fm_status fm10000SetPortQOS(fm_int sw,
                             fm_int index,
                             void * value)
 {
-    fm_uint32       regValue;
-    fm_uint64       regValue64;
-    fm_uint32       addr;
-    fm_uint32       val;
-    fm_int          physPort;
-    fm_switch       * switchPtr;
-    fm10000_switch  * switchExt;
-    fm_status       err;
-    fm_bool         regLockTaken;
-    fm_uint32       temp1;
-    fm_uint64       temp2;
-    fm_float        rate;
-    fm_float        fhMhz;
-    fm_bool         autoPauseMode;
+    fm_uint32              regValue;
+    fm_uint64              regValue64;
+    fm_uint32              addr;
+    fm_uint32              val;
+    fm_int                 physPort;
+    fm_switch             *switchPtr;
+    fm10000_switch        *switchExt;
+    fm_status              err;
+    fm_bool                regLockTaken;
+    fm_uint32              temp1;
+    fm_uint64              temp2;
+    fm_float               rate;
+    fm_float               fhMhz;
+    fm_bool                autoPauseMode;
+    fm_registerSGListEntry sgList;
 
     FM_LOG_ENTRY(FM_LOG_CAT_QOS,
                  "sw=%d port=%d attr=%d index=%d value=%p\n",
@@ -4771,7 +4784,19 @@ fm_status fm10000SetPortQOS(fm_int sw,
                          FM10000_SCHED_MONITOR_DRR_CFG_PERPORT,
                          ifgPenalty,
                          val);
-            err = switchPtr->WriteUINT32(sw, addr, regValue);
+            FM_REGS_CACHE_FILL_SGLIST(&sgList,
+                                      &fm10000CacheSchedMonitorDrrCfg,
+                                      1,
+                                      physPort,
+                                      FM_REGS_CACHE_INDEX_UNUSED,
+                                      FM_REGS_CACHE_INDEX_UNUSED,
+                                      &regValue,
+                                      FALSE);
+
+            err = fmRegCacheWrite(sw,
+                                  1,
+                                  &sgList,
+                                  TRUE);
             FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_QOS, err);
             break;
 
@@ -4975,16 +5000,17 @@ fm_status fm10000GetPortQOS(fm_int sw,
                             void * value)
 {
 
-    fm_uint32       regValue;
-    fm_uint64       regValue64;
-    fm_uint32       addr;
-    fm_uint32       val;
-    fm_int          physPort;
-    fm_switch       * switchPtr;
-    fm10000_switch  * switchExt;
-    fm_status       err;
-    fm_float        rate;
-    fm_float        fhMhz;
+    fm_uint32              regValue;
+    fm_uint64              regValue64;
+    fm_uint32              addr;
+    fm_uint32              val;
+    fm_int                 physPort;
+    fm_switch             *switchPtr;
+    fm10000_switch        *switchExt;
+    fm_status              err;
+    fm_float               rate;
+    fm_float               fhMhz;
+    fm_registerSGListEntry sgList;
 
     FM_LOG_ENTRY(FM_LOG_CAT_QOS,
                  "sw=%d, port=%d, attr=%d, index=%d, value=%p\n",
@@ -5354,8 +5380,15 @@ fm_status fm10000GetPortQOS(fm_int sw,
 
         case FM_QOS_SCHED_IFGPENALTY:
             /* Read the DRR register  */
-            addr = FM10000_SCHED_MONITOR_DRR_CFG_PERPORT(physPort);
-            err = switchPtr->ReadUINT32(sw, addr, &regValue);
+            FM_REGS_CACHE_FILL_SGLIST(&sgList,
+                                      &fm10000CacheSchedMonitorDrrCfg,
+                                      1,
+                                      physPort,
+                                      FM_REGS_CACHE_INDEX_UNUSED,
+                                      FM_REGS_CACHE_INDEX_UNUSED,
+                                      &regValue,
+                                      FALSE);
+            err = fmRegCacheRead(sw, 1, &sgList, FALSE);
             FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_QOS, err);
             /* Get the requested value */
             ( *( (fm_uint32 *) value ) ) = 
@@ -5493,8 +5526,15 @@ fm_status fm10000GetPortQOS(fm_int sw,
 
         case FM_QOS_TC_ZERO_LENGTH:
             /* Read the FM10000_SCHED_MONITOR_DRR_CFG_PERPORT register */
-            addr = FM10000_SCHED_MONITOR_DRR_CFG_PERPORT(physPort);
-            err = switchPtr->ReadUINT32(sw, addr, &regValue);
+            FM_REGS_CACHE_FILL_SGLIST(&sgList,
+                                      &fm10000CacheSchedMonitorDrrCfg,
+                                      1,
+                                      physPort,
+                                      FM_REGS_CACHE_INDEX_UNUSED,
+                                      FM_REGS_CACHE_INDEX_UNUSED,
+                                      &regValue,
+                                      FALSE);
+            err = fmRegCacheRead(sw, 1, &sgList, TRUE);
             FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_QOS, err);
             /* Get the requested value */
             ( *( (fm_uint32 *) value ) ) = 

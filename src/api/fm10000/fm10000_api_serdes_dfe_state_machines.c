@@ -57,7 +57,6 @@ static fm_status SerDesDfeStartTuning( fm_smEventInfo *eventInfo, void *userInfo
 static fm_status SerDesDfePauseTuning( fm_smEventInfo *eventInfo, void *userInfo );
 static fm_status SerDesDfeResumeTuning( fm_smEventInfo *eventInfo, void *userInfo );
 static fm_status SerDesDfeStartKrPCalTuning( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status SerDesDfePushAutoStartTuning( fm_smEventInfo *eventInfo, void *userInfo );
 static fm_status SerDesDfeStartTimeoutTimerShrt( fm_smEventInfo *eventInfo, void *userInfo );
 static fm_status SerDesDfeStartTimeoutTimerStopTuning( fm_smEventInfo *eventInfo, void *userInfo );
 static fm_status SerDesDfeStartTimeoutTimerDebounce( fm_smEventInfo *eventInfo, void *userInfo );
@@ -82,6 +81,7 @@ static fm_status SerDesDfeDontSaveRecord( fm_smEventInfo *eventInfo, void *userI
 
 /* declaration of all condition callbacks */
 static fm_status SerDesDfeProcessPCalTimeout( fm_smEventInfo *eventInfo, void *userInfo, fm_int *nextState );
+static fm_status SerDesDfeProcessPushAutoStartTuning( fm_smEventInfo *eventInfo, void *userInfo, fm_int *nextState );
 static fm_status SerDesDfeProcessICalTimeout( fm_smEventInfo *eventInfo, void *userInfo, fm_int *nextState );
 static fm_status SerDesDfeProcessStopTuningTimeout( fm_smEventInfo *eventInfo, void *userInfo, fm_int *nextState );
 
@@ -89,7 +89,6 @@ static fm_status SerDesDfeProcessStopTuningTimeout( fm_smEventInfo *eventInfo, v
 /* Declarations of transition callbacks for FM10000_BASIC_SERDES_DFE_STATE_MACHINE */
 static fm_status BasicStateMachineS0E0Callback( fm_smEventInfo *eventInfo, void *userInfo );
 static fm_status BasicStateMachineS0E1Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status BasicStateMachineS0E6Callback( fm_smEventInfo *eventInfo, void *userInfo );
 static fm_status BasicStateMachineS0E4Callback( fm_smEventInfo *eventInfo, void *userInfo );
 static fm_status BasicStateMachineS1E1Callback( fm_smEventInfo *eventInfo, void *userInfo );
 static fm_status BasicStateMachineS2E1Callback( fm_smEventInfo *eventInfo, void *userInfo );
@@ -133,7 +132,8 @@ fm_text fm10000SerDesDfeEventsMap[FM10000_SERDES_DFE_EVENT_MAX] =
     "SERDES_DFE_EVENT_RESUME_TUNING_REQ",
     "SERDES_DFE_EVENT_START_PCAL_REQ",
     "SERDES_DFE_EVENT_TUNING_STOPPED_IND",
-    "SERDES_DFE_EVENT_TIMEOUT_IND"
+    "SERDES_DFE_EVENT_TIMEOUT_IND",
+    "SERDES_DFE_EVENT_RESET_MACHINE_REQ"
 
 };
 
@@ -365,43 +365,6 @@ static fm_status SerDesDfeStartKrPCalTuning( fm_smEventInfo *eventInfo, void *us
     return status;
 
 }   /* end SerDesDfeStartKrPCalTuning */
-
-
-/*****************************************************************************/
-/** SerDesDfePushAutoStartTuning
- * \ingroup intSerDesDfeStateMachine 
- *
- * \desc            One of the action callbacks for this state machine
- *                  category.
- *
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          Caller-provided return codes.
- * 
- *****************************************************************************/
-static fm_status SerDesDfePushAutoStartTuning( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status;
-    fm_int    serDes;
-
-    /* this log message can be modified once the serdes-specific event
-       info structure will be defined */
-    serDes = ((fm10000_serDesSmEventInfo *)userInfo)->laneExt->serDes;
-    FM_LOG_DEBUG_V2( FM_LOG_CAT_SERDES,
-                     serDes,
-                     "Event %s occurred on serDes %d, executing PushAutoStartTuning\n", 
-                     fm10000SerDesDfeEventsMap[eventInfo->eventId],
-                     serDes );
-
-    status = fm10000SerDesDfePushAutoStartTuning( eventInfo, userInfo );
-
-    return status;
-
-}   /* end SerDesDfePushAutoStartTuning */
 
 
 /*****************************************************************************/
@@ -1148,6 +1111,46 @@ static fm_status SerDesDfeProcessPCalTimeout( fm_smEventInfo *eventInfo, void *u
 
 
 /*****************************************************************************/
+/** SerDesDfeProcessPushAutoStartTuning
+ * \ingroup intSerDesDfeStateMachine 
+ *
+ * \desc            One of the condition callbacks for this state machine
+ *                  category.
+ *
+ * \param[in]       eventInfo is a pointer to a caller-allocated area
+ *                  containing the generic event descriptor.
+ * 
+ * \param[in]       userInfo is a pointer to a caller-allocated containing
+ *                  purpose-specific event info.
+ * 
+ * \param[out]      nextState is the pointer to a caller-allocated area where
+ *                  this function will return the next state.
+ *
+ * \return          Caller-provided return codes.
+ * 
+ *****************************************************************************/
+static fm_status SerDesDfeProcessPushAutoStartTuning( fm_smEventInfo *eventInfo, void *userInfo, fm_int *nextState )
+{
+    fm_status status;
+    fm_int    serDes;
+
+    /* this log message can be modified once the serdes-specific event
+       info structure will be defined */
+    serDes = ((fm10000_serDesSmEventInfo *)userInfo)->laneExt->serDes;
+    FM_LOG_DEBUG_V2( FM_LOG_CAT_SERDES,
+                     serDes,
+                     "Event %s occurred on serDes %d, executing ProcessPushAutoStartTuning\n", 
+                     fm10000SerDesDfeEventsMap[eventInfo->eventId],
+                     serDes );
+
+    status = fm10000SerDesDfeProcessPushAutoStartTuning( eventInfo, userInfo, nextState );
+
+    return status;
+
+}   /* end SerDesDfeProcessPushAutoStartTuning */
+
+
+/*****************************************************************************/
 /** SerDesDfeProcessICalTimeout
  * \ingroup intSerDesDfeStateMachine 
  *
@@ -1256,6 +1259,9 @@ static fm_status BasicStateMachineS0E0Callback( fm_smEventInfo *eventInfo, void 
     fm_status status = FM_OK;
     fm_int    serDes = ((fm10000_serDesSmEventInfo *)userInfo)->laneExt->serDes;
         
+    status = SerDesDfeStopTimeoutTimer( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_SERDES, serDes, status );
+            
     status = SerDesDfeConfigDfe( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_SERDES, serDes, status );
             
@@ -1306,37 +1312,6 @@ ABORT:
     return status;
 
 }   /* end BasicStateMachineS0E1Callback */
-
-/*****************************************************************************/
-/** BasicStateMachineS0E6Callback
- * \ingroup intSerDesDfeStateMachine
- *
- * \desc            Transition callback for serdes state machine type
- *                  ''FM10000_BASIC_SERDES_DFE_STATE_MACHINE'', when event
- *                  ''FM10000_SERDES_DFE_EVENT_TIMEOUT_IND'' occurs in state
- *                  ''FM10000_SERDES_DFE_STATE_START.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status BasicStateMachineS0E6Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int    serDes = ((fm10000_serDesSmEventInfo *)userInfo)->laneExt->serDes;
-        
-    status = SerDesDfePushAutoStartTuning( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_SERDES, serDes, status );
-            
-ABORT:
-    return status;
-
-}   /* end BasicStateMachineS0E6Callback */
 
 /*****************************************************************************/
 /** BasicStateMachineS0E4Callback
@@ -1977,11 +1952,11 @@ fm_status fm10000RegisterBasicSerDesDfeStateMachine( void )
     stt[FM10000_SERDES_DFE_STATE_START]
        [FM10000_SERDES_DFE_EVENT_TIMEOUT_IND].used = TRUE;
     stt[FM10000_SERDES_DFE_STATE_START]
-       [FM10000_SERDES_DFE_EVENT_TIMEOUT_IND].nextState = FM10000_SERDES_DFE_STATE_START;
+       [FM10000_SERDES_DFE_EVENT_TIMEOUT_IND].nextState = FM_STATE_UNSPECIFIED;
     stt[FM10000_SERDES_DFE_STATE_START]
-       [FM10000_SERDES_DFE_EVENT_TIMEOUT_IND].conditionCallback = NULL;
+       [FM10000_SERDES_DFE_EVENT_TIMEOUT_IND].conditionCallback = SerDesDfeProcessPushAutoStartTuning;
     stt[FM10000_SERDES_DFE_STATE_START]
-       [FM10000_SERDES_DFE_EVENT_TIMEOUT_IND].transitionCallback = BasicStateMachineS0E6Callback;
+       [FM10000_SERDES_DFE_EVENT_TIMEOUT_IND].transitionCallback = NULL;
 
     /* transition for state=SERDES_DFE_STATE_START(0), event=SERDES_DFE_EVENT_START_PCAL_REQ(4) */
     stt[FM10000_SERDES_DFE_STATE_START]
@@ -2043,6 +2018,16 @@ fm_status fm10000RegisterBasicSerDesDfeStateMachine( void )
     stt[FM10000_SERDES_DFE_STATE_WAIT_ICAL]
        [FM10000_SERDES_DFE_EVENT_TIMEOUT_IND].transitionCallback = NULL;
 
+    /* transition for state=SERDES_DFE_STATE_WAIT_ICAL(1), event=SERDES_DFE_EVENT_RESET_MACHINE_REQ(7) */
+    stt[FM10000_SERDES_DFE_STATE_WAIT_ICAL]
+       [FM10000_SERDES_DFE_EVENT_RESET_MACHINE_REQ].used = TRUE;
+    stt[FM10000_SERDES_DFE_STATE_WAIT_ICAL]
+       [FM10000_SERDES_DFE_EVENT_RESET_MACHINE_REQ].nextState = FM10000_SERDES_DFE_STATE_START;
+    stt[FM10000_SERDES_DFE_STATE_WAIT_ICAL]
+       [FM10000_SERDES_DFE_EVENT_RESET_MACHINE_REQ].conditionCallback = NULL;
+    stt[FM10000_SERDES_DFE_STATE_WAIT_ICAL]
+       [FM10000_SERDES_DFE_EVENT_RESET_MACHINE_REQ].transitionCallback = NULL;
+
     /* transition for state=SERDES_DFE_STATE_WAIT_PCAL(2), event=SERDES_DFE_EVENT_START_TUNING_REQ(0) */
     stt[FM10000_SERDES_DFE_STATE_WAIT_PCAL]
        [FM10000_SERDES_DFE_EVENT_START_TUNING_REQ].used = TRUE;
@@ -2092,6 +2077,16 @@ fm_status fm10000RegisterBasicSerDesDfeStateMachine( void )
        [FM10000_SERDES_DFE_EVENT_TIMEOUT_IND].conditionCallback = SerDesDfeProcessPCalTimeout;
     stt[FM10000_SERDES_DFE_STATE_WAIT_PCAL]
        [FM10000_SERDES_DFE_EVENT_TIMEOUT_IND].transitionCallback = NULL;
+
+    /* transition for state=SERDES_DFE_STATE_WAIT_PCAL(2), event=SERDES_DFE_EVENT_RESET_MACHINE_REQ(7) */
+    stt[FM10000_SERDES_DFE_STATE_WAIT_PCAL]
+       [FM10000_SERDES_DFE_EVENT_RESET_MACHINE_REQ].used = TRUE;
+    stt[FM10000_SERDES_DFE_STATE_WAIT_PCAL]
+       [FM10000_SERDES_DFE_EVENT_RESET_MACHINE_REQ].nextState = FM10000_SERDES_DFE_STATE_START;
+    stt[FM10000_SERDES_DFE_STATE_WAIT_PCAL]
+       [FM10000_SERDES_DFE_EVENT_RESET_MACHINE_REQ].conditionCallback = NULL;
+    stt[FM10000_SERDES_DFE_STATE_WAIT_PCAL]
+       [FM10000_SERDES_DFE_EVENT_RESET_MACHINE_REQ].transitionCallback = NULL;
 
     /* transition for state=SERDES_DFE_STATE_DEBOUNCE(3), event=SERDES_DFE_EVENT_START_TUNING_REQ(0) */
     stt[FM10000_SERDES_DFE_STATE_DEBOUNCE]
@@ -2143,6 +2138,16 @@ fm_status fm10000RegisterBasicSerDesDfeStateMachine( void )
     stt[FM10000_SERDES_DFE_STATE_DEBOUNCE]
        [FM10000_SERDES_DFE_EVENT_TIMEOUT_IND].transitionCallback = BasicStateMachineS3E6Callback;
 
+    /* transition for state=SERDES_DFE_STATE_DEBOUNCE(3), event=SERDES_DFE_EVENT_RESET_MACHINE_REQ(7) */
+    stt[FM10000_SERDES_DFE_STATE_DEBOUNCE]
+       [FM10000_SERDES_DFE_EVENT_RESET_MACHINE_REQ].used = TRUE;
+    stt[FM10000_SERDES_DFE_STATE_DEBOUNCE]
+       [FM10000_SERDES_DFE_EVENT_RESET_MACHINE_REQ].nextState = FM10000_SERDES_DFE_STATE_START;
+    stt[FM10000_SERDES_DFE_STATE_DEBOUNCE]
+       [FM10000_SERDES_DFE_EVENT_RESET_MACHINE_REQ].conditionCallback = NULL;
+    stt[FM10000_SERDES_DFE_STATE_DEBOUNCE]
+       [FM10000_SERDES_DFE_EVENT_RESET_MACHINE_REQ].transitionCallback = NULL;
+
     /* transition for state=SERDES_DFE_STATE_STOP_TUNING(4), event=SERDES_DFE_EVENT_START_TUNING_REQ(0) */
     stt[FM10000_SERDES_DFE_STATE_STOP_TUNING]
        [FM10000_SERDES_DFE_EVENT_START_TUNING_REQ].used = TRUE;
@@ -2192,6 +2197,16 @@ fm_status fm10000RegisterBasicSerDesDfeStateMachine( void )
        [FM10000_SERDES_DFE_EVENT_TIMEOUT_IND].conditionCallback = SerDesDfeProcessStopTuningTimeout;
     stt[FM10000_SERDES_DFE_STATE_STOP_TUNING]
        [FM10000_SERDES_DFE_EVENT_TIMEOUT_IND].transitionCallback = NULL;
+
+    /* transition for state=SERDES_DFE_STATE_STOP_TUNING(4), event=SERDES_DFE_EVENT_RESET_MACHINE_REQ(7) */
+    stt[FM10000_SERDES_DFE_STATE_STOP_TUNING]
+       [FM10000_SERDES_DFE_EVENT_RESET_MACHINE_REQ].used = TRUE;
+    stt[FM10000_SERDES_DFE_STATE_STOP_TUNING]
+       [FM10000_SERDES_DFE_EVENT_RESET_MACHINE_REQ].nextState = FM10000_SERDES_DFE_STATE_START;
+    stt[FM10000_SERDES_DFE_STATE_STOP_TUNING]
+       [FM10000_SERDES_DFE_EVENT_RESET_MACHINE_REQ].conditionCallback = NULL;
+    stt[FM10000_SERDES_DFE_STATE_STOP_TUNING]
+       [FM10000_SERDES_DFE_EVENT_RESET_MACHINE_REQ].transitionCallback = NULL;
 
     /* transition for state=SERDES_DFE_STATE_EYE_H_DELAY(5), event=SERDES_DFE_EVENT_START_TUNING_REQ(0) */
     stt[FM10000_SERDES_DFE_STATE_EYE_H_DELAY]
@@ -2243,6 +2258,16 @@ fm_status fm10000RegisterBasicSerDesDfeStateMachine( void )
     stt[FM10000_SERDES_DFE_STATE_EYE_H_DELAY]
        [FM10000_SERDES_DFE_EVENT_TIMEOUT_IND].transitionCallback = BasicStateMachineS5E6Callback;
 
+    /* transition for state=SERDES_DFE_STATE_STOP_TUNING(4), event=SERDES_DFE_EVENT_RESET_MACHINE_REQ(7) */
+    stt[FM10000_SERDES_DFE_STATE_STOP_TUNING]
+       [FM10000_SERDES_DFE_EVENT_RESET_MACHINE_REQ].used = TRUE;
+    stt[FM10000_SERDES_DFE_STATE_STOP_TUNING]
+       [FM10000_SERDES_DFE_EVENT_RESET_MACHINE_REQ].nextState = FM10000_SERDES_DFE_STATE_START;
+    stt[FM10000_SERDES_DFE_STATE_STOP_TUNING]
+       [FM10000_SERDES_DFE_EVENT_RESET_MACHINE_REQ].conditionCallback = NULL;
+    stt[FM10000_SERDES_DFE_STATE_STOP_TUNING]
+       [FM10000_SERDES_DFE_EVENT_RESET_MACHINE_REQ].transitionCallback = NULL;
+
     /* transition for state=SERDES_DFE_STATE_EYE_W_DELAY(6), event=SERDES_DFE_EVENT_START_TUNING_REQ(0) */
     stt[FM10000_SERDES_DFE_STATE_EYE_W_DELAY]
        [FM10000_SERDES_DFE_EVENT_START_TUNING_REQ].used = TRUE;
@@ -2292,6 +2317,16 @@ fm_status fm10000RegisterBasicSerDesDfeStateMachine( void )
        [FM10000_SERDES_DFE_EVENT_TIMEOUT_IND].conditionCallback = NULL;
     stt[FM10000_SERDES_DFE_STATE_EYE_W_DELAY]
        [FM10000_SERDES_DFE_EVENT_TIMEOUT_IND].transitionCallback = BasicStateMachineS6E6Callback;
+
+    /* transition for state=SERDES_DFE_STATE_EYE_W_DELAY(6), event=SERDES_DFE_EVENT_RESET_MACHINE_REQ(7) */
+    stt[FM10000_SERDES_DFE_STATE_EYE_W_DELAY]
+       [FM10000_SERDES_DFE_EVENT_RESET_MACHINE_REQ].used = TRUE;
+    stt[FM10000_SERDES_DFE_STATE_EYE_W_DELAY]
+       [FM10000_SERDES_DFE_EVENT_RESET_MACHINE_REQ].nextState = FM10000_SERDES_DFE_STATE_START;
+    stt[FM10000_SERDES_DFE_STATE_EYE_W_DELAY]
+       [FM10000_SERDES_DFE_EVENT_RESET_MACHINE_REQ].conditionCallback = NULL;
+    stt[FM10000_SERDES_DFE_STATE_EYE_W_DELAY]
+       [FM10000_SERDES_DFE_EVENT_RESET_MACHINE_REQ].transitionCallback = NULL;
 
     /* fill out the state transition table for this state machine type */
     for (i = 0 ; i < FM10000_SERDES_DFE_STATE_MAX  ; i++)

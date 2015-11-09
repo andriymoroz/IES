@@ -13,6 +13,8 @@ AM_CFLAGS = -std=c99                                                            
             -Wno-override-init                                                                    \
             -DFM_SUPPORT_FM10000                                                                  \
             -DINSTRUMENT_LOG_LEVEL=0                                                              \
+            -DPLATFORM_FIRST_FOCALPOINT=0                                                         \
+            -DPLATFORM_NUM_FOCALPOINTS=1                                                          \
             -D_GNU_SOURCE                                                                         \
             -I$(top_srcdir)/include                                                               \
             -I$(top_srcdir)/include/alos                                                          \
@@ -25,6 +27,8 @@ AM_CFLAGS = -std=c99                                                            
 lib_LTLIBRARIES = libFocalpointSDK.la
 
 libFocalpointSDK_la_LDFLAGS = -release `cd $(top_srcdir) ; ./version.sh`
+libFocalpointSDK_la_LIBADD = -ldl
+libFocalpointSDK_la_LDFLAGS += -Wl,-Ttext-segment=0x08000000 -shared -fPIC
 
 libFocalpointSDK_la_SOURCES =                                                                     \
 alos/linux/fm_alos_alloc.c                                                                        \
@@ -121,6 +125,7 @@ api/fm_api_event_port.c                                                         
 api/fm_api_fibm.c                                                                                 \
 api/fm_api_flow.c                                                                                 \
 api/fm_api_glob.c                                                                                 \
+api/fm_api_glort.c                                                                                \
 api/fm_api_init.c                                                                                 \
 api/fm_api_lag.c                                                                                  \
 api/fm_api_lag_int.c                                                                              \
@@ -178,6 +183,7 @@ debug/fm10000/fm10000_debug_regs.c                                              
 debug/fm10000/fm10000_debug_serdes_reg.c                                                          \
 debug/fm_debug.c                                                                                  \
 debug/fm_debug_acl.c                                                                              \
+debug/fm_debug_bsm.c                                                                              \
 debug/fm_debug_eye_diagram.c                                                                      \
 debug/fm_debug_mac_table.c                                                                        \
 debug/fm_debug_regs.c                                                                             \
@@ -185,22 +191,11 @@ debug/fm_debug_selftest.c                                                       
 debug/fm_debug_serdes.c                                                                           \
 debug/fm_debug_snapshots.c                                                                        \
 debug/fm_debug_trace.c                                                                            \
-debug/fm_debug_bsm.c
-
-lib_LTLIBRARIES += libLTStdPlatform.la
-
-libLTStdPlatform_la_LDFLAGS = -release `cd $(top_srcdir) ; ./version.sh`
-
-libLTStdPlatform_la_SOURCES =                                                                     \
 platforms/common/buffers/std-alloc/fm_buffer_std_alloc.c                                          \
 platforms/common/event/fm_platform_event.c                                                        \
 platforms/common/fm_file_attr_loader.c                                                            \
 platforms/common/instrument/platform_instrument.c                                                 \
 platforms/common/lib/dll/fm_dynamicLib.c                                                          \
-platforms/common/lib/i2c/ipmi/fm_platform_ipmi.c                                                  \
-platforms/common/lib/i2c/smbus/fm_platform_smbus.c                                                \
-platforms/common/lib/i2c/switch/fm_platform_fm10000_i2c.c                                         \
-platforms/common/lib/net/fm_netsock.c                                                             \
 platforms/common/packet/generic-packet/fm10000/fm10000_generic_rx.c                               \
 platforms/common/packet/generic-packet/fm10000/fm10000_generic_tx.c                               \
 platforms/common/packet/generic-packet/fm_generic_packet.c                                        \
@@ -230,10 +225,21 @@ platforms/libertyTrail/platform_phy.c                                           
 platforms/libertyTrail/platform_port.c                                                            \
 platforms/libertyTrail/platform_sched.c                                                           \
 platforms/libertyTrail/platform_timestamp.c                                                       \
-platforms/libertyTrail/shared-libs/standard/fm_platform_standard_lib.c                            \
-platforms/util/fm10000/fm10000_util_spi.c                                                         \
 platforms/util/fm10000/fm10000_util_bsm.c                                                         \
+platforms/util/fm10000/fm10000_util_spi.c                                                         \
 platforms/util/fm_util_config_tlv.c                                                               \
 platforms/util/fm_util_device_lock.c                                                              \
-platforms/util/fm_util_pca.c                                                                      \
 platforms/util/retimer/fm_util_gn2412.c
+
+lib_LTLIBRARIES += libLTStdPlatform.la
+
+libLTStdPlatform_la_LDFLAGS = -release `cd $(top_srcdir) ; ./version.sh`
+libLTStdPlatform_la_LDFLAGS += -Wl,-Ttext-segment=0x09600000 -shared -fPIC
+libLTStdPlatform_la_LIBADD = libFocalpointSDK.la
+
+libLTStdPlatform_la_SOURCES =                                                                     \
+platforms/common/lib/i2c/ipmi/fm_platform_ipmi.c                                                  \
+platforms/common/lib/i2c/smbus/fm_platform_smbus.c                                                \
+platforms/libertyTrail/shared-libs/standard/fm_platform_standard_lib.c                            \
+platforms/util/fm_util_device_lock.c                                                              \
+platforms/util/fm_util_pca.c

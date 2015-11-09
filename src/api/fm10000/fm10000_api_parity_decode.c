@@ -29,7 +29,7 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
+ *****************************************************************************/
 
 #include <fm_sdk_fm10000_int.h>
 #include <fm_sdk_int.h>
@@ -134,6 +134,8 @@
 #define IDX9    (1 << 9)
 #define IDX10   (1 << 10)
 #define IDX11   (1 << 11)
+
+#define TE_SRAM_STATS           (1 << 6)
 
 typedef struct errorCounters
 {
@@ -774,19 +776,19 @@ static fm_status FatalError(fm_switch *      switchPtr,
  *                  when it detects a deferred reset error condition.
  *
  * \param[in]       switchPtr points to the switch structure.
- * 
+ *
  * \param[in]       memArea is the memory area in which the error was
  *                  detected.
- * 
+ *
  * \param[in]       counter is the index of the counter that tracks the
  *                  number of occurrences of this error.
- * 
+ *
  * \param[in]       errorThresh is the threshold at which the API should
  *                  send a Deferred Reset notification to the application.
- * 
+ *
  * \param[in]       fatalThresh is the threshold at which the API should
  *                  send an Immediate Reset notification to the application.
- * 
+ *
  * \param[in]       sramNo is the SRAM number to be reported.
  *
  * \return          FM_OK if successful.
@@ -819,10 +821,10 @@ static fm_status DeferredReset(fm_switch *      switchPtr,
     fmDbgDiagCountGet(sw, counter, &diagCount);
 
     /**************************************************
-     * If we've reached or exceeded the fatal error 
+     * If we've reached or exceeded the fatal error
      * threshold for this counter, send an immediate
-     * reset notification to the application and enter 
-     * fatal error state. 
+     * reset notification to the application and enter
+     * fatal error state.
      **************************************************/
 
     if (fatalThresh && diagCount >= fatalThresh)
@@ -831,9 +833,9 @@ static fm_status DeferredReset(fm_switch *      switchPtr,
     }
 
     /**************************************************
-     * If we've reached the error threshold for this 
-     * resource, send a deferred reset notification to 
-     * the application. 
+     * If we've reached the error threshold for this
+     * resource, send a deferred reset notification to
+     * the application.
      **************************************************/
 
     if (errorThresh && diagCount == errorThresh)
@@ -2082,15 +2084,17 @@ ABORT:
 static fm_status DecodePolicerUsageSramErr(fm_switch *     switchPtr,
                                            errorCounters * counters)
 {
-    fm_uint32   regVal[4];
-    fm_uint16   cerrVal;
-    fm_uint16   uerrVal;
-    fm_uint32   errCount;
-    fm_status   err;
-    fm_int      sw;
-    fm_bool     regLockTaken;
+    fm_uint32           regVal[4];
+    fm_uint16           cerrVal;
+    fm_uint16           uerrVal;
+    fm_uint32           errCount;
+    fm_status           err;
+    fm_int              sw;
+    fm_bool             regLockTaken;
+    fm10000_parityInfo *parityInfo;
 
     sw = switchPtr->switchNumber;
+    parityInfo = GET_PARITY_INFO(sw);
 
     TAKE_REG_LOCK(sw);
     regLockTaken = TRUE;
@@ -2182,38 +2186,86 @@ static fm_status DecodePolicerUsageSramErr(fm_switch *     switchPtr,
 
     if (uerrVal & (IDX4 | IDX8))
     {
-        RequestRepair(sw, FM_REPAIR_POLICER_STATE_4K_0, TRUE, 0);
+        err = DeferredReset(switchPtr,
+                             FM_PARITY_AREA_POLICER,
+                             FM_CTR_PARITY_AREA_POLICER_U_ERR,
+                             parityInfo->policersUerrError,
+                             parityInfo->policersUerrFatal,
+                             FM10000_SRAM_POLICER_STATE_4K);
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PARITY, err);
     }
     else if (cerrVal & (IDX4 | IDX8))
     {
-        RequestRepair(sw, FM_REPAIR_POLICER_STATE_4K_0, FALSE, 0);
+        err = DeferredReset(switchPtr,
+                            FM_PARITY_AREA_POLICER,
+                            FM_CTR_PARITY_AREA_POLICER_C_ERR,
+                            parityInfo->policersCerrError,
+                            parityInfo->policersCerrFatal,
+                            FM10000_SRAM_POLICER_STATE_4K);
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PARITY, err);
     }
 
     if (uerrVal & (IDX5 | IDX9))
     {
-        RequestRepair(sw, FM_REPAIR_POLICER_STATE_4K_1, TRUE, 0);
+        err = DeferredReset(switchPtr,
+                            FM_PARITY_AREA_POLICER,
+                            FM_CTR_PARITY_AREA_POLICER_U_ERR,
+                            parityInfo->policersUerrError,
+                            parityInfo->policersUerrFatal,
+                            FM10000_SRAM_POLICER_STATE_4K);
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PARITY, err);
     }
     else if (cerrVal & (IDX5 | IDX9))
     {
-        RequestRepair(sw, FM_REPAIR_POLICER_STATE_4K_1, FALSE, 0);
+        err = DeferredReset(switchPtr,
+                            FM_PARITY_AREA_POLICER,
+                            FM_CTR_PARITY_AREA_POLICER_C_ERR,
+                            parityInfo->policersCerrError,
+                            parityInfo->policersCerrFatal,
+                            FM10000_SRAM_POLICER_STATE_4K);
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PARITY, err);
     }
 
     if (uerrVal & (IDX6 | IDX10))
     {
-        RequestRepair(sw, FM_REPAIR_POLICER_STATE_512_0, TRUE, 0);
+        err = DeferredReset(switchPtr,
+                            FM_PARITY_AREA_POLICER,
+                            FM_CTR_PARITY_AREA_POLICER_U_ERR,
+                            parityInfo->policersUerrError,
+                            parityInfo->policersUerrFatal,
+                            FM10000_SRAM_POLICER_STATE_512);
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PARITY, err);
     }
     else if (cerrVal & (IDX6 | IDX10))
     {
-        RequestRepair(sw, FM_REPAIR_POLICER_STATE_512_0, FALSE, 0);
+        err = DeferredReset(switchPtr,
+                            FM_PARITY_AREA_POLICER,
+                            FM_CTR_PARITY_AREA_POLICER_C_ERR,
+                            parityInfo->policersCerrError,
+                            parityInfo->policersCerrFatal,
+                            FM10000_SRAM_POLICER_STATE_512);
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PARITY, err);
     }
 
     if (uerrVal & (IDX7 | IDX11))
     {
-        RequestRepair(sw, FM_REPAIR_POLICER_STATE_512_1, TRUE, 0);
+        err = DeferredReset(switchPtr,
+                            FM_PARITY_AREA_POLICER,
+                            FM_CTR_PARITY_AREA_POLICER_U_ERR,
+                            parityInfo->policersUerrError,
+                            parityInfo->policersUerrFatal,
+                            FM10000_SRAM_POLICER_STATE_512);
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PARITY, err);
     }
     else if (cerrVal & (IDX7 | IDX11))
     {
-        RequestRepair(sw, FM_REPAIR_POLICER_STATE_512_1, FALSE, 0);
+        err = DeferredReset(switchPtr,
+                            FM_PARITY_AREA_POLICER,
+                            FM_CTR_PARITY_AREA_POLICER_C_ERR,
+                            parityInfo->policersCerrError,
+                            parityInfo->policersCerrFatal,
+                            FM10000_SRAM_POLICER_STATE_512);
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PARITY, err);
     }
 
 ABORT:
@@ -2244,16 +2296,18 @@ ABORT:
 static fm_status DecodeRxStatsSramErr(fm_switch *     switchPtr,
                                       errorCounters * counters)
 {
-    fm_uint32   regVal[4];
-    fm_uint16   cerrVal;
-    fm_uint16   uerrVal;
-    fm_uint32   cerrCnt;
-    fm_uint32   uerrCnt;
-    fm_status   err;
-    fm_int      sw;
-    fm_bool     regLockTaken;
+    fm_uint32           regVal[4];
+    fm_uint16           cerrVal;
+    fm_uint16           uerrVal;
+    fm_uint32           cerrCnt;
+    fm_uint32           uerrCnt;
+    fm_status           err;
+    fm_int              sw;
+    fm_bool             regLockTaken;
+    fm10000_parityInfo *parityInfo;
 
     sw = switchPtr->switchNumber;
+    parityInfo = GET_PARITY_INFO(sw);
 
     TAKE_REG_LOCK(sw);
     regLockTaken = TRUE;
@@ -2295,7 +2349,12 @@ static fm_status DecodeRxStatsSramErr(fm_switch *     switchPtr,
 
     if (uerrVal)
     {
-        RequestRepair(sw, FM_REPAIR_RX_STATS_BANK, TRUE, uerrVal);
+        err = DeferredReset(switchPtr,
+                            FM_PARITY_AREA_STATS,
+                            FM_CTR_PARITY_AREA_STATS_U_ERR,
+                            parityInfo->statsUerrError,
+                            parityInfo->statsUerrFatal,
+                             FM10000_SRAM_RX_STATS_BANK);
         cerrVal &= ~uerrVal;
     }
 
@@ -2305,7 +2364,12 @@ static fm_status DecodeRxStatsSramErr(fm_switch *     switchPtr,
 
     if (cerrVal)
     {
-        RequestRepair(sw, FM_REPAIR_RX_STATS_BANK, FALSE, cerrVal);
+        err = DeferredReset(switchPtr,
+                            FM_PARITY_AREA_STATS,
+                            FM_CTR_PARITY_AREA_STATS_C_ERR,
+                            parityInfo->statsCerrError,
+                            parityInfo->statsCerrFatal,
+                            FM10000_SRAM_RX_STATS_BANK);
     }
 
 ABORT:
@@ -2739,14 +2803,16 @@ ABORT:
 static fm_status DecodeSchedFreelistSramErr(fm_switch *     switchPtr,
                                             errorCounters * counters)
 {
-    fm_uint32   regVal;
-    fm_status   err;
-    fm_uint32   cerrVal;
-    fm_uint32   uerrVal;
-    fm_int      sw;
-    fm_bool     regLockTaken;
+    fm_uint32           regVal;
+    fm_status           err;
+    fm_uint32           cerrVal;
+    fm_uint32           uerrVal;
+    fm_int              sw;
+    fm_bool             regLockTaken;
+    fm10000_parityInfo *parityInfo;
 
     sw = switchPtr->switchNumber;
+    parityInfo = GET_PARITY_INFO(sw);
 
     TAKE_REG_LOCK(sw);
     regLockTaken = TRUE;
@@ -2780,22 +2846,11 @@ static fm_status DecodeSchedFreelistSramErr(fm_switch *     switchPtr,
 
     if (uerrVal)
     {
-        fm_uint32   errorThresh;
-        fm_uint32   fatalThresh;
-
-        errorThresh =
-            fmGetIntApiProperty(FM_AAK_API_FM10000_PARITY_FREELIST_ERROR_THRESH,
-                                FM_AAD_API_FM10000_PARITY_FREELIST_ERROR_THRESH);
-
-        fatalThresh =
-            fmGetIntApiProperty(FM_AAK_API_FM10000_PARITY_FREELIST_FATAL_THRESH,
-                                FM_AAD_API_FM10000_PARITY_FREELIST_FATAL_THRESH);
-
         err = DeferredReset(switchPtr,
                             FM_PARITY_AREA_SCHEDULER,
                             FM_CTR_PARITY_AREA_FREELIST,
-                            errorThresh,
-                            fatalThresh,
+                            parityInfo->freelistUerrError,
+                            parityInfo->freelistUerrFatal,
                             FM10000_SRAM_SCHED_FREELIST);
     }
 
@@ -3170,16 +3225,18 @@ ABORT:
  *****************************************************************************/
 static fm_status DecodeTeSramErr(fm_switch * switchPtr, fm_int teId)
 {
-    fm_uint64   regVal;
-    fm_uint16   cerrVal;
-    fm_uint16   uerrVal;
-    fm_uint32   errCount;
-    fm_status   err;
-    fm_int      sw;
-    fm_int      repairType;
-    fm_bool     regLockTaken;
+    fm_uint64           regVal;
+    fm_uint16           cerrVal;
+    fm_uint16           uerrVal;
+    fm_uint32           errCount;
+    fm_status           err;
+    fm_int              sw;
+    fm_int              repairType;
+    fm_bool             regLockTaken;
+    fm10000_parityInfo *parityInfo;
 
     sw = switchPtr->switchNumber;
+    parityInfo = GET_PARITY_INFO(sw);
 
     TAKE_REG_LOCK(sw);
     regLockTaken = TRUE;
@@ -3208,18 +3265,36 @@ static fm_status DecodeTeSramErr(fm_switch * switchPtr, fm_int teId)
         (teId == 0) ? FM_REPAIR_TUNNEL_ENGINE_0 : FM_REPAIR_TUNNEL_ENGINE_1;
 
     /**************************************************
-     * Process uncorrectable errors.
+     * Process and decode errors
      **************************************************/
+
+    if (uerrVal & TE_SRAM_STATS)
+    {
+        err = DeferredReset(switchPtr,
+                            FM_PARITY_AREA_TUNNEL_ENGINE,
+                            FM_CTR_PARITY_AREA_STATS_C_ERR,
+                            parityInfo->statsCerrError,
+                             parityInfo->statsCerrFatal,
+                            FM10000_SRAM_TE_STATS);
+    }
+    else if (cerrVal & TE_SRAM_STATS)
+    {
+        err = DeferredReset(switchPtr,
+                            FM_PARITY_AREA_TUNNEL_ENGINE,
+                            FM_CTR_PARITY_AREA_STATS_C_ERR,
+                            parityInfo->statsCerrError,
+                            parityInfo->statsCerrFatal,
+                            FM10000_SRAM_TE_STATS);
+    }
+
+    uerrVal &= ~TE_SRAM_STATS;
+    cerrVal &= ~TE_SRAM_STATS;
 
     if (uerrVal)
     {
         RequestRepair(sw, repairType, TRUE, uerrVal);
         cerrVal &= ~uerrVal;
     }
-
-    /**************************************************
-     * Process correctable errors.
-     **************************************************/
 
     if (cerrVal)
     {
@@ -3274,22 +3349,11 @@ static fm_status DecodeModify(fm_switch * switchPtr)
 
     if (mod_ip & FM10000_INT_MOD_Refcount_UERR)
     {
-        fm_uint32   errorThresh;
-        fm_uint32   fatalThresh;
-
-        errorThresh =
-            fmGetIntApiProperty(FM_AAK_API_FM10000_PARITY_REFCOUNT_ERROR_THRESH,
-                                FM_AAD_API_FM10000_PARITY_REFCOUNT_ERROR_THRESH);
-
-        fatalThresh =
-            fmGetIntApiProperty(FM_AAK_API_FM10000_PARITY_REFCOUNT_FATAL_THRESH,
-                                FM_AAD_API_FM10000_PARITY_REFCOUNT_FATAL_THRESH);
-
         err = DeferredReset(switchPtr,
                             FM_PARITY_AREA_MODIFY,
                             FM_CTR_PARITY_AREA_REFCOUNT,
-                            errorThresh,
-                            fatalThresh,
+                            parityInfo->refcountUerrError,
+                            parityInfo->refcountUerrFatal,
                             FM10000_SRAM_MOD_REFCOUNT);
 
         if (parityInfo->parityState >= FM10000_PARITY_STATE_FATAL)
@@ -3300,38 +3364,119 @@ static fm_status DecodeModify(fm_switch * switchPtr)
 
     if (mod_ip & FM10000_INT_MOD_StatsByteCnt0_UERR)
     {
-        RequestRepair(sw, FM_REPAIR_MOD_STATS_BANK_BYTE_0, TRUE, 0);
+        err = DeferredReset(switchPtr,
+                            FM_PARITY_AREA_MODIFY,
+                            FM_CTR_PARITY_AREA_STATS_U_ERR,
+                            parityInfo->statsUerrError,
+                            parityInfo->statsUerrFatal,
+                            FM10000_SRAM_MOD_STATS_BANK_BYTE);
+
+        if (parityInfo->parityState >= FM10000_PARITY_STATE_FATAL)
+        {
+            goto ABORT;
+        }
+
     }
     else if (mod_ip & FM10000_INT_MOD_StatsByteCnt0_CERR)
     {
-        RequestRepair(sw, FM_REPAIR_MOD_STATS_BANK_BYTE_0, FALSE, 0);
+        err = DeferredReset(switchPtr,
+                            FM_PARITY_AREA_MODIFY,
+                            FM_CTR_PARITY_AREA_STATS_C_ERR,
+                            parityInfo->statsCerrError,
+                            parityInfo->statsCerrFatal,
+                            FM10000_SRAM_MOD_STATS_BANK_BYTE);
+
+        if (parityInfo->parityState >= FM10000_PARITY_STATE_FATAL)
+        {
+            goto ABORT;
+        }
     }
 
     if (mod_ip & FM10000_INT_MOD_StatsByteCnt1_UERR)
     {
-        RequestRepair(sw, FM_REPAIR_MOD_STATS_BANK_BYTE_1, TRUE, 0);
+        err = DeferredReset(switchPtr,
+                            FM_PARITY_AREA_MODIFY,
+                            FM_CTR_PARITY_AREA_STATS_U_ERR,
+                            parityInfo->statsUerrError,
+                            parityInfo->statsUerrFatal,
+                            FM10000_SRAM_MOD_STATS_BANK_BYTE);
+
+        if (parityInfo->parityState >= FM10000_PARITY_STATE_FATAL)
+        {
+            goto ABORT;
+        }
     }
     else if (mod_ip & FM10000_INT_MOD_StatsByteCnt1_CERR)
     {
-        RequestRepair(sw, FM_REPAIR_MOD_STATS_BANK_BYTE_1, FALSE, 0);
+        err = DeferredReset(switchPtr,
+                            FM_PARITY_AREA_MODIFY,
+                            FM_CTR_PARITY_AREA_STATS_C_ERR,
+                            parityInfo->statsCerrError,
+                            parityInfo->statsCerrFatal,
+                            FM10000_SRAM_MOD_STATS_BANK_BYTE);
+
+        if (parityInfo->parityState >= FM10000_PARITY_STATE_FATAL)
+        {
+            goto ABORT;
+        }
     }
 
     if (mod_ip & FM10000_INT_MOD_StatsFrameCnt0_UERR)
     {
-        RequestRepair(sw, FM_REPAIR_MOD_STATS_BANK_FRAME_0, TRUE, 0);
+        err = DeferredReset(switchPtr,
+                            FM_PARITY_AREA_MODIFY,
+                            FM_CTR_PARITY_AREA_STATS_U_ERR,
+                            parityInfo->statsUerrError,
+                            parityInfo->statsUerrFatal,
+                            FM10000_SRAM_MOD_STATS_BANK_FRAME);
+
+        if (parityInfo->parityState >= FM10000_PARITY_STATE_FATAL)
+        {
+            goto ABORT;
+        }
     }
     else if (mod_ip & FM10000_INT_MOD_StatsFrameCnt0_CERR)
     {
-        RequestRepair(sw, FM_REPAIR_MOD_STATS_BANK_FRAME_0, FALSE, 0);
+        err = DeferredReset(switchPtr,
+                            FM_PARITY_AREA_MODIFY,
+                            FM_CTR_PARITY_AREA_STATS_C_ERR,
+                            parityInfo->statsCerrError,
+                            parityInfo->statsCerrFatal,
+                            FM10000_SRAM_MOD_STATS_BANK_FRAME);
+
+        if (parityInfo->parityState >= FM10000_PARITY_STATE_FATAL)
+        {
+            goto ABORT;
+        }
     }
 
     if (mod_ip & FM10000_INT_MOD_StatsFrameCnt1_UERR)
     {
-        RequestRepair(sw, FM_REPAIR_MOD_STATS_BANK_FRAME_1, TRUE, 0);
+         err = DeferredReset(switchPtr,
+                             FM_PARITY_AREA_MODIFY,
+                             FM_CTR_PARITY_AREA_STATS_U_ERR,
+                             parityInfo->statsUerrError,
+                             parityInfo->statsUerrFatal,
+                             FM10000_SRAM_MOD_STATS_BANK_FRAME);
+
+         if (parityInfo->parityState >= FM10000_PARITY_STATE_FATAL)
+         {
+             goto ABORT;
+         }
     }
     else if (mod_ip & FM10000_INT_MOD_StatsFrameCnt1_CERR)
     {
-        RequestRepair(sw, FM_REPAIR_MOD_STATS_BANK_FRAME_1, FALSE, 0);
+        err = DeferredReset(switchPtr,
+                            FM_PARITY_AREA_MODIFY,
+                            FM_CTR_PARITY_AREA_STATS_C_ERR,
+                            parityInfo->statsCerrError,
+                            parityInfo->statsCerrFatal,
+                            FM10000_SRAM_MOD_STATS_BANK_FRAME);
+
+        if (parityInfo->parityState >= FM10000_PARITY_STATE_FATAL)
+        {
+            goto ABORT;
+        }
     }
 
     /**************************************************
@@ -3816,6 +3961,7 @@ static fm_status DecodeCrm(fm_switch * switchPtr)
     fm_uint32           sliceMask;
     fm_uint32           errCount;
     fm_status           retStatus;
+    fm_status           err;
     fm_int              sw;
     fm_int              sliceId;
     fm_uint32           bitMask;
@@ -3868,8 +4014,13 @@ static fm_status DecodeCrm(fm_switch * switchPtr)
             if(bitMask & sliceMask)
             {
                 crmId = FM10000_FFU_SLICE_CRM_ID(sliceId);
-                FM_LOG_ERROR(FM_LOG_CAT_PARITY, "FM10000_CRM_EVENT_FAULT_IND for crmId %d\n", crmId);
-                retStatus = NotifyCRMEvent(sw,  crmId, FM10000_CRM_EVENT_FAULT_IND);
+                FM_LOG_ERROR(FM_LOG_CAT_PARITY,
+                             "FM10000_CRM_EVENT_FAULT_IND for crmId %d\n",
+                             crmId);
+                err = fm10000NotifyCRMEvent(sw,
+                                            crmId,
+                                            FM10000_CRM_EVENT_FAULT_IND);
+                FM_ERR_COMBINE(retStatus, err);
             }
         }
         RequestRepair(sw, FM_REPAIR_FFU_SLICE_TCAM, TRUE, sliceMask);
@@ -3884,8 +4035,13 @@ static fm_status DecodeCrm(fm_switch * switchPtr)
         counters.errors     += 1;
         counters.repairable += 1;
 
-        FM_LOG_ERROR(FM_LOG_CAT_PARITY, "FM10000_CRM_EVENT_FAULT_IND for crmId %d\n", FM10000_CRM_EVENT_FAULT_IND);
-        retStatus = NotifyCRMEvent(sw,  FM10000_GLORT_CAM_CRM_ID, FM10000_CRM_EVENT_FAULT_IND);
+        FM_LOG_ERROR(FM_LOG_CAT_PARITY,
+                     "FM10000_CRM_EVENT_FAULT_IND for crmId %d\n",
+                     FM10000_CRM_EVENT_FAULT_IND);
+        err = fm10000NotifyCRMEvent(sw,
+                                    FM10000_GLORT_CAM_CRM_ID,
+                                    FM10000_CRM_EVENT_FAULT_IND);
+        FM_ERR_COMBINE(retStatus, err);
         RequestRepair(sw, FM_REPAIR_GLORT_CAM, TRUE, 0);
     }
 

@@ -412,6 +412,7 @@ fm_status fm10000GetArpEntryUsedStatus (fm_int    sw,
                                         fm_bool   resetFlag,
                                         fm_bool * pUsed);
 fm_status fm10000ResetAllArpEntryUsedStatusFlags (fm_int  sw);
+fm_status fm10000RepairArpUsed(fm_int sw);
 fm_status fm10000GetArpBlockInfo (fm_int                   sw,
                                   fm10000_ArpClient        client,
                                   fm_uint16                arpBlkHndl,

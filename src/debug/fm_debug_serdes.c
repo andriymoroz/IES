@@ -838,3 +838,169 @@ fm_status fmDbgSetSerDesLoopback(fm_int  sw,
     return err;
     
 }   /* end fmDbgSetSerDesLoopback */
+
+
+
+/*****************************************************************************/
+/** fmDbgSetSerDesDfeParameter
+ * \ingroup intDiagSerDes
+ *
+ * \chips           FM10000
+ *
+ * \desc            Set, for the given serDes, the value of the DFE parameter
+ *                  indicated by paramSelector to paramValue
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \param[in]       serDes is the SERDES number on which to operate.
+ *
+ * \param[in]       paramSelector is the selector of the parameter to be set
+ *
+ * \param[in]       paramValue is the value to be set on the selected parameter
+ *
+ * \return          FM_OK if successful
+ * \return          Other ''Status Codes'' as appropriate in case of failure.
+ *
+ *****************************************************************************/
+fm_status fmDbgSetSerDesDfeParameter(fm_int     sw,
+                                     fm_int     serDes,
+                                     fm_uint32  paramSelector,
+                                     fm_uint32  paramValue)
+{
+    fm_switch *switchPtr;
+    fm_status  err;
+    
+    VALIDATE_AND_PROTECT_SWITCH_NO_RETURN(err, sw);
+    
+    if (err != FM_OK)
+    {
+        FM_LOG_PRINT("Switch %d does not exist or is down.\n", sw);
+        return err;
+    }
+
+    switchPtr = fmRootApi->fmSwitchStateTable[sw];
+
+    FM_API_CALL_FAMILY(err,
+                       switchPtr->DbgSetSerDesDfeParam,
+                       sw,
+                       serDes,
+                       paramSelector,
+                       paramValue);
+    
+    UNPROTECT_SWITCH(sw);
+
+    return err;
+
+}   /* end fmDbgSetSerDesDfeParameter */
+
+
+
+
+/*****************************************************************************/
+/** fmDbgGetSerDesDfeParameter
+ * \ingroup intDiagSerDes
+ *
+ * \chips           FM10000
+ *
+ * \desc            Get, for the given serDes, the value of the DFE parameter
+ *                  indicated by paramSelector
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \param[in]       serDes is the SERDES number on which to operate.
+ *
+ * \param[in]       paramSelector is the selector of the parameter to be get
+ *
+ * \param[in]       pParamValue is a pointer to a caller-allocated area where
+ *                  this function will return the value of the selected
+ *                  parameter. If NULL, the parameter will be just printed.
+ *
+ * \return          FM_OK if successful
+ * \return          Other ''Status Codes'' as appropriate in case of failure.
+ *
+ *****************************************************************************/
+fm_status fmDbgGetSerDesDfeParameter(fm_int     sw,
+                                     fm_int     serDes,
+                                     fm_uint32  paramSelector,
+                                     fm_uint32 *pParamValue)
+{
+    fm_switch *switchPtr;
+    fm_status  err;
+    
+    VALIDATE_AND_PROTECT_SWITCH_NO_RETURN(err, sw);
+    
+    if (err != FM_OK)
+    {
+        FM_LOG_PRINT("Switch %d does not exist or is down.\n", sw);
+        return err;
+    }
+
+    switchPtr = fmRootApi->fmSwitchStateTable[sw];
+
+    FM_API_CALL_FAMILY(err,
+                       switchPtr->DbgGetSerDesDfeParam,
+                       sw,
+                       serDes,
+                       paramSelector,
+                       pParamValue);
+    
+    UNPROTECT_SWITCH(sw);
+
+    return err;
+
+}   /* end fmDbgGetSerDesDfeParameter */
+
+
+
+
+/*****************************************************************************/
+/** fmDbgDumpSerDesDfeParameter
+ * \ingroup intDiagSerDes
+ *
+ * \chips           FM10000
+ *
+ * \desc            Dump, for the given serDes, the value of the DFE parameter
+ *                  indicated by paramSelector
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \param[in]       serDes is the SERDES number on which to operate.
+ *
+ * \param[in]       paramSelector is the selector of the parameter to be get
+ *
+ * \return          FM_OK if successful
+ * \return          Other ''Status Codes'' as appropriate in case of failure.
+ *
+ *****************************************************************************/
+fm_status fmDbgDumpSerDesDfeParameter(fm_int     sw,
+                                      fm_int     serDes,
+                                      fm_uint32  paramSelector)
+{
+    fm_switch *switchPtr;
+    fm_status  err;
+    
+    VALIDATE_AND_PROTECT_SWITCH_NO_RETURN(err, sw);
+    
+    if (err != FM_OK)
+    {
+        FM_LOG_PRINT("Switch %d does not exist or is down.\n", sw);
+        return err;
+    }
+
+    switchPtr = fmRootApi->fmSwitchStateTable[sw];
+
+    FM_API_CALL_FAMILY(err,
+                       switchPtr->DbgGetSerDesDfeParam,
+                       sw,
+                       serDes,
+                       paramSelector,
+                       NULL);
+    
+    UNPROTECT_SWITCH(sw);
+
+    return err;
+
+}   /* end fmDbgDumpSerDesDfeParameter */
+
+
+

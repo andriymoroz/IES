@@ -396,36 +396,75 @@ typedef struct _fm10000_parityInfo
 {
     /** Contents of various Interrupt Pending registers.
      *  Saved by the first-stage parity interrupt handler. */
-    fm_uint64   sram_ip;
-    fm_uint64   mod_ip;
-    fm_uint64   te_ip[FM10000_NUM_TUNNEL_ENGINES];
-    fm_uint64   fh_head_ip;
-    fm_uint32   fh_tail_ip;
-    fm_uint32   sched_ip;
-    fm_uint32   core_int;
-    fm_uint32   crm_ip[FM10000_CRM_IP_WIDTH];
+    fm_uint64           sram_ip;
+    fm_uint64           mod_ip;
+    fm_uint64           te_ip[FM10000_NUM_TUNNEL_ENGINES];
+    fm_uint64           fh_head_ip;
+    fm_uint32           fh_tail_ip;
+    fm_uint32           sched_ip;
+    fm_uint32           core_int;
+    fm_uint32           crm_ip[FM10000_CRM_IP_WIDTH];
 
     /** Parity error processing state. */
-    fm_int      parityState;
+    fm_int              parityState;
 
     /** Bit mask indicating which FRAME_MEMORY segments have reported
      *  memory errors. This word shadows the SRAM_ERR_IP register. */
-    fm_uint64   sramErrHistory;
+    fm_uint64           sramErrHistory;
 
     /** Bit mask indicating which SRAMS are awaiting corrective action.
      *  Indexed by fm_repairType. */
-    fm_uint64   pendingRepairs;
+    fm_uint64           pendingRepairs;
 
     /** Bit mask indicating which pending repairs are for uncorrectable
      *  errors. Indexed by fm_repairType. */
-    fm_uint64   pendingUerrs;
+    fm_uint64          pendingUerrs;
 
-    fm10000_repairData  ffuRamRepair;
-    fm10000_repairData  ffuTcamRepair;
-    fm10000_repairData  rxStatsRepair;
-    fm10000_repairData  teErrRepair[FM10000_NUM_TUNNEL_ENGINES];
+    fm10000_repairData ffuRamRepair;
+    fm10000_repairData ffuTcamRepair;
+    fm10000_repairData rxStatsRepair;
+    fm10000_repairData teErrRepair[FM10000_NUM_TUNNEL_ENGINES];
 
-    fm_bool     interruptsEnabled;
+    fm_bool            interruptsEnabled;
+
+    /** CRM timeout in milliseconds. */
+    fm_timestamp        crmTimeout;
+
+    /** The number of correctable POLICER parity errors that may occur
+     * before the API sends a Deferred Reset event to the application.
+     * A value of zero disables the event. */
+    fm_uint32          policersCerrError;
+    fm_uint32          policersCerrFatal;
+
+    /** The number of uncorrectable POLICER parity errors that may occur
+     * before the API sends a Deferred Reset event to the application.
+     * A value of zero disables the event. */
+    fm_uint32          policersUerrError;
+    fm_uint32          policersUerrFatal;
+
+    /** The number of correctable STATS parity errors that may occur
+     * before the API sends a Deferred Reset event to the application.
+     * A value of zero disables the event. */
+    fm_uint32          statsCerrError;
+    fm_uint32          statsCerrFatal;
+
+    /** The number of uncorrectable STATS parity errors that may occur
+     * before the API sends a Deferred Reset event to the application.
+     * A value of zero disables the event. */
+    fm_uint32          statsUerrError;
+    fm_uint32          statsUerrFatal;
+
+    /** The number of uncorrectable SCHED_FREELIST parity errors that may occur
+     * before the API sends a Deferred Reset event to the application.
+     * A value of zero disables the event. */
+    fm_uint32          freelistUerrError;
+    fm_uint32          freelistUerrFatal;
+
+    /** The number of uncorrectable MOD_REFCOUNT parity errors that may occur
+     * before the API sends an Immediate Reset event to the application.
+     * A value of zero disables the event. */
+    fm_uint32          refcountUerrError;
+    fm_uint32          refcountUerrFatal;
 
 } fm10000_parityInfo;
 
@@ -442,17 +481,20 @@ fm_status fm10000DbgDumpParity(fm_int sw);
 
 fm_status fm10000GetParityAttribute(fm_int sw, fm_int attr, void * value);
 
-fm_status fm10000GetParityErrorCounters(fm_int  sw,
-                                        void *  counters,
-                                        fm_uint size);
+fm_status fm10000GetParityErrorCounters(fm_int                 sw,
+                                        fm_parityErrorCounters *counters);
 
 fm_status fm10000InitParity(fm_switch * switchPtr);
+
+fm_status fm10000InitParityThresholds(fm_int sw);
 
 fm_status fm10000ResetParityErrorCounters(fm_int sw);
 
 fm_status fm10000SetParityAttribute(fm_int sw, fm_int attr, void * value);
 
 fm_status fm10000FreeParityResources(fm_switch * switchPtr);
+
+fm_status fm10000DbgDumpParityConfig(fm_int sw);
 
 /******************************************
  * fm10000_api_parity_decode.c

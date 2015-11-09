@@ -122,6 +122,7 @@ extern const fm_cachedRegs fm10000CacheParserPortCfg2;
 extern const fm_cachedRegs fm10000CacheParserPortCfg3;
 extern const fm_cachedRegs fm10000CacheRxVpriMap;
 extern const fm_cachedRegs fm10000CacheSafMatrix;
+extern const fm_cachedRegs fm10000CacheSchedMonitorDrrCfg;
 
 /**************************************************
  * Register cache structure
@@ -407,6 +408,10 @@ typedef struct _fm_fm10000RegCache
     /* local cache of TE_TRAP_CONFIG */
     fm_uint32 teTrapCfg[FM10000_TE_TRAP_CONFIG_WIDTH *
                         FM10000_TE_TRAP_CONFIG_ENTRIES];
+
+    /* local cache of SCHED_MONITOR_DRR_CFG_PERPORT */
+    fm_uint32 shedMonitorCfg[FM10000_SCHED_MONITOR_DRR_CFG_PERPORT_WIDTH *
+                             FM10000_SCHED_MONITOR_DRR_CFG_PERPORT_ENTRIES];
 
    /* Other register caches are located in platforms/common/reg-cache/fm10000 */
 

@@ -196,9 +196,6 @@ fm_status fmPlatformGetSchedulerPortList(fm_int sw, fm_schedulerConfig *sc)
 
     if (ps->schedPortList)
     {
-        err = fmPlatformCfgReloadSpeed(sw);
-        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PLATFORM, err);
-
         err = fmPlatformGenerateSchedulerPortList(sw);
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PLATFORM, err);
 

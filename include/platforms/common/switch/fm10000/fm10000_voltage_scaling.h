@@ -44,6 +44,11 @@ typedef struct _fm_fm10000NominalVoltages
     fm_uint32 VDDF;    /* in millivolts */
     fm_uint32 VDDS;    /* in millivolts */
 
+    /* Set TRUE when the fusebox is not programmed with the voltage scaling
+       values (contains 0). In that case the returned VDDF and VDDS contain the
+       default values defined in the EAS. */
+    fm_bool defValUsed;
+
 } fm_fm10000NominalVoltages;
 
 

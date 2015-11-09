@@ -5,7 +5,7 @@
  * Creation Date:  June 18, 2007
  * Description:    Structures internal to ALOS.
  *
- * Copyright (c) 2007 - 2014, Intel Corporation
+ * Copyright (c) 2007 - 2015, Intel Corporation
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -63,9 +63,12 @@ typedef struct _fm_rootAlos
     fm_loggingState     fmLoggingState;
 
     /* common/fm_property.c */
-    fm_customTree       propertyTree;
     fm_lock             propertyLock;
-    
+    fm_property         property;
+#if defined(FM_SUPPORT_FM10000)
+    fm10000_property    fm10000_property;
+#endif
+
     /* Mask of non-switch-specific locks that have a precedence. */
     fm_lockPrecedence   nonSwitchLockPrecs;
 
@@ -117,5 +120,7 @@ fm_status fmAlosThreadInit(void);
 fm_status fmAlosLoggingInit(void);
 fm_status fmAlosTimeInit(void);
 
+#define GET_PROPERTY()  (&fmRootAlos->property)
+#define GET_FM10000_PROPERTY()  (&fmRootAlos->fm10000_property)
 
 #endif /* __FM_FM_ALOS_INIT_INT_H */

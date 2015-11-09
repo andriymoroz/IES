@@ -5,7 +5,7 @@
  * Creation Date:   October 9, 2013
  * Description:     PCA devices functions
  *
- * Copyright (c) 2013, Intel Corporation
+ * Copyright (c) 2013 - 2015, Intel Corporation
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -37,30 +37,40 @@
 /* PCA device model supported */
 typedef enum
 {
-    PCA_MUX_UNKNOWN,
-    PCA_MUX_9541,
-    PCA_MUX_9545,
-    PCA_MUX_9546,
-    PCA_MUX_9548,
+    PCA_MUX_UNKNOWN = 0,
+    PCA_MUX_9541    = 1,
+    PCA_MUX_9545    = 2,
+    PCA_MUX_9546    = 3,
+    PCA_MUX_9548    = 4,
 
 } fm_pcaMuxModel;
 
 
 typedef enum
 {
-    PCA_IO_UNKNOWN,
-    PCA_IO_9505,
-    PCA_IO_9506,
-    PCA_IO_9538,
-    PCA_IO_9539,
-    PCA_IO_9554,
-    PCA_IO_9555,
-    PCA_IO_9698,
-    PCA_IO_9634,
-    PCA_IO_9635,
-    PCA_IO_9551,
+    PCA_IO_UNKNOWN = 0,
+    PCA_IO_9505    = 1,
+    PCA_IO_9506    = 2,
+    PCA_IO_9538    = 3,
+    PCA_IO_9539    = 4,
+    PCA_IO_9551    = 5,
+    PCA_IO_9554    = 6,
+    PCA_IO_9555    = 7,
+    PCA_IO_9634    = 8,
+    PCA_IO_9635    = 9,
+    PCA_IO_9698    = 10,
 
 } fm_pcaIoModel;
+
+
+/* VRM device model supported */
+typedef enum
+{
+	VRM_UNKNOWN  = 0,
+	VRM_TPS40425 = 1,
+	VRM_PX8847   = 2,
+
+} fm_vrmModel;
 
 
 typedef enum
@@ -83,7 +93,6 @@ typedef enum
     PCA_IO_REG_TYPE_PWM1,
 
 }  fm_pcaIoRegType;
-
 
 /* Per PCA9634/35 data sheet for LEDOUT register */
 #define FM_PCA_LEDOUT_OFF           0

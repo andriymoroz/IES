@@ -252,13 +252,15 @@ fm_status fm10000PacketReceiveProcess(fm_int              sw,
     fm_int                      portState;
     fm_int                      trapCodeLogArpRedirect;
     fm_bool                     logArpRedirect;
+    fm_bool                     isPciePort;
+    fm_int                      portNbr;
 #endif
 
     FM_LOG_ENTRY(FM_LOG_CAT_EVENT_PKT_RX, 
                  "sw = %d pIslTag = %p\n", 
                  sw, (void *) pIslTag);
 
-    if ( (sw < 0) || (sw >= FM_MAX_NUM_SWITCHES) )
+    if ( (sw < 0) || (sw >= fmRootPlatform->cfg.numSwitches) )
     {
         fmFreeBufferChain(sw, buffer);
         fmDbgDiagCountIncr(sw, FM_CTR_RX_PKT_DROPS_NO_PORT, 1);
@@ -473,7 +475,35 @@ fm_status fm10000PacketReceiveProcess(fm_int              sw,
                                      "Unable to find STP instance for vlan %d\n",
                                      vlan);
                     }
+                } 
+
+                /* Drop BPDU Frames if the ingress port is a PCIe port and is not the 
+                 * managment port. */
+                 
+                if (fmIsVirtualPort(sw, srcPort))
+                {
+                    if (fm10000MapVirtualGlortToPhysicalPort(sw, srcGlort, &portNbr) != FM_OK)
+                    {
+                        portNbr = srcPort;
+                    }
                 }
+                else
+                {
+                    portNbr = srcPort;
+                }
+ 
+                err = fmIsPciePort( sw, portNbr, &isPciePort );
+                if (err == FM_OK)
+                {
+                    if (( isPciePort ) && (!fmIsMgmtPort( sw, portNbr)))
+                    {
+                        /* Dropping BPDU packet */
+                        fmDbgDiagCountIncr(sw, FM_CTR_RX_PKT_DROPS_NO_PORT, 1);
+                        goto ABORT;
+                        
+                    }
+                }
+
             }
         }
 #endif

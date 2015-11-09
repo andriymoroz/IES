@@ -56,6 +56,16 @@
     VALIDATE_PORT_MIRROR_GROUP(sw, grp);    \
     (ptr) = &GET_SWITCH_PTR(sw)->mirrorGroups[grp];
 
+#define VALIDATE_PORT_MIRROR_GROUP_NO_SWLOCK_CHECK(sw, grp) \
+    if (( (grp) < 0 ) ||                                    \
+        ( (grp) >= GET_SWITCH_PTR(sw)->mirrorTableSize ) )  \
+    {                                                       \
+        return FM_ERR_INVALID_PORT_MIRROR_GROUP;            \
+    }
+
+#define GET_PORT_MIRROR_GROUP_NO_SWLOCK_CHECK(sw, ptr, grp) \
+    VALIDATE_PORT_MIRROR_GROUP_NO_SWLOCK_CHECK(sw, grp);    \
+    (ptr) = &GET_SWITCH_PTR(sw)->mirrorGroups[grp];
 
 /*****************************************************************************
  * Global Variables
@@ -326,6 +336,137 @@ fm_status fmInitPortMirror(fm_switch *switchPtr)
 
 
 /*****************************************************************************/
+/** fmCreateMirrorInt
+ * \ingroup intMirror
+ *
+ * \chips           FM2000, FM3000, FM4000, FM6000, FM10000
+ *
+ * \desc            Create a port mirror group.
+ * 
+ * \note            In a SWAG architecture, an encapsulation VLAN must always
+ *                  be configured prior to adding any mirrored ports or vlans.
+ *                  This encapsulating VLAN must be configured using mirror
+ *                  attributes ''FM_MIRROR_VLAN'' and ''FM_MIRROR_VLAN_PRI''.
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \param[in]       group is the mirror group to create. The first available
+ *                  group number is 0.
+ *
+ * \param[in]       mirrorPort is the destination logical port number to
+ *                  mirror traffic to.
+ *
+ * \param[in]       mirrorType is the type of mirror.
+ *
+ * \param[in]       mirrorUsageType is the usage type of mirror.
+ *
+ * \return          FM_OK if successful.
+ * \return          FM_ERR_INVALID_SWITCH if sw is invalid.
+ * \return          FM_ERR_INVALID_PORT_MIRROR_GROUP if group is out of range
+ *                  or already created.
+ * \return          FM_ERR_INVALID_PORT if mirrorPort is invalid.
+ * \return          FM_ERR_UNSUPPORTED if mirrorType is unsupported.
+ *
+ *****************************************************************************/
+fm_status fmCreateMirrorInt(fm_int             sw,
+                            fm_int             group,
+                            fm_int             mirrorPort,
+                            fm_mirrorType      mirrorType,
+                            fm_mirrorUsageType mirrorUsageType)
+{
+    fm_portMirrorGroup *grp;
+    fm_status           err;
+    fm_switch *         switchPtr;
+
+    FM_LOG_ENTRY(FM_LOG_CAT_MIRROR,
+                "sw=%d group=%d mirrorPort=%d mirrorType=%d\n",
+                 sw,
+                 group,
+                 mirrorPort,
+                 mirrorType);
+
+    switchPtr = GET_SWITCH_PTR(sw);
+
+    if ( (mirrorUsageType == FM_MIRROR_USAGE_TYPE_APP) && 
+          ( (group < 0) || 
+            (group >= (switchPtr->mirrorTableSize - switchPtr->maxSflows) ) ) )
+    {
+        FM_LOG_EXIT(FM_LOG_CAT_MIRROR, FM_ERR_INVALID_PORT_MIRROR_GROUP);
+    }
+
+    if ( (mirrorUsageType == FM_MIRROR_USAGE_TYPE_SFLOW) &&
+          ( (group < (switchPtr->mirrorTableSize - switchPtr->maxSflows) ) ||
+            (group >= switchPtr->mirrorTableSize ) ) )
+    {
+        FM_LOG_EXIT(FM_LOG_CAT_MIRROR, FM_ERR_INVALID_PORT_MIRROR_GROUP);
+    }
+
+
+    if (!fmIsValidPort(sw, mirrorPort, (ALLOW_CPU|ALLOW_REMOTE) ) )
+    {
+        FM_LOG_EXIT(FM_LOG_CAT_MIRROR, FM_ERR_INVALID_PORT);
+    }
+
+    GET_PORT_MIRROR_GROUP_NO_SWLOCK_CHECK(sw, grp, group);
+
+    TAKE_MIRROR_LOCK(sw);
+
+    if (grp->used)
+    {
+        err = FM_ERR_INVALID_PORT_MIRROR_GROUP;
+        goto ABORT;
+    }
+
+    err = fmClearBitArray(&grp->mirrorLogicalPortMask);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MIRROR, err);
+
+    err = fmClearBitArray(&grp->ingressPortUsed);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MIRROR, err);
+
+    err = fmClearBitArray(&grp->egressPortUsed);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MIRROR, err);
+
+    grp->groupId             = group;
+    grp->mirrorLogicalPort   = mirrorPort;
+    grp->mirrorType          = mirrorType;
+    grp->mirrorUsageType     = mirrorUsageType;
+    grp->mirrorPortType      = FM_PORT_IDENTIFIER_PORT_NUMBER;
+    grp->overlayMode         = TRUE;
+    grp->egressPriority      = FM_MIRROR_PRIORITY_ORIGINAL;
+    grp->truncateFrames      = FALSE;
+    grp->sample              = FM_MIRROR_SAMPLE_RATE_DISABLED;
+    grp->ffuFilter           = FALSE;
+    grp->egressSrcPort       = FM_MIRROR_TX_EGRESS_PORT_FIRST;
+    grp->truncateOtherFrames = FALSE;
+    grp->encapVlan           = FM_MIRROR_NO_VLAN_ENCAP;
+    grp->encapVlanPri        = 0;
+    grp->trapCodeId          = 0;
+    fmTreeInit(&grp->vlan1s);
+    fmTreeInit(&grp->vlan2s);
+
+    FM_API_CALL_FAMILY(err, switchPtr->CreateMirror, sw, grp);
+
+    if (err != FM_OK)
+    {
+        fmTreeDestroy(&grp->vlan1s, NULL);
+        fmTreeDestroy(&grp->vlan2s, NULL);
+    }
+    else
+    {
+        grp->used = TRUE;
+    }
+
+
+ABORT:
+    DROP_MIRROR_LOCK(sw);
+    FM_LOG_EXIT(FM_LOG_CAT_MIRROR, err);
+
+}   /* end fmCreateMirrorInt */
+
+
+
+
+/*****************************************************************************/
 /** fmCreateMirror
  * \ingroup mirror
  *
@@ -361,9 +502,7 @@ fm_status fmCreateMirror(fm_int        sw,
                          fm_int        mirrorPort,
                          fm_mirrorType mirrorType)
 {
-    fm_portMirrorGroup *grp;
     fm_status           err;
-    fm_switch *         switchPtr;
 
     FM_LOG_ENTRY_API(FM_LOG_CAT_MIRROR,
                      "sw=%d group=%d mirrorPort=%d mirrorType=%d\n",
@@ -373,60 +512,13 @@ fm_status fmCreateMirror(fm_int        sw,
                      mirrorType);
 
     VALIDATE_AND_PROTECT_SWITCH(sw);
-    VALIDATE_LOGICAL_PORT(sw, mirrorPort, ALLOW_CPU|ALLOW_REMOTE);
-    GET_PORT_MIRROR_GROUP(sw, grp, group);
 
-    TAKE_MIRROR_LOCK(sw);
+    err = fmCreateMirrorInt(sw, 
+                            group, 
+                            mirrorPort,
+                            mirrorType,
+                            FM_MIRROR_USAGE_TYPE_APP);
 
-    if (grp->used)
-    {
-        err = FM_ERR_INVALID_PORT_MIRROR_GROUP;
-        goto ABORT;
-    }
-
-    switchPtr = GET_SWITCH_PTR(sw);
-
-    err = fmClearBitArray(&grp->mirrorLogicalPortMask);
-    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MIRROR, err);
-
-    err = fmClearBitArray(&grp->ingressPortUsed);
-    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MIRROR, err);
-
-    err = fmClearBitArray(&grp->egressPortUsed);
-    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MIRROR, err);
-
-    grp->groupId             = group;
-    grp->mirrorLogicalPort   = mirrorPort;
-    grp->mirrorType          = mirrorType;
-    grp->mirrorPortType      = FM_PORT_IDENTIFIER_PORT_NUMBER;
-    grp->overlayMode         = TRUE;
-    grp->egressPriority      = FM_MIRROR_PRIORITY_ORIGINAL;
-    grp->truncateFrames      = FALSE;
-    grp->sample              = FM_MIRROR_SAMPLE_RATE_DISABLED;
-    grp->ffuFilter           = FALSE;
-    grp->egressSrcPort       = FM_MIRROR_TX_EGRESS_PORT_FIRST;
-    grp->truncateOtherFrames = FALSE;
-    grp->encapVlan           = FM_MIRROR_NO_VLAN_ENCAP;
-    grp->encapVlanPri        = 0;
-    grp->trapCodeId          = 0;
-    fmTreeInit(&grp->vlan1s);
-    fmTreeInit(&grp->vlan2s);
-
-    FM_API_CALL_FAMILY(err, switchPtr->CreateMirror, sw, grp);
-
-    if (err != FM_OK)
-    {
-        fmTreeDestroy(&grp->vlan1s, NULL);
-        fmTreeDestroy(&grp->vlan2s, NULL);
-    }
-    else
-    {
-        grp->used = TRUE;
-    }
-
-
-ABORT:
-    DROP_MIRROR_LOCK(sw);
     UNPROTECT_SWITCH(sw);
     FM_LOG_EXIT_API(FM_LOG_CAT_MIRROR, err);
 
@@ -436,8 +528,8 @@ ABORT:
 
 
 /*****************************************************************************/
-/** fmDeleteMirror
- * \ingroup mirror
+/** fmDeleteMirrorInt
+ * \ingroup intMirror
  *
  * \chips           FM2000, FM3000, FM4000, FM6000, FM10000
  *
@@ -457,19 +549,18 @@ ABORT:
  *                  the group.
  * 
  *****************************************************************************/
-fm_status fmDeleteMirror(fm_int sw, fm_int group)
+fm_status fmDeleteMirrorInt(fm_int sw, fm_int group)
 {
     fm_portMirrorGroup *grp;
     fm_switch *         switchPtr;
     fm_status           err = FM_OK;
 
-    FM_LOG_ENTRY_API(FM_LOG_CAT_MIRROR, "sw=%d group=%d\n", sw, group);
+    FM_LOG_ENTRY(FM_LOG_CAT_MIRROR, "sw=%d group=%d\n", sw, group);
 
-    VALIDATE_AND_PROTECT_SWITCH(sw);
-    GET_PORT_MIRROR_GROUP(sw, grp, group);
+    GET_PORT_MIRROR_GROUP_NO_SWLOCK_CHECK(sw, grp, group);
 
     /* ACL Lock needs to be taken prior to the mirror lock for lock inversion
-     * prevention. The ACL lock is needed on fmDeleteMirror() because some
+     * prevention. The ACL lock is needed on fmDeleteMirrorInt() because some
      * validation is done at the ACL level to make sure this group is currently 
      * unused. */ 
     FM_TAKE_ACL_LOCK(sw);
@@ -513,6 +604,45 @@ fm_status fmDeleteMirror(fm_int sw, fm_int group)
 ABORT:
     DROP_MIRROR_LOCK(sw);
     FM_DROP_ACL_LOCK(sw);
+    FM_LOG_EXIT(FM_LOG_CAT_MIRROR, err);
+
+}   /* end fmDeleteMirrorInt */
+
+
+
+
+/*****************************************************************************/
+/** fmDeleteMirror
+ * \ingroup mirror
+ *
+ * \chips           FM2000, FM3000, FM4000, FM6000, FM10000
+ *
+ * \desc            Delete a port mirror group.
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \param[in]       group is the mirror group to delete.
+ *
+ * \return          FM_OK if successful.
+ * \return          FM_ERR_INVALID_SWITCH if sw is invalid.
+ * \return          FM_ERR_INVALID_PORT_MIRROR_GROUP if group is out of range
+ *                  or does not exist.
+ * \return          FM_ERR_INVALID_ACL_PARAM if at least one ACL refers to
+ *                  this mirror group. You must delete or update all the ACL
+ *                  rules that refer to this mirror group before deleting
+ *                  the group.
+ * 
+ *****************************************************************************/
+fm_status fmDeleteMirror(fm_int sw, fm_int group)
+{
+    fm_status           err = FM_OK;
+
+    FM_LOG_ENTRY_API(FM_LOG_CAT_MIRROR, "sw=%d group=%d\n", sw, group);
+
+    VALIDATE_AND_PROTECT_SWITCH(sw);
+
+    err = fmDeleteMirrorInt(sw, group);
+
     UNPROTECT_SWITCH(sw);
     FM_LOG_EXIT_API(FM_LOG_CAT_MIRROR, err);
 
@@ -1156,8 +1286,8 @@ ABORT:
 
 
 /*****************************************************************************/
-/** fmAddMirrorPortExt
- * \ingroup mirror
+/** fmAddMirrorPortInternal
+ * \ingroup intMirror
  *
  * \chips           FM2000, FM3000, FM4000, FM6000, FM10000
  *
@@ -1210,10 +1340,10 @@ ABORT:
  *                  for the current platform, e.g. SWAG.
  *
  *****************************************************************************/
-fm_status fmAddMirrorPortExt(fm_int        sw,
-                             fm_int        group,
-                             fm_int        port,
-                             fm_mirrorType mirrorType)
+fm_status fmAddMirrorPortInternal(fm_int        sw,
+                                  fm_int        group,
+                                  fm_int        port,
+                                  fm_mirrorType mirrorType)
 {
     fm_portMirrorGroup *grp;
     fm_status           err = FM_ERR_INVALID_PORT_MIRROR_GROUP;
@@ -1226,17 +1356,19 @@ fm_status fmAddMirrorPortExt(fm_int        sw,
     fm_bool             oldPortIngress;
     fm_bool             oldPortEgress;
 
-    FM_LOG_ENTRY_API(FM_LOG_CAT_MIRROR,
-                     "sw=%d group=%d port=%d, type=%d\n",
-                     sw,
-                     group,
-                     port,
-                     mirrorType);
+    FM_LOG_ENTRY(FM_LOG_CAT_MIRROR,
+                 "sw=%d group=%d port=%d, type=%d\n",
+                 sw,
+                 group,
+                 port,
+                 mirrorType);
 
-    VALIDATE_AND_PROTECT_SWITCH(sw);
-    VALIDATE_LOGICAL_PORT(sw, port, ALLOW_CPU);
+    if (!fmIsValidPort(sw, port, ALLOW_CPU) )
+    {
+        FM_LOG_EXIT(FM_LOG_CAT_MIRROR, FM_ERR_INVALID_PORT);
+    }
 
-    GET_PORT_MIRROR_GROUP(sw, grp, group);
+    GET_PORT_MIRROR_GROUP_NO_SWLOCK_CHECK(sw, grp, group);
 
     TAKE_MIRROR_LOCK(sw);
 
@@ -1344,6 +1476,89 @@ fm_status fmAddMirrorPortExt(fm_int        sw,
 
 ABORT:
     DROP_MIRROR_LOCK(sw);
+    FM_LOG_EXIT(FM_LOG_CAT_MIRROR, err);
+
+}   /* end fmAddMirrorPortInternal */
+
+
+
+
+/*****************************************************************************/
+/** fmAddMirrorPortExt
+ * \ingroup mirror
+ *
+ * \chips           FM2000, FM3000, FM4000, FM6000, FM10000
+ *
+ * \desc            Add a port to a mirror group and indicate whether its
+ *                  ingress traffic, egress traffic or both should be mirrored.
+ *                                                                      \lb\lb
+ *                  Unlike ''fmAddMirrorPort'', this function can be called
+ *                  multiple times for the same port. Doing so is useful for
+ *                  changing the mirror type when the same group is specified.
+ *
+ * \note            For the FM2000 and FM4000 switch families, a port can be
+ *                  added to two different mirror groups, however both mirrors
+ *                  will operate only if one is an ingress mirror and the other
+ *                  is an egress mirror. If the two groups mirror in the
+ *                  same direction for a given frame, only one of the mirrors
+ *                  will work for that frame.
+ *
+ * \note            For the FM6000 switch family, a port can be added to
+ *                  multiple mirror groups and all mirrors will operate
+ *                  correctly, subject to hardware and microcode limitations.
+ *
+ * \note            The mirror group must have been created in a call to
+ *                  ''fmCreateMirror'' with a ''fm_mirrorType'' of
+ *                  ''FM_MIRROR_TYPE_BIDIRECTIONAL'', or a type that matches
+ *                  the mirrorType argument to this function.
+ *
+ * \note            The port cannot be a LAG. To mirror a LAG, add all the
+ *                  LAG's physical member ports to the mirror group.
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \param[in]       group is the mirror group number to which the port should
+ *                  be added.
+ *
+ * \param[in]       port is the port number of the port to be added to the
+ *                  mirror group.  This port's traffic will be mirrored to
+ *                  the group's mirror port. The port cannot be a LAG.
+ *
+ * \param[in]       mirrorType indicates whether port's ingress traffic,
+ *                  egress traffic or both are mirrored (see ''fm_mirrorType'').
+ *
+ * \return          FM_OK if successful.
+ * \return          FM_ERR_INVALID_SWITCH if sw is invalid.
+ * \return          FM_ERR_INVALID_PORT_MIRROR_GROUP if group is out of range,
+ *                  does not exist or was not created with a ''fm_mirrorType''
+ *                  of ''FM_MIRROR_TYPE_BIDIRECTIONAL'' or that matches 
+ *                  mirrorType.
+ * \return          FM_ERR_INVALID_PORT if port is invalid.
+ * \return          FM_ERR_MIRROR_NO_VLAN_ENCAP if an encap vlan is required
+ *                  for the current platform, e.g. SWAG.
+ *
+ *****************************************************************************/
+fm_status fmAddMirrorPortExt(fm_int        sw,
+                             fm_int        group,
+                             fm_int        port,
+                             fm_mirrorType mirrorType)
+{
+    fm_status           err;
+
+    FM_LOG_ENTRY_API(FM_LOG_CAT_MIRROR,
+                     "sw=%d group=%d port=%d, type=%d\n",
+                     sw,
+                     group,
+                     port,
+                     mirrorType);
+
+    VALIDATE_AND_PROTECT_SWITCH(sw);
+    
+    err = fmAddMirrorPortInternal(sw,
+                                  group,
+                                  port,
+                                  mirrorType);
+
     UNPROTECT_SWITCH(sw);
     FM_LOG_EXIT_API(FM_LOG_CAT_MIRROR, err);
 
@@ -1353,8 +1568,8 @@ ABORT:
 
 
 /*****************************************************************************/
-/** fmDeleteMirrorPort
- * \ingroup mirror
+/** fmDeleteMirrorPortInt
+ * \ingroup intMirror
  *
  * \chips           FM2000, FM3000, FM4000, FM6000, FM10000
  *
@@ -1379,7 +1594,7 @@ ABORT:
  * \return          FM_ERR_INVALID_PORT if port is invalid.
  *
  *****************************************************************************/
-fm_status fmDeleteMirrorPort(fm_int sw, fm_int group, fm_int port)
+fm_status fmDeleteMirrorPortInt(fm_int sw, fm_int group, fm_int port)
 {
     fm_portMirrorGroup *grp;
     fm_status           err;
@@ -1388,15 +1603,18 @@ fm_status fmDeleteMirrorPort(fm_int sw, fm_int group, fm_int port)
     fm_bool             oldPortIngress;
     fm_bool             oldPortEgress;
 
-    FM_LOG_ENTRY_API(FM_LOG_CAT_MIRROR,
-                     "sw=%d group=%d port=%d\n",
-                     sw,
-                     group,
-                     port);
+    FM_LOG_ENTRY(FM_LOG_CAT_MIRROR,
+                 "sw=%d group=%d port=%d\n",
+                 sw,
+                 group,
+                 port);
 
-    VALIDATE_AND_PROTECT_SWITCH(sw);
-    VALIDATE_LOGICAL_PORT(sw, port, ALLOW_CPU);
-    GET_PORT_MIRROR_GROUP(sw, grp, group);
+    if (!fmIsValidPort(sw, port, ALLOW_CPU) )
+    {
+        FM_LOG_EXIT(FM_LOG_CAT_MIRROR, FM_ERR_INVALID_PORT);
+    }
+
+    GET_PORT_MIRROR_GROUP_NO_SWLOCK_CHECK(sw, grp, group);
 
     TAKE_MIRROR_LOCK(sw);
 
@@ -1473,6 +1691,54 @@ fm_status fmDeleteMirrorPort(fm_int sw, fm_int group, fm_int port)
 
 ABORT:
     DROP_MIRROR_LOCK(sw);
+    FM_LOG_EXIT(FM_LOG_CAT_MIRROR, err);
+
+}   /* end fmDeleteMirrorPortInt */
+
+
+
+
+/*****************************************************************************/
+/** fmDeleteMirrorPort
+ * \ingroup mirror
+ *
+ * \chips           FM2000, FM3000, FM4000, FM6000, FM10000
+ *
+ * \desc            Delete a port from a mirror group so that its traffic
+ *                  is no longer mirrored.
+ *
+ * \note            This function can also be addressed by the legacy
+ *                  synonym, ''fmMirrorRemovePort''.
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \param[in]       group is the mirror group number from which the port should
+ *                  be removed.
+ *
+ * \param[in]       port is the port number of the port to be removed from the
+ *                  mirror group.
+ *
+ * \return          FM_OK if successful.
+ * \return          FM_ERR_INVALID_SWITCH if sw is invalid.
+ * \return          FM_ERR_INVALID_PORT_MIRROR_GROUP if group is out of range
+ *                  or does not exist.
+ * \return          FM_ERR_INVALID_PORT if port is invalid.
+ *
+ *****************************************************************************/
+fm_status fmDeleteMirrorPort(fm_int sw, fm_int group, fm_int port)
+{
+    fm_status           err;
+
+    FM_LOG_ENTRY_API(FM_LOG_CAT_MIRROR,
+                     "sw=%d group=%d port=%d\n",
+                     sw,
+                     group,
+                     port);
+
+    VALIDATE_AND_PROTECT_SWITCH(sw);
+
+    err = fmDeleteMirrorPortInt(sw, group, port);
+
     UNPROTECT_SWITCH(sw);
     FM_LOG_EXIT_API(FM_LOG_CAT_MIRROR, err);
 
@@ -2616,13 +2882,13 @@ fm_status fmGetMirrorNext(fm_int         sw,
 
 
 /*****************************************************************************/
-/** fmGetMirrorPortFirst
- * \ingroup mirror
+/** fmGetMirrorPortFirstInt
+ * \ingroup intMirror
  *
  * \chips           FM2000, FM3000, FM4000, FM6000, FM10000
  *
  * \desc            Retrieve the first port in a mirror group. See also
- *                  ''fmGetMirrorPortFirstV2''.
+ *                  ''fmGetMirrorPortFirstIntV2''.
  *
  * \note            This function can also be addressed by the legacy
  *                  synonym, ''fmMirrorGetFirstPort''.
@@ -2645,14 +2911,14 @@ fm_status fmGetMirrorNext(fm_int         sw,
  * \return          FM_ERR_INVALID_ARGUMENT if firstPort is NULL.
  *
  *****************************************************************************/
-fm_status fmGetMirrorPortFirst(fm_int sw, fm_int group, fm_int *firstPort)
+fm_status fmGetMirrorPortFirstInt(fm_int sw, fm_int group, fm_int *firstPort)
 {
     fm_int              i;
     fm_int              j = -1;
     fm_portMirrorGroup *grp;
     fm_status           err;
 
-    FM_LOG_ENTRY_API(FM_LOG_CAT_MIRROR,
+    FM_LOG_ENTRY(FM_LOG_CAT_MIRROR,
                      "sw=%d group=%d firstPort=%p\n",
                      sw,
                      group,
@@ -2660,11 +2926,10 @@ fm_status fmGetMirrorPortFirst(fm_int sw, fm_int group, fm_int *firstPort)
 
     if (!firstPort)
     {
-        FM_LOG_EXIT_API(FM_LOG_CAT_MIRROR, FM_ERR_INVALID_ARGUMENT);
+        FM_LOG_EXIT(FM_LOG_CAT_MIRROR, FM_ERR_INVALID_ARGUMENT);
     }
 
-    VALIDATE_AND_PROTECT_SWITCH(sw);
-    GET_PORT_MIRROR_GROUP(sw, grp, group);
+    GET_PORT_MIRROR_GROUP_NO_SWLOCK_CHECK(sw, grp, group);
 
     TAKE_MIRROR_LOCK(sw);
 
@@ -2712,7 +2977,64 @@ fm_status fmGetMirrorPortFirst(fm_int sw, fm_int group, fm_int *firstPort)
 ABORT:
     DROP_MIRROR_LOCK(sw);
 
+    FM_LOG_EXIT(FM_LOG_CAT_MIRROR, err);
+
+}   /* end fmGetMirrorPortFirstInt */
+
+
+
+
+/*****************************************************************************/
+/** fmGetMirrorPortFirst
+ * \ingroup mirror
+ *
+ * \chips           FM2000, FM3000, FM4000, FM6000, FM10000
+ *
+ * \desc            Retrieve the first port in a mirror group. See also
+ *                  ''fmGetMirrorPortFirstV2''.
+ *
+ * \note            This function can also be addressed by the legacy
+ *                  synonym, ''fmMirrorGetFirstPort''.
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \param[in]       group is the mirror group from which to retrieve the
+ *                  first port.
+ *
+ * \param[out]      firstPort points to caller-allocated storage where this
+ *                  function should place the first port from the mirror
+ *                  group.
+ *
+ * \return          FM_OK if successful.
+ * \return          FM_ERR_INVALID_SWITCH if sw is invalid.
+ * \return          FM_ERR_INVALID_PORT_MIRROR_GROUP if group is out of range
+ *                  or does not exist.
+ * \return          FM_ERR_NO_PORTS_IN_MIRROR_GROUP if there are no ports
+ *                  in the mirror group.
+ * \return          FM_ERR_INVALID_ARGUMENT if firstPort is NULL.
+ *
+ *****************************************************************************/
+fm_status fmGetMirrorPortFirst(fm_int sw, fm_int group, fm_int *firstPort)
+{
+    fm_status           err;
+
+    FM_LOG_ENTRY_API(FM_LOG_CAT_MIRROR,
+                     "sw=%d group=%d firstPort=%p\n",
+                     sw,
+                     group,
+                     (void *) firstPort);
+
+    if (!firstPort)
+    {
+        FM_LOG_EXIT_API(FM_LOG_CAT_MIRROR, FM_ERR_INVALID_ARGUMENT);
+    }
+
+    VALIDATE_AND_PROTECT_SWITCH(sw);
+
+    err = fmGetMirrorPortFirstInt(sw, group, firstPort);
+
     UNPROTECT_SWITCH(sw);
+
     FM_LOG_EXIT_API(FM_LOG_CAT_MIRROR, err);
 
 }   /* end fmGetMirrorPortFirst */
@@ -2721,13 +3043,13 @@ ABORT:
 
 
 /*****************************************************************************/
-/** fmGetMirrorPortNext
- * \ingroup mirror
+/** fmGetMirrorPortNextInt
+ * \ingroup intMirror
  *
  * \chips           FM2000, FM3000, FM4000, FM6000, FM10000
  *
  * \desc            Retrieve the next port in a mirror group. See also,
- *                  ''fmGetMirrorPortNextV2''.
+ *                  ''fmGetMirrorPortNextIntV2''.
  *
  * \note            This function can also be addressed by the legacy
  *                  synonym, ''fmMirrorGetNextPort''.
@@ -2753,10 +3075,10 @@ ABORT:
  * \return          FM_ERR_INVALID_ARGUMENT if nextPort is NULL.
  *
  *****************************************************************************/
-fm_status fmGetMirrorPortNext(fm_int  sw,
-                              fm_int  group,
-                              fm_int  currentPort,
-                              fm_int *nextPort)
+fm_status fmGetMirrorPortNextInt(fm_int  sw,
+                                 fm_int  group,
+                                 fm_int  currentPort,
+                                 fm_int *nextPort)
 {
     fm_int              i;
     fm_int              j = -1;
@@ -2764,20 +3086,19 @@ fm_status fmGetMirrorPortNext(fm_int  sw,
     fm_status           err;
     fm_int              cpi;
 
-    FM_LOG_ENTRY_API(FM_LOG_CAT_MIRROR,
-                     "sw=%d group=%d currentPort=%d nextPort=%p\n",
-                     sw,
-                     group,
-                     currentPort,
-                     (void *) nextPort);
+    FM_LOG_ENTRY(FM_LOG_CAT_MIRROR,
+                 "sw=%d group=%d currentPort=%d nextPort=%p\n",
+                 sw,
+                 group,
+                 currentPort,
+                 (void *) nextPort);
 
     if (!nextPort)
     {
-        FM_LOG_EXIT_API(FM_LOG_CAT_MIRROR, FM_ERR_INVALID_ARGUMENT);
+        FM_LOG_EXIT(FM_LOG_CAT_MIRROR, FM_ERR_INVALID_ARGUMENT);
     }
 
-    VALIDATE_AND_PROTECT_SWITCH(sw);
-    GET_PORT_MIRROR_GROUP(sw, grp, group);
+    GET_PORT_MIRROR_GROUP_NO_SWLOCK_CHECK(sw, grp, group);
 
     TAKE_MIRROR_LOCK(sw);
 
@@ -2820,6 +3141,69 @@ fm_status fmGetMirrorPortNext(fm_int  sw,
 
 ABORT:
     DROP_MIRROR_LOCK(sw);
+
+    FM_LOG_EXIT(FM_LOG_CAT_MIRROR, err);
+
+}   /* end fmGetMirrorPortNextInt */
+
+
+
+
+/*****************************************************************************/
+/** fmGetMirrorPortNext
+ * \ingroup mirror
+ *
+ * \chips           FM2000, FM3000, FM4000, FM6000, FM10000
+ *
+ * \desc            Retrieve the next port in a mirror group. See also,
+ *                  ''fmGetMirrorPortNextV2''.
+ *
+ * \note            This function can also be addressed by the legacy
+ *                  synonym, ''fmMirrorGetNextPort''.
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \param[in]       group is the mirror group from which to retrieve the
+ *                  next port.
+ *
+ * \param[in]       currentPort is the last port number found by a previous
+ *                  call to this function or to ''fmGetMirrorPortFirst''.
+ *
+ * \param[out]      nextPort points to caller-allocated storage where this
+ *                  function should place the next port from the mirror
+ *                  group.
+ *
+ * \return          FM_OK if successful.
+ * \return          FM_ERR_INVALID_SWITCH if sw is invalid.
+ * \return          FM_ERR_INVALID_PORT_MIRROR_GROUP if group is out of range
+ *                  or does not exist.
+ * \return          FM_ERR_NO_PORTS_IN_MIRROR_GROUP if there are no more ports
+ *                  in the mirror group.
+ * \return          FM_ERR_INVALID_ARGUMENT if nextPort is NULL.
+ *
+ *****************************************************************************/
+fm_status fmGetMirrorPortNext(fm_int  sw,
+                              fm_int  group,
+                              fm_int  currentPort,
+                              fm_int *nextPort)
+{
+    fm_status           err;
+
+    FM_LOG_ENTRY_API(FM_LOG_CAT_MIRROR,
+                     "sw=%d group=%d currentPort=%d nextPort=%p\n",
+                     sw,
+                     group,
+                     currentPort,
+                     (void *) nextPort);
+
+    if (!nextPort)
+    {
+        FM_LOG_EXIT_API(FM_LOG_CAT_MIRROR, FM_ERR_INVALID_ARGUMENT);
+    }
+
+    VALIDATE_AND_PROTECT_SWITCH(sw);
+    
+    err = fmGetMirrorPortNextInt(sw, group, currentPort, nextPort);
 
     UNPROTECT_SWITCH(sw);
     FM_LOG_EXIT_API(FM_LOG_CAT_MIRROR, err);
@@ -3083,6 +3467,135 @@ ABORT:
 
 
 
+/*****************************************************************************/
+/** fmGetMirrorPortListsInt
+ * \ingroup intMirror
+ *
+ * \chips           FM10000
+ *
+ * \desc            Retrieve list of ports in the ingress and egress port list
+ *                  of the mirror group.
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \param[in]       group is the mirror group from which to retrieve the
+ *                  next port.
+ *
+ * \param[out]      numIngressPorts points to caller-allocated storage where 
+ *                  the number of ports that are enabled to mirror ingress 
+ *                  packets is stored.
+ *
+ * \param[out]      ingressPortList points to caller-allocated storage where 
+ *                  the list of ports that are enabled to mirror ingress
+ *                  packets are stored.
+ *
+ * \param[in]       maxIngressPorts is the size of the ingressPortList array.
+ *
+ * \param[out]      numEgressPorts points to caller-allocated storage where
+ *                  the number of ports that are enabled to mirror egress
+ *                  packets is stored.
+ *
+ * \param[out]      egressPortList points to caller-allocated storage where 
+ *                  the list of ports that are enabled to mirror egress
+ *                  packets are stored.
+ *
+ * \param[in]       maxEgressPorts is the size of the egressPortList array.
+ *
+ * \return          FM_OK if successful.
+ * \return          FM_ERR_INVALID_SWITCH if sw is invalid.
+ * \return          FM_ERR_INVALID_PORT_MIRROR_GROUP if group is out of range
+ *                  or does not exist.
+ * \return          FM_ERR_NO_PORTS_IN_MIRROR_GROUP if there are no more ports
+ *                  in the mirror group.
+ * \return          FM_ERR_INVALID_ARGUMENT if nextPort or mirrorType is NULL.
+ *
+ *****************************************************************************/
+fm_status fmGetMirrorPortListsInt(fm_int  sw,
+                                  fm_int  group,
+                                  fm_int *numIngressPorts, 
+                                  fm_int *ingressPortList,
+                                  fm_int  maxIngressPorts,
+                                  fm_int *numEgressPorts, 
+                                  fm_int *egressPortList,
+                                  fm_int  maxEgressPorts)
+{
+    fm_portMirrorGroup *grp;
+    fm_status           err = FM_OK;
+
+    FM_LOG_ENTRY(FM_LOG_CAT_MIRROR,
+                 "sw=%d group=%d "
+                 "numIngressPorts=%p ingressPortList=%p maxIngressPorts=%d "
+                 "numEgressPorts=%p egressPortList=%p maxEgressPorts=%d\n", 
+                 sw,
+                 group,
+                 (void *) numIngressPorts,
+                 (void *) ingressPortList,
+                 maxIngressPorts,
+                 (void *) numEgressPorts,
+                 (void *) egressPortList,
+                 maxEgressPorts);
+
+    GET_PORT_MIRROR_GROUP_NO_SWLOCK_CHECK(sw, grp, group);
+
+    TAKE_MIRROR_LOCK(sw);
+
+    if (!grp->used)
+    {
+        err = FM_ERR_INVALID_PORT_MIRROR_GROUP;
+        goto ABORT;
+    }
+
+    if (ingressPortList)
+    {
+        if (!numIngressPorts || maxIngressPorts <= 0)
+        {
+            err = FM_ERR_INVALID_ARGUMENT;
+            goto ABORT;
+        }
+    }
+    else if (egressPortList)
+    {
+        if (!numEgressPorts || maxEgressPorts <= 0)
+        {
+            err = FM_ERR_INVALID_ARGUMENT;
+            goto ABORT;
+        }
+    }
+    else
+    {
+        err = FM_ERR_INVALID_ARGUMENT;
+        goto ABORT;
+    }
+    
+    if (ingressPortList)
+    {
+        err = fmBitArrayToPortList(sw,
+                                   &grp->ingressPortUsed,
+                                   numIngressPorts,
+                                   ingressPortList,
+                                   maxIngressPorts);
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MIRROR, err);
+    }
+
+    if (egressPortList)
+    {
+        err = fmBitArrayToPortList(sw,
+                                   &grp->egressPortUsed,
+                                   numEgressPorts,
+                                   egressPortList,
+                                   maxEgressPorts);
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MIRROR, err);
+    }
+
+ABORT:
+    DROP_MIRROR_LOCK(sw);
+
+    FM_LOG_EXIT(FM_LOG_CAT_MIRROR, err);
+
+}   /* end fmGetMirrorPortListsInt */
+
+
+
 
 /*****************************************************************************/
 /** fmGetMirrorPortDest
@@ -3223,6 +3736,111 @@ fm_int fmGetMirrorPortDest(fm_int sw, fm_int port, fm_mirrorType mirrorType)
 
 
 
+/*****************************************************************************/
+/** fmSetMirrorAttributeInt
+ * \ingroup intMirror
+ *
+ * \chips           FM6000, FM10000
+ *
+ * \desc            Set a mirror attribute.
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \param[in]       group is the mirror group on which to operate.
+ *
+ * \param[in]       attr is the mirror attribute (see 'Mirror Attributes') to 
+ *                  set.
+ *
+ * \param[in]       value points to the attribute value to set.
+ *
+ * \return          FM_OK if successful.
+ * \return          FM_ERR_INVALID_SWITCH if sw is invalid.
+ * \return          FM_ERR_INVALID_PORT_MIRROR_GROUP if group is invalid.
+ * \return          FM_ERR_UNSUPPORTED if unrecognized attribute.
+ * \return          FM_ERR_INVALID_VALUE if value points to an invalid value
+ *                  for the specified attribute.
+ *
+ *****************************************************************************/
+fm_status fmSetMirrorAttributeInt(fm_int sw,
+                                  fm_int group,
+                                  fm_int attr,
+                                  void * value)
+{
+    fm_status           err;
+    fm_portMirrorGroup *grp;
+    fm_switch          *switchPtr;
+
+    FM_LOG_ENTRY( FM_LOG_CAT_MIRROR,
+                  "sw = %d, group = %d, attr = %d, value = %p\n",
+                  sw,
+                  group,
+                  attr,
+                  (void *) value );
+
+    /* Validate arguments */
+    if (value == NULL)
+    {
+        FM_LOG_EXIT(FM_LOG_CAT_MIRROR, FM_ERR_INVALID_ARGUMENT);
+    }
+
+    /* Pre-validate the attribute */
+    switch (attr)
+    {
+        case FM_MIRROR_PRIORITY:
+        case FM_MIRROR_TRUNCATE:
+        case FM_MIRROR_SAMPLE_RATE:
+        case FM_MIRROR_ACL:
+        case FM_MIRROR_TX_EGRESS_PORT:
+        case FM_MIRROR_TRUNCATE_OTHERS:
+        case FM_MIRROR_TRUNCATE_MASK:
+        case FM_MIRROR_VLAN:
+        case FM_MIRROR_VLAN_PRI:
+        case FM_MIRROR_TRAPCODE_ID:
+            break;
+
+        default:
+            FM_LOG_EXIT(FM_LOG_CAT_MIRROR, FM_ERR_INVALID_ARGUMENT);
+            break;
+    }
+
+    switchPtr = GET_SWITCH_PTR(sw);
+
+    /* Get the pointer to the mirror group */
+    GET_PORT_MIRROR_GROUP_NO_SWLOCK_CHECK(sw, grp, group);
+
+    /* Get the ACL lock prior to the mirror lock to keep the right precedence.
+     * ACL Lock is needed to make sure the updated group is not being
+     * referenced by any ACL/rule. */
+    if (attr == FM_MIRROR_ACL)
+    {
+        FM_TAKE_ACL_LOCK(sw);
+    }
+    /* Get the mirror lock */
+    TAKE_MIRROR_LOCK(sw);
+
+    if (!grp || !grp->used)
+    {
+        err = FM_ERR_INVALID_PORT_MIRROR_GROUP;
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MIRROR, err);
+    }
+
+    /* Call switch-specific code to handle the attribute change */
+    FM_API_CALL_FAMILY(err, switchPtr->SetMirrorAttribute, sw, grp, attr, value);
+
+ABORT:
+    /* Drop the locks */
+    DROP_MIRROR_LOCK(sw);
+
+    if (attr == FM_MIRROR_ACL)
+    {
+        FM_DROP_ACL_LOCK(sw);
+    }
+
+    FM_LOG_EXIT(FM_LOG_CAT_MIRROR, err);
+
+}   /* end fmSetMirrorAttributeInt */
+
+
 
 /*****************************************************************************/
 /** fmSetMirrorAttribute
@@ -3255,8 +3873,6 @@ fm_status fmSetMirrorAttribute(fm_int sw,
                                void * value)
 {
     fm_status           err;
-    fm_switch *         switchPtr;
-    fm_portMirrorGroup *grp;
 
     FM_LOG_ENTRY_API( FM_LOG_CAT_MIRROR,
                       "sw = %d, group = %d, attr = %d, value = %p\n",
@@ -3265,7 +3881,60 @@ fm_status fmSetMirrorAttribute(fm_int sw,
                       attr,
                       (void *) value );
 
-    /* Validate arguments */
+    /* Get the switch lock */
+    VALIDATE_AND_PROTECT_SWITCH(sw);
+
+    err = fmSetMirrorAttributeInt(sw, group, attr, value);
+
+    UNPROTECT_SWITCH(sw);
+
+    FM_LOG_EXIT_API(FM_LOG_CAT_MIRROR, err);
+
+}   /* end fmSetMirrorAttribute */
+
+
+
+
+/*****************************************************************************/
+/** fmGetMirrorAttributeInt
+ * \ingroup intMirror
+ *
+ * \chips           FM6000, FM10000
+ *
+ * \desc            Get a mirror attribute.
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \param[in]       group is the mirror group on which to operate.
+ *
+ * \param[in]       attr is the mirror attribute (see 'Mirror Attributes') to 
+ *                  get.
+ *
+ * \param[out]      value points to caller-provided storage into which the
+ *                  attribute's value will be written.
+ *
+ * \return          FM_OK if successful.
+ * \return          FM_ERR_INVALID_SWITCH if sw is invalid.
+ * \return          FM_ERR_INVALID_PORT_MIRROR_GROUP if group is invalid.
+ * \return          FM_ERR_UNSUPPORTED if unrecognized attribute.
+ *
+ *****************************************************************************/
+fm_status fmGetMirrorAttributeInt(fm_int sw,
+                                  fm_int group,
+                                  fm_int attr,
+                                  void * value)
+{
+    fm_status           err;
+    fm_switch *         switchPtr;
+    fm_portMirrorGroup *grp;
+
+    FM_LOG_ENTRY( FM_LOG_CAT_MIRROR,
+                  "sw = %d, group = %d, attr = %d, value = %p\n",
+                  sw,
+                  group,
+                  attr,
+                  (void *) value );
+
     if (value == NULL)
     {
         FM_LOG_EXIT(FM_LOG_CAT_MIRROR, FM_ERR_INVALID_ARGUMENT);
@@ -3284,6 +3953,8 @@ fm_status fmSetMirrorAttribute(fm_int sw,
         case FM_MIRROR_VLAN:
         case FM_MIRROR_VLAN_PRI:
         case FM_MIRROR_TRAPCODE_ID:
+        case FM_MIRROR_INGRESS_COUNTER:
+        case FM_MIRROR_EGRESS_COUNTER:
             break;
 
         default:
@@ -3291,21 +3962,11 @@ fm_status fmSetMirrorAttribute(fm_int sw,
             break;
     }
 
-    /* Get the switch lock */
-    VALIDATE_AND_PROTECT_SWITCH(sw);
-
     switchPtr = GET_SWITCH_PTR(sw);
 
     /* Get the pointer to the mirror group */
-    GET_PORT_MIRROR_GROUP(sw, grp, group);
+    GET_PORT_MIRROR_GROUP_NO_SWLOCK_CHECK(sw, grp, group);
 
-    /* Get the ACL lock prior to the mirror lock to keep the right precedence.
-     * ACL Lock is needed to make sure the updated group is not being
-     * referenced by any ACL/rule. */
-    if (attr == FM_MIRROR_ACL)
-    {
-        FM_TAKE_ACL_LOCK(sw);
-    }
     /* Get the mirror lock */
     TAKE_MIRROR_LOCK(sw);
 
@@ -3315,24 +3976,16 @@ fm_status fmSetMirrorAttribute(fm_int sw,
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MIRROR, err);
     }
 
-    /* Call switch-specific code to handle the attribute change */
-    FM_API_CALL_FAMILY(err, switchPtr->SetMirrorAttribute, sw, grp, attr, value);
+    /* Call switch-specific code to retrieve the attribute value */
+    FM_API_CALL_FAMILY(err, switchPtr->GetMirrorAttribute, sw, grp, attr, value);
 
 ABORT:
     /* Drop the locks */
     DROP_MIRROR_LOCK(sw);
 
-    if (attr == FM_MIRROR_ACL)
-    {
-        FM_DROP_ACL_LOCK(sw);
-    }
+    FM_LOG_EXIT(FM_LOG_CAT_MIRROR, err);
 
-    UNPROTECT_SWITCH(sw);
-
-    FM_LOG_EXIT_API(FM_LOG_CAT_MIRROR, err);
-
-}   /* end fmSetMirrorAttribute */
-
+}   /* end fmGetMirrorAttributeInt */
 
 
 
@@ -3366,8 +4019,6 @@ fm_status fmGetMirrorAttribute(fm_int sw,
                                void * value)
 {
     fm_status           err;
-    fm_switch *         switchPtr;
-    fm_portMirrorGroup *grp;
 
     FM_LOG_ENTRY_API( FM_LOG_CAT_MIRROR,
                       "sw = %d, group = %d, attr = %d, value = %p\n",
@@ -3376,54 +4027,11 @@ fm_status fmGetMirrorAttribute(fm_int sw,
                       attr,
                       (void *) value );
 
-    if (value == NULL)
-    {
-        FM_LOG_EXIT(FM_LOG_CAT_MIRROR, FM_ERR_INVALID_ARGUMENT);
-    }
-
-    /* Pre-validate the attribute */
-    switch (attr)
-    {
-        case FM_MIRROR_PRIORITY:
-        case FM_MIRROR_TRUNCATE:
-        case FM_MIRROR_SAMPLE_RATE:
-        case FM_MIRROR_ACL:
-        case FM_MIRROR_TX_EGRESS_PORT:
-        case FM_MIRROR_TRUNCATE_OTHERS:
-        case FM_MIRROR_TRUNCATE_MASK:
-        case FM_MIRROR_VLAN:
-        case FM_MIRROR_VLAN_PRI:
-        case FM_MIRROR_TRAPCODE_ID:
-            break;
-
-        default:
-            FM_LOG_EXIT(FM_LOG_CAT_MIRROR, FM_ERR_INVALID_ARGUMENT);
-            break;
-    }
-
     /* Get the switch lock */
     VALIDATE_AND_PROTECT_SWITCH(sw);
 
-    switchPtr = GET_SWITCH_PTR(sw);
+    err = fmGetMirrorAttributeInt(sw, group, attr, value);
 
-    /* Get the pointer to the mirror group */
-    GET_PORT_MIRROR_GROUP(sw, grp, group);
-
-    /* Get the mirror lock */
-    TAKE_MIRROR_LOCK(sw);
-
-    if (!grp || !grp->used)
-    {
-        err = FM_ERR_INVALID_PORT_MIRROR_GROUP;
-        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MIRROR, err);
-    }
-
-    /* Call switch-specific code to retrieve the attribute value */
-    FM_API_CALL_FAMILY(err, switchPtr->GetMirrorAttribute, sw, grp, attr, value);
-
-ABORT:
-    /* Drop the locks */
-    DROP_MIRROR_LOCK(sw);
     UNPROTECT_SWITCH(sw);
 
     FM_LOG_EXIT_API(FM_LOG_CAT_MIRROR, err);

@@ -171,24 +171,24 @@ typedef enum
      *  switch's ports will be externally-facing and some will connect to
      *  spine switches. No frames will be switched between spine ports -
      *  all switching will be between leaf and spine ports. */
-    FM_SWITCH_ROLE_LEAF,
+    FM_SWITCH_ROLE_LEAF = 1,
 
     /** The device is a spine switch in a fat tree topology. All of the
      *  switch's ports will be internally-facing, connecting to
      *  leaf switches. Frames will be switched between the spine ports. */
-    FM_SWITCH_ROLE_SPINE,
+    FM_SWITCH_ROLE_SPINE = 2,
 
     /** The device has both spine and leaf functionality.  Some of the
      *  switch's ports will be internally-facing, connecting to other
      *  spine or leaf switches, and some of the ports will be externally-
      *  facing.  Frames may be switched between spine ports as needed. */
-    FM_SWITCH_ROLE_SPINE_LEAF,
+    FM_SWITCH_ROLE_SPINE_LEAF = 3,
 
     /** The device is one of a set of stacked switches. */
-    FM_SWITCH_ROLE_STACK,
+    FM_SWITCH_ROLE_STACK = 4,
 
     /** The device is the SWAG switch itself. */
-    FM_SWITCH_ROLE_SWAG,
+    FM_SWITCH_ROLE_SWAG = 5,
 
     /* ----  Add new entries above this line.  ---- */
 
@@ -244,18 +244,18 @@ typedef enum
 
     /** The topology is a ring of switches. Switches have links between them
      *  and external in a non-heirarchical arrangement. */
-    FM_SWAG_TOPOLOGY_RING,
+    FM_SWAG_TOPOLOGY_RING = 1,
 
     /** The topology is a fat tree. In this heirarchical configuration, some
      *  switches are leaf switches and some are spine switches with links
      *  between leaf and spine switches and external links only on leaf
      *  switches. */
-    FM_SWAG_TOPOLOGY_FAT_TREE,
+    FM_SWAG_TOPOLOGY_FAT_TREE = 2,
 
     /** The topology is a mesh.  In this configuration, all switches
      *  are interconnected to all other switches in the aggregate.
      */
-    FM_SWAG_TOPOLOGY_MESH,
+    FM_SWAG_TOPOLOGY_MESH = 3,
 
     /* ----  Add new entries above this line.  ---- */
 

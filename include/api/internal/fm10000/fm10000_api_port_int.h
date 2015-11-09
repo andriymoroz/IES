@@ -49,7 +49,7 @@
 #define FM10000_PORT_ALL_SAF_ENABLED 0xFFFFFFFFFFFF
 
 #define FM10000_PCIE_INVALID_LOGICAL_PORT -1
-#define FM10000_PCIE_MAX_FRAME_SIZE       15358
+#define FM10000_PCIE_MAX_FRAME_SIZE       15360
 #define FM10000_PCIE_MIN_FRAME_SIZE       15
 
 /* PCS Modes */
@@ -142,6 +142,15 @@ typedef enum
 
 #define FM10000_TIMESTAMP_INT_MASK   (1U << FM10000_LINK_IP_b_EgressTimeStamp)
 
+/* link debounce definitions */
+/*    link up debounce: time scale = 4 (100us); ticks = 30; debounce time = 3ms */
+#define FM10000_LINK_FAULT_TIME_SCALE_UP        4
+#define FM10000_LINK_FAULT_TICKS_UP             30 
+/*    link down debounce: time scale = 4 (100us); ticks = 5; debounce time = 0.5ms */
+#define FM10000_LINK_FAULT_TIME_SCALE_DOWN      4
+#define FM10000_LINK_FAULT_TICKS_DOWN           5
+
+
 /* From EAS MAC_CFG.TxFcsMode */
 enum 
 {
@@ -182,6 +191,17 @@ enum
 /* PCIe recovery flag base offset */
 #define PCIE_RECOVERY_FLAG_BASE               0x1
 
+/* Link optimization mode defines */
+#define FM10000_LINK_OPTIM_PARAM_DEFAULT    0x10001
+#define FM10000_LINK_OPTIM_PARAM_SPEED_A10G 0x3400
+#define FM10000_LINK_OPTIM_PARAM_SPEED_B10G 0x8000
+#define FM10000_LINK_OPTIM_PARAM_BALAN_A10G 0x4800
+#define FM10000_LINK_OPTIM_PARAM_BALAN_B10G 0xA000
+#define FM10000_LINK_OPTIM_PARAM_SPEED_A25G 0x10001
+#define FM10000_LINK_OPTIM_PARAM_SPEED_B25G 0x10001
+#define FM10000_LINK_OPTIM_PARAM_BALAN_A25G 0x10001
+#define FM10000_LINK_OPTIM_PARAM_BALAN_B25G 0x10001
+
 
 /**************************************************
  * Port Attribute Entry table Structure
@@ -209,6 +229,7 @@ typedef struct _fm10000_portAttrEntryTable
     fm_portAttrEntry defIslUser;
     fm_portAttrEntry defVlan;
     fm_portAttrEntry defVlan2;
+    fm_portAttrEntry linkOptimizationMode;
     fm_portAttrEntry rxTermination;
     fm_portAttrEntry dfeMode;
     fm_portAttrEntry txLaneCursor;
@@ -220,6 +241,9 @@ typedef struct _fm10000_portAttrEntryTable
     fm_portAttrEntry txLaneEnableConfigKrInit;
     fm_portAttrEntry txLaneKrInitialPreDec;
     fm_portAttrEntry txLaneKrInitialPostDec;
+    fm_portAttrEntry signalTransitionThreshold;
+    fm_portAttrEntry krXconfig1;
+    fm_portAttrEntry krXconfig2;
     fm_portAttrEntry dot1xState;
     fm_portAttrEntry dropBv;
     fm_portAttrEntry dropTagged;
@@ -348,6 +372,7 @@ typedef struct _fm10000_portAttr
     fm_pcieMode        pcieMode;
     fm_pepMode         pepMode;
     fm_ethMode         ethMode;
+    fm_linkOptMode     linkOptimizationMode;
     fm_int             modifyVlan1Tag;
     fm_int             modifyVlan2Tag;
     fm_int             eyeScore;
@@ -508,6 +533,12 @@ struct _fm10000_port
     fm_uint64       basePage;         /* Clause 37(32-bit) and 73 */
     fm_timestamp    anTimeStamp;
     fm_uint         anRestartCnt;
+
+    /* Caches the basePage and nextPage before updating portAttr. 
+       The values are either Pending To Be Updated or 
+       Same as in portAttr. */
+    fm_uint64       pendingBasePage;
+    fm_anNextPages  pendingNextPages; 
 
     /* Bit array indicating the status of the transceiver module attached
      * to the port, if any. The transceiver status comprends the following
@@ -800,6 +831,12 @@ fm_status fm10000GetMultiLaneCapabilities(fm_int   sw,
                                           fm_int   port,
                                           fm_bool *is40GCapable,
                                           fm_bool *is100GCapable);
+fm_status fm10000GetPortOptModeDfeParam(fm_int   sw,
+                                        fm_int   serDes,
+                                        fm_int   selector,
+                                        fm_int * parameter);
+fm_status fm10000ConfigurePortOptimizationMode(fm_int   sw,
+                                               fm_int   port);
 
 #endif /* __FM_FM10000_API_PORT_INT_H */
 

@@ -496,7 +496,7 @@ fm_status fm10000InterruptHandler(fm_switch *switchPtr)
                         /* Skip this recovery since there is no logical port
                            associated with this PEP */
                         FM_LOG_DEBUG(FM_LOG_CAT_EVENT_INTR, 
-                                     "Skip recovery, no logicarrl port created for PEP %d\n",
+                                     "Skip recovery, no logical port created for PEP %d\n",
                                      i);
 
                         pepLinkDownMask &= ~( PCIE_RECOVERY_FLAG_BASE << i );

@@ -29,7 +29,7 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
+ *****************************************************************************/
 
 #include <fm_sdk_fm10000_int.h>
 #include <platforms/util/fm_util_device_lock.h>
@@ -237,7 +237,7 @@ void fmPlatformPrintBytes(fm_byte buf[], fm_int len)
 {
     PrintBytesName(NULL, 0, buf, len);
 
-} /* end fmPlatformPrintBytes */
+}   /* end fmPlatformPrintBytes */
 
 
 
@@ -298,7 +298,7 @@ void fmPlatformHexDump(fm_int addr, fm_byte *buf, fm_int nbytes)
     }
     while (nbytes > 0);
 
-} /* end fmPlatformHexDump */
+}   /* end fmPlatformHexDump */
 
 
 
@@ -341,6 +341,7 @@ fm_status fmPlatformDoDebug(fm_int  sw,
 
     status = fmPlatformMapLogicalPortToPlatform(sw,
                                                 port,
+                                                &sw,
                                                 &swNum,
                                                 &hwResId,
                                                 NULL);
@@ -357,7 +358,7 @@ fm_status fmPlatformDoDebug(fm_int  sw,
 
     FM_LOG_EXIT(FM_LOG_CAT_PLATFORM, status);
 
-} /* fmPlatformDoDebug */
+}   /* end fmPlatformDoDebug */
 
 
 
@@ -381,6 +382,7 @@ fm_status fmPlatformDumpXcvrEeprom(fm_int sw, fm_int port)
 {
     fm_status           status;
     fm_int              swNum;
+    fm_int              phySw;
     fm_uint32           hwResId;
     fm_platformCfgPort *portCfg;
     fm_int              nbytes;
@@ -399,6 +401,7 @@ fm_status fmPlatformDumpXcvrEeprom(fm_int sw, fm_int port)
     {
         status = fmPlatformMapLogicalPortToPlatform(sw,
                                                     port,
+                                                    &phySw,
                                                     &swNum,
                                                     &hwResId,
                                                     &portCfg);
@@ -420,7 +423,7 @@ fm_status fmPlatformDumpXcvrEeprom(fm_int sw, fm_int port)
             default:
                 FM_LOG_EXIT(FM_LOG_CAT_PLATFORM, FM_ERR_INVALID_PORT);
                 break;
-        } /* switch */
+        }   /* end switch */
 
         if (qsfp)
         {
@@ -479,21 +482,25 @@ fm_status fmPlatformDumpXcvrEeprom(fm_int sw, fm_int port)
             fmPlatformHexDump(addr, eeprombuf, nbytes);
             fmPlatformXcvrEepromDumpBaseExt(eeprombuf, FALSE);
 
-            addr = 0;
-            page = 1;
+            /* Only read if optical SFP */
+            if ( eeprombuf[2] == 0x7 || eeprombuf[2] == 0xB)
+            {
+                addr = 0;
+                page = 1;
 
-            FM_LOG_PRINT("Page %d\n", page);
+                FM_LOG_PRINT("Page %d\n", page);
 
-            status = fmPlatformXcvrEepromRead(sw,
-                                              port,
-                                              page,
-                                              addr,
-                                              eeprombuf,
-                                              nbytes);
-            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
+                status = fmPlatformXcvrEepromRead(sw,
+                                                  port,
+                                                  page,
+                                                  addr,
+                                                  eeprombuf,
+                                                  nbytes);
+                FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
 
-            fmPlatformHexDump(addr, eeprombuf, nbytes);
-            fmPlatformXcvrSfppEepromDumpPage1(eeprombuf);
+                fmPlatformHexDump(addr, eeprombuf, nbytes);
+                fmPlatformXcvrSfppEepromDumpPage1(eeprombuf);
+            }
         }
     }
     else
@@ -548,6 +555,7 @@ fm_status fmPlatformDumpXcvrState(fm_int sw, fm_int port)
 
     status = fmPlatformMapLogicalPortToPlatform(sw,
                                                 port,
+                                                &sw,
                                                 &swNum,
                                                 &hwResId,
                                                 &portCfg);
@@ -813,6 +821,77 @@ fm_status fmPlatformRetimerDumpInfo(fm_int  sw,
                                           PhyI2cWriteRead,
                                           phyCfg->addr);
     }
+    else if (STR_EQ(cmd, "app_status"))
+    {
+        if ( libFunc->SelectBus )
+        {
+            phyCfg = FM_PLAT_GET_PHY_CFG(sw, 0);
+            err = libFunc->SelectBus(swNum, FM_PLAT_BUS_PHY, phyCfg->hwResourceId);
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PLATFORM, err);
+            fmUtilGN2412DumpAppStatusV2((fm_uintptr) sw,
+                                        PhyI2cWriteRead,
+                                        phyCfg->addr);
+    
+            phyCfg = FM_PLAT_GET_PHY_CFG(sw, 2);
+            err = libFunc->SelectBus(swNum, FM_PLAT_BUS_PHY, phyCfg->hwResourceId);
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PLATFORM, err);
+            fmUtilGN2412DumpAppStatusV2((fm_uintptr) sw,
+                                        PhyI2cWriteRead,
+                                        phyCfg->addr);
+    
+            phyCfg = FM_PLAT_GET_PHY_CFG(sw, 1);
+            err = libFunc->SelectBus(swNum, FM_PLAT_BUS_PHY, phyCfg->hwResourceId);
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PLATFORM, err);
+            fmUtilGN2412DumpAppStatusV2((fm_uintptr) sw,
+                                        PhyI2cWriteRead,
+                                        phyCfg->addr);
+    
+            phyCfg = FM_PLAT_GET_PHY_CFG(sw, 3);
+            err = libFunc->SelectBus(swNum, FM_PLAT_BUS_PHY, phyCfg->hwResourceId);
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PLATFORM, err);
+            fmUtilGN2412DumpAppStatusV2((fm_uintptr) sw,
+                                        PhyI2cWriteRead,
+                                        phyCfg->addr);
+            FM_LOG_PRINT("\n   ");
+    
+            phyCfg = FM_PLAT_GET_PHY_CFG(sw, 0);
+            err = libFunc->SelectBus(swNum, FM_PLAT_BUS_PHY, phyCfg->hwResourceId);
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PLATFORM, err);
+            fmUtilGN2412DumpMissionCount((fm_uintptr) sw,
+                                              PhyI2cWriteRead,
+                                              phyCfg->addr);
+    
+    
+            phyCfg = FM_PLAT_GET_PHY_CFG(sw, 2);
+            err = libFunc->SelectBus(swNum, FM_PLAT_BUS_PHY, phyCfg->hwResourceId);
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PLATFORM, err);
+            fmUtilGN2412DumpMissionCount((fm_uintptr) sw,
+                                              PhyI2cWriteRead,
+                                              phyCfg->addr);
+    
+            phyCfg = FM_PLAT_GET_PHY_CFG(sw, 1);
+            err = libFunc->SelectBus(swNum, FM_PLAT_BUS_PHY, phyCfg->hwResourceId);
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PLATFORM, err);
+            fmUtilGN2412DumpMissionCount((fm_uintptr) sw,
+                                         PhyI2cWriteRead,
+                                         phyCfg->addr);
+    
+            phyCfg = FM_PLAT_GET_PHY_CFG(sw, 3);
+            err = libFunc->SelectBus(swNum, FM_PLAT_BUS_PHY, phyCfg->hwResourceId);
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PLATFORM, err);
+            fmUtilGN2412DumpMissionCount((fm_uintptr) sw,
+                                         PhyI2cWriteRead,
+                                         phyCfg->addr);
+    
+            FM_LOG_PRINT("\n");
+        }
+    }
+    else if (STR_EQ(cmd, "statusL"))
+    {
+        fmUtilGN2412DumpAppRestartDiagCntV2((fm_uintptr) sw,
+                                             PhyI2cWriteRead,
+                                             phyCfg->addr);
+    }
     else
     {
         err = FM_ERR_INVALID_ARGUMENT;
@@ -859,6 +938,7 @@ fm_status fmPlatformRetimerSetAppMode(fm_int sw, fm_int port, fm_int mode)
 
     err = fmPlatformMapLogicalPortToPlatform(sw,
                                              port,
+                                             &sw,
                                              &swNum,
                                              &hwResId,
                                              &portCfg);
@@ -985,6 +1065,7 @@ fm_status fmPlatformRetimerSetLaneTxEq(fm_int sw,
 
     err = fmPlatformMapLogicalPortToPlatform(sw,
                                              port,
+                                             &sw,
                                              &swNum,
                                              &hwResId,
                                              &portCfg);
@@ -1081,6 +1162,7 @@ ABORT:
     return err;
 
 }   /* end fmPlatformRetimerSetLaneTxEq */
+
 
 
 
@@ -1310,8 +1392,4 @@ fm_status fmPlatformRetimerDumpPortMap(fm_int sw, fm_int port)
     return FM_OK;
 
 }   /* end fmPlatformRetimerDumpPortMap */
-
-
-
-
 

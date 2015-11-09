@@ -269,10 +269,23 @@ enum _fm_mirrorAttr
 
     /** Type fm_int: Specifies the mirrored frame trap code id. Mirror Trap
      *  code is the result of ''FM_TRAPCODE_MIRROR_BASE'' +
-     *  ''FM_MIRROR_TRAPCODE_ID''. Default trap code id is set to 0.
+     *  ''FM_MIRROR_TRAPCODE_ID''. Default trap code id is set to 0. The 
+     *  value can range from 0 to 11.
      *
      *  \chips FM10000 */
     FM_MIRROR_TRAPCODE_ID,
+
+    /** Type fm_uint64: The number of packets mirrored due to ingress of
+     *  packets. This is a read-only attribute.
+     *
+     *  \chips FM10000 */
+    FM_MIRROR_INGRESS_COUNTER,
+
+    /** Type fm_uint64: The number of packets mirrored due to egress of
+     *  packets. This is a read-only attribute.
+     *
+     *  \chips FM10000 */
+    FM_MIRROR_EGRESS_COUNTER,
 
     /** UNPUBLISHED: For internal use only. */
     FM_MIRROR_ATTRIBUTE_MAX

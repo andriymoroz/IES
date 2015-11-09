@@ -105,21 +105,6 @@ typedef enum
 /** \ingroup apiAttrib
  * @{ */
  
-/** EBI (External Bus Interface) clock speed in MHZ. The EBI is the bus
- *  between the CPU and the switch device. */
-#define FM_AAK_API_SYSTEM_EBI_CLOCK                 "api.system.ebi.clock"
-#define FM_AAT_API_SYSTEM_EBI_CLOCK                 FM_API_ATTR_INT
-#define FM_AAD_API_SYSTEM_EBI_CLOCK                 FM_EBI_MHZ
-
-/** FH (Frame Handler) Ref clock speed in MHZ. */
-#define FM_AAK_API_SYSTEM_FH_REF_CLOCK              "api.system.fhRef.clock"
-#define FM_AAT_API_SYSTEM_FH_REF_CLOCK              FM_API_ATTR_FLOAT
-#ifdef FM_FH_REF_MHZ
-#define FM_AAD_API_SYSTEM_FH_REF_CLOCK              FM_FH_REF_MHZ
-#else
-#define FM_AAD_API_SYSTEM_FH_REF_CLOCK              FM_EBI_MHZ
-#endif
-
 /** The default spanning tree state of a port for a VLAN of which it is a
  *  member. See ''Spanning Tree States'' for possible values. This property
  *  is also used to set the initial spanning tree state for all ports in all
@@ -244,53 +229,37 @@ typedef enum
 #define FM_AAD_API_PACKET_RX_DRV_DEST               (FM_PACKET_RX_DRV_DEST_NETDEV | \
                                                      FM_PACKET_RX_DRV_DEST_NETLINK_API)
 
-/** On a switch that was booted from EEPROM (e.g., for subsequent control
- *  via FIBM), indicates which ports have already been brought out of reset 
- *  by the EEPROM. Each bit represents a physical port number (bit N represents
- *  physical port N). If the bit is set to 1, then the corresponding port is
- *  already out of reset. If set to 0, then the API will release the port from
- *  reset.
- *                                                                      \lb\lb
- *  IMPORTANT NOTE: A properly configured EEPROM should bring all ports on the
- *  switches out of reset, so this property should generally not be needed
- *  and is deprecated. */ 
-#define FM_AAK_API_BOOT_PORT_OUT_OF_RESET_MASK      "api.boot.portOutOfResetMask"
-#define FM_AAT_API_BOOT_PORT_OUT_OF_RESET_MASK      FM_API_ATTR_INT
-#define FM_AAD_API_BOOT_PORT_OUT_OF_RESET_MASK      0xFFFFFFFF
-
-#if 0
-/** Defines the default remote platform type used by FIBM (fibmNIC only). See
- *  ''fm_platformRemoteType'' for possible values. */
-#define FM_AAK_API_PLATFORM_REMOTE_TYPE             "api.platform.remoteType"
-#define FM_AAT_API_PLATFORM_REMOTE_TYPE             FM_API_ATTR_INT
-#define FM_AAD_API_PLATFORM_REMOTE_TYPE             FM_PLATFORM_TYPE_RENO
-#endif
-
-/** Indicates whether ''fmDeleteLAGExt'' should wait for the LAG group deletion
- *  to complete, meaning that any required MAC Table purges are finished,
- *  before returning to the caller.  FALSE means that the deletions must
+/** Whether ''fmDeleteLAG'' should wait for LAG deletion to complete
+ *  (meaning that any required MAC Table purges are finished) before
+ *  returning to the caller.  FALSE means that the deletions must
  *  complete prior to function return, TRUE means that the function may
  *  return as soon as the purge is enqueued.  Note that TRUE means that
- *  the application may get ''FM_ERR_NO_FREE_LAG'' if all lag groups are in
- *  the "pending deletion" state when ''fmCreateLAGExt'' is called.
- */
-#define FM_AAK_API_ASYNC_LAG_DELETION                "api.lag.asyncDeletion"
-#define FM_AAT_API_ASYNC_LAG_DELETION                FM_API_ATTR_BOOL
-#define FM_AAD_API_ASYNC_LAG_DELETION                TRUE
+ *  the application may get ''FM_ERR_NO_FREE_LAG'' if all lag groups are
+ *  in the "pending deletion" state when ''fmCreateLAG'' is called. */
+#define FM_AAK_API_ASYNC_LAG_DELETION           "api.lag.asyncDeletion"
+#define FM_AAT_API_ASYNC_LAG_DELETION           FM_API_ATTR_BOOL
+#define FM_AAD_API_ASYNC_LAG_DELETION           TRUE
 
-/** Indicates whether the API should generate an FM_EVENT_ENTRY_LEARNED or
+/** Whether the API should generate an FM_EVENT_ENTRY_LEARNED or
  *  FM_EVENT_ENTRY_AGED event when the application adds or deletes a static
  *  address to/from the MA table. */
-#define FM_AAK_API_MA_EVENT_ON_STATIC_ADDR          "api.ma.eventOnStaticAddr"
-#define FM_AAT_API_MA_EVENT_ON_STATIC_ADDR          FM_API_ATTR_BOOL
-#define FM_AAD_API_MA_EVENT_ON_STATIC_ADDR          FALSE
+#define FM_AAK_API_MA_EVENT_ON_STATIC_ADDR      "api.ma.eventOnStaticAddr"
+#define FM_AAT_API_MA_EVENT_ON_STATIC_ADDR      FM_API_ATTR_BOOL
+#define FM_AAD_API_MA_EVENT_ON_STATIC_ADDR      FALSE
 
-/** Indicates whether the API should generate an FM_EVENT_ENTRY_LEARNED or
+/** Whether the API should generate an FM_EVENT_ENTRY_LEARNED or
  *  FM_EVENT_ENTRY_AGED event when the application adds or deletes a dynamic
  *  address to/from the MA table. */
-#define FM_AAK_API_MA_EVENT_ON_DYNAMIC_ADDR         "api.ma.eventOnDynamicAddr"
-#define FM_AAT_API_MA_EVENT_ON_DYNAMIC_ADDR         FM_API_ATTR_BOOL
-#define FM_AAD_API_MA_EVENT_ON_DYNAMIC_ADDR         FALSE
+#define FM_AAK_API_MA_EVENT_ON_DYNAMIC_ADDR     "api.ma.eventOnDynamicAddr"
+#define FM_AAT_API_MA_EVENT_ON_DYNAMIC_ADDR     FM_API_ATTR_BOOL
+#define FM_AAD_API_MA_EVENT_ON_DYNAMIC_ADDR     FALSE
+
+/** Whether the API should generate an FM_EVENT_ENTRY_LEARNED or
+ *  FM_EVENT_ENTRY_AGED event when the application modifies an address
+ *  in the MA table. */
+#define FM_AAK_API_MA_EVENT_ON_ADDR_CHANGE      "api.ma.eventOnAddrChange"
+#define FM_AAT_API_MA_EVENT_ON_ADDR_CHANGE      FM_API_ATTR_BOOL
+#define FM_AAD_API_MA_EVENT_ON_ADDR_CHANGE      FALSE
 
 /** Indicates whether the API should flush all the addresses associated with
  *  a port from the MA Table when the port goes down. */
@@ -332,47 +301,6 @@ typedef enum
 #define FM_AAK_API_PER_LAG_MANAGEMENT               "api.perLagManagement"
 #define FM_AAT_API_PER_LAG_MANAGEMENT               FM_API_ATTR_BOOL
 #define FM_AAD_API_PER_LAG_MANAGEMENT               TRUE
-
-/** Controls whether the parity sweeper thread is installed or not. The
- *  parity sweeper monitors the state of several memories within the
- *  device and reports any parity errors, as well as correcting those
- *  errors that can be corrected. The rate at which this thread runs
- *  (consuming CPU bandwidth) is controllable via additional properties. */
-#define FM_AAK_API_PARITY_SWEEPER_ENABLE        "api.paritySweeper.enable"
-#define FM_AAT_API_PARITY_SWEEPER_ENABLE        FM_API_ATTR_BOOL
-#define FM_AAD_API_PARITY_SWEEPER_ENABLE        TRUE
-
-/** When the parity sweeper thread is enabled with the ''api.paritySweeper.enable''
- *  property, this property specifies the default value for the 
- *  ''FM_PARITY_SWEEPER_CONFIG'' switch attribute and is the number of 
- *  register reads performed by the sweeper between sleep cycles. A larger 
- *  number makes the sweeper scan the entire chip more quickly, resulting in 
- *  faster reporting of detected errors, but consumes more CPU bandwidth
- *  resulting in a negative impact on the perfomance of other API threads. 
- *                                                                      \lb\lb
- *  In single chip systems, this API property is all that is needed to
- *  establish the parity sweeper burst size. The ''FM_PARITY_SWEEPER_CONFIG'' 
- *  switch attribute may be used to tune the sweeper's performance on a 
- *  per-switch basis in multi-chip systems. */
-#define FM_AAK_API_PARITY_SWEEPER_READ_BURST_SIZE "api.paritySweeper.readBurstSize"
-#define FM_AAT_API_PARITY_SWEEPER_READ_BURST_SIZE FM_API_ATTR_INT
-#define FM_AAD_API_PARITY_SWEEPER_READ_BURST_SIZE 32
-
-/** When the parity sweeper thread is enabled with the ''api.paritySweeper.enable''
- *  property, this property specifies the default value for the 
- *  ''FM_PARITY_SWEEPER_CONFIG'' switch attribute and is the parity sweeper 
- *  sleep period (in ns) between read bursts. A smaller number makes the 
- *  sweeper scan the entire chip more quickly, resulting in faster reporting 
- *  of detected errors, but consumes more CPU bandwidth resulting in a 
- *  negative impact on the perfomance of other API threads. 
- *                                                                      \lb\lb
- *  In single chip systems, this API property is all that is needed to
- *  establish the parity sweeper sleep period. The ''FM_PARITY_SWEEPER_CONFIG'' 
- *  switch attribute may be used to tune the sweeper's performance on a 
- *  per-switch basis in multi-chip systems. */
-#define FM_AAK_API_PARITY_SWEEPER_SLEEP_PERIOD  "api.paritySweeper.sleepPeriod"
-#define FM_AAT_API_PARITY_SWEEPER_SLEEP_PERIOD  FM_API_ATTR_INT
-#define FM_AAD_API_PARITY_SWEEPER_SLEEP_PERIOD  50000000
 
 /** Whether the parity repair thread is enabled. */
 #define FM_AAK_API_PARITY_REPAIR_ENABLE         "api.parityRepair.enable"
@@ -504,11 +432,6 @@ typedef enum
 #define FM_AAT_API_FAST_MAINTENANCE_PERIOD          FM_API_ATTR_INT
 #define FM_AAD_API_FAST_MAINTENANCE_PERIOD          20000000
 
-/* Renumber Uplink ports as ports 1-8 instead of 49-56 */
-#define FM_AAK_DEBUG_VEGAS_UPLINKS_FIRST            "api.vegas.uplinkPortsFirst"
-#define FM_AAT_DEBUG_VEGAS_UPLINKS_FIRST            FM_API_ATTR_BOOL
-#define FM_AAD_DEBUG_VEGAS_UPLINKS_FIRST            FALSE
-
 /* Disable the physical port GLORT LAG Filtering. */
 #define FM_AAK_API_STRICT_GLORT_PHYSICAL            "api.strict.glortPhysical"
 #define FM_AAT_API_STRICT_GLORT_PHYSICAL            FM_API_ATTR_BOOL
@@ -546,29 +469,6 @@ typedef enum
 #define FM_AAT_API_SWAG_AUTO_VN_VSI                 FM_API_ATTR_BOOL
 #define FM_AAD_API_SWAG_AUTO_VN_VSI                 TRUE
 
-/* These are currently used in FM10000 SWAG testing. */
-#define FM_AAK_API_FM4000_FIBM_TEST_RIG             "api.FM4000.FIBM.testRig"
-#define FM_AAT_API_FM4000_FIBM_TEST_RIG             FM_API_ATTR_BOOL
-#define FM_AAD_API_FM4000_FIBM_TEST_RIG             FALSE
-
-#define FM_AAK_API_FM4000_FIBM_TEST_PORT            "api.FM4000.FIBM.testPort"
-#define FM_AAT_API_FM4000_FIBM_TEST_PORT            FM_API_ATTR_INT
-#define FM_AAD_API_FM4000_FIBM_TEST_PORT            0 
-
-/* Control whether the API read the logical port to physical port map table
- * from a file. */
-#define FM_AAK_API_PORT_REMAP_TABLE                "api.portRemapTable"
-#define FM_AAT_API_PORT_REMAP_TABLE                FM_API_ATTR_TEXT
-#define FM_AAD_API_PORT_REMAP_TABLE                ""
-
-/* When the parity sweeper thread is enabled with the api.paritySweeper.enable
- * property, this property indicates whether the parity sweeper is used on 
- * switches accessed via FIBM. Enabling the sweeper on FIBM-accessed switches 
- * greatly increases the amount of FIBM frame traffic. */
-#define FM_AAK_API_PARITY_SWEEPER_FIBM_ENABLE   "api.paritySweeper.FibmEnable"
-#define FM_AAT_API_PARITY_SWEEPER_FIBM_ENABLE   FM_API_ATTR_BOOL
-#define FM_AAD_API_PARITY_SWEEPER_FIBM_ENABLE   FALSE
-
 /* Controls whether the platform enables bypass mode on startup.  This only has
  * an effect in platforms that support bypass mode. */
 #define FM_AAK_API_PLATFORM_BYPASS_ENABLE   "api.platform.bypassEnable"
@@ -589,11 +489,6 @@ typedef enum
 #define FM_AAT_API_STP_ENABLE_INTERNAL_PORT_CTRL    FM_API_ATTR_BOOL
 #define FM_AAD_API_STP_ENABLE_INTERNAL_PORT_CTRL    FALSE
  
-/* Indicates whether the platform will be used to generate an EEPROM image */
-#define FM_AAK_API_GENERATE_EEPROM_MODE            "api.generateEepromMode"
-#define FM_AAT_API_GENERATE_EEPROM_MODE             FM_API_ATTR_INT
-#define FM_AAD_API_GENERATE_EEPROM_MODE             0
-
 /* Selects the logical port map to use with the White Model. */
 #define FM_AAK_API_PLATFORM_MODEL_PORT_MAP_TYPE     "api.platform.model.portMapType"
 #define FM_AAT_API_PLATFORM_MODEL_PORT_MAP_TYPE     FM_API_ATTR_INT
@@ -632,13 +527,6 @@ typedef enum
 #define FM_AAK_API_PLATFORM_SET_REF_CLOCK           "api.platform.setRefClock"
 #define FM_AAT_API_PLATFORM_SET_REF_CLOCK           FM_API_ATTR_BOOL
 #define FM_AAD_API_PLATFORM_SET_REF_CLOCK           FALSE
-
-/* Specifies whether the I2C devices are accessed through IPMI (/dev/ipmi0) or
- * SMBus (/dev/i2c-0, /dev/i2c-1). If there is no I2C access at all, then
- * this property can be a NULL string (" ") */
-#define FM_AAK_API_PLATFORM_I2C_DEV_NAME            "api.platform.i2cDevName"
-#define FM_AAT_API_PLATFORM_I2C_DEV_NAME            FM_API_ATTR_TEXT
-#define FM_AAD_API_PLATFORM_I2C_DEV_NAME            "/dev/ipmi0"
 
 /* Specifies whether to enable priority buffer queues for prioritized buffer allocation
  * and receive event delivery. */
@@ -715,7 +603,7 @@ typedef enum
 #define FM_AAT_API_PLATFORM_MODEL_CHIP_VERSION      FM_API_ATTR_INT
 #define FM_AAD_API_PLATFORM_MODEL_CHIP_VERSION      0
 
-/* Specifies the TCP where the SERDES SBUS Server is listening on.
+/* Specifies the TCP port where the SERDES SBUS Server is listening on.
  * A non-zero value will enable the SBUS Server thread. This simulates
  * the aacs server for aapl utilities program to control the SERDES. */
 #define FM_AAK_API_PLATFORM_SBUS_SERVER_PORT       "api.platform.sbusServer.tcpPort"
@@ -727,34 +615,7 @@ typedef enum
 #define FM_AAT_API_PLATFORM_IS_WHITE_MODEL          FM_API_ATTR_BOOL
 #define FM_AAD_API_PLATFORM_IS_WHITE_MODEL          FALSE
 
-/* Specifies the temperature offset between the Tdiode and the Tcase. This
-   offset (in C) is added to the Tswitch read from the temperature sensor. */
-#define FM_AAK_API_PLATFORM_TSWITCH_OFFSET     		"api.platform.TswitchOffset"
-#define FM_AAT_API_PLATFORM_TSWITCH_OFFSET        	FM_API_ATTR_INT
-#define FM_AAD_API_PLATFORM_TSWITCH_OFFSET          10
-
-/* Specifies whether to enable port LED blinking from software */
-#define FM_AAK_API_PLATFORM_PORT_LED_BLINK_ENABLE  		"api.platform.portLedBlinkEnable"
-#define FM_AAT_API_PLATFORM_PORT_LED_BLINK_ENABLE  		FM_API_ATTR_BOOL
-#define FM_AAD_API_PLATFORM_PORT_LED_BLINK_ENABLE  		FALSE
-
-/* Indicates whether the interrupt will be received from PCIe MSI or not */
-#define FM_AAK_API_PLATFORM_MSI_ENABLED  	"api.platform.config.switch.%d.msiEnabled"
-#define FM_AAT_API_PLATFORM_MSI_ENABLED     FM_API_ATTR_BOOL
-#define FM_AAD_API_PLATFORM_MSI_ENABLED     FALSE
-
-/* Specifies the Frame Handler Clock in Hz
- * 
- * Setting this property to -1 (default) indicates that the frame
- * handler clock will be default to the part's default value.
- *
- * This parameters has no impact on certain parts (Frame Handler Clock 
- * is locked in certain SKUs) */
-#define FM_AAK_API_PLATFORM_FH_CLOCK        "api.platform.config.switch.%d.fhClock"
-#define FM_AAT_API_PLATFORM_FH_CLOCK        FM_API_ATTR_INT
-#define FM_AAD_API_PLATFORM_FH_CLOCK        -1
-
-/*  Indicates which categories (comma seperated list) to enable when 
+/*  Indicates which categories (comma separated list) to enable when 
  *  API is initializing.
  *  e.g. for "FM_LOG_CAT_SWITCH | FM_LOG_CAT_PORT | FM_LOG_CAT_VLAN"
  *  "switch,port,vlan" */ 
@@ -768,7 +629,10 @@ typedef enum
 #define FM_AAT_API_PORT_ADD_PEPS_TO_FLOODING            FM_API_ATTR_BOOL
 #define FM_AAD_API_PORT_ADD_PEPS_TO_FLOODING            FALSE
 
-/* Indicates if VLAN tagging is allowed for FTAG enabled ports. */
+/* Indicates if VLAN tagging is allowed for FTAG enabled ports. Use of this
+ * property is not recommended. Note that VLAN tagged packets egressing PCIe
+ * ports can be interpreted by a host system as double VLAN tagged, since these
+ * packets carry VLAN information also in the FTAG. */
 #define FM_AAK_API_PORT_ALLOW_FTAG_VLAN_TAGGING         "api.port.allowFtagVlanTagging"
 #define FM_AAT_API_PORT_ALLOW_FTAG_VLAN_TAGGING         FM_API_ATTR_BOOL
 #define FM_AAD_API_PORT_ALLOW_FTAG_VLAN_TAGGING         FALSE
@@ -855,6 +719,8 @@ typedef enum
  ****              END UNDOCUMENTED API PROPERTIES                   ****
  ****                                                                ****
  ************************************************************************/
+
+
  
 fm_status fmInitializeApiProperties(void);
 

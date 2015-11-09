@@ -1476,6 +1476,175 @@ ABORT:
 }   /* end QueryAppRestartDiagCounts */
 
 
+
+/*****************************************************************************/
+/* QueryD6Regs
+ * \ingroup platformUtils
+ *
+ * \desc            Query the 0xD6 register for the specified lane on the
+ *                  specified retimer.
+ *
+ * \param[in]       handle is the handle to the I2C device.
+ *
+ * \param[in]       func is the I2C write read function to call.
+ *
+ * \param[in]       dev is the device I2C address.
+ * 
+ * \param[in]       lane is the data lane to query.
+ * 
+ * \param[out]      reg points to caller-allocated storage where this
+ *                  function should place the status for all lanes.
+ *
+ * \return          FM_OK if successful.
+ * \return          FM_FAIL if not successful.
+ *
+ *****************************************************************************/
+static fm_status QueryD6Regs(fm_uintptr                  handle,
+                             fm_utilI2cWriteReadHdnlFunc func,
+                             fm_uint                     dev,
+                             fm_int                      lane,
+                             fm_byte *                   reg)
+{
+    fm_status status;
+    fm_int    i;
+    fm_byte   cnt;
+
+    /* Write the lane number (Rx port index 0-11) */
+    status = RegisterWrite(handle, func, dev, DATA_REG, lane);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PHY,status);
+
+    /* Issue the command code: 0xD6 */
+    status = IssueCommandCode(handle, func, dev, 0xD6);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PHY,status);
+
+    /* Read back the counters */
+    for ( i = 0 ; i < NUM_DIAG_COUNTERS ; i++ )
+    {
+        status = RegisterRead(handle, func, dev, DATA_REG + i, &cnt);
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PHY,status);
+
+        reg[i] = cnt;
+    }
+
+ABORT:
+    return status;
+
+}   /* end QueryD6Regs */
+
+
+
+/*****************************************************************************/
+/* QueryD7Regs
+ * \ingroup platformUtils
+ *
+ * \desc            Query the 0xD7 register for the specified lane on the
+ *                  specified retimer..
+ *
+ * \param[in]       handle is the handle to the I2C device.
+ *
+ * \param[in]       func is the I2C write read function to call.
+ *
+ * \param[in]       dev is the device I2C address.
+ * 
+ * \param[in]       lane is the data lane to query.
+ * 
+ * \param[out]      reg points to caller-allocated storage where this
+ *                  function should place the status for all lanes.
+ *
+ * \return          FM_OK if successful.
+ * \return          FM_FAIL if not successful.
+ *
+ *****************************************************************************/
+static fm_status QueryD7Regs(fm_uintptr                  handle,
+                             fm_utilI2cWriteReadHdnlFunc func,
+                             fm_uint                     dev,
+                             fm_int                      lane,
+                             fm_byte *                   reg)
+{
+    fm_status status;
+    fm_int    i;
+    fm_byte   cnt;
+
+    /* Write the lane number (Rx port index 0-11) */
+    status = RegisterWrite(handle, func, dev, DATA_REG, lane);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PHY,status);
+
+    /* Issue the command code: 0xD7 */
+    status = IssueCommandCode(handle, func, dev, 0xD7);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PHY,status);
+
+    /* Read back the counters */
+    for ( i = 0 ; i < NUM_DIAG_COUNTERS ; i++ )
+    {
+        status = RegisterRead(handle, func, dev, DATA_REG + i, &cnt);
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PHY,status);
+
+        reg[i] = cnt;
+    }
+
+ABORT:
+    return status;
+
+}   /* end QueryD7Regs */
+
+
+
+
+/*****************************************************************************/
+/* QueryEARegs
+ * \ingroup platformUtils
+ *
+ * \desc            Query the 0xEA register for the specified lane on the
+ *                  specified retimer.
+ *
+ * \param[in]       handle is the handle to the I2C device.
+ *
+ * \param[in]       func is the I2C write read function to call.
+ *
+ * \param[in]       dev is the device I2C address.
+ * 
+ * \param[in]       lane is the data lane to query.
+ * 
+ * \param[out]      reg points to caller-allocated storage where this
+ *                  function should place the status for all lanes.
+ *
+ * \return          FM_OK if successful.
+ * \return          FM_FAIL if not successful.
+ *
+ *****************************************************************************/
+static fm_status QueryEARegs(fm_uintptr                  handle,
+                             fm_utilI2cWriteReadHdnlFunc func,
+                             fm_uint                     dev,
+                             fm_int                      lane,
+                             fm_byte *                   reg)
+{
+    fm_status status;
+    fm_int    i;
+    fm_byte   cnt;
+
+    /* Write the lane number (Rx port index 0-11) */
+    status = RegisterWrite(handle, func, dev, DATA_REG, lane);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PHY,status);
+
+    /* Issue the command code: 0xEA */
+    status = IssueCommandCode(handle, func, dev, 0xEA);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PHY,status);
+
+    /* Read back the counters */
+    for ( i = 0 ; i < NUM_DIAG_COUNTERS ; i++ )
+    {
+        status = RegisterRead(handle, func, dev, DATA_REG + i, &cnt);
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PHY,status);
+
+        reg[i] = cnt;
+    }
+
+ABORT:
+    return status;
+
+}   /* end QueryEARegs */
+
+
 /*****************************************************************************
  * Public Functions
  *****************************************************************************/
@@ -1799,6 +1968,105 @@ void fmUtilGN2412DumpAppStatus(fm_uintptr                  handle,
 
 
 /*****************************************************************************/
+/* fmUtilGN2412DumpAppStatusV2
+ * \ingroup platformUtils
+ *
+ * \desc            Dump the application status for all lanes on the specified
+ *                  retimer.
+ *
+ * \param[in]       handle is the handle to the I2C device.
+ *
+ * \param[in]       func is the I2C write read function to call.
+ *
+ * \param[in]       dev is the device I2C address.
+ *
+ * \return          NONE
+ *
+ *****************************************************************************/
+void fmUtilGN2412DumpAppStatusV2(fm_uintptr                  handle,
+                                 fm_utilI2cWriteReadHdnlFunc func,
+                                 fm_uint                     dev)
+{
+    fm_status status;
+    fm_byte   appStatus[FM_GN2412_NUM_LANES];
+
+    FM_LOG_PRINT(" ");
+
+    status = QueryAppStatus(handle, func, dev, appStatus);
+
+    if (status == FM_OK)
+    {
+        FM_LOG_PRINT("%02X_%02X ",appStatus[1],appStatus[7]);
+        FM_LOG_PRINT("%02X_%02X ",appStatus[0],appStatus[6]);
+        FM_LOG_PRINT("%02X_%02X ",appStatus[3],appStatus[9]);
+        FM_LOG_PRINT("%02X_%02X ",appStatus[2],appStatus[8]);
+        FM_LOG_PRINT("%02X_%02X ",appStatus[5],appStatus[11]);
+        FM_LOG_PRINT("%02X_%02X ",appStatus[4],appStatus[10]);
+    }
+    else
+    {
+        FM_LOG_PRINT("Error reading the application status\n");
+    }
+
+}   /* end fmUtilGN2412DumpAppStatusV2 */
+
+
+
+/*****************************************************************************/
+/* fmUtilGN2412DumpMissionCount
+ * \ingroup platformUtils
+ *
+ * \desc            Dump the mission count registers for all lanes on the
+ *                  specified retimer.
+ *
+ * \param[in]       handle is the handle to the I2C device.
+ *
+ * \param[in]       func is the I2C write read function to call.
+ *
+ * \param[in]       dev is the device I2C address.
+ *
+ * \return          NONE
+ *
+ *****************************************************************************/
+void fmUtilGN2412DumpMissionCount(fm_uintptr                  handle,
+                                  fm_utilI2cWriteReadHdnlFunc func,
+                                  fm_uint                     dev)
+{
+    fm_byte   count_i;
+    fm_byte   count_e;
+
+    FM_LOG_PRINT(" ");
+
+    RegisterRead(handle, func, dev, 0x8f + 16 * 1, &count_i);
+    RegisterRead(handle, func, dev, 0x8f + 16 * 7, &count_e);
+    FM_LOG_PRINT("%02X %02X ",count_i, count_e);
+
+    RegisterRead(handle, func, dev, 0x8f + 16 * 0, &count_i);
+    RegisterRead(handle, func, dev, 0x8f + 16 * 6, &count_e);
+    FM_LOG_PRINT("%02X %02X ",count_i, count_e);
+
+    RegisterRead(handle, func, dev, 0x8f + 16 * 3, &count_i);
+    RegisterRead(handle, func, dev, 0x8f + 16 * 9, &count_e);
+    FM_LOG_PRINT("%02X %02X ",count_i, count_e);
+
+    RegisterRead(handle, func, dev, 0x8f + 16 * 2, &count_i);
+    RegisterRead(handle, func, dev, 0x8f + 16 * 8, &count_e);
+    FM_LOG_PRINT("%02X %02X ",count_i, count_e);
+
+    RegisterRead(handle, func, dev, 0x8f + 16 * 5, &count_i);
+    RegisterRead(handle, func, dev, 0x8f + 16 * 11, &count_e);
+    FM_LOG_PRINT("%02X %02X ",count_i, count_e);
+
+    RegisterRead(handle, func, dev, 0x8f + 16 * 4, &count_i);
+    RegisterRead(handle, func, dev, 0x8f + 16 * 10, &count_e);
+    FM_LOG_PRINT("%02X %02X ",count_i, count_e);
+
+}   /* end fmUtilGN2412DumpMissionCount */
+
+
+
+
+/*****************************************************************************/
 /* fmUtilGN2412DumpAppRestartDiagCnt
  * \ingroup platformUtils
  *
@@ -1851,11 +2119,92 @@ void fmUtilGN2412DumpAppRestartDiagCnt(fm_uintptr                  handle,
         }
         FM_LOG_PRINT("\n");
     }
-    FM_LOG_PRINT("\n");
-    FM_LOG_PRINT("\n");
-
+    FM_LOG_PRINT("\n\n");
 
 }   /* end fmUtilGN2412DumpAppRestartDiagCnt */
+
+
+
+
+/*****************************************************************************/
+/* fmUtilGN2412DumpAppRestartDiagCntV2
+ * \ingroup platformUtils
+ *
+ * \desc            Dump the application restart diagnostic counts for the
+ *                  specified retimer.
+ *
+ * \param[in]       handle is the handle to the I2C device.
+ *
+ * \param[in]       func is the I2C write read function to call.
+ *
+ * \param[in]       dev is the device I2C address.
+ *
+ * \return          NONE
+ *
+ *****************************************************************************/
+void fmUtilGN2412DumpAppRestartDiagCntV2(fm_uintptr                  handle,
+                                         fm_utilI2cWriteReadHdnlFunc func,
+                                         fm_uint                     dev)
+{
+    fm_status status;
+    fm_byte   counters1C[FM_GN2412_NUM_LANES][NUM_DIAG_COUNTERS];
+    fm_byte   countersD6[FM_GN2412_NUM_LANES][NUM_DIAG_COUNTERS];
+    fm_byte   countersD7[FM_GN2412_NUM_LANES][NUM_DIAG_COUNTERS];
+    fm_byte   countersEA[FM_GN2412_NUM_LANES][NUM_DIAG_COUNTERS];
+    fm_int    lane;
+    fm_int    i;
+
+
+    FM_LOG_PRINT("Application Restart Diagnostic Counts 0x1C, 0xD6, 0xD7, 0xEA (dev 0x%2x)\n"
+                 "========================================================================\n",
+                 dev);
+
+    for ( lane = 0 ; lane < FM_GN2412_NUM_LANES ; lane++ )
+    {
+        status = QueryAppRestartDiagCounts(handle,
+                                           func, 
+                                           dev, 
+                                           lane, 
+                                           &counters1C[lane][0]);
+        status |= QueryD6Regs(handle,
+                                func, 
+                                dev, 
+                                lane, 
+                                &countersD6[lane][0]);
+        status |= QueryD7Regs(handle,
+                                func, 
+                                dev, 
+                                lane, 
+                                &countersD7[lane][0]);
+        status |= QueryEARegs(handle,
+                                func, 
+                                dev, 
+                                lane, 
+                                &countersEA[lane][0]);
+        if ( status != FM_OK )
+        {
+            FM_LOG_PRINT("Error reading the restart diagnostic counters\n");
+            return;
+        }
+    }
+
+    for ( i = 0 ; i < NUM_DIAG_COUNTERS ; i++ )
+    {
+        FM_LOG_PRINT("DATA_%02d ", i);
+        for ( lane = 0 ; lane < FM_GN2412_NUM_LANES ; lane++ )
+        {
+            FM_LOG_PRINT("%2.2x.%2.2x.%2.2x.%2.2x ",
+                         counters1C[lane][i],
+                         countersD6[lane][i],
+                         countersD7[lane][i],
+                         countersEA[lane][i]);
+        }
+        FM_LOG_PRINT("\n");
+    }
+    FM_LOG_PRINT("\n\n");
+
+}   /* end fmUtilGN2412DumpAppRestartDiagCntV2 */
+
 
 
 

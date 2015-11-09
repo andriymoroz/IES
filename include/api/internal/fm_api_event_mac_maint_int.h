@@ -29,7 +29,7 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
+ *****************************************************************************/
 
 #ifndef __FM_FM_API_EVENT_MAC_MAINT_INT_H
 #define __FM_FM_API_EVENT_MAC_MAINT_INT_H
@@ -53,6 +53,13 @@
 #define VID2_ONLY_FLUSH       FM_MAX_VLAN
 
 #define REMID_ONLY_FLUSH      8192     /* 1 bit remoteMac + 12 bits remoteId */
+
+/* Macro to determine source of MA Table update */
+#define FM_IS_MAC_UPDATE_GENERATED_BY_API(macEvent) \
+    ( (macEvent->reason == FM_MAC_REASON_API_LEARNED) || \
+      (macEvent->reason == FM_MAC_REASON_API_LEARN_CHANGED) || \
+      (macEvent->reason == FM_MAC_REASON_API_LEARN_REPLACED) || \
+      (macEvent->reason == FM_MAC_REASON_API_AGED) )
 
 /**************************************************
  * The following macro can be overridden to call
@@ -595,103 +602,106 @@ typedef struct _fm_addrMaintWorkList
 
 /**************************************************
  * These values are for the maintFlags field
- * of the fm_mac_table_work_list structure.
+ * of the fm_mac_table_work_list structure. 
  **************************************************/
+typedef enum
+{
+    /* These flags may be set externally. */
 
-/* These flags may be set externally. */
+    /* The MA Table table update FIFO overflowed. Set by
+     * FM_UPD_UPDATE_OVERFLOW. (FM4000 only) */
+    FM_MAC_MAINT_HANDLE_OVERFLOW = (1 << 0),
 
-/* The MA Table table update FIFO overflowed. Set by
- * FM_UPD_UPDATE_OVERFLOW. (FM4000 only) */
-#define FM_MAC_MAINT_HANDLE_OVERFLOW    (1 << 0)
+    /* Update all MA Table entries for a change to ACLs.
+     * Set by FM_UPD_ACL_UPDATE. (FM2000 only),
+     * Uses portAclUpdateArray. */
+    FM_MAC_MAINT_UPDATE_ACL = (1 << 1),
 
-/* Update all MA Table entries for a change to ACLs.
- * Set by FM_UPD_ACL_UPDATE. (FM2000 only)
- * Uses portAclUpdateArray. */
-#define FM_MAC_MAINT_UPDATE_ACL         (1 << 1)
+    /* Flush all MA Table entries for a particular port.
+     * Set by FM_UPD_FLUSH_PORT_ADDRESSES.
+     * Uses portAddressFlushArray. */
+    FM_MAC_MAINT_FLUSH_PORT = (1 << 2),
 
-/* Flush all MA Table entries for a particular port.
- * Set by FM_UPD_FLUSH_PORT_ADDRESSES.
- * Uses portAddressFlushArray. */
-#define FM_MAC_MAINT_FLUSH_PORT         (1 << 2)
+    /* Flush all dynamic MA Table entries. Set by
+     * FM_UPD_FLUSH_DYN_ADDRESSES. */
+    FM_MAC_MAINT_FLUSH_DYN_ADDR = (1 << 3),
 
-/* Flush all dynamic MA Table entries. Set by
- * FM_UPD_FLUSH_DYN_ADDRESSES. */
-#define FM_MAC_MAINT_FLUSH_DYN_ADDR     (1 << 3)
+    /* Flush all MA Table entries for a particular vlan.
+     * Set by FM_UPD_FLUSH_VLAN_ADDRESSES.
+     Uses vlanAddressFlushArray. */
+    FM_MAC_MAINT_FLUSH_VLAN = (1 << 4),
 
-/* Flush all MA Table entries for a particular vlan.
- * Set by FM_UPD_FLUSH_VLAN_ADDRESSES.
- Uses vlanAddressFlushArray. */
-#define FM_MAC_MAINT_FLUSH_VLAN         (1 << 4)
+    /* Flush all MA Table entries for a given (Port, Vlan) combination.
+     * Set by FM_UPD_FLUSH_PORT_VLAN_ADDRESSES.
+     * Uses vlanPortAddressFlushArray */
+    FM_MAC_MAINT_FLUSH_VLAN_PORT = (1 << 5),
 
-/* Flush all MA Table entries for a given (Port, Vlan) combination.
- * Set by FM_UPD_FLUSH_PORT_VLAN_ADDRESSES.
- * Uses vlanPortAddressFlushArray */
-#define FM_MAC_MAINT_FLUSH_VLAN_PORT    (1 << 5)
+    /* Read and process the MA table update (TCN) FIFO.
+     * Set by FM_UPD_SERVICE_MAC_FIFO. */
+    FM_MAC_MAINT_SERVICE_FIFO = (1 << 6),
 
-/* Read and process the MA table update (TCN) FIFO.
- * Set by FM_UPD_SERVICE_MAC_FIFO. */
-#define FM_MAC_MAINT_SERVICE_FIFO       (1 << 6)
+    /* Scan the hardware MA Table looking for inconsistencies
+     * with the software cache. Set by FM_UPD_SYNC_CACHE. */
+    FM_MAC_MAINT_SYNC_CACHE = (1 << 7),
 
-/* Scan the hardware MA Table looking for inconsistencies
- * with the software cache. Set by FM_UPD_SYNC_CACHE. */
-#define FM_MAC_MAINT_SYNC_CACHE         (1 << 7)
+    /* Service the purge request queue. Set by FM_UPD_HANDLE_PURGE.
+     * (FM4000, FM6000) */
+    FM_MAC_MAINT_HANDLE_PURGE = (1 << 8),
 
-/* Service the purge request queue. Set by FM_UPD_HANDLE_PURGE.
- * (FM4000, FM6000) */
-#define FM_MAC_MAINT_HANDLE_PURGE       (1 << 8)
+    /* Handle a hardware purge complete condition. Set by
+     * FM_UPD_PURGE_COMPLETE. (FM6000 only) */
+    FM_MAC_MAINT_PURGE_COMPLETE = (1 << 9),
 
-/* Handle a hardware purge complete condition. Set by
- * FM_UPD_PURGE_COMPLETE. (FM6000 only) */
-#define FM_MAC_MAINT_PURGE_COMPLETE     (1 << 9)
+    /* Scan the hardware MAC Table looking for dynamic entries with
+     * remote glorts that need to be reset to the young state.
+     * Set by FM_UPD_REFRESH_REMOTE. */
+    FM_MAC_MAINT_REFRESH_REMOTE = (1 << 10),
 
-/* Scan the hardware MAC Table looking for dynamic entries with
- * remote glorts that need to be reset to the young state.
- * Set by FM_UPD_REFRESH_REMOTE. */
-#define FM_MAC_MAINT_REFRESH_REMOTE     (1 << 10)
+    /* These flags may be set internally. */
 
-/* These flags may be set internally. */
+    /* Rescan the cache (issue another FM_UPD_SYNC_CACHE) at the
+     * end of the current pass. */
+    FM_MAC_MAINT_RESCAN_CACHE = (1 << 16),
 
-/* Rescan the cache (issue another FM_UPD_SYNC_CACHE) at the
- * end of the current pass. */
-#define FM_MAC_MAINT_RESCAN_CACHE       (1 << 16)
+    /* Rescan the TCN FIFO (issue another FM_UPD_SERVICE_MAC_FIFO),
+     * at the end of the current pass. */
+    FM_MAC_MAINT_RESCAN_FIFO = (1 << 17),
 
-/* Rescan the TCN FIFO (issue another FM_UPD_SERVICE_MAC_FIFO)
- * at the end of the current pass. */
-#define FM_MAC_MAINT_RESCAN_FIFO        (1 << 17)
+    /* Rescan the current row in the MA Table to reconcile it with
+     * the software cache. Used to unwind from an error. (FM4000 only) */
+    FM_MAC_MAINT_RESCAN_ROW = (1 << 18),
 
-/* Rescan the current row in the MA Table to reconcile it with
- * the software cache. Used to unwind from an error. (FM4000 only) */
-#define FM_MAC_MAINT_RESCAN_ROW         (1 << 18)
+    /* Suspend the table scan if an MA Table purge has been initiated.
+     * A new scan will be kicked off when the purge completes.
+     * (FM4000 only) */
+    FM_MAC_MAINT_SUSPEND_SCAN = (1 << 19),
 
-/* Suspend the table scan if an MA Table purge has been initiated.
- * A new scan will be kicked off when the purge completes.
- * (FM4000 only) */
-#define FM_MAC_MAINT_SUSPEND_SCAN       (1 << 19)
+    /* These flags are the flush requests. */
+    FM_MAC_MAINT_FLUSH_REQUEST =
+        (FM_MAC_MAINT_FLUSH_DYN_ADDR    |
+         FM_MAC_MAINT_FLUSH_PORT        |
+         FM_MAC_MAINT_FLUSH_VLAN        |
+         FM_MAC_MAINT_FLUSH_VLAN_PORT),
 
-/* These flags are the flush requests. */
-#define FM_MAC_MAINT_FLUSH_REQUEST      \
-    (FM_MAC_MAINT_FLUSH_DYN_ADDR    |   \
-     FM_MAC_MAINT_FLUSH_PORT        |   \
-     FM_MAC_MAINT_FLUSH_VLAN        |   \
-     FM_MAC_MAINT_FLUSH_VLAN_PORT)
+    /* These flags request operations that require a full table scan. */
+    FM_MAC_MAINT_SCAN_NEEDED =
+        (FM_MAC_MAINT_FLUSH_DYN_ADDR    |
+         FM_MAC_MAINT_FLUSH_PORT        |
+         FM_MAC_MAINT_FLUSH_VLAN        |
+         FM_MAC_MAINT_FLUSH_VLAN_PORT   |
+         FM_MAC_MAINT_HANDLE_OVERFLOW   |
+         FM_MAC_MAINT_SYNC_CACHE        |
+         FM_MAC_MAINT_UPDATE_ACL        |
+         FM_MAC_MAINT_REFRESH_REMOTE),
 
-/* These flags request operations that require a full table scan. */
-#define FM_MAC_MAINT_SCAN_NEEDED        \
-    (FM_MAC_MAINT_FLUSH_DYN_ADDR    |   \
-     FM_MAC_MAINT_FLUSH_PORT        |   \
-     FM_MAC_MAINT_FLUSH_VLAN        |   \
-     FM_MAC_MAINT_FLUSH_VLAN_PORT   |   \
-     FM_MAC_MAINT_HANDLE_OVERFLOW   |   \
-     FM_MAC_MAINT_SYNC_CACHE        |   \
-     FM_MAC_MAINT_UPDATE_ACL        |   \
-     FM_MAC_MAINT_REFRESH_REMOTE)
+    /* These flags may be set internally to request further processing. */
+    FM_MAC_MAINT_INTERNAL_REQUEST =
+        (FM_MAC_MAINT_RESCAN_CACHE      |
+         FM_MAC_MAINT_RESCAN_FIFO       |
+         FM_MAC_MAINT_RESCAN_ROW        |
+         FM_MAC_MAINT_SUSPEND_SCAN),
 
-/* These flags may be set internally to request further processing. */
-#define FM_MAC_MAINT_INTERNAL_REQUEST   \
-    (FM_MAC_MAINT_RESCAN_CACHE      |   \
-     FM_MAC_MAINT_RESCAN_FIFO       |   \
-     FM_MAC_MAINT_RESCAN_ROW        |   \
-     FM_MAC_MAINT_SUSPEND_SCAN)
+} fm_macMaintFlag;
 
 
 /**************************************************

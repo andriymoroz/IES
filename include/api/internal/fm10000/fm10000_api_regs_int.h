@@ -519,6 +519,12 @@ typedef enum
 #define FM10000_AN_73_NEXT_PAGE_RX_ENTRIES_0     4
 #define FM10000_AN_73_NEXT_PAGE_RX_ENTRIES_1     9
 
+#define FM10000_LINK_RULES(index1, index0)       ((0x000400) * ((index1) - 0) + (0x000080) * ((index0) - 0) + (0x00000C) + (FM10000_EPL_BASE))
+                                                            /* 0x0E000C FM10000_EPL_BASE */
+#define FM10000_LINK_RULES_WIDTH                 1
+#define FM10000_LINK_RULES_ENTRIES_0             4
+#define FM10000_LINK_RULES_ENTRIES_1             9
+
 #define FM10000_MAC_CFG(index1, index0, word)    ((0x000400) * ((index1) - 0) + (0x000080) * ((index0) - 0) + (word) + (0x000010) + (FM10000_EPL_BASE))
                                                             /* 0x0E0010 FM10000_EPL_BASE */
 #define FM10000_MAC_CFG_WIDTH                    7
@@ -2116,9 +2122,6 @@ typedef enum
 #define FM10000_SOFT_RESET_l_PCIeReset           4
 #define FM10000_SOFT_RESET_h_PCIeReset           12
 #define FM10000_SOFT_RESET_s_PCIeReset           1
-#define FM10000_SOFT_RESET_l_PCIeActive          13
-#define FM10000_SOFT_RESET_h_PCIeActive          21
-#define FM10000_SOFT_RESET_s_PCIeActive          1
 
 #define FM10000_DEVICE_CFG_b_PCIeMode_0          0
 #define FM10000_DEVICE_CFG_b_PCIeMode_1          1
@@ -2495,6 +2498,9 @@ typedef enum
 
 #define FM10000_CHIP_VERSION_l_Version           0
 #define FM10000_CHIP_VERSION_h_Version           6
+
+#define FM10000_FUSE_DATA_0_l_Sku                11
+#define FM10000_FUSE_DATA_0_h_Sku                15
 
 #define FM10000_BIST_CTRL_b_BistRun_PCIE_0       0
 #define FM10000_BIST_CTRL_b_BistRun_PCIE_1       1
@@ -2957,6 +2963,15 @@ typedef enum
 
 #define FM10000_AN_73_NEXT_PAGE_RX_l_MU          0
 #define FM10000_AN_73_NEXT_PAGE_RX_h_MU          10
+
+#define FM10000_LINK_RULES_l_FaultTimeScaleUp    0
+#define FM10000_LINK_RULES_h_FaultTimeScaleUp    3
+#define FM10000_LINK_RULES_l_FaultTicksUp        4
+#define FM10000_LINK_RULES_h_FaultTicksUp        8
+#define FM10000_LINK_RULES_l_FaultTimeScaleDown  9
+#define FM10000_LINK_RULES_h_FaultTimeScaleDown  12
+#define FM10000_LINK_RULES_l_FaultTicksDown      13
+#define FM10000_LINK_RULES_h_FaultTicksDown      17
 
 #define FM10000_MAC_CFG_l_TxAntiBubbleWatermark  0
 #define FM10000_MAC_CFG_h_TxAntiBubbleWatermark  5

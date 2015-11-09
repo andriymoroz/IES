@@ -5,7 +5,7 @@
  * Creation Date:   September 11, 2014.
  * Description:     Parity error repair task.
  *
- * Copyright (c) 2014, Intel Corporation
+ * Copyright (c) 2014 - 2015, Intel Corporation
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -29,7 +29,7 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
+ *****************************************************************************/
 
 #include <fm_sdk_fm10000_int.h>
 #include <fm_sdk_int.h>
@@ -100,16 +100,7 @@ fm_status fm10000RepairArpTable(fm_int sw)
 
 
 
-fm_status fm10000RepairArpUsed(fm_int sw)
-{
 
-    FM_LOG_ERROR(FM_LOG_CAT_PARITY,
-                 "UNIMPLEMENTED: fm10000RepairArpUsed(%d)\n",
-                 sw);
-
-    return FM_ERR_UNSUPPORTED;
-
-}   /* end fm10000RepairArpUsed */
 
 
 
@@ -497,7 +488,9 @@ static fm_status RepairFfuSliceTcam(fm_int sw, fm10000_repairData * auxData)
 
             crmId = FM10000_FFU_SLICE_CRM_ID(sliceId);
 
-            err = NotifyCRMEvent(sw, crmId, FM10000_CRM_EVENT_REPAIR_IND);
+            err = fm10000NotifyCRMEvent(sw,
+                                        crmId,
+                                        FM10000_CRM_EVENT_REPAIR_IND);
             FM_ERR_COMBINE(retStatus, err);
         }
     }
@@ -561,6 +554,7 @@ static fm_status RepairGlortCam(fm_int sw)
     fm_status          status;
     fm_status          err;
     fm10000_switch *   switchExt;
+
     FM_LOG_ENTRY(FM_LOG_CAT_PARITY, "sw=%d\n", sw);
 
     switchExt = GET_SWITCH_EXT(sw);
@@ -579,7 +573,9 @@ static fm_status RepairGlortCam(fm_int sw)
                               0,
                               FM10000_GLORT_CAM_ENTRIES);
 
-    err = NotifyCRMEvent(sw, FM10000_GLORT_CAM_CRM_ID, FM10000_CRM_EVENT_REPAIR_IND);
+    err = fm10000NotifyCRMEvent(sw,
+                                FM10000_GLORT_CAM_CRM_ID,
+                                FM10000_CRM_EVENT_REPAIR_IND);
     FM_ERR_COMBINE(status, err);
 
 #else
@@ -1215,12 +1211,11 @@ static fm_status RepairModStatsBankByte0(fm_int sw, fm_bool isUerr)
 
     if (!isUerr)
     {
-        /* TODO: monitor and notify (in decoder?) */
         status = RefreshRegisterTable(sw, &statsBankByte0);
     }
     else
     {
-        /* TODO: scan and recover */
+        /* scan and recover */
         status = FM_ERR_UNSUPPORTED;
     }
 
@@ -1262,12 +1257,11 @@ static fm_status RepairModStatsBankByte1(fm_int sw, fm_bool isUerr)
 
     if (!isUerr)
     {
-        /* TODO: monitor and notify (in decoder?) */
         status = RefreshRegisterTable(sw, &statsBankByte1);
     }
     else
     {
-        /* TODO: scan and recover */
+        /* scan and recover */
         status = FM_ERR_UNSUPPORTED;
     }
 
@@ -1309,12 +1303,11 @@ static fm_status RepairModStatsBankFrame0(fm_int sw, fm_bool isUerr)
 
     if (!isUerr)
     {
-        /* TODO: monitor and notify (in decoder?) */
         status = RefreshRegisterTable(sw, &statsBankFrame0);
     }
     else
     {
-        /* TODO: scan and recover */
+        /* scan and recover */
         status = FM_ERR_UNSUPPORTED;
     }
 
@@ -1352,16 +1345,18 @@ static fm_status RepairModStatsBankFrame1(fm_int sw, fm_bool isUerr)
         MOD_STATS_QUANTUM
     };
 
-    FM_LOG_ENTRY(FM_LOG_CAT_PARITY, "sw=%d\n", sw);
+    FM_LOG_ENTRY(FM_LOG_CAT_PARITY,
+                 "sw=%d %s\n",
+                 sw,
+                 (isUerr) ? "UERR" : "CERR");
 
     if (!isUerr)
     {
-        /* TODO: monitor and notify (in decoder?) */
         status = RefreshRegisterTable(sw, &statsBankFrame1);
     }
     else
     {
-        /* TODO: scan and recover */
+        /* scan and recover */
         status = FM_ERR_UNSUPPORTED;
     }
 
@@ -1503,6 +1498,35 @@ static fm_status RepairModVtagVid1Map(fm_int sw)
 
 }   /* end RepairModVtagVid1Map */
 
+
+
+
+/*****************************************************************************/
+/** RepairSchedDrrCfg
+ * \ingroup intParity
+ *
+ * \desc            Repairs FM10000_SCHED_MONITOR_DRR_CFG_PERPORT.
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \return          FM_OK if successful.
+ *
+ *****************************************************************************/
+static fm_status RepairSchedDrrCfg(fm_int sw)
+{
+    fm_status   status;
+
+    FM_LOG_ENTRY(FM_LOG_CAT_PARITY, "sw=%d\n", sw);
+
+    status = RestoreFromCache(sw,
+                              "FM10000_SCHED_MONITOR_DRR_CFG_PERPORT",
+                              &fm10000CacheSchedMonitorDrrCfg,
+                              0,
+                              FM10000_SCHED_MONITOR_DRR_CFG_PERPORT_ENTRIES);
+
+    FM_LOG_EXIT(FM_LOG_CAT_PARITY, status);
+
+}
 
 
 
@@ -1834,10 +1858,12 @@ static fm_status PerformRepair(fm_int               sw,
          * SCHEDULER memories.
          ******************************************/
 
+        case FM_REPAIR_SCHED_DRR_CFG:
+            err = RepairSchedDrrCfg(sw);
+            break;
 #if 0
         case FM_REPAIR_MCAST_DEST_TABLE:
         case FM_REPAIR_MCAST_LEN_TABLE:
-        case FM_REPAIR_SCHED_DRR_CFG:
         case FM_REPAIR_SCHED_ESCHED_CFG_1:
         case FM_REPAIR_SCHED_ESCHED_CFG_2:
         case FM_REPAIR_SCHED_ESCHED_CFG_3:

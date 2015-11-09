@@ -349,7 +349,8 @@ static fm_bool ReadLineFromNvmLtCfg(fm_uint32 *switchMem,
     
     FM_LOG_EXIT_CUSTOM(FM_LOG_CAT_PLATFORM, FALSE, "FALSE\n");
 
-}   /* ReadLineFromNvmLtCfg */
+}   /* end ReadLineFromNvmLtCfg */
+
 
 
 
@@ -414,7 +415,7 @@ static fm_status ReadTlvFromNvmLtCfg(fm_uint32 *switchMem,
     FM_LOG_EXIT(FM_LOG_CAT_PLATFORM, err);
 
 
-}   /* ReadTlvFromNvmLtCfg */
+}   /* end ReadTlvFromNvmLtCfg */
 
 
 
@@ -481,7 +482,12 @@ fm_status fmPlatformLoadPropertiesFromNVM(fm_text devName)
     disabledBsmInterrupts    = FALSE;
 
     err = fmPlatformMmapUioDevice(devName, &fd, &memmapAddr, &size);
-    FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_PLATFORM, err);
+    if (err)
+    {
+        FM_LOG_FATAL(FM_LOG_CAT_PLATFORM,
+                     "Unable to map uio device to read NVM\n");
+        FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_PLATFORM, err);
+    }
 
     switchMem = (fm_uint32*) memmapAddr;
 
@@ -577,7 +583,7 @@ fm_status fmPlatformLoadPropertiesFromNVM(fm_text devName)
                                        sizeof(tlv));
             FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PLATFORM, err);
 
-            err = fmPlatformCfgParseTlv(tlv);
+            err = fmPlatformLoadTlv(tlv);
             if (err != FM_OK)
             {
                 FM_LOG_ERROR(FM_LOG_CAT_PLATFORM,

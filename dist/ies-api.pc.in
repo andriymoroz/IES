@@ -6,5 +6,5 @@ includedir=@includedir@
 Name: ies-api
 Description: Intel Ethernet Switch API
 Version: @IES_VERSION@
-Libs: -L${libdir} -lFocalpointSDK -lLTStdPlatform -ldl
+Libs: -L${libdir} -lFocalpointSDK -ldl -lpthread
 Cflags: -I${includedir} -I${includedir}/alos -I${includedir}/alos/linux -I${includedir}/std/intel -I${includedir}/common -I${includedir}/platforms -I${includedir}/platforms/libertyTrail

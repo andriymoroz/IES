@@ -29,7 +29,7 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
+ *****************************************************************************/
 
 #ifndef __FM_FM_API_SWITCH_INT_H
 #define __FM_FM_API_SWITCH_INT_H
@@ -330,15 +330,20 @@ struct _fm_switch
      * remote glorts in the hardware MAC address table. */
     fm_timestamp                macTableLastRemoteRefresh;
 
-    /* Cached value of the FM_AAK_API_MA_EVENT_ON_STATIC_ADDR attribute.
+    /* Cached value of the FM_AAK_API_MA_EVENT_ON_STATIC_ADDR property.
      * Specifies whether the API should generate a LEARNED or AGED event
      * when the application adds or deletes a static MA table entry. */
     fm_bool                     generateEventOnStaticAddr;
 
-    /* Cached value of the FM_AAK_API_MA_EVENT_ON_DYNAMIC_ADDR attribute.
+    /* Cached value of the FM_AAK_API_MA_EVENT_ON_DYNAMIC_ADDR property.
      * Specifies whether the API should generate a LEARNED or AGED event
      * when the application adds or deletes a dynamic MA table entry. */
     fm_bool                     generateEventOnDynamicAddr;
+
+    /* Cached value of the FM_AAK_API_MA_EVENT_ON_ADDR_CHANGE property.
+     * Specifies whether the API should generate a LEARNED or AGED event
+     * when the application modifies an MA table entry. */
+    fm_bool                     generateEventOnAddrChange;
 
     /* Number of supported VLANs */
     fm_int                      vlanTableSize;
@@ -346,6 +351,9 @@ struct _fm_switch
 
     /* Mirror Table Size */
     fm_int                      mirrorTableSize;
+
+    /* Maximum number of sFlows */
+    fm_int                      maxSflows;
 
     /* Link Aggregation limits */
     fm_int                      maxPhysicalLags;
@@ -458,6 +466,9 @@ struct _fm_switch
      * Current Status and Configuration
      **************************************************/
 
+    /* frame handler clock */
+    fm_int                      fhClock;
+
     /* switch state */
     fm_switchState              state;
 
@@ -466,6 +477,7 @@ struct _fm_switch
 
     /* pep number used for MSI interrupt */
     fm_int                      msiPep;
+    fm_bool                     msiEnabled;
 
     /* Glort Range */
     fm_glortRange               glortRange;
@@ -647,7 +659,6 @@ struct _fm_switch
     /**************************************************
      * Parity error management.
      **************************************************/
-    fm_paritySweeperConfig      paritySweeperCfg;
     fm_bool                     parityRepairEnabled;
 
     /**************************************************
@@ -1718,7 +1729,7 @@ struct _fm_switch
     fm_status   (*DbgDumpDeviceMemoryStats)(int sw);
     fm_status   (*DbgDumpGlortTable)(fm_int sw);
     fm_status   (*DbgDumpGlortDestTable)(fm_int sw, fm_bool raw);
-    void        (*DbgDumpMulticastTables)(fm_int sw);
+    fm_status   (*DbgDumpMulticastTables)(fm_int sw);
     fm_status   (*DbgDumpLBG)(fm_int sw, fm_int lbg);
     fm_status   (*DbgDumpMemoryUsage)(fm_int sw);
     fm_status   (*DbgDumpMemoryUsageV2)(fm_int  sw, 
@@ -1845,6 +1856,14 @@ struct _fm_switch
     fm_status   (*DbgSetSerDesRxPattern)(fm_int  sw,
                                          fm_int  serDes,
                                          fm_text pattern);
+    fm_status   (*DbgSetSerDesDfeParam)(fm_int     sw,
+                                        fm_int     serDes,
+                                        fm_uint32  paramSelector,
+                                        fm_uint32  paramValue);
+    fm_status   (*DbgGetSerDesDfeParam)(fm_int     sw,
+                                        fm_int     serDes,
+                                        fm_uint32  paramSelector,
+                                        fm_uint32 *pParamValue);
     fm_status   (*DbgSetSerDesPolarity)(fm_int  sw,
                                         fm_int  serDes,
                                         fm_text polStr);
@@ -1973,6 +1992,13 @@ struct _fm_switch
                                        fm_int           mac,
                                        fm_bool          linkUp,
                                        fm_eventPriority priority);
+
+    fm_status   (*SendLinkUpDownEventV2)(fm_int           sw,
+                                         fm_int           physPort,
+                                         fm_int           mac,
+                                         fm_bool          linkUp,
+                                         fm_eventPriority priority,
+                                         fm_bool *        pAddedFreeEvent);
 
     void        (*DebounceLinkStates)(fm_int     sw,
                                       fm_thread *thread,
@@ -2200,7 +2226,11 @@ struct _fm_switch
                                             fm_vnAddress *     addrMask,
                                             fm_int *           tunnelId);
     fm_status  (*ConfigureVN)(fm_int sw, fm_vnConfiguration *config);
+    fm_status  (*ConfigureVNDefaultGpe)(fm_int sw, fm_vnGpeCfg *defaultGpe);
+    fm_status  (*ConfigureVNDefaultNsh)(fm_int sw, fm_vnNshCfg *defaultNsh);
     fm_status  (*GetVNConfiguration)(fm_int sw, fm_vnConfiguration *config);
+    fm_status  (*GetVNDefaultGpe)(fm_int sw, fm_vnGpeCfg *defaultGpe);
+    fm_status  (*GetVNDefaultNsh)(fm_int sw, fm_vnNshCfg *defaultGpe);
     fm_status  (*FreeVNResources)(fm_int sw);
     fm_status  (*AddVNLocalPort)(fm_int             sw,
                                  fm_virtualNetwork *vn,
@@ -2751,8 +2781,8 @@ struct _fm_switch
      *              on.
      *
      *  \return     FM_OK if successful.   */
-    fm_status  (*ReadScatterGather)(fm_int sw,
-                                    fm_int nEntries,
+    fm_status  (*ReadScatterGather)(fm_int                     sw,
+                                    fm_int                     nEntries,
                                     fm_scatterGatherListEntry *sgList);
     
     /** \desc       Optional: Provides a performance enhancement for devices 
@@ -2768,8 +2798,8 @@ struct _fm_switch
      *              on.
      *
      *  \return     FM_OK if successful.   */
-    fm_status  (*WriteScatterGather)(fm_int sw,
-                                     fm_int nEntries,
+    fm_status  (*WriteScatterGather)(fm_int                     sw,
+                                     fm_int                     nEntries,
                                      fm_scatterGatherListEntry *sgList);
 
     /* Optional: Write a value to a single 32-bit wide register via I2C for
@@ -2834,22 +2864,22 @@ struct _fm_switch
      * following pointers. Only used by the caching 
      * module.
      **************************************************/
-    fm_status  (*ReadUncacheUINT32)(fm_int sw,
-                                    fm_uint reg,
+    fm_status  (*ReadUncacheUINT32)(fm_int     sw,
+                                    fm_uint    reg,
                                     fm_uint32 *value);
 
-    fm_status  (*ReadUncacheUINT32Mult)(fm_int sw,
-                                        fm_uint reg,
-                                        fm_int count,
+    fm_status  (*ReadUncacheUINT32Mult)(fm_int     sw,
+                                        fm_uint    reg,
+                                        fm_int     count,
                                         fm_uint32 *value);
 
-    fm_status  (*ReadUncacheUINT64)(fm_int sw,
-                                    fm_uint reg,
+    fm_status  (*ReadUncacheUINT64)(fm_int     sw,
+                                    fm_uint    reg,
                                     fm_uint64 *value);
 
-    fm_status  (*ReadUncacheUINT64Mult)(fm_int sw,
-                                        fm_uint reg,
-                                        fm_int count,
+    fm_status  (*ReadUncacheUINT64Mult)(fm_int     sw,
+                                        fm_uint    reg,
+                                        fm_int     count,
                                         fm_uint64 *ptr);
                
     /* pointer to chipset-specific Cached Register List */
@@ -2876,48 +2906,48 @@ struct _fm_switch
      **************************************************/
 
     fm_status  (*CreateSFlow)(fm_int       sw, 
-                              fm_int       sFlowId, 
+                              fm_int       sFlowId,
                               fm_sFlowType sFlowType);
     fm_status  (*DeleteSFlow)(fm_int sw, fm_int sFlowId);
-    fm_status  (*AddSFlowPort)(fm_int sw, 
-                               fm_int sFlowId, 
+    fm_status  (*AddSFlowPort)(fm_int sw,
+                               fm_int sFlowId,
                                fm_int port);
-    fm_status  (*DeleteSFlowPort)(fm_int sw, 
-                                  fm_int sFlowId, 
+    fm_status  (*DeleteSFlowPort)(fm_int sw,
+                                  fm_int sFlowId,
                                   fm_int port);
 
-    fm_status  (*GetSFlowPortFirst)(fm_int   sw, 
-                                    fm_int   sFlow,
-                                    fm_int * firstPort);
+    fm_status  (*GetSFlowPortFirst)(fm_int  sw,
+                                    fm_int  sFlow,
+                                    fm_int *firstPort);
 
-    fm_status  (*GetSFlowPortNext)(fm_int   sw,
-                                   fm_int   sFlowId,
-                                   fm_int   startPort,
-                                   fm_int * nextPort);
+    fm_status  (*GetSFlowPortNext)(fm_int  sw,
+                                   fm_int  sFlowId,
+                                   fm_int  startPort,
+                                   fm_int *nextPort);
 
-    fm_status  (*GetSFlowPortList)(fm_int   sw, 
-                                   fm_int   sFlowId, 
-                                   fm_int * numPorts, 
-                                   fm_int * portList, 
-                                   fm_int   max);
+    fm_status  (*GetSFlowPortList)(fm_int  sw,
+                                   fm_int  sFlowId,
+                                   fm_int *numPorts,
+                                   fm_int *portList,
+                                   fm_int  max);
 
-    fm_status  (*SetSFlowAttribute)(fm_int sw, 
-                                    fm_int sFlowId, 
-                                    fm_int attr, 
-                                    void * value);
+    fm_status  (*SetSFlowAttribute)(fm_int sw,
+                                    fm_int sFlowId,
+                                    fm_int attr,
+                                    void  *value);
 
-    fm_status  (*GetSFlowAttribute)(fm_int sw, 
-                                    fm_int sFlow, 
-                                    fm_int attr, 
-                                    void * value);
+    fm_status  (*GetSFlowAttribute)(fm_int sw,
+                                    fm_int sFlow,
+                                    fm_int attr,
+                                    void  *value);
     
-    fm_status  (*GetSFlowType)(fm_int         sw, 
-                               fm_int         sFlowId, 
-                               fm_sFlowType * sFlowType);
+    fm_status  (*GetSFlowType)(fm_int        sw,
+                               fm_int        sFlowId,
+                               fm_sFlowType *sFlowType);
 
-    fm_status  (*CheckSFlowLogging)(fm_int            sw, 
-                                    fm_eventPktRecv * pktEvent, 
-                                    fm_bool         * isPktSFlowLogged);
+    fm_status  (*CheckSFlowLogging)(fm_int           sw,
+                                    fm_eventPktRecv *pktEvent,
+                                    fm_bool         *isPktSFlowLogged);
 
     fm_status  (*UpdateRemoveDownPortsTrigger)(fm_int sw,
                                                fm_int physPort,
@@ -2935,66 +2965,66 @@ struct _fm_switch
                                 fm_int  group, 
                                 fm_int  rule,
                                 fm_bool isInternal); 
-    fm_status  (*SetTriggerCondition)(fm_int sw, 
-                                      fm_int group, 
-                                      fm_int rule,
+    fm_status  (*SetTriggerCondition)(fm_int                     sw,
+                                      fm_int                     group,
+                                      fm_int                     rule,
                                       const fm_triggerCondition *cond,
-                                      fm_bool isInternal); 
-    fm_status  (*SetTriggerAction)(fm_int sw, 
-                                   fm_int group, 
-                                   fm_int rule,
+                                      fm_bool                    isInternal);
+    fm_status  (*SetTriggerAction)(fm_int                  sw,
+                                   fm_int                  group,
+                                   fm_int                  rule,
                                    const fm_triggerAction *action,
-                                   fm_bool isInternal); 
-    fm_status  (*GetTrigger)(fm_int sw, 
-                             fm_int group, 
-                             fm_int rule, 
+                                   fm_bool                 isInternal);
+    fm_status  (*GetTrigger)(fm_int               sw,
+                             fm_int               group,
+                             fm_int               rule,
                              fm_triggerCondition *cond,
-                             fm_triggerAction *action); 
-    fm_status  (*GetTriggerFirst)(fm_int sw, 
+                             fm_triggerAction    *action);
+    fm_status  (*GetTriggerFirst)(fm_int  sw,
                                   fm_int *group, 
                                   fm_int *rule);
-    fm_status  (*GetTriggerNext)(fm_int sw, 
-                                 fm_int curGroup, 
-                                 fm_int curRule,
+    fm_status  (*GetTriggerNext)(fm_int  sw,
+                                 fm_int  curGroup,
+                                 fm_int  curRule,
                                  fm_int *nextGroup, 
                                  fm_int *nextRule);
-    fm_status  (*AllocateTriggerResource)(fm_int sw, 
+    fm_status  (*AllocateTriggerResource)(fm_int                 sw,
                                           fm_triggerResourceType res, 
-                                          fm_uint32 *value,
-                                          fm_bool isInternal); 
+                                          fm_uint32             *value,
+                                          fm_bool                isInternal);
     fm_status  (*FreeTriggerResource)(fm_int sw, 
                                       fm_triggerResourceType res, 
-                                      fm_uint32 value,
-                                      fm_bool isInternal); 
-    fm_status  (*GetTriggerResourceFirst)(fm_int sw, 
+                                      fm_uint32              value,
+                                      fm_bool                isInternal);
+    fm_status  (*GetTriggerResourceFirst)(fm_int                 sw,
                                           fm_triggerResourceType res, 
-                                          fm_uint32 *value);
-    fm_status  (*GetTriggerResourceNext)(fm_int sw, 
+                                          fm_uint32             *value);
+    fm_status  (*GetTriggerResourceNext)(fm_int                 sw,
                                          fm_triggerResourceType res, 
-                                         fm_uint32 curValue,
-                                         fm_uint32 *nextValue);
-    fm_status  (*SetTriggerRateLimiter)(fm_int sw,
-                                        fm_int rateLimiterId,
+                                         fm_uint32              curValue,
+                                         fm_uint32             *nextValue);
+    fm_status  (*SetTriggerRateLimiter)(fm_int             sw,
+                                        fm_int             rateLimiterId,
                                         fm_rateLimiterCfg *cfg,
-                                        fm_bool isInternal);
-    fm_status  (*GetTriggerRateLimiter)(fm_int sw,
-                                        fm_int rateLimiterId,
+                                        fm_bool            isInternal);
+    fm_status  (*GetTriggerRateLimiter)(fm_int             sw,
+                                        fm_int             rateLimiterId,
                                         fm_rateLimiterCfg *cfg);
-    fm_status  (*SetTriggerAttribute)(fm_int sw, 
-                                      fm_int group, 
-                                      fm_int rule,
-                                      fm_int attr, 
-                                      void *value,
+    fm_status  (*SetTriggerAttribute)(fm_int  sw,
+                                      fm_int  group,
+                                      fm_int  rule,
+                                      fm_int  attr,
+                                      void   *value,
                                       fm_bool isInternal);
     fm_status  (*GetTriggerAttribute)(fm_int sw, 
                                       fm_int group, 
                                       fm_int rule,
                                       fm_int attr, 
-                                      void *value);
+                                      void  *value);
 
-    fm_status  (*AllocateTrigger)(fm_int sw, 
-                                  fm_text name, 
-                                  fm_int *trigger, 
+    fm_status  (*AllocateTrigger)(fm_int                 sw,
+                                  fm_text                name,
+                                  fm_int                *trigger,
                                   fm_triggerRequestInfo *info);
 
     fm_status  (*FreeTrigger)(fm_int sw, fm_int trigger); 
@@ -3003,30 +3033,27 @@ struct _fm_switch
      * Timestamp Functions
      **************************************************/
 
-    fm_status  (*ConvertTimestamp)(fm_int                sw,
-                                   fm_uint32             eplTime,
-                                   fm_int64              correction,
-                                   fm_preciseTimestamp * timestamp);
+    fm_status  (*ConvertTimestamp)(fm_int               sw,
+                                   fm_uint32            eplTime,
+                                   fm_int64             correction,
+                                   fm_preciseTimestamp *timestamp);
 
     /***************************************************
      * Parity Error Functions
      **************************************************/
 
-    void *     (*ParitySweeperTask)(fm_int   sw, 
-                                    fm_bool *switchProtected, 
-                                    void    *args);
+    void *     (*ParityRepairTask)(fm_int   sw,
+                                   fm_bool *switchProtected,
+                                   void    *args);
 
-    void *     (*ParityRepairTask)(fm_int    sw, 
-                                   fm_bool * switchProtected, 
-                                   void *    args);
+    fm_status  (*DbgDumpParityConfig)(fm_int sw);
 
-    fm_status  (*GetParityAttribute)(fm_int sw, fm_int attr, void * value);
+    fm_status  (*GetParityAttribute)(fm_int sw, fm_int attr, void *value);
 
-    fm_status  (*SetParityAttribute)(fm_int sw, fm_int attr, void * value);
+    fm_status  (*SetParityAttribute)(fm_int sw, fm_int attr, void *value);
 
-    fm_status  (*GetParityErrorCounters)(fm_int    sw,
-                                         void *    counters,
-                                         fm_uint   size);
+    fm_status  (*GetParityErrorCounters)(fm_int                  sw,
+                                         fm_parityErrorCounters *counters);
 
     fm_status  (*ResetParityErrorCounters)(fm_int sw);
 
@@ -3043,10 +3070,10 @@ struct _fm_switch
 
     fm_status (*WriteMailboxResponseMessage)(fm_int                        sw,
                                              fm_int                        pepNb,
-                                             fm_mailboxControlHeader *     ctrlHdr,
+                                             fm_mailboxControlHeader      *ctrlHdr,
                                              fm_mailboxMessageId           msgTypeId,
                                              fm_mailboxMessageArgumentType argType,
-                                             fm_voidptr *                  message);
+                                             fm_voidptr                   *message);
 
     fm_status (*ReadMailboxControlHdr)(fm_int                   sw,
                                        fm_int                   pepNb,
@@ -3068,7 +3095,7 @@ struct _fm_switch
                                              fm_mailboxMessageHeader *pfTrHdr,
                                              fm_uint16                argumentType,
                                              fm_uint16                argumentLength,
-                                             fm_voidptr *             message);
+                                             fm_voidptr              *message);
 
     fm_status (*ProcessMailboxLoopbackRequest)(fm_int                   sw,
                                                fm_int                   pepNb,
@@ -3098,11 +3125,11 @@ struct _fm_switch
 
     fm_status (*MapVirtualGlortToPepNumber)(fm_int    sw,
                                             fm_uint32 glort,
-                                            fm_int *  pepNb);
+                                            fm_int   *pepNb);
 
     fm_status (*MapVirtualGlortToPepLogicalPort)(fm_int    sw,
                                                  fm_uint32 glort,
-                                                 fm_int *  port);
+                                                 fm_int   *port);
 
     fm_status (*MailboxAllocateDataStructures)(fm_int sw);
 
@@ -3118,7 +3145,7 @@ struct _fm_switch
 
     fm_status (*FindInternalPortByMailboxGlort)(fm_int    sw,
                                                 fm_uint32 glort,
-                                                fm_int *  logicalPort);
+                                                fm_int   *logicalPort);
 
     fm_status (*SetXcastFlooding)(fm_int       sw,
                                   fm_int       pepNb,
@@ -3134,7 +3161,7 @@ struct _fm_switch
     fm_status (*GetMailboxGlortRange)(fm_int     sw,
                                       fm_int     pepNb,
                                       fm_uint32 *glortBase,
-                                      fm_int *   numberOfGlorts);
+                                      fm_int    *numberOfGlorts);
 
     fm_status (*MailboxAnnounceTxTimestampMode)(fm_int  sw,
                                                 fm_bool isTxTimestampEnabled);
@@ -3194,9 +3221,16 @@ struct _fm_switch
  **************************************************/
 
 #define VALIDATE_SWITCH(sw)                                                        \
-    if ( (sw) < 0 || (sw) >= FM_MAX_NUM_SWITCHES )                                 \
+    if ( (sw) < 0 || (sw) >= fmRootPlatform->cfg.numSwitches )                     \
     {                                                                              \
         FM_LOG_EXIT(FM_LOG_CAT_SWITCH, FM_ERR_INVALID_SWITCH);                     \
+    }                                                                              \
+
+#define VALIDATE_SWITCH_NO_RETURN(sw)                                              \
+    if ( (sw) < 0 || (sw) >= fmRootPlatform->cfg.numSwitches )                     \
+    {                                                                              \
+        FM_LOG_PRINT("ERROR: invalid switch %d\n", sw);                            \
+        return;                                                                    \
     }                                                                              \
 
 /*  VALIDATE_AND_PROTECT_SWITCH takes a READ lock on the switch lock table.
@@ -3204,7 +3238,7 @@ struct _fm_switch
  *  The easiest way to do this is to invoke the UNPROTECT_SWITCH macro */
 #define VALIDATE_AND_PROTECT_SWITCH(sw)                                            \
     fm_bool swProtected = FALSE;                                                   \
-    if ( (sw) < 0 || (sw) >= FM_MAX_NUM_SWITCHES )                                 \
+    if ( (sw) < 0 || (sw) >= fmRootPlatform->cfg.numSwitches )                     \
     {                                                                              \
         return FM_ERR_INVALID_SWITCH;                                              \
     }                                                                              \
@@ -3216,7 +3250,7 @@ struct _fm_switch
         UNPROTECT_SWITCH(sw);                                                      \
         return FM_ERR_SWITCH_NOT_UP;                                               \
     }                                                                              \
-    if (fmRootApi->fmSwitchStateTable[(sw)]->state < FM_SWITCH_STATE_INIT ||  \
+    if (fmRootApi->fmSwitchStateTable[(sw)]->state < FM_SWITCH_STATE_INIT ||       \
         fmRootApi->fmSwitchStateTable[(sw)]->state > FM_SWITCH_STATE_GOING_DOWN)   \
     {                                                                              \
         UNPROTECT_SWITCH(sw);                                                      \
@@ -3233,9 +3267,9 @@ struct _fm_switch
  *  other than FM_OK. */
 #define VALIDATE_AND_PROTECT_SWITCH_NO_RETURN(err, sw)                      \
     (err) = FM_OK;                                                          \
-    if ( (sw) < 0 || (sw) >= FM_MAX_NUM_SWITCHES )                          \
+    if ( (sw) < 0 || (sw) >= fmRootPlatform->cfg.numSwitches )              \
     {                                                                       \
-        (err) = FM_ERR_INVALID_SWITCH;                                      \
+    	(err) =  FM_ERR_INVALID_SWITCH;                                     \
     }                                                                       \
     else                                                                    \
     {                                                                       \
@@ -3507,19 +3541,6 @@ struct _fm_switch
             goto ABORT;                                                        \
         }                                                                      \
         err = FM_OK;                                                           \
-    }
-
-#define PARITY_SWEEPER_SLEEP_CHECK(k)                                        \
-    if ( (k % switchPtr->paritySweeperCfg.readBurstSize) >=                  \
-                            switchPtr->paritySweeperCfg.readBurstSize - 1 )  \
-    {                                                                        \
-        UNPROTECT_SWITCH(sw);                                                \
-        *switchProtected = FALSE;                                            \
-        fmDelay(0,switchPtr->paritySweeperCfg.sleepPeriod);                  \
-        VALIDATE_AND_PROTECT_SWITCH(sw);                                     \
-        *switchProtected = TRUE;                                             \
-        switchPtr = GET_SWITCH_PTR(sw);                                      \
-        switchExt = GET_SWITCH_EXT(sw);                                      \
     }
 
 /**************************************************

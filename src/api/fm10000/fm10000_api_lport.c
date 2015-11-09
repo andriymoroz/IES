@@ -390,8 +390,8 @@ fm_status fm10000CreateLogicalPort(fm_int sw, fm_int port)
     portPtr->SetVlanTag        = fm10000SetVlanTag;
     portPtr->GetVlanMembership = fm10000GetVlanMembership;
     portPtr->GetVlanTag        = fm10000GetVlanTag;
-    portPtr->isPciePort        = fm10000IsPciePort;
-    portPtr->isSpecialPort     = fm10000IsSpecialPort;
+    portPtr->IsPciePort        = fm10000IsPciePort;
+    portPtr->IsSpecialPort     = fm10000IsSpecialPort;
 
 #if 0
     for (hogWm = 0 ; hogWm < 4 ; hogWm++)
@@ -1250,7 +1250,9 @@ fm_status fm10000WriteGlortCamEntry(fm_int            sw,
 
     if (mode != FM_UPDATE_RAM_ONLY)
     {
-        err = NotifyCRMEvent(sw, FM10000_GLORT_CAM_CRM_ID, FM10000_CRM_EVENT_SUSPEND_REQ);
+        err = fm10000NotifyCRMEvent(sw,
+                                    FM10000_GLORT_CAM_CRM_ID,
+                                    FM10000_CRM_EVENT_SUSPEND_REQ);
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
     }
 
@@ -1266,7 +1268,9 @@ fm_status fm10000WriteGlortCamEntry(fm_int            sw,
         DROP_REG_LOCK(sw);
         regLockTaken = FALSE;
 
-        err = NotifyCRMEvent(sw, FM10000_GLORT_CAM_CRM_ID, FM10000_CRM_EVENT_RESUME_REQ);
+        err = fm10000NotifyCRMEvent(sw,
+                                    FM10000_GLORT_CAM_CRM_ID,
+                                    FM10000_CRM_EVENT_RESUME_REQ);
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
     }
 
@@ -1306,7 +1310,9 @@ fm_status fm10000InitGlortCam(fm_int sw)
     switchPtr = GET_SWITCH_PTR(sw);
     regLockTaken = FALSE;
 
-    err = NotifyCRMEvent(sw, FM10000_GLORT_CAM_CRM_ID, FM10000_CRM_EVENT_SUSPEND_REQ);
+    err = fm10000NotifyCRMEvent(sw,
+                                FM10000_GLORT_CAM_CRM_ID,
+                                FM10000_CRM_EVENT_SUSPEND_REQ);
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
 
     TAKE_REG_LOCK(sw);
@@ -1327,7 +1333,9 @@ fm_status fm10000InitGlortCam(fm_int sw)
     DROP_REG_LOCK(sw);
     regLockTaken = FALSE;
 
-    err = NotifyCRMEvent(sw, FM10000_GLORT_CAM_CRM_ID, FM10000_CRM_EVENT_RESUME_REQ);
+    err = fm10000NotifyCRMEvent(sw,
+                                FM10000_GLORT_CAM_CRM_ID,
+                                FM10000_CRM_EVENT_RESUME_REQ);
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
 
 
@@ -1431,8 +1439,11 @@ fm_status fm10000FreeLogicalPort( fm_int sw, fm_int logicalPort )
 {
     fm_port      *portPtr;
     fm10000_port *portExt;
+    fm_portAttr *portAttr;
 
-    portPtr = GET_PORT_PTR( sw, logicalPort );
+    portPtr   = GET_PORT_PTR( sw, logicalPort );
+    portAttr  = GET_PORT_ATTR(sw, logicalPort);
+
     if ( (portPtr != NULL)
          && ( (portPtr->portType == FM_PORT_TYPE_PHYSICAL)
               || (portPtr->portType == FM_PORT_TYPE_CPU) ) )
@@ -1445,6 +1456,18 @@ fm_status fm10000FreeLogicalPort( fm_int sw, fm_int logicalPort )
         if (portExt->anSmHandle)
         {
             fmDeleteStateMachine( portExt->anSmHandle );
+        }
+    
+        if (portAttr->autoNegNextPages.nextPages != NULL)
+        {
+            fmFree(portAttr->autoNegNextPages.nextPages);
+            portAttr->autoNegNextPages.nextPages = NULL;
+        }
+
+        if (portExt->pendingNextPages.nextPages != NULL)
+        {
+            fmFree(portExt->pendingNextPages.nextPages);
+            portExt->pendingNextPages.nextPages = NULL;
         }
     }
 

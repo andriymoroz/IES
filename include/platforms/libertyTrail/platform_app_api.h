@@ -144,6 +144,7 @@ fm_status fmPlatformSwitchGpioGetValue(fm_int sw, fm_int gpio, fm_int *value);
 
 fm_status fmPlatformGetNominalSwitchVoltages(fm_int     sw,
                                              fm_uint32 *vdds,
-                                             fm_uint32 *vddf);
+                                             fm_uint32 *vddf,
+                                             fm_bool   *defVoltages);
 
 #endif /* __FM_PLATFORM_APP_API_H */

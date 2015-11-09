@@ -244,6 +244,12 @@
 #define FM_AAT_API_FM10000_INIT_BCAST_FLOODING_TRIGGERS FM_API_ATTR_BOOL
 #define FM_AAD_API_FM10000_INIT_BCAST_FLOODING_TRIGGERS FALSE
 
+/** Whether to initialize reserved MAC control triggers at boot
+ *  time. */
+#define FM_AAK_API_FM10000_INIT_RESERVED_MAC_TRIGGERS "api.FM10000.initReservedMacTriggers"
+#define FM_AAT_API_FM10000_INIT_RESERVED_MAC_TRIGGERS FM_API_ATTR_BOOL
+#define FM_AAD_API_FM10000_INIT_RESERVED_MAC_TRIGGERS TRUE
+
 /** Force the switch priority of packets trapped using the
  *  FM_PORT_MCAST_FLOODING or FM_PORT_UCAST_FLOODING port attribute.
  *  By default, trapped frames will keep whatever switch priority they are
@@ -253,17 +259,17 @@
 #define FM_AAD_API_FM10000_FLOODING_TRAP_PRIORITY -1
 
 /** Controls whether auto-negotiation events are reported to the application
- *  in a FM_EVENT_PORT event for the FM10000 */
+ *  in a FM_EVENT_PORT event for the FM10000. */
 #define FM_AAK_API_FM10000_AUTONEG_GENERATE_EVENTS   "api.FM10000.autoNeg.generateEvents"
 #define FM_AAT_API_FM10000_AUTONEG_GENERATE_EVENTS   FM_API_ATTR_BOOL
-#define FM_AAD_API_FM10000_AUTONEG_GENERATE_EVENTS   TRUE
+#define FM_AAD_API_FM10000_AUTONEG_GENERATE_EVENTS   FALSE
 
-/** Specifies for the FM10000 whether the link status is considered
- *  dependent on the DFE Tuning process having completed (successfully or
- *  not) on a given port. Note that when this property is set to TRUE and
- *  a DFE Mode configuration change occurs that makes the DFE process
- *  restart, a FM_PORT_STATUS_LINK_DOWN event will be
- *  generated until DFE completes again. */
+/** Whether the link status is dependent on the DFE Tuning process
+ *  having completed (successfully or not) on a given port. Note that
+ *  when this property is set to TRUE and a DFE Mode configuration
+ *  change occurs that makes the DFE process restart, a
+ *  FM_PORT_STATUS_LINK_DOWN event will be generated until DFE
+ *  completes again. */
 #define FM_AAK_API_FM10000_LINK_DEPENDS_ON_DFE     "api.FM10000.linkDependsOnDfe"
 #define FM_AAT_API_FM10000_LINK_DEPENDS_ON_DFE     FM_API_ATTR_BOOL
 #define FM_AAD_API_FM10000_LINK_DEPENDS_ON_DFE     TRUE
@@ -372,6 +378,15 @@
 #define FM_AAT_API_FM10000_UPD_SCHED_ON_LNK_CHANGE     FM_API_ATTR_BOOL
 #define FM_AAD_API_FM10000_UPD_SCHED_ON_LNK_CHANGE     FALSE
 
+
+/** CRM timeout in milliseconds.
+ *  When changing Frame Handler clock frequency for lower than 700MHz
+ *  CRM timeout needs to be scaled.
+ *  Values lower than 20ms will be ignored and default 20ms will be set. */
+#define FM_AAK_API_FM10000_CRM_TIMEOUT   "api.FM10000.parity.crmTimeout"
+#define FM_AAT_API_FM10000_CRM_TIMEOUT   FM_API_ATTR_INT
+#define FM_AAD_API_FM10000_CRM_TIMEOUT   20
+
 /* -------- Add new DOCUMENTED api properties above this line! -------- */
 
 /** @} (end of Doxygen group) */
@@ -462,34 +477,6 @@
 #define FM_AAT_API_FM10000_START_TCAM_MONITORS  FM_API_ATTR_BOOL
 #define FM_AAD_API_FM10000_START_TCAM_MONITORS  TRUE
 
-/* The number of uncorrectable MOD_REFCOUNT parity errors that may occur
- * before the API sends a Deferred Reset event to the application. 
- * A value of zero disables the event. */
-#define FM_AAK_API_FM10000_PARITY_REFCOUNT_ERROR_THRESH "api.FM10000.parity.refcountErrorThresh"
-#define FM_AAT_API_FM10000_PARITY_REFCOUNT_ERROR_THRESH FM_API_ATTR_INT
-#define FM_AAD_API_FM10000_PARITY_REFCOUNT_ERROR_THRESH 1
-
-/* The number of uncorrectable MOD_REFCOUNT parity errors that may occur
- * before the API sends an Immediate Reset event to the application. 
- * A value of zero disables the event. */
-#define FM_AAK_API_FM10000_PARITY_REFCOUNT_FATAL_THRESH "api.FM10000.parity.refcountFatalThresh"
-#define FM_AAT_API_FM10000_PARITY_REFCOUNT_FATAL_THRESH FM_API_ATTR_INT
-#define FM_AAD_API_FM10000_PARITY_REFCOUNT_FATAL_THRESH 10
-
-/* The number of uncorrectable SCHED_FREELIST parity errors that may occur
- * before the API sends a Deferred Reset event to the application. 
- * A value of zero disables the event. */
-#define FM_AAK_API_FM10000_PARITY_FREELIST_ERROR_THRESH "api.FM10000.parity.freelistErrorThresh"
-#define FM_AAT_API_FM10000_PARITY_FREELIST_ERROR_THRESH FM_API_ATTR_INT
-#define FM_AAD_API_FM10000_PARITY_FREELIST_ERROR_THRESH 1
-
-/* The number of uncorrectable SCHED_FREELIST parity errors that may occur
- * before the API sends an Immediate Reset event to the application. 
- * A value of zero disables the event. */
-#define FM_AAK_API_FM10000_PARITY_FREELIST_FATAL_THRESH "api.FM10000.parity.freelistFatalThresh"
-#define FM_AAT_API_FM10000_PARITY_FREELIST_FATAL_THRESH FM_API_ATTR_INT
-#define FM_AAD_API_FM10000_PARITY_FREELIST_FATAL_THRESH 10
-
 /* Scheduler Overspeed.
  *  
  * so:         Scheduler Overspeed (value to set in this property) 
@@ -547,17 +534,32 @@
 #define FM_AAT_API_FM10000_INTR_TE_IGNORE_MASK         FM_API_ATTR_INT
 #define FM_AAD_API_FM10000_INTR_TE_IGNORE_MASK         0
 
-/* Whether to enable parity interrupts. */
+/* Whether to enable EEE SPICO interrupts. */
 #define FM_AAK_API_FM10000_ENABLE_EEE_SPICO_INTR    "api.FM10000.enable.eeeSpicoIntr"
 #define FM_AAT_API_FM10000_ENABLE_EEE_SPICO_INTR    FM_API_ATTR_BOOL
 #define FM_AAD_API_FM10000_ENABLE_EEE_SPICO_INTR    FALSE
+
+/* Whether to use the alternate Spico firmware. See
+ * fm10000_serdes_swap_code_prd1 and fm10000_serdes_swap_code_prd2 in
+ * fm10000_api_spico_code.c. By default, this option is FALSE, and
+ * the image defined by fm10000_serdes_swap_code_prd1 is used. */
+#define FM_AAK_API_FM10000_USE_ALTERNATE_SPICO_FW   "api.FM10000.useAlternateSpicoFw"
+#define FM_AAT_API_FM10000_USE_ALTERNATE_SPICO_FW   FM_API_ATTR_BOOL
+#define FM_AAD_API_FM10000_USE_ALTERNATE_SPICO_FW   FALSE
+
+/* Whether to run pCal after KR training is complete and EEE has
+ * been negociated. This feature is provided only for debug and must 
+ * remain DISABLED by default, because it is not currently supported 
+ * by the FW */
+#define FM_AAK_API_FM10000_ALLOW_KRPCAL_ON_EEE      "api.FM10000.allowKrPcalOnEee"
+#define FM_AAT_API_FM10000_ALLOW_KRPCAL_ON_EEE      FM_API_ATTR_BOOL
+#define FM_AAD_API_FM10000_ALLOW_KRPCAL_ON_EEE      FALSE
 
 /************************************************************************
  ****                                                                ****
  ****              END UNDOCUMENTED API PROPERTIES                   ****
  ****                                                                ****
  ************************************************************************/
-
 
 #endif /* __FM_FM10000_PROPERTY_H */
 

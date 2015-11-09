@@ -6,7 +6,7 @@
  * Description:     Prototypes for managing stacked intra and extra switch
  *                  aggregate systems.
  *
- * Copyright (c) 2005 - 2014, Intel Corporation
+ * Copyright (c) 2005 - 2015, Intel Corporation
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -30,7 +30,7 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
+ *****************************************************************************/
 
 #ifndef __FM_FM_API_STACKING_H
 #define __FM_FM_API_STACKING_H
@@ -56,17 +56,17 @@
 typedef struct _fm_glortRange
 {
     /** The first glort to use in the range. It should generally be
-     *  a power of 2 to facilitate masked glort ranges for more efficient 
+     *  a power of 2 to facilitate masked glort ranges for more efficient
      *  CAM usage. Note that while this member is 32 bits wide, the hardware
-     *  supports only 16-bit glorts. (The member was made oversized to 
+     *  supports only 16-bit glorts. (The member was made oversized to
      *  accommodate future devices with wider glorts.) */
     fm_uint32 glortBase;
 
-    /** Specifies the range of glorts starting with glortBase. The mask 
-     *  is an "inverse mask" where the 1 bits identify the wildcarded bits 
-     *  in the glort range. The 1 bits in the mask must be contiguous. 
-     *  Note that while this member is 32 bits wide, the hardware supports 
-     *  only 16-bit glorts. (The member was made oversized to accommodate 
+    /** Specifies the range of glorts starting with glortBase. The mask
+     *  is an "inverse mask" where the 1 bits identify the wildcarded bits
+     *  in the glort range. The 1 bits in the mask must be contiguous.
+     *  Note that while this member is 32 bits wide, the hardware supports
+     *  only 16-bit glorts. (The member was made oversized to accommodate
      *  future devices with wider glorts.) */
     fm_uint32 glortMask;
 
@@ -97,10 +97,10 @@ typedef struct _fm_glortRange
     /** Number of glorts reserved for multicast groups. */
     fm_int    mcastCount;
 
-    /** Number of glorts reserved for load balancing groups. */
+    /** Starting glort number for load balancing groups. */
     fm_uint32 lbgBaseGlort;
 
-    /** Number of glorts reserved for load balancing groups members. */
+    /** Number of glorts reserved for load balancing group members. */
     fm_int    lbgCount;
 
 } fm_glortRange;
@@ -115,9 +115,9 @@ typedef struct _fm_forwardRule
 {
     /** The base glort value in the range to be forwarded by this rule. */
     fm_uint32  glort;
-    
+
     /** A bit mask identifying the range of glorts to be forwarded by this
-     *  rule. The mask is an "inverse mask" where the 1 bits specify the 
+     *  rule. The mask is an "inverse mask" where the 1 bits specify the
      *  wildcarded bits in the glort range. */
     fm_uint32  mask;
 
@@ -133,11 +133,11 @@ typedef struct _fm_forwardRule
  *****************************************************************************/
 
 fm_status fmSetStackGlortRange(fm_int sw,
-                               fm_uint32 glortBase, 
+                               fm_uint32 glortBase,
                                fm_uint32 mask);
 
-fm_status fmGetStackGlortRange(fm_int sw, 
-                               fm_uint32 *glortBase, 
+fm_status fmGetStackGlortRange(fm_int sw,
+                               fm_uint32 *glortBase,
                                fm_uint32 *mask);
 
 fm_status fmSetStackGlortRangeExt(fm_int         sw,
@@ -146,15 +146,15 @@ fm_status fmSetStackGlortRangeExt(fm_int         sw,
 fm_status fmGetStackGlortRangeExt(fm_int         sw,
                                   fm_glortRange *glortRange);
 
-fm_status fmGetStackGlort(fm_int sw, 
-                          fm_int port, 
+fm_status fmGetStackGlort(fm_int sw,
+                          fm_int port,
                           fm_uint32 *glort);
 
-fm_status fmCreateStackLogicalPort(fm_int sw, 
-                                   fm_uint32 glort, 
+fm_status fmCreateStackLogicalPort(fm_int sw,
+                                   fm_uint32 glort,
                                    fm_int *logicalPort);
 
-fm_status fmDeleteStackLogicalPort(fm_int sw, 
+fm_status fmDeleteStackLogicalPort(fm_int sw,
                                    fm_int port);
 
 fm_status fmSetStackLogicalPortState(fm_int sw, fm_int port, fm_int mode);
@@ -166,12 +166,12 @@ fm_status fmGetStackLogicalPortState(fm_int sw, fm_int port, fm_int *mode);
  * Glort forwarding rule management functions
  *****************************************************************************/
 
-fm_status fmCreateStackForwardingRule(fm_int sw, 
-                                      fm_int *forwardingRuleID, 
+fm_status fmCreateStackForwardingRule(fm_int sw,
+                                      fm_int *forwardingRuleID,
                                       fm_forwardRule *rule);
 
-fm_status fmGetStackForwardingRule(fm_int sw, 
-                                   fm_int forwardingRuleID, 
+fm_status fmGetStackForwardingRule(fm_int sw,
+                                   fm_int forwardingRuleID,
                                    fm_forwardRule *rule);
 
 fm_status fmUpdateStackForwardingRule(fm_int          sw,
@@ -180,19 +180,19 @@ fm_status fmUpdateStackForwardingRule(fm_int          sw,
 
 fm_status fmDeleteStackForwardingRule(fm_int sw, fm_int forwardingRuleID);
 
-fm_status fmGetStackForwardingRuleFirst(fm_int sw, 
-                                        fm_int *firstRuleId, 
+fm_status fmGetStackForwardingRuleFirst(fm_int sw,
+                                        fm_int *firstRuleId,
                                         fm_forwardRule *firstRule);
 
-fm_status fmGetStackForwardingRuleNext(fm_int sw, 
+fm_status fmGetStackForwardingRuleNext(fm_int sw,
                                        fm_int currentRuleId,
-                                       fm_int *nextRuleId, 
+                                       fm_int *nextRuleId,
                                        fm_forwardRule *nextRule);
 
 fm_status fmGetStackForwardingRuleList(fm_int sw,
                                        fm_int *numForwardingRules,
                                        fm_int *forwardingRuleIDs,
-                                       fm_int max); 
+                                       fm_int max);
 
 /*****************************************************************************
  * Stacking APIs
@@ -235,8 +235,8 @@ fm_status fmFreeStackLBGs(fm_int sw, fm_int baseLbgNumber);
 
 fm_status fmCreateStackLBG(fm_int sw, fm_int lbgNumber);
 
-fm_status fmCreateStackLBGExt(fm_int sw, 
-                              fm_int lbgNumber, 
+fm_status fmCreateStackLBGExt(fm_int sw,
+                              fm_int lbgNumber,
                               fm_LBGParams *params);
 
 fm_status fmGetStackLBGHandle(fm_int  sw,

@@ -55,12 +55,12 @@
 
 #define VALIDATE_AND_PROTECT_SW(sw)                                         \
     fm_bool swProtected = FALSE;                                            \
-    if ( (sw) < 0 || (sw) >= FM_MAX_NUM_SWITCHES )                          \
+    if ( (sw) < 0 || (sw) >= fmRootPlatform->cfg.numSwitches )              \
     {                                                                       \
         FM_LOG_ERROR(FM_LOG_CAT_SWITCH,                                     \
                      "VALIDATE_SWITCH_INDEX: %d not in [0,%d]\n",           \
                      (sw),                                                  \
-                     FM_MAX_NUM_SWITCHES);                                  \
+                     fmRootPlatform->cfg.numSwitches);                      \
         return FM_ERR_INVALID_SWITCH;                                       \
     }                                                                       \
     VALIDATE_SWITCH_LOCK(sw);                                               \

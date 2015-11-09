@@ -1175,11 +1175,7 @@ fm_status fmGetStormCtrlActionNext(fm_int          sw,
 void fmDbgDumpStormCtrl(fm_int sw, fm_int stormController)
 {
 
-    if ( (sw < 0) || (sw >= FM_MAX_NUM_SWITCHES) )
-    {
-        FM_LOG_PRINT("ERROR: invalid switch %d\n", sw);
-        return;
-    }
+    VALIDATE_SWITCH_NO_RETURN(sw);
 
     PROTECT_SWITCH(sw);
 

@@ -5,7 +5,7 @@
  * Creation Date:   May 15, 2013 (from fm4000_api_mirror.c)
  * Description:     Structures and functions for dealing with mirrors.
  *
- * Copyright (c) 2005 - 2014, Intel Corporation
+ * Copyright (c) 2005 - 2015, Intel Corporation
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -29,7 +29,7 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
+ *****************************************************************************/
 
 #include <fm_sdk_fm10000_int.h>
 
@@ -305,6 +305,95 @@ ABORT:
     FM_LOG_EXIT(FM_LOG_CAT_MIRROR, err);
 
 }   /* end HandleMirrorFfuRes */
+
+
+
+
+/*****************************************************************************/
+/** GetMirrorCounters 
+ * \ingroup intMirror
+ *
+ * \desc            Retrive ingress and egress mirror counter.
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \param[in]       grp is the Group ID for which counter to be retrieved.
+ *
+ * \param[out]      ingressCnt  is the user-allocated storage in which ingress
+ *                  mirror counter value is stored.
+ *
+ * \param[out]      egressCnt  is the user-allocated storage in which egress
+ *                  mirror counter value is stored.
+ *
+ * \return          FM_OK if successful.
+ *
+ *****************************************************************************/
+static fm_status GetMirrorCounters(fm_int              sw,
+                                   fm_portMirrorGroup *grp,
+                                   fm_uint64          *ingressCnt,
+                                   fm_uint64          *egressCnt)
+{
+    fm_status       status;
+    fm_int          group;
+
+    group = grp->groupId;
+
+    switch (grp->mirrorType)
+    {
+        case FM_MIRROR_TYPE_INGRESS:
+        case FM_MIRROR_TYPE_REDIRECT:
+            status = fm10000GetTriggerAttribute(sw,
+                                                FM10000_TRIGGER_GROUP_MIRROR,
+                                                MIRROR_RULE(group, 0),
+                                                FM_TRIGGER_ATTR_COUNTER,
+                                                (void *)ingressCnt);
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MIRROR, status);
+            *egressCnt = 0;
+            break;
+
+        case FM_MIRROR_TYPE_EGRESS:
+            status = fm10000GetTriggerAttribute(sw,
+                                                FM10000_TRIGGER_GROUP_MIRROR,
+                                                MIRROR_RULE(group, 0),
+                                                FM_TRIGGER_ATTR_COUNTER,
+                                                (void *)egressCnt);
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MIRROR, status);
+            *ingressCnt = 0;
+            break;
+
+        case FM_MIRROR_TYPE_BIDIRECTIONAL:
+            status = fm10000GetTriggerAttribute(sw,
+                                                FM10000_TRIGGER_GROUP_MIRROR,
+                                                MIRROR_RULE(group, 0),
+                                                FM_TRIGGER_ATTR_COUNTER,
+                                                (void *)ingressCnt);
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MIRROR, status);
+
+            status = fm10000GetTriggerAttribute(sw,
+                                                FM10000_TRIGGER_GROUP_MIRROR,
+                                                MIRROR_RULE(group, 1),
+                                                FM_TRIGGER_ATTR_COUNTER,
+                                                (void *)egressCnt);
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MIRROR, status);
+            break;
+
+        case FM_MIRROR_TYPE_TX_EGRESS:
+        case FM_MIRROR_TYPE_RX_INGRESS_TX_EGRESS:
+            status = FM_ERR_UNSUPPORTED;
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MIRROR, status);
+            break;
+
+        default:
+            status = FM_ERR_INVALID_ARGUMENT;
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MIRROR, status);
+    }
+
+ABORT:
+    FM_LOG_EXIT(FM_LOG_CAT_MIRROR, status);
+
+}  /* end GetMirrorCounters */
+
+
 
 
 /*****************************************************************************
@@ -1123,8 +1212,20 @@ fm_status fm10000SetMirrorAttribute(fm_int              sw,
 
         case FM_MIRROR_TRAPCODE_ID:
             trapCodeId = *( (fm_int *) value );
-            if ( (trapCodeId < 0) ||
-                 (trapCodeId >= FM10000_MIRROR_NUM_TRAPCODE_ID) )
+            /* For APP Mirror Usage Type:
+             *   Trap Code ID: 0 to FM10000_SFLOW_TRAPCODE_ID_START -1
+             *  For SFLOW Mirror Usage Type:
+             *   Trap Code ID: FM10000_SFLOW_TRAPCODE_ID_START to 
+             *                 FM10000_MIRROR_NUM_TRAPCODE_ID -1 */ 
+            if ( (grp->mirrorUsageType == FM_MIRROR_USAGE_TYPE_APP) &&
+                 ( (trapCodeId < 0) ||
+                   (trapCodeId >= FM10000_SFLOW_TRAPCODE_ID_START) ) )
+            {
+                FM_LOG_EXIT(FM_LOG_CAT_MIRROR, FM_ERR_INVALID_VALUE);
+            }
+            else if ( (grp->mirrorUsageType == FM_MIRROR_USAGE_TYPE_SFLOW) &&
+                      ( (trapCodeId < FM10000_SFLOW_TRAPCODE_ID_START) ||
+                        (trapCodeId >= FM10000_MIRROR_NUM_TRAPCODE_ID ) ) )
             {
                 FM_LOG_EXIT(FM_LOG_CAT_MIRROR, FM_ERR_INVALID_VALUE);
             }
@@ -1177,6 +1278,7 @@ fm_status fm10000GetMirrorAttribute(fm_int              sw,
     fm_triggerCondition trigCond;
     fm_triggerAction    trigAction;
     fm_float            sample;
+    fm_uint64           otherCounter;
 
     FM_LOG_ENTRY( FM_LOG_CAT_MIRROR,
                   "sw = %d, grp = %p (%d), attr = %d, value = %p\n",
@@ -1230,6 +1332,14 @@ fm_status fm10000GetMirrorAttribute(fm_int              sw,
 
         case FM_MIRROR_TRAPCODE_ID:
             *( (fm_int *) value ) = grp->trapCodeId;
+            break;
+
+        case FM_MIRROR_INGRESS_COUNTER:
+            err = GetMirrorCounters(sw, grp, value, (void *)&otherCounter); 
+            break;
+
+        case FM_MIRROR_EGRESS_COUNTER:
+            err = GetMirrorCounters(sw, grp, (void *)&otherCounter, value); 
             break;
 
         default:

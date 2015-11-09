@@ -46,6 +46,14 @@
 #define DEFAULT_MPLS_TAG_1                  0x8847
 #define DEFAULT_MPLS_TAG_2                  0x8848
 
+/* The last custom MAC index */
+#define FM10000_MAX_CUSTOM_MAC              3
+
+/* The location of the PEP MAC base in BSM_SCRATCH */
+#define FM10000_PEP_MAC_BASE_REG            FM10000_BSM_SCRATCH(10)
+
+/* The location of the Custom MAC base in BSM_SCRATCH */
+#define FM10000_CUSTOM_MAC_BASE_REG         FM10000_BSM_SCRATCH(100)
 
 #define VALIDATE_VALUE_IS_BOOL(value)                                          \
     if (!(*((fm_bool *) (value)) == FM_ENABLED ||                              \
@@ -178,6 +186,10 @@ static fm_trapCodeMapping trapCodeMappingTable[] =
 
     { FM_TRAPCODE_LOG_INGRESS_FFU,      FM10000_MIRROR_FFU_CODE},
     { FM_TRAPCODE_LOG_ARP_REDIRECT,     FM10000_MIRROR_ARP_CODE},
+
+    { FM_TRAPCODE_BCAST,                FM10000_TRAP_BCAST},
+    { FM_TRAPCODE_MCAST,                FM10000_TRAP_MCAST},
+    { FM_TRAPCODE_UCAST,                FM10000_TRAP_UCAST},
 
     /* Defines 2 trap codes related to unresolved ARP entry */
     { FM_TRAPCODE_L3_ROUTED_NO_ARP_0,   0xA2},
@@ -983,6 +995,87 @@ static fm_status ValidateL3HashCfgMasks(fm_L3HashConfig *l3HashCfg)
 
 
 /*****************************************************************************/
+/** GetNvmMac
+ * \ingroup intSwitch
+ *
+ * \desc            Retrieve a MAC stored in NVM. 
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \param[in,out]   nvmMac is a pointer to the caller allocated storage where
+ *                  the information should be stored.
+ *
+ * \return          FM_OK if successful.
+ *
+ *****************************************************************************/
+static fm_status GetNvmMac(fm_int     sw,
+                           fm_nvmMac *nvmMac)
+{
+    fm_status  err = FM_OK;
+    fm_switch *switchPtr;
+    fm_uint32  baseAddr;
+    fm_uint32  maxIndex;
+    fm_uint32  reg32;
+    
+    FM_LOG_ENTRY(FM_LOG_CAT_ATTR, "sw = %d\n", sw);
+
+    if (nvmMac == NULL)
+    {
+        FM_LOG_EXIT(FM_LOG_CAT_ATTR, FM_ERR_INVALID_ARGUMENT);
+    }
+
+    switchPtr = GET_SWITCH_PTR(sw);
+
+    if ( (nvmMac->type >= FM_NVM_MAC_TYPE_MAX) )
+    {
+        err = FM_ERR_INVALID_ARGUMENT;
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_ATTR, err);
+    }
+
+    if (nvmMac->type == FM_NVM_MAC_TYPE_CUSTOM)
+    {
+        maxIndex = FM10000_MAX_CUSTOM_MAC;
+        baseAddr = FM10000_CUSTOM_MAC_BASE_REG;
+    }
+
+    if (nvmMac->type == FM_NVM_MAC_TYPE_PEP)
+    {
+        maxIndex = FM10000_MAX_PEP;
+        baseAddr = FM10000_PEP_MAC_BASE_REG;
+    }
+
+    if (nvmMac->index > maxIndex)
+    {
+        err = FM_ERR_INVALID_ARGUMENT;
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_ATTR, err);
+    }
+    
+    err = switchPtr->ReadUINT32(sw, 
+                                baseAddr + (2*nvmMac->index), 
+                                &reg32);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_ATTR, err);
+
+    nvmMac->mac       = (((fm_uint64)(reg32)) & 0xFFFFFF); 
+    nvmMac->ctrlData  = (reg32 >> 24) & 0xFF;              
+
+    err = switchPtr->ReadUINT32(sw, 
+                                baseAddr + ((2*nvmMac->index)+1), 
+                                &reg32);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_ATTR, err);
+
+    nvmMac->mac       |= ((fm_uint64)(reg32 & 0xFFFFFF00)) << 16;
+    nvmMac->ctrlData  |= (reg32 & 0xFF) << 8;  
+
+ABORT:
+
+    FM_LOG_EXIT(FM_LOG_CAT_ATTR, err);
+
+}   /* end GetNvmMac */
+
+
+
+
+/*****************************************************************************/
 /** GetL2Hash
  * \ingroup intSwitch
  *
@@ -1407,7 +1500,7 @@ static fm_status SetL3Hash(fm_int           sw,
         FM_LOG_EXIT(FM_LOG_CAT_ATTR, FM_ERR_INVALID_ARGUMENT);
     }
 
-    if ( l3HashCfg->DSCPMask > 0xff )
+    if ( l3HashCfg->DSCPMask > 0x3f )
     {
         FM_LOG_EXIT(FM_LOG_CAT_ATTR, FM_ERR_INVALID_VALUE);
     }
@@ -2390,6 +2483,7 @@ fm_status fm10000GetSwitchAttribute(fm_int sw, fm_int attr, void *value)
     fm_fm10000TeSGlort teSglort;
     fm_vsiData *       vsiData;
     fm_fm10000TeTepCfg teTepCfg;
+    fm_nvmMac *        nvmMac;
 
     FM_LOG_ENTRY(FM_LOG_CAT_ATTR,
                  "sw=%d attr=%d value=%p\n",
@@ -2654,6 +2748,10 @@ fm_status fm10000GetSwitchAttribute(fm_int sw, fm_int attr, void *value)
             *( (fm_uint32 *) value ) = switchExt->vnVxlanUdpPort;
             break;
 
+        case FM_SWITCH_GPE_TUNNEL_DEST_UDP_PORT:
+            *( (fm_uint32 *) value ) = switchExt->vnGpeUdpPort;
+            break;
+
         case FM_SWITCH_GENEVE_TUNNEL_DEST_UDP_PORT:
             *( (fm_uint32 *) value ) = switchExt->vnGeneveUdpPort;
             break;
@@ -2753,6 +2851,13 @@ fm_status fm10000GetSwitchAttribute(fm_int sw, fm_int attr, void *value)
 
         case FM_SWITCH_TX_TIMESTAMP_MODE:
             *( (fm_bool *)value ) = switchExt->txTimestampMode;
+            break;
+
+        case FM_SWITCH_NVM_MAC:
+            nvmMac = (fm_nvmMac *) value;
+
+            err = GetNvmMac(sw, nvmMac);
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_ATTR, err);
             break;
 
         default:
@@ -2880,6 +2985,7 @@ fm_status fm10000SetSwitchAttribute(fm_int sw, fm_int attr, void *value)
     fm_int              i;
     fm_fm10000TeTunnelCfg tunnelCfg;
     fm_fm10000TeParserCfg parserCfg;
+    fm_tunnelModeAttr     teModeAttr;
 
     FM_LOG_ENTRY(FM_LOG_CAT_ATTR,
                  "sw=%d attr=%d value=%p\n",
@@ -3677,10 +3783,26 @@ fm_status fm10000SetSwitchAttribute(fm_int sw, fm_int attr, void *value)
             }
             break;
 
-        case FM_SWITCH_GENEVE_TUNNEL_DEST_UDP_PORT:
-            switchExt->vnGeneveUdpPort = *( (fm_uint32 *) value );
-            tunnelCfg.l4DstNge = switchExt->vnGeneveUdpPort;
-            parserCfg.ngePort = switchExt->vnGeneveUdpPort;
+        case FM_SWITCH_GPE_TUNNEL_DEST_UDP_PORT:
+            switchExt->vnGpeUdpPort = *( (fm_uint32 *) value );
+            tunnelCfg.l4DstNge = switchExt->vnGpeUdpPort;
+            parserCfg.ngePort  = switchExt->vnGpeUdpPort;
+
+            for (i = 0 ; i < FM10000_TE_DEFAULT_L4DST_ENTRIES ; i++)
+            {
+                FM_CLEAR(teModeAttr);
+                teModeAttr.te = i;
+                err = fm10000GetTunnelApiAttribute(sw,
+                                                   FM_TUNNEL_API_MODE,
+                                                   &teModeAttr);
+                FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_ATTR, err);
+
+                if (teModeAttr.mode != FM_TUNNEL_API_MODE_VXLAN_GPE_NSH)
+                {
+                    err = FM_ERR_TE_MODE;
+                    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_ATTR, err);
+                }
+            }
 
             for (i = 0 ; i < FM10000_TE_DEFAULT_L4DST_ENTRIES ; i++)
             {
@@ -3698,6 +3820,47 @@ fm_status fm10000SetSwitchAttribute(fm_int sw, fm_int attr, void *value)
                                          TRUE);
                 FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_ATTR, err);
             }
+
+            break;
+
+        case FM_SWITCH_GENEVE_TUNNEL_DEST_UDP_PORT:
+            switchExt->vnGeneveUdpPort = *( (fm_uint32 *) value );
+            tunnelCfg.l4DstNge = switchExt->vnGeneveUdpPort;
+            parserCfg.ngePort = switchExt->vnGeneveUdpPort;
+
+            for (i = 0 ; i < FM10000_TE_DEFAULT_L4DST_ENTRIES ; i++)
+            {
+                FM_CLEAR(teModeAttr);
+                teModeAttr.te = i;
+                err = fm10000GetTunnelApiAttribute(sw,
+                                                   FM_TUNNEL_API_MODE,
+                                                   &teModeAttr);
+                FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_ATTR, err);
+
+                if (teModeAttr.mode != FM_TUNNEL_API_MODE_VXLAN_NVGRE_NGE)
+                {
+                    err = FM_ERR_TE_MODE;
+                    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_ATTR, err);
+                }
+            }
+
+            for (i = 0 ; i < FM10000_TE_DEFAULT_L4DST_ENTRIES ; i++)
+            {
+                err = fm10000SetTeDefaultTunnel(sw,
+                                                i,
+                                                &tunnelCfg,
+                                                FM10000_TE_DEFAULT_TUNNEL_L4DST_NGE,
+                                                TRUE);
+                FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_ATTR, err);
+
+                err = fm10000SetTeParser(sw,
+                                         i,
+                                         &parserCfg,
+                                         FM10000_TE_PARSER_NGE_PORT,
+                                         TRUE);
+                FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_ATTR, err);
+            }
+
             break;
 
         case FM_SWITCH_TRAP_CODE:
@@ -4151,7 +4314,7 @@ fm_status fm10000InitHashing(fm_int sw)
     l3HashCfg.DIPMask = 0xffff;
     l3HashCfg.L4SrcMask = 0xffff;
     l3HashCfg.L4DstMask = 0xffff;
-    l3HashCfg.DSCPMask = 0xff;
+    l3HashCfg.DSCPMask = 0x3f;
     l3HashCfg.ISLUserMask = 0;
     l3HashCfg.protocolMask = 0xff;
     l3HashCfg.flowMask = 0xfffff;

@@ -99,9 +99,6 @@ enum
     /* IP Options trigger group. */
     FM10000_TRIGGER_GROUP_IP_OPTIONS = 700,
 
-    /* SFlow trigger group. */
-    FM10000_TRIGGER_GROUP_SFLOW = 800,
-
     /* Routing trigger group. */
     FM10000_TRIGGER_GROUP_ROUTING = 900,
 

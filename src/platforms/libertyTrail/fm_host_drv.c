@@ -1196,6 +1196,119 @@ ABORT:
 
 
 /*****************************************************************************/
+/* FilterOutLocalAndParentDirectories
+ * \ingroup intPlatform
+ *
+ * \desc            Filter out directiories "." and "..".
+ * 
+ * \param[in]       dirEntry is the pointer to directory entry.
+ *
+ * \return          1 if directory is neither "." nor "..".
+ * \return          0 otherwise.
+ *
+ *****************************************************************************/
+static int FilterOutLocalAndParentDirectories(const struct dirent *dirEntry)
+{
+    if (strncmp(dirEntry->d_name, ".", sizeof(".")) == 0)
+    {
+        return 0;
+
+    }
+
+    if (strncmp(dirEntry->d_name, "..", sizeof("..")) == 0)
+    {
+        return 0;
+
+    }
+
+    return 1;
+
+}   /* FilterOutLocalAndParentDirectories */
+
+
+
+
+/*****************************************************************************/
+/* GetNetDevFromUio
+ * \ingroup intPlatform
+ *
+ * \desc            Find the net device associated to the given UIO device.
+ *                  Read /sys/class/uio/uioX/device/net/  (where X = num).
+ * 
+ * \param[in]       num is the UIO device number on which to operate.
+ *
+ * \param[out]      netDevName points to caller-provided storage into which the
+ *                  the net device name read is stored.
+ * 
+ * \param[in]       netDevNameLength is the length in bytes of the netDevName
+ *                  argument.
+ *
+ * \return          FM_OK if successful.
+ * \return          Other ''Status Codes'' as appropriate in case of
+ *                  failure.
+ *
+ *****************************************************************************/
+static fm_status GetNetDevFromUio(fm_int  num,
+                                  fm_text netDevName, 
+                                  fm_int  netDevNameLength)
+{
+    struct dirent **namelist;
+    fm_int          n;
+    fm_bool         found;
+    fm_status       err;
+    fm_char         filename[FM_UIO_MAX_NAME_SIZE];
+
+    if (netDevName == NULL)
+    {
+        return FM_ERR_INVALID_ARGUMENT;
+    }
+
+    FM_SNPRINTF_S(filename,
+                  sizeof(filename),
+                  "/sys/class/uio/uio%d/device/net",
+                  num);
+
+    /* Iterate the /sys/class/uio/uio%d/device/net directory and find a net
+     * device corresponding to the management PEP */
+    n = scandir(filename,
+                &namelist,
+                FilterOutLocalAndParentDirectories,
+                alphasort);
+    if (n < 0)
+    {
+        err = FM_ERR_NOT_FOUND;
+        goto ABORT;
+    }
+
+    found = FALSE;
+
+    while(n--)
+    {
+        if (!found)
+        {
+            FM_STRNCPY_S(netDevName,
+                         netDevNameLength,
+                         namelist[n]->d_name,
+                         netDevNameLength);
+            found = TRUE;
+        }
+
+        free(namelist[n]);
+
+    }
+    free(namelist);
+
+    err = (found == TRUE) ? FM_OK : FM_ERR_NOT_FOUND;
+
+ABORT:
+    return err;
+
+}   /* end GetNetDevFromUio */
+
+
+
+
+/*****************************************************************************/
 /* SetUioInterrupt
  * \ingroup platform
  *
@@ -1494,6 +1607,31 @@ fm_status fmPlatformHostDrvOpen(fm_int  sw,
 
         FM_LOG_PRINT("Connect to host driver using %s\n", uioDevName);
         err = FM_OK;
+
+        if (netDevName == NULL)
+        {
+            err = GetNetDevFromUio(info->uioNum,
+                                   localNetDevName,
+                                   FM_NETDEV_MAX_NAME_SIZE);
+            if (err != FM_OK)
+            {
+                FM_LOG_ERROR(FM_LOG_CAT_PLATFORM,
+                             "Unable to get netdev for uio device: %s\n",
+                             uioDevName);
+                FM_LOG_EXIT(FM_LOG_CAT_PLATFORM, err);
+            }
+            
+            /* Update the netdev field with the device found */
+            swCfg = FM_PLAT_GET_SWITCH_CFG(sw);
+            FM_STRNCPY_S(swCfg->netDevName,
+                         sizeof(swCfg->netDevName),
+                         localNetDevName,
+                         sizeof(swCfg->netDevName));
+
+            FM_LOG_PRINT("Found netdev %s (derived from uio device %s)\n",
+                         localNetDevName,
+                         uioDevName);
+        }
     }
     else
     {
@@ -1515,9 +1653,17 @@ fm_status fmPlatformHostDrvOpen(fm_int  sw,
             }
             else
             {
-                FM_LOG_ERROR(FM_LOG_CAT_PLATFORM,
-                             "netdev not found for mgmt pep %d\n",
-                             mgmtPep);
+                strErrNum = FM_STRERROR_S(strErrBuf, FM_STRERROR_BUF_SIZE, errno);
+
+                if (strErrNum)
+                {
+                    FM_SNPRINTF_S(strErrBuf, FM_STRERROR_BUF_SIZE, "%d", errno);
+                }
+
+                FM_LOG_ERROR(FM_LOG_CAT_EVENT_INTR,
+                             "netdev not found for mgmt pep %d ('%s')\n",
+                             mgmtPep,
+                             strErrBuf);
                 FM_LOG_EXIT(FM_LOG_CAT_PLATFORM, err);
             }
 

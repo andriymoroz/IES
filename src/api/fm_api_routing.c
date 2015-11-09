@@ -1130,7 +1130,6 @@ fm_status fmRouterAlloc(fm_int sw)
     fm_switch *switchPtr;
     fm_int     tsize;
     fm_status  err;
-    fm_bool    supportRouteLookups;
 
     FM_LOG_ENTRY(FM_LOG_CAT_ROUTING, "sw = %d\n", sw);
 
@@ -1199,10 +1198,7 @@ fm_status fmRouterAlloc(fm_int sw)
                  * may not have an opportunity to configure the API attribute prior to
                  * switch insertion.
                  ************************************************************************/
-                supportRouteLookups = fmGetBoolApiProperty(
-                        FM_AAK_API_SUPPORT_ROUTE_LOOKUPS,
-                        FM_AAD_API_SUPPORT_ROUTE_LOOKUPS);
-                if (supportRouteLookups)
+                if (GET_PROPERTY()->supportRouteLookups)
                 {
                     /* routeLookupTrees points towards a 2 dim array of pointers to trees */
                     /* Additional virtual number is for vrid = FM_ROUTER_ANY */
@@ -5198,7 +5194,7 @@ fm_status fmSetRouteActiveFlag(fm_int            sw,
             {
                 ecmpGroup = switchPtr->ecmpGroups[ecmpGroupId];
 
-                if (!ecmpGroup->isUsable)
+                if ( (ecmpGroup == NULL) || (!ecmpGroup->isUsable) )
                 {
                     active = FALSE;
                 }

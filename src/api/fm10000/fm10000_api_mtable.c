@@ -4147,9 +4147,7 @@ fm_status fm10000MTableInitialize(fm_int sw)
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MULTICAST, err);
 
     /* Initialize the garbage collection watermark */
-    info->watermarkPercentage = 
-        fmGetIntApiProperty(FM_AAK_API_FM10000_MTABLE_CLEANUP_WATERMARK,
-                            FM_AAD_API_FM10000_MTABLE_CLEANUP_WATERMARK);
+    info->watermarkPercentage    =  GET_FM10000_PROPERTY()->mtableCleanupWm;
     info->clonedEntriesWatermark = FM10000_MAX_MCAST_VLAN_INDEX - 1;
     info->clonedEntriesWatermark *= info->watermarkPercentage;
     info->clonedEntriesWatermark /= 100;

@@ -1053,8 +1053,7 @@ static fm_status PCIeMailboxProcessRequest(fm_int sw,
 
 /*    PrintControlHeader(&controlHeader); */
 
-    useLoopback = fmGetBoolApiProperty(FM_AAK_API_FM10000_HNI_SERVICES_LOOPBACK,
-                                       FM_AAD_API_FM10000_HNI_SERVICES_LOOPBACK);
+    useLoopback = GET_FM10000_PROPERTY()->useHniServicesLoopback;
 
     if (useLoopback == FALSE)
     {
@@ -6356,7 +6355,6 @@ fm_status fm10000MailboxConfigureCounters(fm_int sw)
     fm_mailboxInfo *info;
     fm_status       status;
     fm_uint16       nbytes;
-    fm_int          value;
 
     FM_LOG_ENTRY(FM_LOG_CAT_MAILBOX,
                  "sw=%d\n",
@@ -6387,25 +6385,17 @@ fm_status fm10000MailboxConfigureCounters(fm_int sw)
 
     FM_CLEAR(*info->innerOuterMacEntriesAdded);
 
-    value = fmGetIntApiProperty(FM_AAK_API_HNI_MAC_ENTRIES_PER_PEP,
-                                FM_AAD_API_HNI_MAC_ENTRIES_PER_PEP);
+    info->maxMacEntriesToAddPerPep =
+        GET_PROPERTY()->hniMacEntriesPerPep;
 
-    info->maxMacEntriesToAddPerPep = value;
+    info->maxInnerOuterMacEntriesToAddPerPep =
+        GET_PROPERTY()->hniInnOutEntriesPerPep;
 
-    value = fmGetIntApiProperty(FM_AAK_API_HNI_INN_OUT_ENTRIES_PER_PEP,
-                                FM_AAD_API_HNI_INN_OUT_ENTRIES_PER_PEP);
+    info->maxMacEntriesToAddPerPort =
+        GET_PROPERTY()->hniMacEntriesPerPort;
 
-    info->maxInnerOuterMacEntriesToAddPerPep = value;
-
-    value = fmGetIntApiProperty(FM_AAK_API_HNI_MAC_ENTRIES_PER_PORT,
-                                FM_AAD_API_HNI_MAC_ENTRIES_PER_PORT);
-
-    info->maxMacEntriesToAddPerPort = value;
-
-    value = fmGetIntApiProperty(FM_AAK_API_HNI_INN_OUT_ENTRIES_PER_PORT,
-                                FM_AAD_API_HNI_INN_OUT_ENTRIES_PER_PORT);
-
-    info->maxInnerOuterMacEntriesToAddPerPort = value;
+    info->maxInnerOuterMacEntriesToAddPerPort =
+        GET_PROPERTY()->hniInnOutEntriesPerPort;
 
 ABORT:
 

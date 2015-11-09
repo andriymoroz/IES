@@ -171,7 +171,6 @@ fm_status fmRawPacketSocketHandlingInitialize(fm_int  sw,
     fm_int                   rawSock = -1;
     struct ifreq             ifr;
     struct sockaddr_ll       sa;
-    struct packet_mreq       mr;
     struct ethtool_value     ethValue;
 #ifdef ENABLE_TIMESTAMP
     struct ifreq             hwtstamp;
@@ -230,22 +229,6 @@ fm_status fmRawPacketSocketHandlingInitialize(fm_int  sw,
     {
         FM_LOG_FATAL(FM_LOG_CAT_PLATFORM, 
                      "Failed to bind to the raw packet socket\n");
-        err = FM_FAIL;
-        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PLATFORM, err);
-    }
-
-    /* Configure the socket in promisc mode */
-    FM_CLEAR(mr);
-    mr.mr_ifindex = ifr.ifr_ifindex;
-    mr.mr_type = PACKET_MR_PROMISC;
-    if (setsockopt(rawSock,
-                   SOL_PACKET,
-                   PACKET_ADD_MEMBERSHIP,
-                   &mr,
-                   sizeof (mr)) < 0)
-    {
-        FM_LOG_FATAL(FM_LOG_CAT_PLATFORM,
-                     "Failed to set socket in promisc mode\n");
         err = FM_FAIL;
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PLATFORM, err);
     }
@@ -353,31 +336,6 @@ fm_status fmRawPacketSocketHandlingInitialize(fm_int  sw,
         {
             FM_LOG_ERROR(FM_LOG_CAT_PLATFORM,
                          "Failed to set ies-tagging: %d\n",
-                         errno);
-        }
-    }
-
-    /* In the fm10k driver in file fm10k.h:
-     * #define FM10K_MAX_JUMBO_FRAME_SIZE 15358 -> Maximum supported size 15K
-     * But it is expected that it will change to 15346, so setting it to 15346 
-     * now itself. 15346 + 14 bytes of L2 header = 15360 is the max frame size
-     * supported on ethernet port.
-     */
-    ifr.ifr_mtu = FM_MAX_JUMBO_FRAME_SIZE;
-
-    if (ioctl(rawSock, SIOCSIFMTU, &ifr) == -1)
-    {
-        strErrNum = FM_STRERROR_S(strErrBuf, FM_STRERROR_BUF_SIZE, errno);
-        if (strErrNum == 0)
-        {
-            FM_LOG_ERROR(FM_LOG_CAT_PLATFORM,
-                         "Failed to set netdev MTU: %s\n",
-                         strErrBuf);
-        }
-        else
-        {
-            FM_LOG_ERROR(FM_LOG_CAT_PLATFORM,
-                         "Failed to set netdev MTU: %d\n",
                          errno);
         }
     }
@@ -1070,6 +1028,12 @@ void * fmRawPacketSocketReceivePackets(void *args)
  *
  * \param[in]       sw refers to the switch number to send packets to.
  *
+ * \param[out]      isRawSocket is a pointer to a variable specifying if raw
+ *                  socket is used.
+ *
+ * \param[out]      mtu is a pointer to a variable storing mtu value of
+ *                  the raw sockets network device.
+ *
  * \return          TRUE if either raw packet socket was not initialized or
  *                  raw packet socket is initialized and the underlying network
  *                  device is operational.
@@ -1077,7 +1041,9 @@ void * fmRawPacketSocketReceivePackets(void *args)
  *                  network device is not operational.
  *
  *****************************************************************************/
-fm_bool fmIsRawPacketSocketDeviceOperational(fm_int sw)
+fm_bool fmIsRawPacketSocketDeviceOperational(fm_int   sw,
+                                             fm_bool *isRawSocket,
+                                             fm_int * mtu)
 {
     fm_switch    *switchPtr;
     char         strErrBuf[FM_STRERROR_BUF_SIZE];
@@ -1087,6 +1053,11 @@ fm_bool fmIsRawPacketSocketDeviceOperational(fm_int sw)
     FM_LOG_ENTRY(FM_LOG_CAT_PLATFORM, "sw=%d\n", sw);
 
     switchPtr = GET_SWITCH_PTR(sw);
+
+    if (isRawSocket != NULL)
+    {
+        *isRawSocket = FM_DISABLED;
+    }
     
     if (switchPtr->isRawSocketInitialized ==  FM_DISABLED)
     {
@@ -1126,6 +1097,21 @@ fm_bool fmIsRawPacketSocketDeviceOperational(fm_int sw)
                        "Network device %s resources are not allocated.\n",
                        ifr.ifr_name);
         FM_LOG_EXIT_CUSTOM(FM_LOG_CAT_PLATFORM, FALSE, "Not operational\n");
+    }
+
+    if (ioctl(GET_PLAT_STATE(sw)->rawSocket, SIOCGIFMTU, &ifr) == -1)
+    {
+        FM_LOG_WARNING(FM_LOG_CAT_SWITCH,
+                       "WARNING: failed to read netdev MTU\n");
+        FM_LOG_EXIT_CUSTOM(FM_LOG_CAT_PLATFORM,
+                           FALSE,
+                           "MTU could not be retrieved\n");
+    }
+
+    if ( (isRawSocket != NULL) && (mtu != NULL) )
+    {
+        *isRawSocket = FM_ENABLED;
+        *mtu         = ifr.ifr_mtu;
     }
 
     FM_LOG_EXIT_CUSTOM(FM_LOG_CAT_PLATFORM, TRUE, "Operational\n");

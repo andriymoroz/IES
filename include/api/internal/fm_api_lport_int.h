@@ -155,83 +155,6 @@ typedef enum
 } fm_camUpdateMode;
 
 
-/***************************************************
- * Constants representing boundaries and sizes for
- * the glort space.
- **************************************************/
-
-/*
- * 0x0000 - 0x00ff  : Physical ports. 
- *  
- * The glort port size (number of destination table 
- * entries) is defined at the switch level. 
- *  
- * Used to initialize portBaseGlort. 
- */
-#define FM_GLORT_PORT_BASE(base)        (base)
-
-/*
- * 0x0100 - 0x03ff  : Link aggregate groups. 
- *  
- * Used to initialize lagBaseGlort and lagCount.
- */
-#define FM_GLORTS_PER_LAG               32
-#define FM_GLORT_LAG_BASE_OFFSET        0x100 
-#define FM_GLORT_LAG_BASE(base)         ((base) + FM_GLORT_LAG_BASE_OFFSET)
-#define FM_GLORT_LAG_SIZE               (FM_GLORTS_PER_LAG * FM_MAX_NUM_LAGS)
-
-/*
- * 0x0400 - 0x07ff  : Multicast groups. 
- * 
- * This defines enough glorts for up to FM_MAX_NUM_MULTICAST_GROUP multicast
- * groups, not offset from LAG. 
- *  
- * Used to initialize mcastBaseGlort and mcastCount.
- */
-#define FM_GLORT_MULTICAST_BASE(base)   (FM_GLORT_LAG_BASE(base) + FM_GLORT_LAG_SIZE)
-#define FM_GLORT_MULTICAST_SIZE         FM_MAX_NUM_MULTICAST_GROUP
-
-/**
- * 0x0800 - 0x17ff  : Load-balancing groups. 
- *  
- * Used to initialize lbgBaseGlort and lbgCount.
- */
-#define FM_GLORT_LBG_BASE(base)         (FM_GLORT_MULTICAST_BASE(base)+ FM_GLORT_MULTICAST_SIZE)
-#define FM_GLORT_LBG_SIZE               0x1000
-
-/*
- * 0xff00 - 0xffff  : CPU glorts. 
- *  
- * All the switches will have the same CPU glort range. 
- * The number of CPU ports (number of destination table 
- * entries) is defined at the switch level. 
- *  
- * Yields the base CPU trap Glort. 
- */ 
-#define FM_GLORT_CPU_BASE               0xFF00
-#define FM_GLORT_CPU_MASK               0xFF00
-
-/* Custom glorts go at the end of CPU glort space. */
-#define FM_GLORT_SPECIAL_BASE           0xFFF8
-#define FM_GLORT_SPECIAL_MASK           0xFFF8
-#define FM_GLORT_SPECIAL_SIZE           0x0008
-#define FM_GLORT_SPECIAL_A_LENGTH       3
-
-/* The maximum glort value. */
-#define FM_MAX_GLORT                    0xFFFF
-
-
-/***************************************************
- * Constants representing field values for the
- * GLORT_RAM table.
- **************************************************/
-
-#define FM_GLORT_ENTRY_TYPE_STRICT      3
-#define FM_GLORT_ENTRY_TYPE_HASHED      2
-#define FM_GLORT_ENTRY_TYPE_ISL         0
-
-#define FM_GLORT_ENTRY_HASH_A           0
-#define FM_GLORT_ENTRY_HASH_B           1
 
 
 /***************************************************
@@ -473,93 +396,6 @@ typedef struct
 } fm_logicalPortInfo;
 
 
-/***************************************************
- * Additional glort management information.
- **************************************************/
-typedef struct
-{
-    /* Base address for CPU glort range. */
-    fm_uint32   cpuBase;
-
-    /* CAM mask for CPU glort range. */
-    fm_uint32   cpuMask;
-
-    /* Base address for special glort range. */
-    fm_uint32   specialBase;
-
-    /* CAM mask for special glort range. */
-    fm_uint32   specialMask;
-
-    /* Number of glorts in special glort range. */
-    fm_int      specialSize;
-
-    /* Number of glorts expressed as a power of two. */
-    fm_int      specialALength;
-
-} fm_glortInfo;
-
-
-/*******************************************************************
- * State bits for the glortState array.
- *******************************************************************/
-
-#define FM_GLORT_STATE_IN_USE       0x01    /* In use */
-#define FM_GLORT_STATE_RESV_MCG     0x02    /* Reserved for MCG */
-#define FM_GLORT_STATE_RESV_LAG     0x04    /* Reserved for LAG */
-#define FM_GLORT_STATE_RESV_LBG     0x08    /* Reserved for LBG */
-#define FM_GLORT_STATE_FREE_PEND    0x10    /* Free pending */
-
-#define FM_GLORT_STATE_USED_BITS    \
-        (FM_GLORT_STATE_IN_USE | FM_GLORT_STATE_FREE_PEND)
-
-
-/*******************************************************************
- * Macros to manipulate the glortState array to check whether a glort
- * is reserved or in use.
- *******************************************************************/
-
-#define FM_RELEASE_GLORT(info, glort)       \
-        (info)->glortState[glort] = 0
-
-#define FM_SET_GLORT_FREE(info, glort)      \
-        (info)->glortState[glort] &= ~FM_GLORT_STATE_USED_BITS
-
-#define FM_SET_GLORT_IN_USE(info, glort)    \
-        (info)->glortState[glort] |= FM_GLORT_STATE_IN_USE
-
-#define FM_RESERVE_GLORT_MCG(info, glort)   \
-        (info)->glortState[glort] |= FM_GLORT_STATE_RESV_MCG
-
-#define FM_RESERVE_GLORT_LAG(info, glort)   \
-        (info)->glortState[glort] |= FM_GLORT_STATE_RESV_LAG
-
-#define FM_RESERVE_GLORT_LBG(info, glort)   \
-        (info)->glortState[glort] |= FM_GLORT_STATE_RESV_LBG
-
-/* Either used or reserved */
-#define FM_IS_GLORT_TAKEN(info, glort)      \
-        ((info)->glortState[glort] != 0)
-
-/* Check for both free and reserved */
-#define FM_IS_GLORT_MCG_FREE(info, glort)   \
-        ((info)->glortState[glort] == FM_GLORT_STATE_RESV_MCG)
-
-#define FM_IS_GLORT_LAG_FREE(info, glort)   \
-        ((info)->glortState[glort] == FM_GLORT_STATE_RESV_LAG)
-
-#define FM_IS_GLORT_LBG_FREE(info, glort)   \
-        ((info)->glortState[glort] == FM_GLORT_STATE_RESV_LBG)
-
-/* Due to the problem of another thread is freeing the LAG, thus preventing
- * the code to free the allocated LAGs right after deleting all the LAGs
- * in the allocated groups, so we will need this so we can free the allocated
- * groups
- */
-#define FM_SET_GLORT_FREE_PEND(info, glort) \
-        (info)->glortState[glort] |= FM_GLORT_STATE_FREE_PEND
-
-#define FM_IS_GLORT_FREE_PEND(info, glort)  \
-        (((info)->glortState[glort] & FM_GLORT_STATE_FREE_PEND) != 0)
 
 
 /*******************************************************************
@@ -630,8 +466,6 @@ typedef struct
  * Utility macros.
  **************************************************/
 
-#define FM_GET_GLORT_NUMBER(swptr, p)       ( (swptr)->portTable[p]->glort )
-
 #define FM_USED_BY_TYPE(type)   (type | 0x80)
 
 
@@ -682,22 +516,22 @@ fm_status fmSortPortByGlort(fm_int sw,
 fm_status fmAllocDestEntries(fm_int              sw,
                              fm_int              numDestEntries,
                              fm_glortCamEntry *  camEntry,
-                             fm_glortDestEntry** destEntry,
+                             fm_glortDestEntry **destEntry,
                              fm_portType         type);
 
-fm_status fmCreateGlortCamEntry(fm_int      sw,
-                                fm_uint32   camMask,
-                                fm_uint32   camKey,
-                                fm_uint32   strict,
-                                fm_uint32   baseIndex,
-                                fm_uint32   destCount,
-                                fm_uint32   rangeALength,
-                                fm_uint32   rangeAOffset,
-                                fm_uint32   rangeBLength,
-                                fm_uint32   rangeBOffset,
-                                fm_uint32   hashRotation,
-                                fm_uint32   dglortTag,
-                                fm_uint32 * camIndexPtr);
+fm_status fmCreateGlortCamEntry(fm_int     sw,
+                                fm_uint32  camMask,
+                                fm_uint32  camKey,
+                                fm_uint32  strict,
+                                fm_uint32  baseIndex,
+                                fm_uint32  destCount,
+                                fm_uint32  rangeALength,
+                                fm_uint32  rangeAOffset,
+                                fm_uint32  rangeBLength,
+                                fm_uint32  rangeBOffset,
+                                fm_uint32  hashRotation,
+                                fm_uint32  dglortTag,
+                                fm_uint32 *camIndexPtr);
 
 fm_int fmFindFreeLagEntry(fm_int sw);
 fm_int fmFindFreeLbgEntry(fm_int sw);
@@ -716,28 +550,28 @@ fm_int fmFindUnusedDestEntries(fm_int   sw,
 fm_int fmFindUnusedGlorts(fm_int            sw,
                           fm_int            numGlorts,
                           fm_int            first,
-                          fm_glortCamEntry* camEntry);
+                          fm_glortCamEntry *camEntry);
 
 fm_int fmFindUnusedLogicalPorts(fm_int sw, fm_int numPorts);
 
-fm_status fmFindUnusedLagGlorts(fm_int      sw,
-                                fm_int      numPorts,
-                                fm_int      useHandle,
-                                fm_int      glortsPerLag,
-                                fm_int *    logicalPort,
-                                fm_int *    firstGlort);
+fm_status fmFindUnusedLagGlorts(fm_int     sw,
+                                fm_int     numPorts,
+                                fm_int     useHandle,
+                                fm_int     glortsPerLag,
+                                fm_int *   logicalPort,
+                                fm_uint32 *firstGlort);
 
-fm_status fmFindUnusedLbgGlorts(fm_int      sw,
-                                fm_int      numPorts,
-                                fm_int      useHandle,
-                                fm_int *    logicalPort,
-                                fm_int *    firstGlort);
+fm_status fmFindUnusedLbgGlorts(fm_int     sw,
+                                fm_int     numPorts,
+                                fm_int     useHandle,
+                                fm_int *   logicalPort,
+                                fm_uint32 *firstGlort);
 
-fm_status fmFindUnusedMcgGlorts(fm_int              sw,
-                                fm_int              numPorts,
-                                fm_int              useHandle,
-                                fm_mcgAllocEntry**  allocEntryPtr,
-                                fm_uint *           offBasePtr);
+fm_status fmFindUnusedMcgGlorts(fm_int             sw,
+                                fm_int             numPorts,
+                                fm_int             useHandle,
+                                fm_mcgAllocEntry **allocEntryPtr,
+                                fm_uint32 *        offBasePtr);
 
 const char * fmGetPortTypeAsText(fm_int sw, fm_int port);
 
@@ -747,9 +581,7 @@ const char * fmSpecialPortToText(fm_int port);
 
 fm_status fmRemoveGlortCamEntry(fm_int sw, fm_uint32 camIndex);
 
-void fmResetLogicalPortInfo(fm_logicalPortInfo* lportInfo);
-
-fm_status fmVerifyGlortRange(fm_uint32 glort, fm_int size);
+void fmResetLogicalPortInfo(fm_logicalPortInfo *lportInfo);
 
 fm_status fmFreeMcastLogicalPort(fm_int sw, fm_int port);
 
@@ -759,11 +591,11 @@ fm_status fmAllocateLogicalPortDataStructures(fm_int sw,
                                               fm_int numCamEntries,
                                               fm_int numDestEntries);
 
-fm_status fmFreeLogicalPortDataStructures(fm_switch* switchPtr);
+fm_status fmFreeLogicalPortDataStructures(fm_switch *switchPtr);
 
 fm_status fmFreeLogicalPortResources(fm_int sw);
 
-fm_status fmFreeLaneResources( fm_int sw );
+fm_status fmFreeLaneResources(fm_int sw);
 
 fm_status fmCommonAllocLogicalPort(fm_int      sw,
                                    fm_portType portType,

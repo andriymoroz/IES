@@ -1170,7 +1170,7 @@ fm_int GET_PORT_INDEX(fm_int sw, fm_int port)
     fm_switch * switchPtr;
     fm_int      cpi;
 
-    if (sw < 0 || sw >= FM_MAX_NUM_SWITCHES)
+    if (sw < 0 || sw >= fmRootPlatform->cfg.numSwitches) 
     {
         FM_LOG_FATAL(FM_LOG_CAT_PORT,
                      "Switch number %d is out of bounds\n",

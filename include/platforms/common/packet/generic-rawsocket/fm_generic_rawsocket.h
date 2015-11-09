@@ -36,15 +36,17 @@
 #define __FM_FM_GENERIC_RAWSOCKET_H
 
 /* This is the maximum MTU supported by the fm10k driver*/
-#define FM_MAX_JUMBO_FRAME_SIZE 15346
+#define FM_MAX_JUMBO_FRAME_SIZE 15342
 
 /* raw packet socket function prototypes */
 fm_status fmRawPacketSocketSendPackets(fm_int sw);
 void * fmRawPacketSocketReceivePackets(void *args);
-fm_status fmRawPacketSocketHandlingInitialize(fm_int sw, 
+fm_status fmRawPacketSocketHandlingInitialize(fm_int  sw, 
                                               fm_bool hasFcs, 
                                               fm_text iface);
 fm_status fmRawPacketSocketDestroy(fm_int sw);
-fm_bool fmIsRawPacketSocketDeviceOperational(fm_int sw);
+fm_bool fmIsRawPacketSocketDeviceOperational(fm_int   sw,
+                                             fm_bool *isRawSocket,
+                                             fm_int * mtu);
 
 #endif /* __FM_FM_GENERIC_RAWSOCKET_H */

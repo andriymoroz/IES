@@ -30,10 +30,12 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
+ *****************************************************************************/
 
 #ifndef __FM_UTIL_CONFIG_TLV_H
 #define __FM_UTIL_CONFIG_TLV_H
+
+#define FM_TLV_MAX_BUF_SIZE                         (256 + 3)
 
 /* API properties */
 #define FM_TLV_API_EBI_CLOCK                        0x0001
@@ -51,7 +53,9 @@
 #define FM_TLV_API_EVENT_SEM_TIMEOUT                0x000d
 #define FM_TLV_API_RX_DIRECTED_ENQ                  0x000e
 #define FM_TLV_API_RX_DRV_DEST                      0x000f
+#if 0
 #define FM_TLV_API_BOOT_PORT_RESET_MASK             0x0010
+#endif
 #define FM_TLV_API_LAG_ASYNC_DEL                    0x0011
 #define FM_TLV_API_EVENT_ON_STATIC_ADDR             0x0012
 #define FM_TLV_API_EVENT_ON_DYN_ADDR                0x0013
@@ -61,9 +65,7 @@
 #define FM_TLV_API_TCN_FIFO_BURST_SIZE              0x0017
 #define FM_TLV_API_SWAG_INT_VLAN_STATS              0x0018
 #define FM_TLV_API_PER_LAG_MGMT                     0x0019
-#define FM_TLV_API_SWEEPER_EN                       0x001a
-#define FM_TLV_API_SWEEPER_RD_BURST_SZ              0x001b
-#define FM_TLV_API_SWEEPER_SLEEP_PER                0x001c
+/* 0x1a..0x1c deleted */
 #define FM_TLV_API_PARITY_REPAIR_EN                 0x001d
 #define FM_TLV_API_SWAG_MAX_ACL_PORT_SET            0x001e
 #define FM_TLV_API_MAX_PORT_SETS                    0x001f
@@ -76,6 +78,7 @@
 #define FM_TLV_API_SUP_ROUTE_LOOKUP                 0x0026
 #define FM_TLV_API_RT_MAINT_EN                      0x0027
 #define FM_TLV_API_AUTO_VLAN2_TAG                   0x0028
+#define FM_TLV_API_EVENT_ON_ADDR_CHG                0x0029
 
 
 /* Undocumented API properties */
@@ -83,7 +86,9 @@
 #define FM_TLV_API_MA_TABLE_MAINT_EN                0x1001
 #define FM_TLV_API_FAST_MAINT_EN                    0x1002
 #define FM_TLV_API_FAST_MAINT_PER                   0x1003  
+#if 0
 #define FM_TLV_API_VEGAS_UPLNK_FIRST                0x1004
+#endif
 #define FM_TLV_API_STRICT_GLORT                     0x1005
 #define FM_TLV_API_AUTO_RESET_WM                    0x1006
 #define FM_TLV_API_AUTO_SUB_SW                      0x1007
@@ -92,7 +97,6 @@
 #define FM_TLV_API_FIBM_TEST_RIG                    0x100a
 #define FM_TLV_API_FIBM_TEST_PORT                   0x100b
 #define FM_TLV_API_PORT_REMAP_TABLE                 0x100c
-#define FM_TLV_API_PAR_SWEEPER_FIBM_EN              0x100d
 #define FM_TLV_API_PLAT_BYPASS_EN                   0x100e
 #define FM_TLV_API_LAG_DEL_SEM_TIMEOUT              0x100f
 #define FM_TLV_API_STP_EN_INT_PORT_CTRL             0x1010
@@ -134,6 +138,9 @@
 #define FM_TLV_API_HNI_INN_OUT_ENTRIES_PER_PORT     0x1034
 #define FM_TLV_API_PORT_ENABLE_STATUS_POLLING       0x1035
 #define FM_TLV_API_DFE_ENABLE_SIGNALOK_DEBOUNCING   0x1036
+#define FM_TLV_API_PLAT_MODEL_CHIP_VERSION          0x1037
+#define FM_TLV_API_ADD_ALLOW_FTAG_VLAN_TAG          0x1038
+#define FM_TLV_API_AN_TIMER_ALLOW_OUT_SPEC          0x1039
 
 /* FM10K properties */
 #define FM_TLV_FM10K_WMSELECT                       0x2000
@@ -176,6 +183,8 @@
 #define FM_TLV_FM10K_MTABLE_CLEANUP_WATERMARK       0x2025
 #define FM_TLV_FM10K_SCHED_MODE                     0x2026
 #define FM_TLV_FM10K_UPD_SCHED_ON_LNK_CHANGE        0x2027
+#define FM_TLV_FM10K_PARITY_CRM_TIMEOUT             0x2028
+#define FM_TLV_FM10K_INIT_RESERVED_MAC_TRIGGERS     0x2029
 
 
 /* Undocumented FM10K properties  */
@@ -187,10 +196,6 @@
 #define FM_TLV_FM10K_SERDES_OP_MODE                 0x2805
 #define FM_TLV_FM10K_SERDES_DBG_LVL                 0x2806
 #define FM_TLV_FM10K_PARITY_INTERRUPTS              0x2807
-#define FM_TLV_FM10K_PARITY_REFCOUNT_ERROR_THRESH   0x2808
-#define FM_TLV_FM10K_PARITY_REFCOUNT_FATAL_THRESH   0x2809
-#define FM_TLV_FM10K_PARITY_FREELIST_ERROR_THRESH   0x280a
-#define FM_TLV_FM10K_PARITY_FREELIST_FATAL_THRESH   0x280b
 #define FM_TLV_FM10K_SCHED_OVERSPEED                0x280c
 #define FM_TLV_FM10K_INTR_LINK_IGNORE_MASK          0x280d
 #define FM_TLV_FM10K_INTR_AUTONEG_IGNORE_MASK       0x280e
@@ -200,7 +205,10 @@
 #define FM_TLV_FM10K_INTR_FHTAIL_IGNORE_MASK        0x2812
 #define FM_TLV_FM10K_INTR_SW_IGNORE_MASK            0x2813
 #define FM_TLV_FM10K_INTR_TE_IGNORE_MASK            0x2814
-
+#define FM_TLV_FM10K_PARITY_TCAM_MONITOR            0x2815
+#define FM_TLV_FM10K_EEE_SPICO_INTR                 0x2816 
+#define FM_TLV_FM10K_USE_ALTERNATE_SPICO_FW         0x2817 
+#define FM_TLV_FM10K_ALLOW_KRPCAL_ON_EEE            0x2818 
 
 
 /* Liberty Trail platform properties */
@@ -274,30 +282,34 @@
 #define FM_TLV_PLAT_SW_VRM_HW_ID                    0x303f
 #define FM_TLV_PLAT_SW_MSI_ENABLE                   0x3040
 #define FM_TLV_PLAT_SW_FH_CLOCK                     0x3041
-
 #define FM_TLV_PLAT_SW_PORTIDX_LANE_TXEQ_PRE_CU_1G       0x3042
 #define FM_TLV_PLAT_SW_PORTIDX_LANE_TXEQ_PRE_CU_10G      0x3043
 #define FM_TLV_PLAT_SW_PORTIDX_LANE_TXEQ_PRE_CU_25G      0x3044
 #define FM_TLV_PLAT_SW_PORTIDX_LANE_TXEQ_PRE_OPT_1G      0x3045
 #define FM_TLV_PLAT_SW_PORTIDX_LANE_TXEQ_PRE_OPT_10G     0x3046
 #define FM_TLV_PLAT_SW_PORTIDX_LANE_TXEQ_PRE_OPT_25G     0x3047
-
 #define FM_TLV_PLAT_SW_PORTIDX_LANE_TXEQ_CUR_CU_1G       0x3048
 #define FM_TLV_PLAT_SW_PORTIDX_LANE_TXEQ_CUR_CU_10G      0x3049
 #define FM_TLV_PLAT_SW_PORTIDX_LANE_TXEQ_CUR_CU_25G      0x304a
 #define FM_TLV_PLAT_SW_PORTIDX_LANE_TXEQ_CUR_OPT_1G      0x304b
 #define FM_TLV_PLAT_SW_PORTIDX_LANE_TXEQ_CUR_OPT_10G     0x304c
 #define FM_TLV_PLAT_SW_PORTIDX_LANE_TXEQ_CUR_OPT_25G     0x304d
-
 #define FM_TLV_PLAT_SW_PORTIDX_LANE_TXEQ_POST_CU_1G      0x304e
 #define FM_TLV_PLAT_SW_PORTIDX_LANE_TXEQ_POST_CU_10G     0x304f
 #define FM_TLV_PLAT_SW_PORTIDX_LANE_TXEQ_POST_CU_25G     0x3050
 #define FM_TLV_PLAT_SW_PORTIDX_LANE_TXEQ_POST_OPT_1G     0x3051
 #define FM_TLV_PLAT_SW_PORTIDX_LANE_TXEQ_POST_OPT_10G    0x3052
 #define FM_TLV_PLAT_SW_PORTIDX_LANE_TXEQ_POST_OPT_25G    0x3053
+#define FM_TLV_PLAT_SW_PHY_APP_MODE                 0x3054
+#define FM_TLV_PLAT_SW_VRM_USE_DEF_VOLTAGE          0x3055
+#define FM_TLV_PLAT_SW_VDDS_USE_HW_RESOURCE_ID      0x3056
+#define FM_TLV_PLAT_SW_VDDF_USE_HW_RESOURCE_ID      0x3057
+#define FM_TLV_PLAT_SW_AVDD_USE_HW_RESOURCE_ID      0x3058
+#define FM_TLV_PLAT_SW_PORTIDX_LANE_ALL_RX_TERM     0x3059
+#define FM_TLV_PLAT_SW_PORTIDX_LANE_RX_TERM         0x305a
+#define FM_TLV_PLAT_SW_I2C_CLKDIVIDER               0x305b
 
-
-
+/* Undocumented Liberty Trail platform properties */
 #define FM_TLV_PLAT_EBI_DEVNAME                     0x4000
 #define FM_TLV_PLAT_DEV_MEM_OFF                     0x4001
 #define FM_TLV_PLAT_NET_DEVNAME                     0x4002
@@ -334,7 +346,7 @@
 #define FM_TLV_PLAT_LIB_XCVR_DEF_TXDISABLE_PIN      0x5011
 #define FM_TLV_PLAT_LIB_XCVR_DEF_TXFAULT_PIN        0x5012
 #define FM_TLV_PLAT_LIB_XCVR_DEF_MODPRESL_PIN       0x5013
-#define FM_TLV_PLAT_LIB_XCVR_DEF_INTL_PIN           0x5014  
+#define FM_TLV_PLAT_LIB_XCVR_DEF_INTL_PIN           0x5014
 #define FM_TLV_PLAT_LIB_XCVR_DEF_LPMODE_PIN         0x5015
 #define FM_TLV_PLAT_LIB_XCVR_DEF_RESETL_PIN         0x5016
 
@@ -347,7 +359,7 @@
 #define FM_TLV_PLAT_LIB_XCVR_TXDISABLE_PIN          0x501d
 #define FM_TLV_PLAT_LIB_XCVR_TXFAULT_PIN            0x501e
 #define FM_TLV_PLAT_LIB_XCVR_MODPRESL_PIN           0x501f
-#define FM_TLV_PLAT_LIB_XCVR_INTL_PIN               0x5020  
+#define FM_TLV_PLAT_LIB_XCVR_INTL_PIN               0x5020
 #define FM_TLV_PLAT_LIB_XCVR_LPMODE_PIN             0x5021
 #define FM_TLV_PLAT_LIB_XCVR_RESETL_PIN             0x5022
 

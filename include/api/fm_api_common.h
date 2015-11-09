@@ -476,6 +476,18 @@ typedef enum
      *  \chips  FM6000 */
     FM_SWITCH_MODEL_FM5224,
     
+    /** FM10840 Switch.
+     *  \chips  FM10000 */
+    FM_SWITCH_MODEL_FM10840,
+
+    /** FM10420 Switch.
+     *  \chips  FM10000 */
+    FM_SWITCH_MODEL_FM10420,
+
+    /** FM10064 Switch.
+     *  \chips  FM10000 */
+    FM_SWITCH_MODEL_FM10064,
+
     /** UNPUBLISHED: For internal use only. */
     FM_SWITCH_MODEL_MAX
 

@@ -167,8 +167,6 @@ typedef struct _fm10000_bsmIsrParams
 
 
 
-fm_status fm10000LoadBootCfg(fm_int sw, fm10000_bootCfg *bootCfg);
-
 fm_status fm10000GetSwitchId(fm_int                     sw,
                              fm_switchFamily *          family,
                              fm_switchModel *           model,

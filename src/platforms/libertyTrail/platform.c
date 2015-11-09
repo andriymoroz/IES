@@ -229,7 +229,7 @@ static fm_status ConnectToDevMem(fm_int sw)
     FM_LOG_PRINT("Switch#%d memory is located at 0x%llx\n", sw, memOffset);
 
     /* Check IO permissions to be able to open /dev/mem */
-    if(iopl(3))
+    if (iopl(3))
     {
         FM_LOG_FATAL(FM_LOG_CAT_PLATFORM,
                      "FAIL: Cannot get I/O permissions.\n");
@@ -322,6 +322,7 @@ static fm_status DisconnectFromDevMem(fm_int sw)
 
 
 
+
 /*****************************************************************************/
 /** ConnectToHostDriver
  *
@@ -399,6 +400,7 @@ static fm_status DisconnectFromHostDriver(fm_int sw)
     FM_LOG_EXIT(FM_LOG_CAT_PLATFORM, status);
 
 }   /* end DisconnectFromHostDriver */
+
 
 
 
@@ -610,6 +612,45 @@ static fm_status FileLockingInit(fm_int sw)
 
 
 
+/*****************************************************************************/
+/* SetI2cBusSpeed
+ *
+ * \desc            Set the I2C bus speed.
+ *
+ * \param[in]       sw is the switch number on which to operate.
+ *
+ * \return          FM_OK if successful.
+ * \return          Other ''Status Codes'' as appropriate in case of
+ *                  failure.
+ *
+ *****************************************************************************/ 
+static fm_status SetI2cBusSpeed(fm_int sw)
+{
+    fm_platformCfgSwitch *swCfg;
+    fm_status   status;
+    fm_uint32   regValue;
+
+    swCfg = FM_PLAT_GET_SWITCH_CFG(sw);
+
+#ifdef FM_SUPPORT_SWAG
+    /* No need to do anything here for SWAG switch */
+    if (swCfg->switchRole == FM_SWITCH_ROLE_SWAG)
+    {
+        FM_LOG_EXIT(FM_LOG_CAT_PLATFORM, FM_OK);
+    }
+#endif
+
+    /* set the I2C bus speed */
+    status = fmReadUINT32(sw, FM10000_I2C_CFG(), &regValue);
+    FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
+    FM_SET_FIELD(regValue, FM10000_I2C_CFG, Divider,  swCfg->i2cClkDivider);
+    status = fmWriteUINT32(sw, FM10000_I2C_CFG(), regValue);
+    FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
+
+    return status;
+
+}   /* end SetI2cBusSpeed */
+
 
 /*****************************************************************************/
 /* ResetI2cDevices
@@ -663,6 +704,85 @@ static fm_status ResetI2cDevices(fm_int sw)
 
 
 /*****************************************************************************/
+/* SetVoltageScaling
+ *
+ * \desc            Set the switch voltage regulator module with the nominal
+ *                  VDDF and VDDS supply voltages programmed into the on-chip
+ *                  fuse box.
+ *
+ * \param[in]       sw is the switch number on which to operate.
+ *
+ * \return          FM_OK if successful.
+ * \return          Other ''Status Codes'' as appropriate in case of
+ *                  failure.
+ *
+ *****************************************************************************/ 
+static fm_status SetVoltageScaling(fm_int sw)
+{
+    fm_platformCfgSwitch *swCfg;
+    fm_platformLib *      libFunc;
+    fm_int                vddsResId;
+    fm_int                vddfResId;
+    fm_uint32             vdds;
+    fm_uint32             vddf;
+    fm_bool               defVal;
+    fm_status             status;
+
+    swCfg = FM_PLAT_GET_SWITCH_CFG(sw);
+    libFunc = FM_PLAT_GET_LIB_FUNCS_PTR(sw);
+
+    vddsResId = swCfg->vrm.hwResourceId[FM_PLAT_VRM_VDDS];
+    vddfResId = swCfg->vrm.hwResourceId[FM_PLAT_VRM_VDDF];
+
+    if ( libFunc->SetVrmVoltage && ( vddsResId != -1 || vddfResId != -1 ) )
+    {
+        status = fmPlatformGetNominalSwitchVoltages(sw, &vdds, &vddf, &defVal);
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
+
+        /* Set the VRM if the fuse box is programmed with voltage scaling
+           values (!defVal), otherwise set the defaut values per the
+           useDefVoltages configuration. */
+        if ( !defVal || swCfg->vrm.useDefVoltages )
+        {
+            /* If one of VRM resource ID is -1, that probably means both the
+               VDDS and VDDF supplies are joined at the board level and
+               supplied from a single source. In that case the highest value of
+               VDDS or VDDF is used. */
+            if ( vddsResId == -1 || vddfResId == -1 )
+            {
+                vdds = (vdds >= vddf) ? vdds : vddf;
+                vddf = vdds;
+            }
+
+            if ( vddsResId != -1 )
+            {
+                /* Set VDDS */
+                status = fmPlatformSetVrmVoltage(sw, FM_PLAT_VRM_VDDS, vdds);
+                FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
+            }
+
+            if ( vddfResId != -1 )
+            {
+                /* Set VDDF */
+                status = fmPlatformSetVrmVoltage(sw, FM_PLAT_VRM_VDDF, vddf);
+                FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
+            }
+        }
+    }
+    else
+    {
+        status = FM_OK;
+    }
+
+ABORT:
+    return status;
+
+}   /* end SetVoltageScaling */
+
+
+
+
+/*****************************************************************************/
 /* PlatformProcessInitialize
  *
  * \desc            Platform initialization that needs to be done in each
@@ -677,9 +797,8 @@ static fm_status PlatformProcessInitialize(void)
 {
     fm_status status;
     fm_int    numSwitches;
-    fm_text   devName;
     fm_int    sw;
-    fm_platformCfgSwitch *swCfg;
+    fm_platformCfg *platCfg;
 
     FM_LOG_ENTRY_NOARGS(FM_LOG_CAT_PLATFORM);
 
@@ -711,18 +830,14 @@ static fm_status PlatformProcessInitialize(void)
     {
         /* Init to -1 to indicate not connected to host driver */
         fmPlatformProcessState[sw].fd = -1;
-
-        swCfg = FM_PLAT_GET_SWITCH_CFG(sw);
-
     }
 
-    devName = fmGetTextApiProperty(FM_AAK_API_PLATFORM_EBI_DEV_NAME,
-                                   FM_AAD_API_PLATFORM_EBI_DEV_NAME);
+    platCfg = FM_PLAT_GET_CFG;
 
-    if (strcmp(devName, FM_AAD_API_PLATFORM_EBI_DEV_NAME) != 0)
+    if (strcmp(platCfg->ebiDevName, FM_AAD_API_PLATFORM_EBI_DEV_NAME) != 0)
     {
         /* Should this be called per switch or one for all switches */
-        status = fmPlatformEbiInit(0, devName);
+        status = fmPlatformEbiInit(0, platCfg->ebiDevName);
     }
 
      FM_LOG_EXIT(FM_LOG_CAT_PLATFORM, status);
@@ -917,6 +1032,7 @@ static fm_uint32 CheckInterrupt(fm_int sw, fm_text msg)
 
 
 #ifdef FM_SUPPORT_SWAG
+
 /*****************************************************************************/
 /* SendSwitchEvent
  *
@@ -1118,7 +1234,115 @@ static fm_status PlatformInitMultiSwitchTopology(void)
     FM_LOG_EXIT(FM_LOG_CAT_PLATFORM, FM_OK);
 
 }   /* end PlatformInitMultiSwitchTopology */
-#endif
+
+#endif  /* end FM_SUPPORT_SWAG */
+
+
+
+
+/*****************************************************************************/
+/** LoadPropertiesFromFile
+ * \ingroup intPlatform
+ *
+ * \desc            Loads attributes into the attribute subsystem by calling
+ *                  the set and get methods on attributes read in from a text
+ *                  file.
+ *                                                                      \lb\lb
+ *                  The expected file format for the database is as follows:
+ *                                                                      \lb\lb
+ *                  [key] [type] [value]
+ *                                                                      \lb\lb
+ *                  Where key is a dotted string, type is one of int, bool or
+ *                  float, and value is the value to set. Space is the only
+ *                  valid separator, but multiple spaces are allowed.
+ *
+ * \param[in]       fileName is the full path to a text file to load.
+ *
+ * \return          FM_OK if successful.
+ *
+ *****************************************************************************/
+static fm_status LoadPropertiesFromFile(fm_text fileName)
+{
+    fm_status status;
+    FILE     *fp;
+    fm_int    lineNo = 0;
+    fm_char   line[FM_PLATFORM_API_ATTRIBUTE_CFG_LINE_MAX_LEN];
+    fm_int    numAttr = 0;
+    fm_int    strLen;
+    fm_int    cnt;
+
+    FM_LOG_ENTRY(FM_LOG_CAT_PLATFORM, "fileName=%s\n", fileName);
+
+    fp = fopen(fileName, "rt");
+
+    if (!fp)
+    {
+        FM_LOG_DEBUG(FM_LOG_CAT_PLATFORM,
+                     "Unable to open attribute database %s\n",
+                     fileName);
+
+        FM_LOG_EXIT(FM_LOG_CAT_PLATFORM, FM_ERR_INVALID_ARGUMENT);
+    }
+
+    while ( fgets(line, FM_PLATFORM_API_ATTRIBUTE_CFG_LINE_MAX_LEN, fp) )
+    {
+        lineNo++;
+
+        /* check for comment line */
+        if (line[0] == '#')
+        {
+            continue;
+        }
+
+        strLen = strlen(line);
+        if (strLen <= 1)
+        {
+            continue;
+        }
+
+        /* blank line */
+        for (cnt = 0 ; cnt < strLen ; cnt++)
+        {
+            if (!isspace(line[cnt]))
+            {
+                break;
+            }
+        }
+        if (cnt == strLen)
+        {
+            continue;
+        }
+
+        status = fmPlatformLoadPropertiesFromLine(line);
+        if (status == FM_OK)
+        {
+            numAttr++;
+        }
+        else
+        {
+            FM_LOG_FATAL(FM_LOG_CAT_PLATFORM,
+                         "Error reading from line %d\n",
+                         status);
+        }
+
+    }   /* end while ( fgets(line, FM_PLATFORM_API_ATTRIBUTE_CFG_LINE_MAX_LEN, fp) ) */
+
+    fclose(fp);
+
+    FM_LOG_DEBUG(FM_LOG_CAT_PLATFORM, "Loaded %d attributes from %s\n",
+                 numAttr, fileName);
+
+    if (FM_PLAT_GET_CFG->debug & CFG_DBG_CONFIG)
+    {
+        fmPlatformCfgDump();
+    }
+
+    fmPlatformCfgVerifyAndUpdate();
+
+    FM_LOG_EXIT(FM_LOG_CAT_PLATFORM, FM_OK);
+
+}   /* end LoadPropertiesFromFile */
+
 
 
 
@@ -1165,8 +1389,11 @@ static fm_status fmPlatformRootInit(void)
 
     memset( fmRootPlatform, 0, sizeof(fm_rootPlatform) );
 
+    status = fmPlatformCfgInit();
+    FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
+
     /* load attributes from standard file */
-    fmPlatformLoadAttributes("fm_api_attributes.cfg");
+    LoadPropertiesFromFile("fm_api_attributes.cfg");
 
     /* Loading platform configuration, higher priority than api */
     attrFile = getenv("FM_LIBERTY_TRAIL_CONFIG_FILE");
@@ -1217,11 +1444,11 @@ static fm_status fmPlatformRootInit(void)
                 !(isprint(objName[1]) || isspace(objName[1])))
             {
                 /* File is binary, so load TLV */
-                status = fmPlatformLoadTLV(attrFile);
+                status = fmPlatformLoadTlvFile(attrFile);
             }
             else
             {
-                status = fmPlatformLoadAttributes(attrFile);
+                status = LoadPropertiesFromFile(attrFile);
             }
         }
     }
@@ -1231,7 +1458,7 @@ static fm_status fmPlatformRootInit(void)
         attrFile = "fm_platform_attributes.cfg";
         FM_LOG_PRINT("Loading %s\n", attrFile);
 
-        status = fmPlatformLoadAttributes(attrFile);
+        status = LoadPropertiesFromFile(attrFile);
 
         if (status)
         {
@@ -1241,7 +1468,7 @@ static fm_status fmPlatformRootInit(void)
                         "Unable to load file '%s'. Trying '%s'.\n",
                         attrFile,
                         attrFile2);
-            status = fmPlatformLoadAttributes(attrFile2);
+            status = LoadPropertiesFromFile(attrFile2);
         }
     }
 
@@ -1259,14 +1486,7 @@ static fm_status fmPlatformRootInit(void)
 
     if (attrFile != NULL)
     {
-        status = fmPlatformLoadAttributes(attrFile);
-        FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
-    }
-
-    /* Load the configuration into data structure, if is not loaded by TLV */
-    if (fmRootPlatform->cfg.switches == NULL)
-    {
-        status = fmPlatformCfgLoad();
+        status = LoadPropertiesFromFile(attrFile);
         FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
     }
 
@@ -1322,7 +1542,11 @@ static fm_status fmPlatformRootInit(void)
     FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
 #endif
 
-    for (sw = FM_FIRST_FOCALPOINT ; sw < FM_PLAT_NUM_SW ; sw++)
+    /* Load and initialize the shared-lib for the first switch only. */
+    status = fmPlatformLibLoad(0);
+    FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
+
+    for (sw = FM_FIRST_FOCALPOINT ; sw < fmRootPlatform->cfg.numSwitches ; sw++)
     {
         status = FileLockingInit(sw);
         FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
@@ -1337,9 +1561,6 @@ static fm_status fmPlatformRootInit(void)
 
         /* Allocate manual scheduler mode token list */
         status = fmPlatformAllocateSchedulerResources(sw);
-        FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
-
-        status = fmPlatformLibLoad(sw);
         FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
 
         /* Intialize port transceiver and PHY mgmt */
@@ -1376,9 +1597,7 @@ static fm_status fmPlatformRootInit(void)
         ps->intrSource = FM_INTERRUPT_SOURCE_NONE;
 
         /* load bypass mode */
-        ps->bypassEnable =
-            fmGetBoolApiProperty(FM_AAK_API_PLATFORM_BYPASS_ENABLE,
-                                 FM_AAD_API_PLATFORM_BYPASS_ENABLE);
+        ps->bypassEnable = GET_PROPERTY()->byPassEnable;
 
         if (ps->bypassEnable)
         {
@@ -1397,8 +1616,7 @@ static fm_status fmPlatformRootInit(void)
         FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
 #else
 
-        if ( fmGetBoolApiProperty(FM_AAK_DEBUG_BOOT_AUTOINSERTSWITCH,
-                                  FM_AAD_DEBUG_BOOT_AUTOINSERTSWITCH) )
+        if (GET_PROPERTY()->autoInsertSwitches)
         {
             /***************************************************
              * The switch is locally present (hard-wired) on
@@ -1452,8 +1670,7 @@ static fm_status PlatformSwitchPostInitialize(fm_int sw)
     status = fmPlatformPortInitialize(sw);
     FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
 
-    pktIface = fmGetTextApiProperty(FM_AAK_API_PLATFORM_PKT_INTERFACE, 
-                                    FM_AAD_API_PLATFORM_PKT_INTERFACE);
+    pktIface = GET_PROPERTY()->pktInterface;
 
     if (!strcmp(pktIface, "pti"))
     {
@@ -1467,11 +1684,9 @@ static fm_status PlatformSwitchPostInitialize(fm_int sw)
     }
 
 #if 0
-    if ( fmGetBoolApiProperty(FM_AAK_API_PLATFORM_ENABLE_REF_CLOCK,
-                              FM_AAD_API_PLATFORM_ENABLE_REF_CLOCK) )
+    if (GET_PROPERTY()->enableRefClock)
     {
-        step   = fmGetIntApiProperty(FM_AAK_API_FM10000_1588_SYSTIME_STEP,
-                                     FM_AAD_API_FM10000_1588_SYSTIME_STEP);
+        step   = GET_FM10000_PROPERTY()->systimeStep;
 
         status = fmPlatformInitializeClock(sw, step);
         FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
@@ -1481,6 +1696,8 @@ static fm_status PlatformSwitchPostInitialize(fm_int sw)
     FM_LOG_EXIT(FM_LOG_CAT_PLATFORM, status);
 
 }   /* end PlatformSwitchPostInitialize */
+
+
 
 
 /*****************************************************************************
@@ -1555,8 +1772,12 @@ fm_status fmPlatformInitialize(fm_int *nSwitches)
         PlatformProcessInitialize();
         FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
 
+        /* Load and initialize the shared-lib for the first switch only. */
+        status = fmPlatformLibLoad(0);
+        FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
+
         /* Perform per switch operations */
-        for (sw = FM_FIRST_FOCALPOINT ; sw < FM_PLAT_NUM_SW ; sw++)
+        for (sw = FM_FIRST_FOCALPOINT ; sw < fmRootPlatform->cfg.numSwitches ; sw++)
         {
             if ( (swCfg = FM_PLAT_GET_SWITCH_CFG(sw)) == NULL )
             {
@@ -1564,9 +1785,6 @@ fm_status fmPlatformInitialize(fm_int *nSwitches)
             }
 
             status = FileLockingInit(sw);
-            FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
-
-            status = fmPlatformLibLoad(sw);
             FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
 
             /* Having family different than UNKNOWN indicates the switch
@@ -1620,8 +1838,6 @@ fm_status fmPlatformSwitchPreInsert(fm_int sw)
     fm_registerWriteUINT32Func writeFunc;
     fm_bool                    swIsr;
     fm_uint32                  pcieIsrMask;
-    fm_char                    buf[MAX_BUF_SIZE+1];
-    fm_int                     msiEnabled;
 #endif
 
     FM_LOG_ENTRY(FM_LOG_CAT_PLATFORM, "sw = %d\n", sw);
@@ -1759,15 +1975,8 @@ fm_status fmPlatformSwitchPreInsert(fm_int sw)
 
     if (swIsr && swCfg->bootMode == FM_PLAT_BOOT_MODE_SPI)
     {
-        FM_SNPRINTF_S(buf, 
-                      MAX_BUF_SIZE, 
-                      FM_AAK_API_PLATFORM_MSI_ENABLED, 
-                      sw);
-        msiEnabled = 
-            fmGetBoolApiProperty(buf, FM_AAD_API_PLATFORM_MSI_ENABLED);
-
         /* Select the desired interrupt mask register */
-        if (msiEnabled)
+        if (swCfg->msiEnabled)
         {
             pcieIsrMask = (FM10000_UTIL_PCIE_BSM_INT_PCIE_0 << swCfg->mgmtPep);
         }
@@ -1827,7 +2036,7 @@ fm_status fmPlatformSwitchInsert(fm_int sw)
     fm_status                  status = FM_OK;
 
     FM_LOG_ENTRY(FM_LOG_CAT_PLATFORM, "sw = %d\n", sw);
-
+    
     /* Generate the switch inserted event for this switch. */
     status = fmPlatformSendSwitchEvent(sw, FM_EVENT_SWITCH_INSERTED);
 
@@ -1903,9 +2112,7 @@ fm_status fmPlatformSwitchInitialize(fm_int sw)
             switchPtr->ReceivePacket     = NULL;
             switchPtr->ProcessMgmtPacket = NULL;
 
-            pktIface = 
-                fmGetTextApiProperty(FM_AAK_API_PLATFORM_PKT_INTERFACE, 
-                                     FM_AAD_API_PLATFORM_PKT_INTERFACE);
+            pktIface = GET_PROPERTY()->pktInterface;
 
             if (strcmp(pktIface, "pti") == 0)
             {
@@ -1992,7 +2199,9 @@ fm_status fmPlatformSwitchInitialize(fm_int sw)
     }   /* end switch (GET_PLAT_STATE(sw)->family) */
 
     switchPtr->cpuPort = swCfg->cpuPort;
+    switchPtr->msiEnabled = swCfg->msiEnabled;
     switchPtr->msiPep = swCfg->mgmtPep;
+    switchPtr->fhClock = swCfg->fhClock;
 
 #ifdef FM_LT_WHITE_MODEL_SUPPORT
     err = fmPlatformModelSwitchInitialize(sw);
@@ -2031,11 +2240,12 @@ fm_status fmPlatformSwitchInserted(fm_int sw)
     fm_platformCfgSwitch  *swCfg;
     fm_platformLib        *libFunc;
     fm_status              status;
+#ifndef FM_LT_WHITE_MODEL_SUPPORT
     fm_platformState      *ps;
+#endif
 
 #ifdef FM_SUPPORT_SWAG
     fm_platformCfg        *platCfg;
-    fm_topologySolverEvent solverEvent;
     fm_swagTopologySolver  solver;
 #endif
 
@@ -2083,6 +2293,10 @@ fm_status fmPlatformSwitchInserted(fm_int sw)
     status = fmPlatformGpioInit(sw);
     FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
 
+    /* Set the I2C bus speed on the switch. */
+    status = SetI2cBusSpeed(sw);
+    FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
+
     /* Perform a reset of the I2C devices attached to the switch. */
     status = ResetI2cDevices(sw);
     FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
@@ -2092,7 +2306,12 @@ fm_status fmPlatformSwitchInserted(fm_int sw)
     if ( libFunc->InitSwitch )
     {
         status = libFunc->InitSwitch(swCfg->swNum);
+        FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
     }
+
+    /* Set voltage scaling */
+    status = SetVoltageScaling(sw);
+    FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
 
 #ifndef FM_LT_WHITE_MODEL_SUPPORT
     ps = GET_PLAT_STATE(sw);
@@ -2149,8 +2368,7 @@ fm_status fmPlatformSwitchPreInitialize(fm_int sw)
 
     if (ps->switchType != FM_PLATFORM_SWITCH_TYPE_SWAG)
     {
-        tcpPort = fmGetIntApiProperty(FM_AAK_API_PLATFORM_SBUS_SERVER_PORT,
-                                      FM_AAD_API_PLATFORM_SBUS_SERVER_PORT);
+        tcpPort = GET_PROPERTY()->sbusServerPort;
 
         if (tcpPort)
         {
@@ -2406,6 +2624,7 @@ fm_status fmPlatformDeleteSWAG(fm_int sw)
 
 
 #ifdef FM_SUPPORT_SWAG
+
 /*****************************************************************************/
 /* fmPlatformSWAGInitialize
  * \ingroup platform
@@ -2517,7 +2736,8 @@ fm_status fmPlatformSWAGInitialize(fm_int sw)
     FM_LOG_EXIT(FM_LOG_CAT_PLATFORM, FM_OK);
 
 }   /* end fmPlatformSWAGInitialize */
-#endif
+
+#endif  /* end FM_SUPPORT_SWAG */
 
 
 
@@ -2883,9 +3103,8 @@ void *fmPlatformInterruptListener(void *args)
         FM_LOG_PRINT("Using interrupt polling with period set to %d msec\n", 
                      swCfg->intrPollPeriodMsec);
 
-    intrTimeoutSec = 1;
-    maxTimeoutCnt = fmGetIntApiProperty(FM_AAK_API_PLATFORM_INTR_TIMEOUT_CNT,
-                                        FM_AAD_API_PLATFORM_INTR_TIMEOUT_CNT);
+    intrTimeoutSec     = 1;
+    maxTimeoutCnt      = swCfg->intrTimeoutCnt;
     ps->intrTimeoutCnt = 0;
 
     while (1)
@@ -3198,7 +3417,9 @@ fm_status fmPlatformSendPackets(fm_int sw)
  *****************************************************************************/
 fm_status fmPlatformSwitchTerminate(fm_int sw)
 {
+#ifndef FM_LT_WHITE_MODEL_SUPPORT
     fm_platformCfgSwitch *swCfg;
+#endif
     fm_status             status;
 
     FM_LOG_ENTRY(FM_LOG_CAT_PLATFORM, "sw = %d\n", sw);
@@ -3489,7 +3710,7 @@ fm_status fmPlatformGetSwitchPartNumber(fm_int sw, fm_switchPartNum *spn)
                  "sw = %d, partNumber = %p\n",
                  sw, (void *) spn);
 
-    if ( (sw < 0) || (sw >= FM_MAX_NUM_SWITCHES) )
+    if ( (sw < 0) || (sw >= fmRootPlatform->cfg.numSwitches) )
     {
         FM_LOG_EXIT(FM_LOG_CAT_PLATFORM, FM_ERR_INVALID_ARGUMENT);
     }

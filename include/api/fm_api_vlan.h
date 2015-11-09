@@ -6,7 +6,7 @@
  * Description:     Structures and functions for dealing with 
  *                  VLAN configuration
  *
- * Copyright (c) 2005 - 2011, Intel Corporation
+ * Copyright (c) 2005 - 2015, Intel Corporation
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -30,7 +30,7 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
+ *****************************************************************************/
 
 #ifndef __FM_FM_API_VLAN_H
 #define __FM_FM_API_VLAN_H
@@ -61,7 +61,7 @@
  *  Rx Traffic: Whether other ingress (recevied) frames are forwarded.          \lb
  *  Tx BPDU: Whether BPDU frames sent from the CPU application are transmitted. \lb
  *  Tx Traffic: Whether other transmitted frames are egressed.                  \lb
- *  Learn: Wether source MAC addresses on received frames are learned.          \lb
+ *  Learn: Whether source MAC addresses on received frames are learned.         \lb
  *                                                                          \lb
  * In all states, network management frames (e.g., LACP, 802.1x) are
  * received and transmitted normally between the port and the CPU.

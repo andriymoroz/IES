@@ -476,7 +476,7 @@ fm_status fmCreateVlanInt(fm_int sw, fm_uint16 vlanID)
 
     ventry->valid    = TRUE;
     ventry->vlanId   = vlanID;
-    ventry->reflect  = FALSE;
+    ventry->reflect  = TRUE;
     ventry->trapIGMP = FALSE;    /* do not trap IGMP frames to CPU GLORT */
     ventry->routable = FALSE;    /* do not route by default */
 
@@ -665,12 +665,13 @@ ABORT:
  * \note            When a port is added to a VLAN, by default it will be
  *                  in a disabled state so that traffic is not forwarded.
  *                  Typically, this function should be followed by a call
- *                  to ''fmSetVlanPortState'' to set the port's state
- *                  to ''FM_STP_STATE_FORWARDING''. Alternatively, the default
- *                  forwarding state can be overridden by specifying the
+ *                  to ''fmSetSpanningTreePortState'' or ''fmSetVlanPortState'',
+ *                  to set the port's state to ''FM_STP_STATE_FORWARDING''.
+ *                  Alternatively, the default forwarding state can be
+ *                  overridden by specifying the
  *                  ''api.stp.defaultState.vlanMember'' API property.
  *
- * \note            See also, ''fmAddVlanPortList'' which can be used to add
+ * \note            See also ''fmAddVlanPortList'', which can be used to add
  *                  several ports to the VLAN at one time with faster
  *                  performance than when using this function one port at
  *                  a time.
@@ -774,9 +775,7 @@ fm_status fmAddVlanPortInternal(fm_int    sw,
             (switchPtr->stpMode == FM_SPANNING_TREE_PER_VLAN) )
         {
             /* Get default state for a port that's a member of a VLAN. */
-            defaultStpState = fmGetIntApiProperty(
-                FM_AAK_API_STP_DEF_STATE_VLAN_MEMBER,
-                FM_AAD_API_STP_DEF_STATE_VLAN_MEMBER);
+            defaultStpState = GET_PROPERTY()->defStateVlanMember;
 
             if ( fmIsInternalPort(sw, port) )
             {
@@ -834,12 +833,13 @@ ABORT:
  * \note            When a port is added to a VLAN, by default it will be
  *                  in a disabled state so that traffic is not forwarded.
  *                  Typically, this function should be followed by a call
- *                  to ''fmSetVlanPortState'' to set the port's state
- *                  to ''FM_STP_STATE_FORWARDING''. Alternatively, the default
- *                  forwarding state can be overridden by specifying the
+ *                  to ''fmSetSpanningTreePortState'' or ''fmSetVlanPortState'',
+ *                  to set the port's state to ''FM_STP_STATE_FORWARDING''.
+ *                  Alternatively, the default forwarding state can be
+ *                  overridden by specifying the
  *                  ''api.stp.defaultState.vlanMember'' API property.
  *
- * \note            See also, ''fmAddVlanPortList'' which can be used to add
+ * \note            See also ''fmAddVlanPortList'', which can be used to add
  *                  several ports to the VLAN at one time with faster
  *                  performance than when using this function one port at
  *                  a time.
@@ -905,9 +905,10 @@ ABORT:
  * \note            When a port is added to a VLAN, by default it will be
  *                  in a disabled state so that traffic is not forwarded.
  *                  Typically, this function should be followed by a call
- *                  to ''fmSetVlanPortState'' to set the port's state
- *                  to ''FM_STP_STATE_FORWARDING''. Alternatively, the default
- *                  forwarding state can be overridden by specifying the
+ *                  to ''fmSetSpanningTreePortState'' or ''fmSetVlanPortState'',
+ *                  to set the port's state to ''FM_STP_STATE_FORWARDING''.
+ *                  Alternatively, the default forwarding state can be
+ *                  overridden by specifying the
  *                  ''api.stp.defaultState.vlanMember'' API property.
  *
  * \param[in]       sw is the switch on which to operate.
@@ -974,7 +975,7 @@ fm_status fmAddVlanPortList(fm_int    sw,
  *
  * \desc            Delete a port from a VLAN.
  *
- * \note            See also, ''fmDeleteVlanPortList'' which can be used to
+ * \note            See also ''fmDeleteVlanPortList'', which can be used to
  *                  delete several ports from the VLAN at one time with faster
  *                  performance than when using this function one port at
  *                  a time.
@@ -1054,9 +1055,7 @@ fm_status fmDeleteVlanPort(fm_int sw, fm_uint16 vlanID, fm_int port)
              && (switchPtr->stpMode == FM_SPANNING_TREE_PER_VLAN) )
         {
             /* Get default state for a port that is not a member of a VLAN. */
-            defaultStpState = fmGetIntApiProperty(
-                FM_AAK_API_STP_DEF_STATE_VLAN_NON_MEMBER,
-                FM_AAD_API_STP_DEF_STATE_VLAN_NON_MEMBER);
+            defaultStpState = GET_PROPERTY()->defStateVlanNonMember;
 
             /* Force the port state back to the non-member default. */
             err = fmSetVlanPortState(sw, vlanID, port, defaultStpState);
@@ -1079,8 +1078,7 @@ fm_status fmDeleteVlanPort(fm_int sw, fm_uint16 vlanID, fm_int port)
         goto ABORT_DROP_L2_LOCK;
     }
 
-    if (fmGetBoolApiProperty(FM_AAK_API_MA_FLUSH_ON_VLAN_CHANGE, 
-                             FM_AAD_API_MA_FLUSH_ON_VLAN_CHANGE))
+    if (GET_PROPERTY()->maFlushOnVlanChange)
     {
         flushParams.port = port;
         flushParams.vid1 = vlanID;
@@ -1155,8 +1153,7 @@ fm_status fmDeleteVlanPortList(fm_int    sw,
                        portList);
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_VLAN, err);
 
-    if (fmGetBoolApiProperty(FM_AAK_API_MA_FLUSH_ON_VLAN_CHANGE, 
-                             FM_AAD_API_MA_FLUSH_ON_VLAN_CHANGE))
+    if (GET_PROPERTY()->maFlushOnVlanChange)
     {
         flushParams.vid1 = vlanID;
         for (i = 0; i < numPorts; i++)
@@ -1401,7 +1398,7 @@ fm_status fmChangeVlanPort(fm_int    sw,
  *                  any change in the behavior of the switch except for the
  *                  CPU port. Ports that are not members of a VLAN will get
  *                  their frames dropped due to egress VLAN boundary violations.
- *                  Trapped frames to the CPU are not checked for egress boundary
+ *                  Frames trapped to the CPU are not checked for egress boundary
  *                  violations and therefore changes to the CPU port will
  *                  modify the switch behavior. When the port is added to the
  *                  VLAN with a call to ''fmAddVlanPort'' the tagging behavior
@@ -1409,7 +1406,7 @@ fm_status fmChangeVlanPort(fm_int    sw,
  *                  that function.
  * 
  *                  On FM10000, if the specified port has the
- *                  FM_PORT_ISL_TAG_FORMAT attribute configured to a value
+ *                  ''FM_PORT_ISL_TAG_FORMAT'' attribute configured to a value
  *                  other than FM_ISL_TAG_NONE, then all frames egressing this
  *                  port will contain an FTAG header. Thus, having a 802.1Q tag
  *                  in the frame will be redundant since all VLAN information
@@ -2206,21 +2203,22 @@ fm_status fmSetVlanPortStateInternal(fm_int    sw,
  *
  * \desc            Set the spanning tree forwarding state of a port in a VLAN.
  *
- * \note            This function should only be used when the
+ * \note            In most cases, this function should only be used when the
  *                  ''FM_SPANNING_TREE_MODE'' switch attribute is set to
  *                  ''FM_SPANNING_TREE_SHARED'' or ''FM_SPANNING_TREE_PER_VLAN''.
  *                  For ''FM_SPANNING_TREE_MULTIPLE'', use the ''Spanning Tree
  *                  Management'' functions.
+ * 
+ * \note            For FM6000 and FM10000 devices, this function is used to
+ *                  set the spanning tree state of LAG logical ports in
+ *                  FM_SPANNING_TREE_MULTIPLE mode. For non-LAG ports, it
+ *                  is deprecated in favor of the ''fmSetSpanningTreePortState''
+ *                  function.
  *
- * \note            This function will operate correctly on FM6000 and FM10000
- *                  devices for backwards compatibility, but is deprecated for
- *                  those devices. Instead, use of the ''Spanning Tree Management''
- *                  API is strongly recommended.
- *
- * \note            See also, ''fmSetVlanPortListState'' which can be used to 
- *                  set the state of several ports at one time with faster
- *                  performance than when using this function one port at
- *                  a time.
+ * \note            For FM4000 devices, see also ''fmSetVlanPortListState'',
+ *                  which can be used to set the state of several ports at one
+ *                  time with faster performance than when using this function
+ *                  one port at a time.
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -2308,17 +2306,12 @@ fm_status fmSetVlanPortState(fm_int    sw,
          * is forced to FM_STP_STATE_FORWARDING */
         if ( fmIsInternalPort(sw, port) )
         {
-            if ( !fmGetBoolApiProperty(FM_AAK_API_STP_ENABLE_INTERNAL_PORT_CTRL, 
-                                       FM_AAD_API_STP_ENABLE_INTERNAL_PORT_CTRL) )
+            if (!GET_PROPERTY()->stpEnIntPortCtrl)
             {
                 err = fmGetVlanPortState(sw, vlanID, port, &currentStpState);
                 FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_VLAN, err);
 
-                if (currentStpState != FM_STP_STATE_FORWARDING)
-                {
-                    /* This case will occur when creating vlan */
-                }
-                else
+                if (currentStpState == FM_STP_STATE_FORWARDING)
                 {
                     err = FM_ERR_PORT_IS_INTERNAL;
                     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_VLAN, err);

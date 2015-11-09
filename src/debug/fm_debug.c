@@ -29,7 +29,7 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
+ *****************************************************************************/
 
 #include <fm_sdk_int.h>
 #include <common/fm_version.h>
@@ -2007,6 +2007,7 @@ fm_status fmDbgDumpTriggerUsage(fm_int sw)
 
 
 #ifdef FM_DBG_NEED_TRACK_FUNC
+
 /*****************************************************************************/
 /** fmDbgCompareFuncExecTraceEntries
  * \ingroup intDiag
@@ -2120,7 +2121,7 @@ void fmDbgFuncExec(const char *funcName, int lineNum)
     }
 }   /* end fmDbgFuncExec */
 
-#endif
+#endif  /* end FM_DBG_NEED_TRACK_FUNC */
 
 
 
@@ -2188,7 +2189,18 @@ void fmDbgDumpVersion(void)
 
 
 
-char *fmDbgGetVersion()
+/*****************************************************************************/
+/** fmDbgGetVersion
+ * \ingroup intDiagMisc
+ *
+ * \desc            Returns the build ID of the software.
+ *
+ * \param           None.
+ *
+ * \return          Pointer to the software build identifier string.
+ *
+ *****************************************************************************/
+const char *fmDbgGetVersion()
 {
     return FM_BUILD_IDENTIFIER;
 
@@ -2683,14 +2695,199 @@ fm_bool fmDbgConvertStringToMacAddress(const char *addrStr, fm_macaddr *addrValu
  *****************************************************************************/
 fm_status fmDbgDumpMulticastTables(fm_int sw)
 {
-    fm_switch *switchPtr;
-    fm_status  err;
+    fm_multicastAddressInfo * mcastInfo;
+    fm_mcastGroupListener     listener;
+    fm_mcastGroupListener     prevListener;
+    fm_multicastAddress       mcastAddress;
+    fm_switch               * switchPtr;
+    fm_status                 err;
+    fm_int                    currentMcastGroupNumber;
+    fm_int                    mcastGroupNumber;
+    fm_int                    logicalPort;
+    fm_char                   textAddr[48];
+    fm_char                   tmpBuf[64];
 
     VALIDATE_AND_PROTECT_SWITCH(sw);
 
+    FM_LOG_PRINT("Switch %4d: \n", sw);
+    FM_LOG_PRINT("\n");
+    FM_LOG_PRINT("%-6s %-12s %-12s %-18s %-18s %-7s\n",
+                 "Group#", "LPRT", "Type", "Group Address", "Host Address",
+                 "VLAN");
+    FM_LOG_PRINT("------------------------------------------------------------"
+                 "---------------\n");
+
+    err = fmGetMcastGroupFirst(sw, &mcastGroupNumber);
+
+    while (err == FM_OK)
+    {
+        currentMcastGroupNumber = mcastGroupNumber;
+
+        FM_LOG_PRINT("  %4d ", currentMcastGroupNumber);
+
+        err = fmGetMcastGroupPort(sw, currentMcastGroupNumber, &logicalPort);
+        if (err != FM_OK)
+        {
+            FM_LOG_PRINT("%-12s ", "unknown");
+        }
+        else
+        {
+            FM_LOG_PRINT("%-12d ", logicalPort);
+        }
+
+        err = fmGetMcastGroupAddress(sw, currentMcastGroupNumber, &mcastAddress);
+        if (err == FM_OK)
+        {
+            mcastInfo = &mcastAddress.info;
+            switch(mcastAddress.addressType)
+            {
+                case FM_MCAST_ADDR_TYPE_L2MAC_VLAN:
+                    FM_LOG_PRINT("%-12s ", "dmac-vlan");
+                    fmDbgConvertMacAddressToString(mcastInfo->mac.destMacAddress,
+                                                   textAddr);
+                    FM_LOG_PRINT("%-17s %19s %-7d ",
+                                 textAddr,
+                                 " ",
+                                 mcastInfo->mac.vlan);
+                    break;
+
+                case FM_MCAST_ADDR_TYPE_DSTIP:
+                    FM_LOG_PRINT("%-12s ", "dip");
+                    fmDbgConvertIPAddressToString(&mcastInfo->dstIpRoute.dstAddr,
+                                                  textAddr);
+                    FM_SPRINTF_S(tmpBuf, sizeof(tmpBuf), "%s/%d",
+                                 textAddr,
+                                 mcastInfo->dstIpRoute.dstPrefixLength);
+                    FM_LOG_PRINT("%-18s %26s ", tmpBuf, " ");
+                    break;
+
+                case FM_MCAST_ADDR_TYPE_DSTIP_VLAN:
+                    FM_LOG_PRINT("%-12s ", "dip-vlan");
+                    fmDbgConvertIPAddressToString(&mcastInfo->dstIpVlanRoute.dstAddr,
+                                                  textAddr);
+                    FM_SPRINTF_S(tmpBuf, sizeof(tmpBuf), "%s/%d",
+                                 textAddr,
+                                 mcastInfo->dstIpRoute.dstPrefixLength);
+                    FM_LOG_PRINT("%-18s %18s ", tmpBuf, " ");
+                    FM_SPRINTF_S(tmpBuf, sizeof(tmpBuf), "%d/%d",
+                                 mcastInfo->dstIpVlanRoute.vlan,
+                                 mcastInfo->dstIpVlanRoute.vlanPrefixLength);
+                    FM_LOG_PRINT("%-7s ", tmpBuf);
+                    break;
+
+                case FM_MCAST_ADDR_TYPE_DSTIP_SRCIP:
+                    FM_LOG_PRINT("%-12s ", "dip-sip");
+                    fmDbgConvertIPAddressToString(&mcastInfo->dstSrcIpRoute.dstAddr,
+                                                  textAddr);
+                    FM_SPRINTF_S(tmpBuf, sizeof(tmpBuf), "%s/%d",
+                                 textAddr,
+                                 mcastInfo->dstSrcIpRoute.dstPrefixLength);
+                    FM_LOG_PRINT("%-18s ", tmpBuf);
+                    fmDbgConvertIPAddressToString(&mcastInfo->dstSrcIpRoute.srcAddr,
+                                                  textAddr);
+                    FM_SPRINTF_S(tmpBuf, sizeof(tmpBuf), "%s/%d",
+                                 textAddr,
+                                 mcastInfo->dstSrcIpRoute.srcPrefixLength);
+                    FM_LOG_PRINT("%-18s %7s", tmpBuf, " ");
+                    break;
+
+                case FM_MCAST_ADDR_TYPE_DSTIP_SRCIP_VLAN:
+                    FM_LOG_PRINT("%-12s ", "dip-sip-vlan");
+                    fmDbgConvertIPAddressToString(&mcastInfo->dstSrcIpVlanRoute.dstAddr,
+                                                  textAddr);
+                    FM_SPRINTF_S(tmpBuf, sizeof(tmpBuf), "%s/%d",
+                                 textAddr,
+                                 mcastInfo->dstSrcIpVlanRoute.dstPrefixLength);
+                    FM_LOG_PRINT("%-18s ", tmpBuf);
+                    fmDbgConvertIPAddressToString(&mcastInfo->dstSrcIpVlanRoute.srcAddr,
+                                                  textAddr);
+                    FM_SPRINTF_S(tmpBuf, sizeof(tmpBuf), "%s/%d",
+                                 textAddr,
+                                 mcastInfo->dstSrcIpVlanRoute.srcPrefixLength);
+                    FM_LOG_PRINT("%-18s ", tmpBuf);
+                    FM_SPRINTF_S(tmpBuf, sizeof(tmpBuf), "%d/%d",
+                                 mcastInfo->dstSrcIpVlanRoute.vlan,
+                                 mcastInfo->dstSrcIpVlanRoute.vlanPrefixLength);
+                    FM_LOG_PRINT("%-7s ", tmpBuf);
+                    break;
+
+                default:
+                    FM_LOG_PRINT("%-12s %45s", "unknown", " ");
+                    break;
+            }
+        }
+        else
+        {
+            FM_LOG_PRINT("%-12s %45s", "unknown", " ");
+        }
+
+        FM_LOG_PRINT("\n");
+
+        err = fmGetMcastGroupListenerFirstV2(sw, currentMcastGroupNumber, &listener);
+ 
+        if (err != FM_OK)
+        {
+            FM_LOG_PRINT("       Listeners: No members\n");
+        }
+        else
+        {
+            FM_LOG_PRINT("       Listeners: \n");
+        }
+
+        while (err == FM_OK)
+        {
+            switch(listener.listenerType)
+            {
+                case FM_MCAST_GROUP_LISTENER_PORT_VLAN:
+                    FM_LOG_PRINT("%8s Port/VLAN: %d/%d\n",
+                                 " ",
+                                 listener.info.portVlanListener.port, 
+                                 listener.info.portVlanListener.vlan);
+                    break;
+                case FM_MCAST_GROUP_LISTENER_VN_TUNNEL:
+                    FM_LOG_PRINT("%8s VNI/Tun: %d/%d\n",
+                                 " ",
+                                 listener.info.vnListener.vni, 
+                                 listener.info.vnListener.tunnelId);
+                    break;
+                case FM_MCAST_GROUP_LISTENER_FLOW_TUNNEL:
+                    FM_LOG_PRINT("%8s Flow/Table: %d/%d\n",
+                                 " ",
+                                 listener.info.flowListener.flowId, 
+                                 listener.info.flowListener.tableIndex);
+                    break;
+                default:
+                    break;
+            }
+
+            prevListener = listener;
+            err = fmGetMcastGroupListenerNextV2(sw, currentMcastGroupNumber,
+                                                &prevListener,
+                                                &listener);
+        }
+
+        if (err == FM_ERR_NO_MORE)
+        {
+            err = FM_OK;
+        }
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MULTICAST, err);
+
+        err = fmGetMcastGroupNext(sw, currentMcastGroupNumber, &mcastGroupNumber);
+    }
+
+    FM_LOG_PRINT("\n");
+
+    if (err == FM_ERR_NO_MORE)
+    {
+        err = FM_OK;
+    }
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MULTICAST, err);
+
     switchPtr = GET_SWITCH_PTR(sw);
-    FM_API_CALL_FAMILY_VOID(switchPtr->DbgDumpMulticastTables, sw);
+    FM_API_CALL_FAMILY(err,switchPtr->DbgDumpMulticastTables, sw);
     FM_API_CALL_FAMILY(err, switchPtr->DbgDumpGlortTable, sw);
+
+ABORT:
 
     UNPROTECT_SWITCH(sw);
 

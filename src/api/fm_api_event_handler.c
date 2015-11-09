@@ -6,7 +6,7 @@
  * Description:     Functions for initialization and switch status/information
  *                  retrieval functions for the API
  *
- * Copyright (c) 2005 - 2014, Intel Corporation
+ * Copyright (c) 2005 - 2015, Intel Corporation
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -370,9 +370,7 @@ void *fmGlobalEventHandler(void *args)
     /* wait for initialization to finish before processing events */
     fmCaptureSemaphore(&fmRootApi->startGlobalEventHandler, FM_WAIT_FOREVER);
 
-    enableFramePriority = fmGetBoolApiProperty(
-                               FM_AAK_API_PLATFORM_PRIORITY_BUFFER_QUEUES,
-                               FM_AAD_API_PLATFORM_PRIORITY_BUFFER_QUEUES);
+    enableFramePriority = GET_PROPERTY()->priorityBufQueues;
 
     while (1)
     {
@@ -396,7 +394,7 @@ void *fmGlobalEventHandler(void *args)
         switchIsProtected = FALSE;
         switchPtr         = NULL;
 
-        if (sw < 0 || sw >= FM_MAX_NUM_SWITCHES)
+        if (sw < 0 || sw >= fmRootPlatform->cfg.numSwitches)
         {
             discardEvent      = TRUE;
             switchIsProtected = FALSE;
@@ -444,7 +442,7 @@ void *fmGlobalEventHandler(void *args)
                 case FM_EVENT_PKT_RECV:
                 case FM_EVENT_SFLOW_PKT_RECV:
                     /* Only dig into the event if the switch is valid */
-                    if ( (sw >= 0) && (sw < FM_MAX_NUM_SWITCHES) )
+                    if  ( (sw >= 0) && (sw < fmRootPlatform->cfg.numSwitches) )
                     {
                         rcvPktEvent = &event->info.fpPktEvent;
                         if (enableFramePriority)
@@ -579,8 +577,7 @@ void *fmGlobalEventHandler(void *args)
 
                     /* This attribute indicate whether the API should flush
                      * all the addresses on a port down event or not. */
-                    if (fmGetBoolApiProperty(FM_AAK_API_MA_FLUSH_ON_PORT_DOWN, 
-                                             FM_AAD_API_MA_FLUSH_ON_PORT_DOWN))
+                    if (GET_PROPERTY()->maFlushOnPortDown)
                     {
                         /* If a link goes down for a non-LAG port, remove any
                          * addresses associated with the port from the MA Table. */
@@ -886,9 +883,7 @@ void *fmLocalEventHandler(void *args)
     /* grab arguments */
     thread = FM_GET_THREAD_HANDLE(args);
 
-    enablePrioritySchedule = fmGetBoolApiProperty(
-                           FM_AAK_API_PLATFORM_PRIORITY_BUFFER_QUEUES,
-                           FM_AAD_API_PLATFORM_PRIORITY_BUFFER_QUEUES);
+    enablePrioritySchedule = GET_PROPERTY()->priorityBufQueues;
     while (1)
     {
         if (fmGetThreadEvent(thread, &event, FM_WAIT_FOREVER) != FM_OK)

@@ -46,7 +46,7 @@
 #define FM10000_MAX_FABRIC_PHYS_PORT    63
 
 /* The maximum number of ports per EPL */
-#define FM10000_PORTS_PER_EPL             4
+#define FM10000_PORTS_PER_EPL           4
 
 /* The maximum port number, numbering from 0 as the first port. */
 #define FM10000_MAX_PORT                FM10000_MAX_FABRIC_LOG_PORT
@@ -694,10 +694,6 @@ enum
 
 /* Default hardware value of Step of SYSTIME_CFG */
 #define FM10000_SYSTIME_CFG_DEFAULT_STEP        10
-
-/* SKU fields in FUSE_DATA_0 register */
-#define FM10000_FUSE_DATA_0_l_Sku               11
-#define FM10000_FUSE_DATA_0_h_Sku               15
 
 /**************************************************
  * FM10000_PCIE_CLK_CTRL.Mode Values

@@ -147,6 +147,58 @@ static int CompareByGlort(const void *aPtr, const void *bPtr)
 
 
 /*****************************************************************************/
+/** portTypeToGlortType
+ * \ingroup intPort
+ *
+ * \desc            Returns the text representation of a logical port type.
+ *
+ * \param[in]       type is the allocation type (see ''fm_portType'').
+ *
+ * \return          Pointer to a string representing the logical port type.
+ *
+ *****************************************************************************/
+static fm_glortType portTypeToGlortType(fm_portType type)
+{
+
+    switch (type)
+    {
+        case FM_PORT_TYPE_PHYSICAL:
+        case FM_PORT_TYPE_CPU_MGMT2:
+            return FM_GLORT_TYPE_PORT;
+
+        case FM_PORT_TYPE_LAG:
+            return FM_GLORT_TYPE_LAG;
+
+        case FM_PORT_TYPE_MULTICAST:
+            return FM_GLORT_TYPE_MULTICAST;
+
+        case FM_PORT_TYPE_LBG:
+            return FM_GLORT_TYPE_LBG;
+
+        case FM_PORT_TYPE_CPU:
+            return FM_GLORT_TYPE_CPU;
+
+        case FM_PORT_TYPE_SPECIAL:
+            return FM_GLORT_TYPE_SPECIAL;
+
+        case FM_PORT_TYPE_VIRTUAL:
+            return FM_GLORT_TYPE_PEP;
+
+        case FM_PORT_TYPE_CPU_MGMT:
+        case FM_PORT_TYPE_REMOTE:
+        case FM_PORT_TYPE_TE:
+        case FM_PORT_TYPE_LOOPBACK:
+        case FM_PORT_TYPE_PTI:
+        default:
+            return FM_GLORT_TYPE_UNSPECIFIED;
+    }
+
+}   /* end portTypeToGlortType */
+
+
+
+
+/*****************************************************************************/
 /** SelectLogicalPorts
  * \ingroup intPort
  *
@@ -252,6 +304,7 @@ static fm_status AssignHardwarePortResources(fm_switch *   switchPtr,
     switch (parmPtr->portType)
     {
         case FM_PORT_TYPE_PHYSICAL:
+        case FM_PORT_TYPE_CPU_MGMT2:
             parmPtr->camIndex       = lportInfo->physicalPortCamIndex;
             camEntry                = &lportInfo->camEntries[parmPtr->camIndex];
             if (switchPtr->cpuPort == 0)
@@ -347,13 +400,17 @@ static fm_status AssignSpecialPortResources(fm_switch *   switchPtr,
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err = FM_ERR_INVALID_ARGUMENT);
     }
 
-    /* Glort should not be in use at this time */
-    if ( FM_IS_GLORT_TAKEN(lportInfo, parmPtr->baseGlort) )
+    /* GloRT should not be in use at this time */
+    err = fmCheckGlortRangeState(switchPtr,
+                                 parmPtr->baseGlort,
+                                 1,
+                                 FM_GLORT_STATE_UNUSED);
+    if ( err != FM_OK )
     {
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err = FM_ERR_GLORT_IN_USE);
     }
 
-    /* Assign the correct dest entry by masking the glort # */
+    /* Assign the correct dest entry by masking the GloRT # */
     parmPtr->baseDestIndex =
         camEntry->destIndex +
         (parmPtr->baseGlort & ~switchPtr->glortInfo.specialBase);
@@ -404,11 +461,15 @@ static fm_status AssignLagPortResources(fm_switch *   switchPtr,
     fm_logicalPortInfo *lportInfo;
     fm_glortDestEntry * destEntry[FM_MAX_NUM_LAG_MEMBERS];
     fm_status           err;
-    fm_int              firstGlort = 0;
-    fm_int              firstDestEntry = 0;
-    fm_int              firstLogicalPort = 0;
+    fm_uint32           firstGlort;
+    fm_int              firstDestEntry;
+    fm_int              firstLogicalPort;
     fm_int              sw = switchPtr->switchNumber;
     fm_int              maxGlortsPerLag;
+
+    firstGlort = 0;
+    firstDestEntry = 0;
+    firstLogicalPort = 0;
 
     FM_API_CALL_FAMILY(err,
                        switchPtr->GetMaxGlortsPerLag,
@@ -423,21 +484,16 @@ static fm_status AssignLagPortResources(fm_switch *   switchPtr,
 
     if (!parmPtr->useHandle)
     {
-        /* Need resources for a local LAG, find one in the local
-         * LAG reserved range. */
-        firstGlort = fmFindUnusedGlorts(sw,
-                                        parmPtr->numPorts,
-                                        switchPtr->glortRange.lagBaseGlort,
-                                        NULL);
-        if ( (firstGlort == -1) ||
-             ((fm_uint32)firstGlort >= (switchPtr->glortRange.lagBaseGlort +
-                                        switchPtr->glortRange.lagCount)) )
+        /* Need resources for a local LAG,
+         * find one in the local LAG range. */
+        err = fmFindFreeGlortRange(sw,
+                                   parmPtr->numPorts,
+                                   FM_GLORT_TYPE_LAG,
+                                   &firstGlort);
+
+        if ( err != FM_OK )
         {
             err = FM_ERR_LOG_PORT_UNAVAILABLE;
-        }
-        else
-        {
-            err = FM_OK;
         }
     }
     else
@@ -465,7 +521,7 @@ static fm_status AssignLagPortResources(fm_switch *   switchPtr,
 
     firstDestEntry = destEntry[0]->destIndex;
 
-    /* Create an entry to hash the canonical LAG glort */
+    /* Create an entry to hash the canonical LAG GloRT */
     err = fmCreateGlortCamEntry(sw,
                                 0xFFFF,                 /* cam mask */
                                 firstGlort,
@@ -538,7 +594,7 @@ static fm_status AssignMcgPortResources(fm_switch *   switchPtr,
 
     lportInfo = &switchPtr->logicalPortInfo;
 
-    /* First find unused glorts in the reserved multicast space */
+    /* First find unused GloRTs in the reserved multicast space */
     err = fmFindUnusedMcgGlorts(sw,
                                 parmPtr->numPorts,
                                 parmPtr->useHandle,
@@ -658,9 +714,14 @@ ABORT:
 static fm_status AssignPortResources(fm_switch *   switchPtr,
                                      fm_portParms *parmPtr)
 {
-    fm_logicalPortInfo *lportInfo;
     fm_status           err;
-    fm_int              j;
+    fm_logicalPortInfo *lportInfo;
+    fm_glortType        glortType;
+
+
+    err       = FM_OK;
+    lportInfo = &switchPtr->logicalPortInfo;
+    glortType = FM_GLORT_TYPE_UNSPECIFIED;
 
     parmPtr->baseGlort     = -1;
     parmPtr->camIndex      = -1;
@@ -671,6 +732,7 @@ static fm_status AssignPortResources(fm_switch *   switchPtr,
         case FM_PORT_TYPE_PHYSICAL:
         case FM_PORT_TYPE_CPU:
         case FM_PORT_TYPE_CPU_MGMT:
+        case FM_PORT_TYPE_CPU_MGMT2:
             err = AssignHardwarePortResources(switchPtr, parmPtr);
             FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
             break;
@@ -719,20 +781,22 @@ static fm_status AssignPortResources(fm_switch *   switchPtr,
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
     }
 
+    /***************************************************
+     * Mark the destination GloRTs used.
+     **************************************************/
+
     FM_LOG_DEBUG(FM_LOG_CAT_PORT,
-                 "Using %d glorts beginning at glort %d\n",
+                 "Using %d GloRTs beginning at GloRT %d\n",
                  parmPtr->numPorts,
                  parmPtr->baseGlort);
 
-    /***************************************************
-     * Mark the destination glorts used.
-     **************************************************/
-    lportInfo = &switchPtr->logicalPortInfo;
+    glortType = portTypeToGlortType(parmPtr->portType);
+    err = fmRequestGlortRange(switchPtr->switchNumber,
+                              parmPtr->baseGlort,
+                              parmPtr->numPorts,
+                              glortType);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
 
-    for (j = 0 ; j < parmPtr->numPorts ; ++j)
-    {
-        FM_SET_GLORT_IN_USE(lportInfo, parmPtr->baseGlort + j);
-    }
 
 ABORT:
     return err;
@@ -775,8 +839,9 @@ static fm_status CreateLogicalPort(fm_switch *   switchPtr,
     fm_int              physPort;
 
     /* Get the logical port, physical port, and cardinal port index. */
-    if (parmPtr->portType == FM_PORT_TYPE_PHYSICAL ||
-        parmPtr->portType == FM_PORT_TYPE_CPU )
+    if ( (parmPtr->portType == FM_PORT_TYPE_PHYSICAL) ||
+         (parmPtr->portType == FM_PORT_TYPE_CPU_MGMT2) ||
+         (parmPtr->portType == FM_PORT_TYPE_CPU) )
     {
         cpi = parmPtr->basePort + subIndex;
 
@@ -807,8 +872,8 @@ static fm_status CreateLogicalPort(fm_switch *   switchPtr,
                  port,
                  fmPortTypeToText(parmPtr->portType));
 
-    /* Get the global resource tag (glort). */
-    /* If CPU port isn't 0 port we need to change glorts of 0 port and CPU port */
+    /* Get the global resource tag (GloRT). */
+    /* If CPU port isn't 0 port we need to change GloRTs of 0 port and CPU port */
     if ( ( switchPtr->cpuPort != 0 ) && ( port == 0 ) )
     {
         glort = parmPtr->baseGlort + switchPtr->cpuPort;
@@ -933,8 +998,9 @@ static fm_status CreateLogicalPort(fm_switch *   switchPtr,
      * Get the port's hardware capabilities.
      **************************************************/
 
-    if (parmPtr->portType == FM_PORT_TYPE_PHYSICAL ||
-        parmPtr->portType == FM_PORT_TYPE_CPU)
+    if ( (parmPtr->portType == FM_PORT_TYPE_PHYSICAL) ||
+         (parmPtr->portType == FM_PORT_TYPE_CPU_MGMT2) ||
+         (parmPtr->portType == FM_PORT_TYPE_CPU) )
     {
         fmPlatformGetPortCapabilities(switchPtr->switchNumber,
                                       physPort,
@@ -1004,7 +1070,7 @@ static fm_status CreateVirtualLogicalPort(fm_switch *   switchPtr,
                  port,
                  fmPortTypeToText(parmPtr->portType));
 
-    /* Get the global resource tag (glort). */
+    /* Get the global resource tag (GloRT). */
     glort = parmPtr->baseGlort + subIndex;
 
 
@@ -1052,7 +1118,7 @@ static fm_status CreateVirtualLogicalPort(fm_switch *   switchPtr,
     }
 
     FM_LOG_DEBUG(FM_LOG_CAT_PORT,
-                 "Allocated logical port %d mapping to glort %d\n",
+                 "Allocated logical port %d mapping to GloRT %d\n",
                  port,
                  glort);
 
@@ -1183,8 +1249,7 @@ fm_status fmInitializeLogicalPorts(fm_int sw)
     /***************************************************
      * Physical ports get one cam entry for their block.
      **************************************************/
-    if ( fmGetBoolApiProperty(FM_AAK_API_STRICT_GLORT_PHYSICAL,
-                              FM_AAD_API_STRICT_GLORT_PHYSICAL) )
+    if (GET_PROPERTY()->strictGlotPhysical)
     {
         entryType = FM_GLORT_ENTRY_TYPE_STRICT;
     }
@@ -1267,7 +1332,7 @@ fm_status fmInitializeLogicalPorts(fm_int sw)
     }
 
     /***************************************************
-     * Special glorts have one cam entry for the entire
+     * Special GloRTs have one cam entry for the entire
      * block.
      **************************************************/
 
@@ -1325,7 +1390,7 @@ fm_status fmInitializeLogicalPorts(fm_int sw)
 
     /***************************************************
      * Create bit arrays that will be used to manage
-     * the multicast glort dest table entry usage.
+     * the multicast GloRT dest table entry usage.
      **************************************************/
 
     for (block = 0 ; block < FM_MCG_ALLOC_TABLE_SIZE ; block++)
@@ -1500,7 +1565,7 @@ ABORT:
  *                  resources, or zero if no resources have been allocated.
  *                  Used mainly in stacking configurations.
  *
- * \param[in]       firstGlort is the number of first glort to use.
+ * \param[in]       firstGlort is the number of first GloRT to use.
  *
  * \return          FM_OK if successful.
  * \return          FM_ERR_INVALID_SWITCH if sw is invalid.
@@ -1519,10 +1584,7 @@ fm_status fmCommonAllocVirtualLogicalPort(fm_int  sw,
     fm_mailboxInfo     *mailboxInfo;
     fm_portParms        parms;
     fm_int              subIndex;
-    fm_int              i;
     fm_int              basePort;
-    fm_int              glort;
-    fm_int              lastEntry;
     fm_int              freeCount;
     fm_int              start;
     fm_status           status;
@@ -1564,54 +1626,19 @@ fm_status fmCommonAllocVirtualLogicalPort(fm_int  sw,
     }
 
     /***************************************************
-     * Find an unused block of glorts.
+     * Request an unused block of GloRTs.
      **************************************************/
-    lastEntry = firstGlort + mailboxInfo->glortsPerPep;
-    for (glort = firstGlort ; glort < lastEntry ; glort++)
-    {
-        /***************************************************
-         * Two conditions must be met:
-         *   (a) The glort is not zero (it is reserved)
-         *   (b) The glort is unused
-         **************************************************/
-        if (glort && !FM_IS_GLORT_TAKEN(lportInfo, glort) )
-        {
-            if (freeCount == 0)
-            {
-                start = glort;
-            }
+    parms.baseGlort = firstGlort;
 
-            ++freeCount;
+    status = fmRequestGlortRange(sw,
+                                 parms.baseGlort,
+                                 parms.numPorts,
+                                 FM_GLORT_TYPE_PEP);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, status);
 
-            if (freeCount >= numPorts)
-            {
-                break;
-            }
-        }
-        else
-        {
-            freeCount = 0;
-            start = -1;
-        }
-    }
-
-    if ( (freeCount < numPorts)
-        || (start != firstGlort) )
-    {
-        status = FM_ERR_GLORT_IN_USE;
-        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, status);
-    }
-
-    parms.baseGlort      = firstGlort;
-
-    basePort = parms.basePort;
-
-    for (i = 0 ; i < parms.numPorts ; ++i)
-    {
-        FM_SET_GLORT_IN_USE(lportInfo, parms.baseGlort + i);
-    }
 
     /* Allocate the port structures and initialize them. */
+    basePort = parms.basePort;
     for (subIndex = 0 ; subIndex < parms.numPorts ; subIndex++)
     {
         parms.baseGlort = firstGlort + subIndex;
@@ -1624,6 +1651,21 @@ fm_status fmCommonAllocVirtualLogicalPort(fm_int  sw,
     *firstPort = basePort;
 
 ABORT:
+
+    /***************************************************
+     * Cleanup: release requested GloRTs
+     **************************************************/
+
+    /* if fmRequestGlortRange() returned FM_ERR_GLORT_IN_USE
+     * then we should not release someone else's GloRTs */
+    if ( (status != FM_OK) && (status != FM_ERR_GLORT_IN_USE) )
+    {
+        fmReleaseGlortRange(sw,
+                            parms.baseGlort,
+                            parms.numPorts,
+                            FM_GLORT_TYPE_PEP);
+    }
+
     FM_LOG_EXIT(FM_LOG_CAT_PORT, status);
 
 }   /* end fmCommonAllocVirtualLogicalPort */
@@ -1661,6 +1703,7 @@ fm_status fmCommonFreeLogicalPort(fm_int sw, fm_int logicalPort)
     fm_port *            portPtr;
     fm_maPurge *         purgePtr;
     fm_logicalPortInfo * lportInfo;
+    fm_glortType         glortType;
     fm_status            rc;
     fm_status            err;
     fm_int               freeCount;
@@ -1676,6 +1719,7 @@ fm_status fmCommonFreeLogicalPort(fm_int sw, fm_int logicalPort)
                  logicalPort);
 
     switchPtr = GET_SWITCH_PTR(sw);
+    glortType = FM_GLORT_TYPE_UNSPECIFIED;
     err       = FM_OK;
     rc        = FM_OK;
 
@@ -1725,14 +1769,14 @@ fm_status fmCommonFreeLogicalPort(fm_int sw, fm_int logicalPort)
 
         /* Remote port structures created for mailbox purpose does not have
            CAM entries assigned, as these entries are not created dynamically.
-           Mailbox CAM entries are created at the mailbox init stage to optimise
+           Mailbox CAM entries are created at the mailbox init stage to optimize
            GLORT_CAM/GLORT_RAM entries usage. */
         if (portPtr->portType != FM_PORT_TYPE_VIRTUAL)
         {
             if (portPtr->camEntry)
             {
                 FM_LOG_DEBUG(FM_LOG_CAT_PORT,
-                             "Freeing logical port %d mapping to cam %d, glort %d\n",
+                             "Freeing logical port %d mapping to cam %d, GloRT %d\n",
                              port,
                              portPtr->camEntry->camIndex,
                              portPtr->glort);
@@ -1740,14 +1784,14 @@ fm_status fmCommonFreeLogicalPort(fm_int sw, fm_int logicalPort)
             else
             {
                 FM_LOG_DEBUG(FM_LOG_CAT_PORT,
-                             "Freeing logical port %d, glort %d\n",
+                             "Freeing logical port %d, GloRT %d\n",
                              port,
                              portPtr->glort);
             }
         }
 
         /***************************************************
-         * Free the glort cam entry.
+         * Free the GloRT cam entry.
          **************************************************/
 
         /* 16 CAM entries are allocated for a mapped LBG so we need
@@ -1767,12 +1811,12 @@ fm_status fmCommonFreeLogicalPort(fm_int sw, fm_int logicalPort)
                 err = fmRemoveGlortCamEntry(sw, idx);
             }
         }
-        /* Do not remove glort cam entry for VIRTUAL logical ports */
+        /* Do not remove GloRT cam entry for VIRTUAL logical ports */
         else if (portPtr->portType != FM_PORT_TYPE_VIRTUAL)
         {
             /* Remote port structures created for mailbox purpose does not have
                CAM entries assigned, as these entries are not created dynamically.
-               Mailbox CAM entries are created at the mailbox init stage to optimise
+               Mailbox CAM entries are created at the mailbox init stage to optimize
                GLORT_CAM/GLORT_RAM entries usage. */
             if (portPtr->camEntry)
             {
@@ -1865,12 +1909,18 @@ fm_status fmCommonFreeLogicalPort(fm_int sw, fm_int logicalPort)
         FM_DROP_MA_PURGE_LOCK(sw);
 
         /***************************************************
-         * Free the logical port and glort, but preserve
+         * Free the logical port and GloRT, but preserve
          * the reserved bit.
          **************************************************/
 
         FM_SET_LPORT_FREE(lportInfo, port);
-        FM_SET_GLORT_FREE(lportInfo, portPtr->glort);
+
+        glortType = portTypeToGlortType(portPtr->portType);
+        err = fmReleaseGlortRange(sw,
+                                  portPtr->glort,
+                                  1,
+                                  glortType);
+        FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_PORT, err);
 
         /***************************************************
          * Free the data structures.
@@ -1926,7 +1976,7 @@ fm_status fmAllocateLogicalPortDataStructures(fm_int sw,
     lportInfo = &switchPtr->logicalPortInfo;
 
     /***************************************************
-     * Allocate glort cam table.
+     * Allocate GloRT cam table.
      **************************************************/
 
     lportInfo->numCamEntries = numCamEntries;
@@ -1941,7 +1991,7 @@ fm_status fmAllocateLogicalPortDataStructures(fm_int sw,
     memset(lportInfo->camEntries, 0, nbytes);
 
     /***************************************************
-     * Allocate glort destination table.
+     * Allocate GloRT destination table.
      **************************************************/
 
     lportInfo->numDestEntries = numDestEntries;
@@ -1966,7 +2016,7 @@ fm_status fmAllocateLogicalPortDataStructures(fm_int sw,
 /** fmAllocLogicalPort
  * \ingroup intlport
  *
- * \desc            Allocate a continguous block of logical port entries,
+ * \desc            Allocate a contiguous block of logical port entries,
  *                  optionally using the given hint as a starting port number.
  *
  * \note            To prevent fragmentation of the destination table,
@@ -2088,7 +2138,7 @@ fm_status fmFreeLogicalPortDataStructures(fm_switch *switchPtr)
     }
 
     /***************************************************
-     * Free glort cam table.
+     * Free GloRT cam table.
      **************************************************/
 
     if (lportInfo->camEntries)
@@ -2098,7 +2148,7 @@ fm_status fmFreeLogicalPortDataStructures(fm_switch *switchPtr)
     }
 
     /***************************************************
-     * Free glort destination table.
+     * Free GloRT destination table.
      **************************************************/
 
     if (lportInfo->destEntries)
@@ -2355,17 +2405,17 @@ fm_status fmGetLogicalPortAttribute(fm_int sw,
 /** fmCreateLogicalPortForGlort
  * \ingroup intlport
  *
- * \desc            Creates a logical port for the given glort.  This function
- *                  is used when the switch must be able to address a glort
+ * \desc            Creates a logical port for the given GloRT. This function
+ *                  is used when the switch must be able to address a GloRT
  *                  that exists on a remote switch.
  *                                                                      \lb\lb
- *                  If a logical port has already been assigned to this glort,
+ *                  If a logical port has already been assigned to this GloRT,
  *                  then this function will return the existing logical port
  *                  instead of allocating a new one.
  *
  * \param[in]       sw is the switch on which to operate.
  *
- * \param[in]       glort is the glort to which the new logical port is to
+ * \param[in]       glort is the GloRT to which the new logical port is to
  *                  be assigned.
  *
  * \param[out]      logicalPort is a pointer to caller-allocated memory where
@@ -2378,7 +2428,7 @@ fm_status fmGetLogicalPortAttribute(fm_int sw,
  * \return          FM_ERR_GLORT_IN_USE if the specified is already being used
  *                  by others.
  * \return          FM_ERR_NO_FORWARDING_RULES if there is no forwarding rule
- *                  associated with glort.
+ *                  associated with GloRT.
  * \return          FM_ERR_NO_FREE_RESOURCES if no logical port numbers
  *                  available for allocation.
  * \return          FM_ERR_NO_MEM if no memory available to store logical
@@ -2389,8 +2439,10 @@ fm_status fmCreateLogicalPortForGlort(fm_int    sw,
                                       fm_uint32 glort,
                                       fm_int *  logicalPort)
 {
-    fm_status  err;
-    fm_switch *switchPtr;
+    fm_status    err;
+    fm_switch *  switchPtr;
+    fm_port *    portPtr;
+    fm_glortType glortType;
 
     FM_LOG_ENTRY(FM_LOG_CAT_PORT,
                  "sw=%d, glort = 0x%x, logicalPort=%p\n",
@@ -2398,11 +2450,14 @@ fm_status fmCreateLogicalPortForGlort(fm_int    sw,
                  glort,
                  (void *) logicalPort);
 
+    err       = FM_OK;
     switchPtr = GET_SWITCH_PTR(sw);
+    portPtr   = NULL;
+    glortType = FM_GLORT_TYPE_UNSPECIFIED;
 
     if (glort != (fm_uint32) ~0)
     {
-        /* See if logical port already exists for this glort */
+        /* See if logical port already exists for this GloRT */
         err = fmGetGlortLogicalPort(sw, glort, logicalPort);
 
         if (err == FM_OK)
@@ -2416,12 +2471,30 @@ fm_status fmCreateLogicalPortForGlort(fm_int    sw,
         }
     }
 
+    /* Check if the GloRT is not used or reserved. */
+    err = fmCheckGlortRangeState(switchPtr,
+                                 glort,
+                                 1,
+                                 FM_GLORT_STATE_UNUSED);
+    if (err != FM_OK)
+    {
+        FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_PORT, err = FM_ERR_GLORT_IN_USE);
+    }
+
     /* The logical port doesn't exist, so create a new one */
     FM_API_CALL_FAMILY(err,
                        switchPtr->CreateLogicalPortForGlort,
                        sw,
                        glort,
                        logicalPort);
+    FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_PORT, err);
+
+    portPtr   = GET_PORT_PTR(sw, *logicalPort);
+    glortType = portTypeToGlortType(portPtr->portType);
+    err = fmRequestGlortRange(sw,
+                              glort,
+                              1,
+                              glortType);
 
     FM_LOG_EXIT(FM_LOG_CAT_PORT, err);
 
@@ -2434,17 +2507,17 @@ fm_status fmCreateLogicalPortForGlort(fm_int    sw,
 /** fmCreateLogicalPortForMailboxGlort
  * \ingroup intlport
  *
- * \desc            Creates a logical port for the given mailbox glort.
+ * \desc            Creates a logical port for the given mailbox GloRT.
  *                  This function is used when the switch must be able
- *                  to address a glort that exists on a remote switch.
+ *                  to address a GloRT that exists on a remote switch.
  *                                                                      \lb\lb
- *                  If a logical port has already been assigned to this glort,
+ *                  If a logical port has already been assigned to this GloRT,
  *                  then this function will return the existing logical port
  *                  instead of allocating a new one.
  *
  * \param[in]       sw is the switch on which to operate.
  *
- * \param[in]       glort is the glort to which the new logical port is to
+ * \param[in]       glort is the GloRT to which the new logical port is to
  *                  be assigned.
  *
  * \param[out]      logicalPort is a pointer to caller-allocated memory where
@@ -2466,8 +2539,10 @@ fm_status fmCreateLogicalPortForMailboxGlort(fm_int    sw,
                                              fm_uint32 glort,
                                              fm_int *  logicalPort)
 {
-    fm_status  err;
-    fm_switch *switchPtr;
+    fm_status    err;
+    fm_switch *  switchPtr;
+    fm_port *    portPtr;
+    fm_glortType glortType;
 
     FM_LOG_ENTRY(FM_LOG_CAT_PORT,
                  "sw=%d, glort = 0x%x, logicalPort=%p\n",
@@ -2475,11 +2550,14 @@ fm_status fmCreateLogicalPortForMailboxGlort(fm_int    sw,
                  glort,
                  (void *) logicalPort);
 
+    err       = FM_OK;
     switchPtr = GET_SWITCH_PTR(sw);
+    portPtr   = NULL;
+    glortType = FM_GLORT_TYPE_UNSPECIFIED;
 
     if (glort != (fm_uint32) ~0)
     {
-        /* See if logical port already exists for this glort */
+        /* See if logical port already exists for this GloRT */
         err = fmGetGlortLogicalPort(sw, glort, logicalPort);
 
         if (err == FM_OK)
@@ -2493,12 +2571,30 @@ fm_status fmCreateLogicalPortForMailboxGlort(fm_int    sw,
         }
     }
 
+    /* Check if the GloRT is not used or reserved. */
+    err = fmCheckGlortRangeState(switchPtr,
+                                 glort,
+                                 1,
+                                 FM_GLORT_STATE_UNUSED);
+    if (err != FM_OK)
+    {
+        FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_PORT, err = FM_ERR_GLORT_IN_USE);
+    }
+
     /* The logical port doesn't exist, so create a new one */
     FM_API_CALL_FAMILY(err,
                        switchPtr->CreateLogicalPortForMailboxGlort,
                        sw,
                        glort,
                        logicalPort);
+    FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_PORT, err);
+
+    portPtr   = GET_PORT_PTR(sw, *logicalPort);
+    glortType = portTypeToGlortType(portPtr->portType);
+    err = fmRequestGlortRange(sw,
+                              glort,
+                              1,
+                              glortType);
 
     FM_LOG_EXIT(FM_LOG_CAT_PORT, err);
 
@@ -2513,7 +2609,7 @@ fm_status fmCreateLogicalPortForMailboxGlort(fm_int    sw,
  *
  * \chips           FM10000
  *
- * \desc            Deallocates a logical port associated with mailbox glort.
+ * \desc            Deallocates a logical port associated with mailbox GloRT.
  *                                                                      \lb\lb
  * \param[in]       sw is the switch on which to operate.
  *
@@ -2531,6 +2627,7 @@ fm_status fmFreeLogicalPortForMailboxGlort(fm_int sw,
     fm_switch *          switchPtr;
     fm_port *            portPtr;
     fm_logicalPortInfo * lportInfo;
+    fm_glortType         glortType;
     fm_status            rc;
     fm_status            err;
 
@@ -2540,6 +2637,7 @@ fm_status fmFreeLogicalPortForMailboxGlort(fm_int sw,
                  logicalPort);
 
     switchPtr = GET_SWITCH_PTR(sw);
+    glortType = FM_GLORT_TYPE_UNSPECIFIED;
     err       = FM_OK;
     rc        = FM_OK;
 
@@ -2578,7 +2676,12 @@ fm_status fmFreeLogicalPortForMailboxGlort(fm_int sw,
 
     if (portPtr != NULL)
     {
-        FM_SET_GLORT_FREE(lportInfo, portPtr->glort);
+        glortType = portTypeToGlortType(portPtr->portType);
+        err = fmReleaseGlortRange(sw,
+                                  portPtr->glort,
+                                  1,
+                                  glortType);
+        FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_PORT, err);
 
         /***************************************************
          * Free the data structures.
@@ -2605,7 +2708,7 @@ fm_status fmFreeLogicalPortForMailboxGlort(fm_int sw,
 /** fmGetLogicalPortGlort
  * \ingroup intlport
  *
- * \desc            Retrieves the glort assigned to the given logical port.
+ * \desc            Retrieves the GloRT assigned to the given logical port.
  *
  * \note            This function assumes that the caller has taken the
  *                  appropriate lock and made sure switch state is valid.
@@ -2615,7 +2718,7 @@ fm_status fmFreeLogicalPortForMailboxGlort(fm_int sw,
  * \param[in]       logicalPort is the port number.
  *
  * \param[out]      glort points to caller-allocated storage where this
- *                  function should write the glort associated with
+ *                  function should write the GloRT associated with
  *                  logicalPort.
  *
  * \return          FM_OK if successful.
@@ -3027,9 +3130,9 @@ fm_status fmIsPciePort( fm_int sw, fm_int port, fm_bool *isPciePort )
     portPtr = GET_PORT_PTR(sw, port);
 
     /* Invoke the chip-specific function, if any */
-    if ( portPtr->isPciePort != NULL )
+    if ( portPtr->IsPciePort != NULL )
     {
-        status = portPtr->isPciePort( sw, port, isPciePort );
+        status = portPtr->IsPciePort( sw, port, isPciePort );
     }
     else
     {
@@ -3079,9 +3182,9 @@ fm_status fmIsSpecialPort( fm_int sw, fm_int port, fm_bool *isSpecialPort )
     portPtr = GET_PORT_PTR(sw, port);
 
     /* Invoke the chip-specific function, if any */
-    if ( portPtr->isPciePort != NULL )
+    if ( portPtr->IsSpecialPort != NULL )
     {
-        status = portPtr->isSpecialPort( sw, port, isSpecialPort );
+        status = portPtr->IsSpecialPort( sw, port, isSpecialPort );
     }
     else
     {
@@ -3223,7 +3326,7 @@ fm_status fmGetLogicalPortPcie(fm_int sw,
 /** fmSortPortByGlort
  * \ingroup intPort
  *
- * \desc            Sorts a list of logical ports by their glorts.
+ * \desc            Sorts a list of logical ports by their GloRTs.
  *
  * \note            This function assumes that the caller has taken the
  *                  appropriate lock and made sure switch state is valid.
@@ -3278,19 +3381,19 @@ fm_status fmSortPortByGlort(fm_int sw,
 /** fmGetGlortLogicalPort
  * \ingroup intPort
  *
- * \desc            Find the logical port for a given glort.
+ * \desc            Find the logical port for a given GloRT.
  *
  * \param[in]       sw is the switch on which to operate.
  *
- * \param[in]       glort is the glort to look up.
+ * \param[in]       glort is the GloRT to look up.
  *
  * \param[out]      logicalPort points to caller-allocated storage where this
  *                  function should store the logical port associated with
- *                  the glort.
+ *                  the GloRT.
  *
  * \return          FM_OK if successful.
  * \return          FM_ERR_INVALID_PORT if the port is not found.
- * \return          FM_ERR_INVALID_ARGUMENT if the glort is invalid.
+ * \return          FM_ERR_INVALID_ARGUMENT if the GloRT is invalid.
  *
  *****************************************************************************/
 fm_status fmGetGlortLogicalPort(fm_int sw, fm_uint32 glort, fm_int *logicalPort)
@@ -3444,16 +3547,16 @@ fm_status fmAllocDestEntries(fm_int              sw,
 /** fmCreateGlortCamEntry
  * \ingroup intPort
  *
- * \desc            Writes an entry to the glort CAM/RAM.
+ * \desc            Writes an entry to the GloRT CAM/RAM.
  *
  * \note            Assumes switch protection lock has already been acquired
  *                  and that the switch pointer is valid.
  *
  * \param[in]       sw is the switch number.
  *
- * \param[in]       camMask is the mask value to write into the glort CAM.
+ * \param[in]       camMask is the mask value to write into the GloRT CAM.
  *
- * \param[in]       camKey is the key value to write into the glort CAM.
+ * \param[in]       camKey is the key value to write into the GloRT CAM.
  *
  * \param[in]       strict indicates whether dest table index is hashed
  *                  or not.
@@ -3463,16 +3566,16 @@ fm_status fmAllocDestEntries(fm_int              sw,
  *
  * \param[in]       destCount is the number of indices the hash is computed over.
  *
- * \param[in]       rangeALength is the size of a bitslice of the glort number
+ * \param[in]       rangeALength is the size of a bitslice of the GloRT number
  *                  used to calculate the final index.
  *
- * \param[in]       rangeAOffset is the start bit of a bitslice of the glort
+ * \param[in]       rangeAOffset is the start bit of a bitslice of the GloRT
  *                  number used to calculate the final index.
  *
- * \param[in]       rangeBLength is the size of a bitslice of the glort number
+ * \param[in]       rangeBLength is the size of a bitslice of the GloRT number
  *                  used to calculate the final index in strict mode.
  *
- * \param[in]       rangeBOffset is the start bit of a bitslice of the glort
+ * \param[in]       rangeBOffset is the start bit of a bitslice of the GloRT
  *                  number used to calculate the final index in strict mode.
  *
  * \param[in]       hashRotation specifies a hash parameter.
@@ -3581,7 +3684,7 @@ ABORT:
 /** fmAllocateMcastHandles
  * \ingroup intPort
  *
- * \desc            Allocates multicast resources given a glort range. This
+ * \desc            Allocates multicast resources given a GloRT range. This
  *                  function is used by stacking and non-stacking configuration.
  *                  In non-stacking configuration, the resources are
  *                  automatically selected, whereas in stacking, it is
@@ -3589,9 +3692,9 @@ ABORT:
  *
  * \param[in]       sw is the switch on which to operate.
  *
- * \param[in]       startGlort is the start glort to reserve for multicast.
+ * \param[in]       startGlort is the start GloRT to reserve for multicast.
  *
- * \param[in]       glortSize is the size of the glort space to reserve. This
+ * \param[in]       glortSize is the size of the GloRT space to reserve. This
  *                  value must be a power of two.
  *
  * \param[out]      baseMcastGroupHandle points to caller-allocated storage
@@ -3609,8 +3712,8 @@ ABORT:
  *
  * \return          FM_OK if successful.
  * \return          FM_ERR_INVALID_ARGUMENT if input parameters fail checking.
- * \return          FM_ERR_LOG_PORT_UNAVAILABLE if any glort in the given
- *                  glort range is being used.
+ * \return          FM_ERR_LOG_PORT_UNAVAILABLE if any GloRT in the given
+ *                  GloRT range is being used.
  * \return          FM_ERR_NO_MCAST_RESOURCES if no more resources are available
  *
  *****************************************************************************/
@@ -3672,7 +3775,7 @@ fm_status fmAllocateMcastHandles(fm_int  sw,
 
     if (startGlort % (1 << steps))
     {
-        /* glort is not multiple of size */
+        /* GloRT is not multiple of size */
         FM_LOG_DEBUG(FM_LOG_CAT_PORT,
                      "startGlort %d is not a multiple of size %d\n",
                      startGlort,
@@ -3698,14 +3801,16 @@ fm_status fmAllocateMcastHandles(fm_int  sw,
         FM_LOG_EXIT(FM_LOG_CAT_PORT, FM_FAIL);
     }
 
-    /* Check for glort range is not in use or reserved. */
-    for ( glort = startGlort ; glort < endGlort ; ++glort )
+    /* Check if all GloRTs in range are not used or reserved. */
+    err = fmCheckGlortRangeState(switchPtr,
+                                 startGlort,
+                                 glortSize,
+                                 FM_GLORT_STATE_UNUSED);
+    if (err != FM_OK)
     {
-        if (FM_IS_GLORT_TAKEN(lportInfo, glort))
-        {
-            FM_LOG_EXIT(FM_LOG_CAT_PORT, FM_ERR_LOG_PORT_UNAVAILABLE);
-        }
+        FM_LOG_EXIT(FM_LOG_CAT_PORT, FM_ERR_LOG_PORT_UNAVAILABLE);
     }
+
 
     /* Find a free reserved entry */
     allocIndex = fmFindFreeMcgEntry(sw);
@@ -3777,7 +3882,7 @@ fm_status fmAllocateMcastHandles(fm_int  sw,
     allocEntry->baseGlort = startGlort;
     allocEntry->glortSize = glortSize;
 
-    /* One glort per mcast entries */
+    /* One GloRT per mcast entries */
     allocEntry->numHandles = glortSize;
 
     endPort = allocEntry->baseHandle + allocEntry->numHandles;
@@ -3785,7 +3890,7 @@ fm_status fmAllocateMcastHandles(fm_int  sw,
 
     FM_LOG_DEBUG(FM_LOG_CAT_PORT | FM_LOG_CAT_MULTICAST,
                  "Reserve port (%d -> %d) and "
-                 "glort (0x%x -> 0x%x) for Multicast\n",
+                 "GloRT (0x%x -> 0x%x) for Multicast\n",
                  allocEntry->baseHandle,
                  endPort - 1,
                  startGlort,
@@ -3806,19 +3911,18 @@ fm_status fmAllocateMcastHandles(fm_int  sw,
         FM_RESERVE_LPORT_MCG(lportInfo, port);
     }
 
-    /* Reserve the glort */
-    for ( glort = startGlort ; glort < endGlort ; ++glort )
+    /* Reserve the GloRT range */
+    err = fmReserveGlortRange(sw,
+                              startGlort,
+                              glortSize,
+                              FM_GLORT_TYPE_MULTICAST);
+    if (err != FM_OK)
     {
-        if (FM_IS_GLORT_TAKEN(lportInfo, glort))
-        {
-            /* Probably improperly locking causes this problem */
-            FM_LOG_FATAL(FM_LOG_CAT_PORT,
-                         "Glort 0x%x should be available, but state is %d\n",
-                         glort,
-                         lportInfo->glortState[glort]);
-            err = FM_ERR_PORT_IN_USE;
-        }
-        FM_RESERVE_GLORT_MCG(lportInfo, glort);
+        /* Probably improperly locking causes this problem */
+        FM_LOG_FATAL(FM_LOG_CAT_PORT,
+                     "GloRT range 0x%x - 0x%x should be available\n",
+                     startGlort,
+                     endGlort + 1);
     }
 
     *baseMcastGroupHandle = allocEntry->baseHandle;
@@ -3854,17 +3958,18 @@ fm_status fmAllocateMcastHandles(fm_int  sw,
 fm_status fmFreeMcastHandles(fm_int sw, fm_int handle)
 {
     fm_status           err;
-    fm_status           retErr = FM_OK;
+    fm_status           retErr;
     fm_switch *         switchPtr;
     fm_logicalPortInfo *lportInfo;
     fm_mcgAllocEntry *  allocEntry;
-    fm_uint32           glort;
     fm_uint             i;
     fm_uint             cnt;
     fm_int              j;
 
     FM_LOG_ENTRY(FM_LOG_CAT_PORT, "sw=%d handle=%d\n", sw, handle);
 
+    err       = FM_OK;
+    retErr    = FM_OK;
     switchPtr = GET_SWITCH_PTR(sw);
     lportInfo = &switchPtr->logicalPortInfo;
 
@@ -3876,14 +3981,16 @@ fm_status fmFreeMcastHandles(fm_int sw, fm_int handle)
         FM_LOG_EXIT(FM_LOG_CAT_PORT, FM_ERR_INVALID_MULTICAST_GROUP);
     }
 
-    for (cnt = 0 ; cnt < allocEntry->glortSize ; cnt++)
+    /* Check if all GloRTs in range are reserved only (free for use) */
+    err = fmCheckGlortRangeState(switchPtr,
+                                 allocEntry->baseGlort,
+                                 allocEntry->glortSize,
+                                 FM_GLORT_STATE_RESV_MCG);
+    if (err != FM_OK)
     {
-        if (!FM_IS_GLORT_MCG_FREE(lportInfo, allocEntry->baseGlort+cnt))
-        {
-            /* Cannot delete when any port in the range is in use */
-            /* This is one to one corresponding to logical port */
-            FM_LOG_EXIT(FM_LOG_CAT_PORT, FM_ERR_PORT_IN_USE);
-        }
+        /* Cannot delete when any port in the range is in use */
+        /* This is one to one corresponding to logical port */
+        FM_LOG_EXIT(FM_LOG_CAT_PORT, FM_ERR_PORT_IN_USE);
     }
 
     /* Now free the cam and associated dest entries */
@@ -3965,24 +4072,11 @@ fm_status fmFreeMcastHandles(fm_int sw, fm_int handle)
         FM_RELEASE_LPORT(lportInfo, j);
     }
 
-    /* Set the glort to free */
-    for (cnt = 0 ; cnt < allocEntry->glortSize ; cnt++)
-    {
-        glort = allocEntry->baseGlort+cnt;
-        if (!FM_IS_GLORT_MCG_FREE(lportInfo, glort))
-        {
-            FM_LOG_FATAL(FM_LOG_CAT_PORT,
-                         "Glort 0x%x should be reserved, but state is %d.\n",
-                         glort,
-                         lportInfo->glortState[glort]);
-            /* Save the first error to return */
-            if (retErr == FM_OK)
-            {
-                retErr = FM_ERR_PORT_IN_USE;
-            }
-        }
-        FM_RELEASE_GLORT(lportInfo, glort);
-    }
+    /* Set the GloRT range to free */
+    retErr = fmUnreserveGlortRange(sw,
+                                   allocEntry->baseGlort,
+                                   allocEntry->glortSize,
+                                   FM_GLORT_TYPE_MULTICAST);
 
     /* Set this entry to not-used */
     allocEntry->glortSize = 0;
@@ -3998,7 +4092,7 @@ fm_status fmFreeMcastHandles(fm_int sw, fm_int handle)
 /** fmAllocateLagHandles
  * \ingroup intPort
  *
- * \desc            Allocates LAG resources given a glort range. This
+ * \desc            Allocates LAG resources given a GloRT range. This
  *                  function could be used by stacking and non-stacking
  *                  configuration, but it is actually used by stacking mode
  *                  only.
@@ -4008,13 +4102,13 @@ fm_status fmFreeMcastHandles(fm_int sw, fm_int handle)
  *
  * \param[in]       sw is the switch on which to operate.
  *
- * \param[in]       startGlort is the start glort to reserve for LAG.
+ * \param[in]       startGlort is the start GloRT to reserve for LAG.
  *
- * \param[in]       glortSize is the size of the glort space to reserve. This
+ * \param[in]       glortSize is the size of the GloRT space to reserve. This
  *                  value must be a power of two.
  *
- * \param[in]       glortsPerLag is the unit size (number of glorts at a time)
- *                  in which glorts are to be assigned to a lag.
+ * \param[in]       glortsPerLag is the unit size (number of GloRTs at a time)
+ *                  in which GloRTs are to be assigned to a lag.
  *
  * \param[in]       lagMaskSize is the width of the LAG mask, in bits.
  *
@@ -4031,8 +4125,8 @@ fm_status fmFreeMcastHandles(fm_int sw, fm_int handle)
  *
  * \return          FM_OK if successful.
  * \return          FM_ERR_INVALID_ARGUMENT if input parameters fail checking.
- * \return          FM_ERR_LOG_PORT_UNAVAILABLE if any glort in the given
- *                  glort range is being used.
+ * \return          FM_ERR_LOG_PORT_UNAVAILABLE if any GloRT in the given
+ *                  GloRT range is being used.
  * \return          FM_ERR_NO_LAG_RESOURCES if no more resources are available
  *
  *****************************************************************************/
@@ -4049,7 +4143,6 @@ fm_status fmAllocateLagHandles(fm_int  sw,
     fm_switch *         switchPtr;
     fm_logicalPortInfo *lportInfo;
     fm_int              allocIndex;
-    fm_uint             glort;
     fm_uint             endGlort;
     fm_int              port;
     fm_int              endPort;
@@ -4064,8 +4157,9 @@ fm_status fmAllocateLagHandles(fm_int  sw,
                  (void *) baseLagHandle,
                  (void *) numHandles);
 
-    switchPtr     = GET_SWITCH_PTR(sw);
-    lportInfo     = &switchPtr->logicalPortInfo;
+    err       = FM_OK;
+    switchPtr = GET_SWITCH_PTR(sw);
+    lportInfo = &switchPtr->logicalPortInfo;
 
     if ( fmVerifyGlortRange(startGlort, glortSize) != FM_OK )
     {
@@ -4085,7 +4179,7 @@ fm_status fmAllocateLagHandles(fm_int  sw,
 
     if (startGlort % glortsPerLag)
     {
-        /* glort is not multiple of glortsPerLag */
+        /* GloRT is not multiple of glortsPerLag */
         FM_LOG_DEBUG(
             FM_LOG_CAT_PORT,
             "startGlort %d is not a multiple of size %d\n",
@@ -4102,15 +4196,15 @@ fm_status fmAllocateLagHandles(fm_int  sw,
         FM_LOG_EXIT(FM_LOG_CAT_PORT, FM_FAIL);
     }
 
-    /* Check that the requested glort range does not overlap with the
-     * local (non-stacking) LAG glorts */
+    /* Check that the requested GloRT range does not overlap with the
+     * local (non-stacking) LAG GloRTs */
     if ( (startGlort >= switchPtr->glortRange.lagBaseGlort) &&
          (startGlort < (switchPtr->glortRange.lagBaseGlort +
                         switchPtr->glortRange.lagCount) ) )
     {
         FM_LOG_DEBUG(
             FM_LOG_CAT_PORT,
-            "startGlort 0x%04x overlaps with glorts reserved for "
+            "startGlort 0x%04x overlaps with GloRTs reserved for "
             "local use (0x%04x-0x%04x)\n",
             startGlort,
             switchPtr->glortRange.lagBaseGlort,
@@ -4119,15 +4213,15 @@ fm_status fmAllocateLagHandles(fm_int  sw,
         FM_LOG_EXIT(FM_LOG_CAT_PORT, FM_ERR_LOG_PORT_UNAVAILABLE);
     }
 
-    /* Check that the requested glort range does not overlap with the
-     * local (non-stacking) LAG glorts */
+    /* Check that the requested GloRT range does not overlap with the
+     * local (non-stacking) LAG GloRTs */
     if ( ( endGlort >= switchPtr->glortRange.lagBaseGlort) &&
          ( endGlort < (switchPtr->glortRange.lagBaseGlort +
                        switchPtr->glortRange.lagCount) ) )
     {
         FM_LOG_DEBUG(
             FM_LOG_CAT_PORT,
-            "endGlort 0x%04x overlaps with glorts reserved for "
+            "endGlort 0x%04x overlaps with GloRTs reserved for "
             "local use (0x%04x-0x%04x)\n",
             endGlort,
             switchPtr->glortRange.lagBaseGlort,
@@ -4136,13 +4230,14 @@ fm_status fmAllocateLagHandles(fm_int  sw,
         FM_LOG_EXIT(FM_LOG_CAT_PORT, FM_ERR_LOG_PORT_UNAVAILABLE);
     }
 
-    /* Check for glort range is not in use */
-    for (glort = startGlort ; glort <= endGlort ; ++glort)
+    /* Check if all GloRTs in range are not used or reserved. */
+    err = fmCheckGlortRangeState(switchPtr,
+                                 startGlort,
+                                 glortSize,
+                                 FM_GLORT_STATE_UNUSED);
+    if (err != FM_OK)
     {
-        if (FM_IS_GLORT_TAKEN(lportInfo, glort))
-        {
-            FM_LOG_EXIT(FM_LOG_CAT_PORT, FM_ERR_LOG_PORT_UNAVAILABLE);
-        }
+        FM_LOG_EXIT(FM_LOG_CAT_PORT, FM_ERR_LOG_PORT_UNAVAILABLE);
     }
 
     /* Find a free reserved entry */
@@ -4180,7 +4275,7 @@ fm_status fmAllocateLagHandles(fm_int  sw,
 
     FM_LOG_DEBUG(
         FM_LOG_CAT_PORT | FM_LOG_CAT_LAG,
-        "Reserve port (%d -> %d) and glort (0x%x -> 0x%x) for LAG\n",
+        "Reserve port (%d -> %d) and GloRT (0x%x -> 0x%x) for LAG\n",
         allocEntry->baseHandle,
         endPort - 1,
         startGlort,
@@ -4201,19 +4296,18 @@ fm_status fmAllocateLagHandles(fm_int  sw,
         FM_RESERVE_LPORT_LAG(lportInfo, port);
     }
 
-    /* Reserve the glort */
-    for ( glort = startGlort ; glort <= endGlort ; ++glort )
+    /* Reserve the GloRT range */
+    err = fmReserveGlortRange(sw,
+                              startGlort,
+                              glortSize,
+                              FM_GLORT_TYPE_LAG);
+    if (err != FM_OK)
     {
-        if (FM_IS_GLORT_TAKEN(lportInfo, glort))
-        {
-            /* Probably improperly locking causes this problem */
-            FM_LOG_FATAL(FM_LOG_CAT_PORT,
-                         "Glort 0x%x should be available, but state is %d\n",
-                         glort,
-                         lportInfo->glortState[glort]);
-            err = FM_ERR_PORT_IN_USE;
-        }
-        FM_RESERVE_GLORT_LAG(lportInfo, glort);
+        /* Probably improperly locking causes this problem */
+        FM_LOG_FATAL(FM_LOG_CAT_PORT,
+                     "GloRT range 0x%x - 0x%x should be available\n",
+                     startGlort,
+                     endGlort);
     }
 
     *baseLagHandle = allocEntry->baseHandle;
@@ -4248,19 +4342,21 @@ fm_status fmAllocateLagHandles(fm_int  sw,
  *****************************************************************************/
 fm_status fmFreeLagHandles(fm_int sw, fm_int handle)
 {
-    fm_status                   err = FM_OK;
+    fm_status                   err;
     fm_switch *                 switchPtr;
     fm_logicalPortInfo *        lportInfo;
-    fm_uint32                   glort, endGlort;
-    fm_int                      port, endPort;
+    fm_uint32                   endGlort;
+    fm_int                      port;
+    fm_int                      endPort;
     fm_lagAllocEntry *          allocEntry;
 
     FM_LOG_ENTRY(FM_LOG_CAT_PORT,
                  "sw=%d handle=%d\n",
                  sw, handle);
 
-    switchPtr     = GET_SWITCH_PTR(sw);
-    lportInfo     = &switchPtr->logicalPortInfo;
+    err       = FM_OK;
+    switchPtr = GET_SWITCH_PTR(sw);
+    lportInfo = &switchPtr->logicalPortInfo;
 
     /* Find an entry based on a specified handle */
     allocEntry = fmFindLagEntryByHandle(sw, handle);
@@ -4273,10 +4369,21 @@ fm_status fmFreeLagHandles(fm_int sw, fm_int handle)
     endGlort = allocEntry->baseGlort + allocEntry->glortSize;
     endPort = allocEntry->baseHandle + allocEntry->numPorts;
 
-    for ( glort = allocEntry->baseGlort ; glort < endGlort ; glort++ )
+    /* Check if all GloRTs in range are reserved and free or "free pending" */
+    err = fmCheckGlortRangeState(switchPtr,
+                                 allocEntry->baseGlort,
+                                 allocEntry->glortSize,
+                                 FM_GLORT_STATE_RESV_LAG);
+    if (err != FM_OK)
     {
-        if (!FM_IS_GLORT_LAG_FREE(lportInfo, glort) &&
-            !FM_IS_GLORT_FREE_PEND(lportInfo, glort))
+        /* "free pending" can be free, used or reserved, so we use mask to
+         * ignore other bits */
+        err = fmCheckGlortRangeStateInt(switchPtr,
+                                        allocEntry->baseGlort,
+                                        allocEntry->glortSize,
+                                        FM_GLORT_STATE_FREE_PEND,
+                                        FM_GLORT_STATE_FREE_PEND);
+        if (err != FM_OK)
         {
             /* Cannot delete when any port in the range is in use */
             /* This is one to one corresponding to logical port */
@@ -4309,20 +4416,11 @@ fm_status fmFreeLagHandles(fm_int sw, fm_int handle)
         FM_RELEASE_LPORT(lportInfo, port);
     }
 
-    /* Set the glorts to free */
-    for ( glort = allocEntry->baseGlort ; glort < endGlort ; glort++ )
-    {
-        if (!FM_IS_GLORT_LAG_FREE(lportInfo, glort) &&
-            !FM_IS_GLORT_FREE_PEND(lportInfo, glort))
-        {
-            FM_LOG_FATAL(FM_LOG_CAT_PORT,
-                         "Glort 0x%x should be reserved, but state is %d.\n",
-                         glort,
-                         lportInfo->glortState[glort]);
-            err = FM_ERR_PORT_IN_USE;
-        }
-        FM_RELEASE_GLORT(lportInfo, glort);
-    }
+    /* Set the GloRT range to free */
+    err = fmUnreserveGlortRange(sw,
+                                allocEntry->baseGlort,
+                                allocEntry->glortSize,
+                                FM_GLORT_TYPE_LAG);
 
     /* Set this entry to not-used */
     allocEntry->glortSize = 0;
@@ -4338,7 +4436,7 @@ fm_status fmFreeLagHandles(fm_int sw, fm_int handle)
 /** fmAllocateLbgHandles
  * \ingroup intPort
  *
- * \desc            Allocates LBG resources given a glort range. This
+ * \desc            Allocates LBG resources given a GloRT range. This
  *                  function is used by stacking and non-stacking configuration.
  *                  In non-stacking configuration, the resources are
  *                  automatically selected, whereas in stacking, it is
@@ -4346,9 +4444,9 @@ fm_status fmFreeLagHandles(fm_int sw, fm_int handle)
  *
  * \param[in]       sw is the switch on which to operate.
  *
- * \param[in]       startGlort is the start glort to reserve for multicast.
+ * \param[in]       startGlort is the start GloRT to reserve for multicast.
  *
- * \param[in]       glortSize is the size of the glort space to reserve. This
+ * \param[in]       glortSize is the size of the GloRT space to reserve. This
  *                  value must be a power of two.
  *
  * \param[out]      baseLbgHandle points to caller-allocated storage where this
@@ -4368,8 +4466,8 @@ fm_status fmFreeLagHandles(fm_int sw, fm_int handle)
  *
  * \return          FM_OK if successful.
  * \return          FM_ERR_INVALID_ARGUMENT if input parameters fail checking.
- * \return          FM_ERR_LOG_PORT_UNAVAILABLE if any glort in the given
- *                  glort range is being used.
+ * \return          FM_ERR_LOG_PORT_UNAVAILABLE if any GloRT in the given
+ *                  GloRT range is being used.
  * \return          FM_ERR_NO_LBG_RESOURCES if no more resources are available
  *
  *****************************************************************************/
@@ -4384,8 +4482,9 @@ fm_status fmAllocateLbgHandles(fm_int  sw,
     fm_switch *         switchPtr;
     fm_logicalPortInfo *lportInfo;
     fm_int              allocIndex;
-    fm_int              port, endPort;
-    fm_uint32           glort, endGlort;
+    fm_int              port;
+    fm_int              endPort;
+    fm_uint32           endGlort;
     fm_int              glortsPerLbg;
     fm_int              unused;
     fm_lbgAllocEntry   *allocEntry;
@@ -4417,7 +4516,7 @@ fm_status fmAllocateLbgHandles(fm_int  sw,
 
     if (glortSize % glortsPerLbg)
     {
-        /* glortSize is not multiple of glorts per LBG */
+        /* glortSize is not multiple of GloRTs per LBG */
         FM_LOG_DEBUG(
             FM_LOG_CAT_PORT,
             "glortSize %d is not a multiple of size %d\n",
@@ -4429,7 +4528,7 @@ fm_status fmAllocateLbgHandles(fm_int  sw,
 
     if (startGlort % glortsPerLbg)
     {
-        /* glort is not multiple of glorts per LBG */
+        /* GloRT is not multiple of GloRTs per LBG */
         FM_LOG_DEBUG(
             FM_LOG_CAT_PORT,
             "startGlort %d is not a multiple of size %d\n",
@@ -4446,13 +4545,16 @@ fm_status fmAllocateLbgHandles(fm_int  sw,
         FM_LOG_EXIT(FM_LOG_CAT_PORT, FM_FAIL);
     }
 
-    /* Check for glort range not in use */
-    for ( glort = startGlort ; glort < endGlort ; ++glort )
+    /* Check if all GloRTs in range are not used or reserved. */
+    err = fmCheckGlortRangeState(switchPtr,
+                                 startGlort,
+                                 glortSize,
+                                 FM_GLORT_STATE_UNUSED);
+    if (err != FM_OK)
     {
-        if (FM_IS_GLORT_TAKEN(lportInfo, glort))
-        {
-            FM_LOG_EXIT(FM_LOG_CAT_PORT, FM_ERR_LOG_PORT_UNAVAILABLE);
-        }
+        /* Cannot delete when any port in the range is in use */
+        /* This is one to one corresponding to logical port */
+        FM_LOG_EXIT(FM_LOG_CAT_PORT, FM_ERR_LOG_PORT_UNAVAILABLE);
     }
 
     /* Find a free reserved entry */
@@ -4502,19 +4604,18 @@ fm_status fmAllocateLbgHandles(fm_int  sw,
         FM_RESERVE_LPORT_LBG(lportInfo, port);
     }
 
-    /* Reserve the glort */
-    for ( glort = startGlort ; glort < endGlort ; ++glort )
+    /* Reserve the GloRT range */
+    err = fmReserveGlortRange(sw,
+                              startGlort,
+                              glortSize,
+                              FM_GLORT_TYPE_LBG);
+    if (err != FM_OK)
     {
-        if (FM_IS_GLORT_TAKEN(lportInfo, glort))
-        {
-            /* Probably improperly locking causes this problem */
-            FM_LOG_FATAL(FM_LOG_CAT_PORT,
-                         "Glort 0x%x was available, but state is %d\n",
-                         glort,
-                         lportInfo->glortState[glort]);
-            err = FM_ERR_PORT_IN_USE;
-        }
-        FM_RESERVE_GLORT_LBG(lportInfo, glort);
+        /* Probably improperly locking causes this problem */
+        FM_LOG_FATAL(FM_LOG_CAT_PORT,
+                     "GloRT range 0x%x - 0x%x should be available\n",
+                     startGlort,
+                     endGlort + 1);
     }
 
     *baseLbgHandle = allocEntry->baseHandle;
@@ -4552,8 +4653,9 @@ fm_status fmFreeLbgHandles(fm_int sw, fm_int handle)
     fm_status                   err = FM_OK;
     fm_switch *                 switchPtr;
     fm_logicalPortInfo *        lportInfo;
-    fm_uint32                   glort, endGlort;
-    fm_int                      port, endPort;
+    fm_uint32                   endGlort;
+    fm_int                      port;
+    fm_int                      endPort;
     fm_lbgAllocEntry *          allocEntry;
 
     FM_LOG_ENTRY(FM_LOG_CAT_PORT,
@@ -4574,14 +4676,17 @@ fm_status fmFreeLbgHandles(fm_int sw, fm_int handle)
     endGlort = allocEntry->baseGlort + allocEntry->glortSize;
     endPort = allocEntry->baseHandle + allocEntry->numPorts;
 
-    for ( glort = allocEntry->baseGlort ; glort < endGlort ; ++glort )
+
+    /* Check if all GloRTs in range are reserved only (free for use) */
+    err = fmCheckGlortRangeState(switchPtr,
+                                 allocEntry->baseGlort,
+                                 allocEntry->glortSize,
+                                 FM_GLORT_STATE_RESV_LBG);
+    if (err != FM_OK)
     {
-        if (!FM_IS_GLORT_LBG_FREE(lportInfo, glort))
-        {
-            /* Cannot delete when any port in the range is in use */
-            /* This is one to one corresponding to logical port */
-            FM_LOG_EXIT(FM_LOG_CAT_PORT, FM_ERR_PORT_IN_USE);
-        }
+        /* Cannot delete when any port in the range is in use */
+        /* This is one to one corresponding to logical port */
+        FM_LOG_EXIT(FM_LOG_CAT_PORT, FM_ERR_PORT_IN_USE);
     }
 
     /* un-reserve the logical ports */
@@ -4599,19 +4704,11 @@ fm_status fmFreeLbgHandles(fm_int sw, fm_int handle)
         FM_RELEASE_LPORT(lportInfo, port);
     }
 
-    /* Set the glort to free */
-    for ( glort = allocEntry->baseGlort ; glort < endGlort ; ++glort )
-    {
-        if (!FM_IS_GLORT_LBG_FREE(lportInfo, glort))
-        {
-            FM_LOG_FATAL(FM_LOG_CAT_PORT,
-                         "Glort 0x%x should be reserved, but state is %d.\n",
-                         glort,
-                         lportInfo->glortState[glort]);
-            err = FM_ERR_PORT_IN_USE;
-        }
-        FM_RELEASE_GLORT(lportInfo, glort);
-    }
+    /* Set the GloRT range to free */
+    err = fmUnreserveGlortRange(sw,
+                                allocEntry->baseGlort,
+                                allocEntry->glortSize,
+                                FM_GLORT_TYPE_LBG);
 
     /* Set this entry to not-used */
     allocEntry->glortSize = 0;
@@ -5007,126 +5104,6 @@ fm_int fmFindUnusedDestEntries(fm_int sw, fm_int numEntries, fm_int first)
 
 
 /*****************************************************************************/
-/** fmFindUnusedGlorts
- * \ingroup intPort
- *
- * \desc            Finds an unused block of glorts.
- *
- * \param[in]       sw is the switch number.
- *
- * \param[in]       numGlorts is the required number number of glorts in
- *                  the block.
- *
- * \param[in]       first is the starting index for the search.
- *
- * \param[in]       camEntry points to the cam entry associated with this
- *                  glort. If NULL, the entire glort range for the switch
- *                  will be used.
- *
- * \return          The starting index of the block or -1 if none found.
- *
- *****************************************************************************/
-fm_int fmFindUnusedGlorts(fm_int            sw,
-                          fm_int            numGlorts,
-                          fm_int            first,
-                          fm_glortCamEntry* camEntry)
-{
-    fm_switch *         switchPtr;
-    fm_logicalPortInfo* lportInfo;
-    fm_glortRange *     glorts;
-    fm_int              glort;
-    fm_int              freeCount = 0;
-    fm_int              start = -1;
-    fm_int              firstEntry;
-    fm_int              lastEntry;
-    fm_uint32           rangeBase;
-    fm_uint32           rangeMax;
-
-    switchPtr = GET_SWITCH_PTR(sw);
-    lportInfo = &switchPtr->logicalPortInfo;
-    glorts    = &switchPtr->glortRange;
-    rangeBase = glorts->glortBase;
-    rangeMax  = rangeBase | glorts->glortMask;
-
-    if (camEntry)
-    {
-        /* Assume key is already implicitly >= rangeBase */
-        firstEntry = camEntry->camKey & camEntry->camMask;
-
-        lastEntry  = firstEntry + MaxGlortsPerCamEntry(camEntry) - 1;
-        if (lastEntry > (fm_int)rangeMax)
-        {
-            lastEntry = (fm_int) rangeMax;
-        }
-
-        if ( (first != -1) && ( (first < firstEntry) || (first > lastEntry) ) )
-        {
-            FM_LOG_FATAL(FM_LOG_CAT_PORT,
-                         "first glort %d out of range [%d, %d]\n",
-                         first,
-                         firstEntry,
-                         lastEntry);
-
-            return -1;
-        }
-
-        if (lastEntry > FM_MAX_GLORT)
-        {
-            FM_LOG_FATAL(FM_LOG_CAT_PORT,
-                         "Bad cam entry: range [%d, %d]\n",
-                         firstEntry,
-                         lastEntry);
-
-            return -1;
-        }
-    }
-    else
-    {
-        firstEntry = rangeBase;
-        lastEntry  = rangeMax;
-    }
-
-    /***************************************************
-     * Find an unused block of glorts.
-     **************************************************/
-    for (glort = (first == -1) ? firstEntry : first ;
-         glort <= lastEntry ;
-         glort++)
-    {
-        /***************************************************
-         * Two conditions must be met:
-         *   (a) The glort is not zero (it is reserved)
-         *   (b) The glort is unused
-         **************************************************/
-        if (glort && !FM_IS_GLORT_TAKEN(lportInfo, glort) )
-        {
-            if (freeCount == 0)
-            {
-                start = glort;
-            }
-
-            ++freeCount;
-
-            if (freeCount >= numGlorts)
-            {
-                return start;
-            }
-        }
-        else
-        {
-            freeCount = 0;
-            start = -1;
-        }
-    }
-
-    return (freeCount >= numGlorts) ? start : -1;
-
-}   /* end fmFindUnusedGlorts */
-
-
-
-
-/*****************************************************************************/
 /** fmFindUnusedLogicalPorts
  * \ingroup intPort
  *
@@ -5190,7 +5167,7 @@ fm_int fmFindUnusedLogicalPorts(fm_int sw, fm_int numPorts)
 /** fmFindUnusedLagGlorts
  * \ingroup intPort
  *
- * \desc            Finds an unused glort in a reserved lag space. If
+ * \desc            Finds an unused GloRT in a reserved lag space. If
  *                  useHandle is non-zero, it return the logical port associated
  *                  with the handle. Otherwise it will just automatically find a
  *                  free entry.
@@ -5208,7 +5185,7 @@ fm_int fmFindUnusedLogicalPorts(fm_int sw, fm_int numPorts)
  *                  returned logical port is placed
  *
  * \param[in]       firstGlort points to caller allocated storage where the
- *                  returned first glort is placed
+ *                  returned first GloRT is placed
  *
  * \return          FM_OK if successful.
  * \return          FM_ERR_LOG_PORT_UNAVAILABLE if port is already in use.
@@ -5217,21 +5194,20 @@ fm_int fmFindUnusedLogicalPorts(fm_int sw, fm_int numPorts)
  *                  entries.
  *
  *****************************************************************************/
-fm_status fmFindUnusedLagGlorts(fm_int  sw,
-                                fm_int  numPorts,
-                                fm_int  useHandle,
-                                fm_int  glortsPerLag,
-                                fm_int *logicalPort,
-                                fm_int *firstGlort)
+fm_status fmFindUnusedLagGlorts(fm_int     sw,
+                                fm_int     numPorts,
+                                fm_int     useHandle,
+                                fm_int     glortsPerLag,
+                                fm_int    *logicalPort,
+                                fm_uint32 *firstGlort)
 {
     fm_logicalPortInfo *lportInfo;
     fm_lagAllocEntry *  allocEntry;
     fm_switch *         switchPtr;
-    fm_status           err = FM_OK;
+    fm_status           err;
     fm_uint             i;
-    fm_uint             offBase;
-    fm_uint             glort;
-    fm_int              cnt;
+    fm_uint32           offBase;
+    fm_uint32           glort;
 
     FM_LOG_ENTRY(FM_LOG_CAT_PORT,
                  "sw=%d numPorts=%d useHandle=%d\n",
@@ -5239,6 +5215,7 @@ fm_status fmFindUnusedLagGlorts(fm_int  sw,
                  numPorts,
                  useHandle);
 
+    err       = FM_OK;
     switchPtr = GET_SWITCH_PTR(sw);
     lportInfo = &switchPtr->logicalPortInfo;
 
@@ -5261,14 +5238,16 @@ fm_status fmFindUnusedLagGlorts(fm_int  sw,
 
         glort = allocEntry->baseGlort + offBase;
 
-        for (cnt = 0 ; cnt < numPorts ; cnt++)
+        /* Check if all GloRTs in range are reserved only (free for use) */
+        err = fmCheckGlortRangeState(switchPtr,
+                                     glort,
+                                     numPorts,
+                                     FM_GLORT_STATE_RESV_LAG);
+
+        if (err != FM_OK)
         {
-            if (!FM_IS_GLORT_LAG_FREE(lportInfo, glort+cnt))
-            {
-                /* Glort is already in use */
-                err = FM_ERR_LOG_PORT_UNAVAILABLE;
-                FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
-            }
+            err = FM_ERR_LOG_PORT_UNAVAILABLE;
+            FM_LOG_ABORT(FM_LOG_CAT_PORT, err);
         }
 
         *firstGlort = glort;
@@ -5281,41 +5260,28 @@ fm_status fmFindUnusedLagGlorts(fm_int  sw,
         /* Find an entry based on any free entry. */
         for ( i = 0 ; i < FM_LAG_ALLOC_TABLE_SIZE ; ++i )
         {
-            fm_int freeCount = 0;
-
             allocEntry = &lportInfo->lagAllocTable[i];
             if (!allocEntry->glortSize)
             {
                 continue;
             }
 
-            for (offBase =  0 ;
-                 offBase < allocEntry->glortSize ;
-                 offBase++)
+            /* Find a free GloRT reserved for LAGs */
+            err = fmFindFreeGlortRangeInt(sw,
+                                          numPorts,
+                                          FM_GLORT_TYPE_LAG,
+                                          allocEntry->baseGlort,
+                                          allocEntry->glortSize,
+                                          TRUE,
+                                          &glort);
+
+            /* alloc entry is capacious enough */
+            if (err == FM_OK)
             {
-                glort = allocEntry->baseGlort + offBase;
-
-                /* Find free glort range reserved for LAG */
-                if (FM_IS_GLORT_LAG_FREE(lportInfo, glort))
-                {
-                    if (freeCount == 0)
-                    {
-                        *firstGlort = glort;
-                        *logicalPort = allocEntry->baseHandle + offBase;
-                    }
-
-                    ++freeCount;
-
-                    if (freeCount >= numPorts)
-                    {
-                        /* Done */
-                        goto ABORT;
-                    }
-                }
-                else
-                {
-                    freeCount = 0;
-                }
+                *firstGlort = glort;
+                offBase = glort - allocEntry->baseGlort;
+                *logicalPort = allocEntry->baseHandle + offBase;
+                goto ABORT;
             }
         }
 
@@ -5334,7 +5300,7 @@ ABORT:
 /** fmFindUnusedLbgGlorts
  * \ingroup intPort
  *
- * \desc            Finds an unused glort in a reserved lbg space. If
+ * \desc            Finds an unused GloRT in a reserved lbg space. If
  *                  useHandle is non-zero, it return the logical port associated
  *                  with the handle. Otherwise it will just automatically find a
  *                  free entry.
@@ -5350,7 +5316,7 @@ ABORT:
  *                  returned logical port is placed
  *
  * \param[in]       firstGlort points to caller allocated storage where the
- *                  returned first glort is placed
+ *                  returned first GloRT is placed
  *
  * \return          FM_OK if successful.
  * \return          FM_ERR_LOG_PORT_UNAVAILABLE if port is already in use.
@@ -5359,20 +5325,19 @@ ABORT:
  *                  entries.
  *
  *****************************************************************************/
-fm_status fmFindUnusedLbgGlorts(fm_int  sw,
-                                fm_int  numPorts,
-                                fm_int  useHandle,
-                                fm_int *logicalPort,
-                                fm_int *firstGlort)
+fm_status fmFindUnusedLbgGlorts(fm_int     sw,
+                                fm_int     numPorts,
+                                fm_int     useHandle,
+                                fm_int    *logicalPort,
+                                fm_uint32 *firstGlort)
 {
     fm_logicalPortInfo *lportInfo;
     fm_lbgAllocEntry *  allocEntry;
     fm_switch *         switchPtr;
     fm_status           err = FM_OK;
     fm_uint             i;
-    fm_uint             offBase;
-    fm_uint             glort;
-    fm_int              cnt;
+    fm_uint32           offBase;
+    fm_uint32           glort;
 
     FM_LOG_ENTRY(FM_LOG_CAT_PORT,
                  "sw=%d numPorts=%d useHandle=%d\n",
@@ -5402,14 +5367,16 @@ fm_status fmFindUnusedLbgGlorts(fm_int  sw,
 
         glort = allocEntry->baseGlort + offBase;
 
-        for (cnt = 0 ; cnt < numPorts ; cnt++)
+        /* Check if all GloRTs in range are reserved only (free for use) */
+        err = fmCheckGlortRangeState(switchPtr,
+                                     glort,
+                                     numPorts,
+                                     FM_GLORT_STATE_RESV_LBG);
+
+        if (err != FM_OK)
         {
-            if (!FM_IS_GLORT_LBG_FREE(lportInfo, glort+cnt))
-            {
-                /* Glort is already in use */
-                err = FM_ERR_LOG_PORT_UNAVAILABLE;
-                FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
-            }
+            err = FM_ERR_LOG_PORT_UNAVAILABLE;
+            FM_LOG_ABORT(FM_LOG_CAT_PORT, err);
         }
 
         *firstGlort  = glort;
@@ -5422,41 +5389,28 @@ fm_status fmFindUnusedLbgGlorts(fm_int  sw,
         /* Find an entry based on any free entry */
         for ( i = 0 ; i < FM_LBG_ALLOC_TABLE_SIZE ; ++i )
         {
-            fm_int freeCount = 0;
-
             allocEntry = &lportInfo->lbgAllocTable[i];
             if (!allocEntry->glortSize)
             {
                 continue;
             }
 
-            for (offBase =  0 ;
-                 offBase < allocEntry->glortSize ;
-                 offBase++)
+            /* Find a free GloRT reserved for LAGs */
+            err = fmFindFreeGlortRangeInt(sw,
+                                          numPorts,
+                                          FM_GLORT_TYPE_LBG,
+                                          allocEntry->baseGlort,
+                                          allocEntry->glortSize,
+                                          TRUE,
+                                          &glort);
+
+            /* alloc entry is capacious enough */
+            if (err == FM_OK)
             {
-                glort = allocEntry->baseGlort + offBase;
-
-                /* Find free glort range reserved for LBG */
-                if (FM_IS_GLORT_LBG_FREE(lportInfo, glort))
-                {
-                    if (freeCount == 0)
-                    {
-                        *firstGlort = glort;
-                        *logicalPort = allocEntry->baseHandle + offBase;
-                    }
-
-                    ++freeCount;
-
-                    if (freeCount >= numPorts)
-                    {
-                        /* Done */
-                        goto ABORT;
-                    }
-                }
-                else
-                {
-                    freeCount = 0;
-                }
+                *firstGlort = glort;
+                offBase = glort - allocEntry->baseGlort;
+                *logicalPort = allocEntry->baseHandle + offBase;
+                goto ABORT;
             }
         }
 
@@ -5475,7 +5429,7 @@ ABORT:
 /** fmFindUnusedMcgGlorts
  * \ingroup intPort
  *
- * \desc            Finds an unused glort in a reserved multicast space. If
+ * \desc            Finds an unused GloRT in a reserved multicast space. If
  *                  useHandle is non-zero, it return the logical port associated
  *                  with the handle. Otherwise it will just automatically find a
  *                  free entry.
@@ -5491,7 +5445,7 @@ ABORT:
  *                  a pointer to the allocation table entry is stored.
  *
  * \param[out]      offBasePtr points to a caller-supplied variable to receive
- *                  the offset (index) of the first glort/port in the allocation
+ *                  the offset (index) of the first GloRT/port in the allocation
  *                  table entry.
  *
  * \return          FM_OK if successful.
@@ -5508,13 +5462,12 @@ fm_status fmFindUnusedMcgGlorts(fm_int             sw,
                                 fm_int             numPorts,
                                 fm_int             useHandle,
                                 fm_mcgAllocEntry **allocEntryPtr,
-                                fm_uint *          offBasePtr)
+                                fm_uint32 *        offBasePtr)
 {
     fm_uint             i;
-    fm_uint             offBase;
-    fm_uint             glort;
-    fm_int              cnt;
-    fm_status           err = FM_OK;
+    fm_uint32           offBase;
+    fm_uint32           glort;
+    fm_status           err;
     fm_switch *         switchPtr;
     fm_logicalPortInfo *lportInfo;
     fm_mcgAllocEntry *  allocEntry;
@@ -5525,6 +5478,7 @@ fm_status fmFindUnusedMcgGlorts(fm_int             sw,
                  numPorts,
                  useHandle);
 
+    err       = FM_OK;
     switchPtr = GET_SWITCH_PTR(sw);
     lportInfo = &switchPtr->logicalPortInfo;
 
@@ -5541,14 +5495,16 @@ fm_status fmFindUnusedMcgGlorts(fm_int             sw,
         offBase = useHandle - allocEntry->baseHandle;
         glort = allocEntry->baseGlort + offBase;
 
-        for (cnt = 0 ; cnt < numPorts ; cnt++)
+        /* Check if all GloRTs in range are reserved only (free for use) */
+        err = fmCheckGlortRangeState(switchPtr,
+                                     glort,
+                                     numPorts,
+                                     FM_GLORT_STATE_RESV_MCG);
+
+        if (err != FM_OK)
         {
-            if (!FM_IS_GLORT_MCG_FREE(lportInfo, glort+cnt))
-            {
-                /* Glort is already in use */
-                err = FM_ERR_LOG_PORT_UNAVAILABLE;
-                FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
-            }
+            err = FM_ERR_LOG_PORT_UNAVAILABLE;
+            FM_LOG_ABORT(FM_LOG_CAT_PORT, err);
         }
 
         *allocEntryPtr = allocEntry;
@@ -5559,43 +5515,28 @@ fm_status fmFindUnusedMcgGlorts(fm_int             sw,
         /* Find an entry based on any free entry */
         for ( i = 0 ; i < FM_MCG_ALLOC_TABLE_SIZE ; ++i )
         {
-            fm_int freeCount = 0;
-
             allocEntry = &lportInfo->mcgAllocTable[i];
             if (!allocEntry->glortSize)
             {
                 continue;
             }
 
-            for (offBase =  0 ;
-                 offBase < allocEntry->glortSize ;
-                 offBase++)
+            /* Find a free GloRT reserved for mcast. Any
+             * GloRT used for mcast must be reserved */
+            err = fmFindFreeGlortRangeInt(sw,
+                                          numPorts,
+                                          FM_GLORT_TYPE_MULTICAST,
+                                          allocEntry->baseGlort,
+                                          allocEntry->glortSize,
+                                          TRUE,
+                                          &glort);
+
+            /* alloc entry is capacious enough */
+            if (err == FM_OK)
             {
-                glort = allocEntry->baseGlort + offBase;
-
-                /* Find a free glort reserved for mcast
-                 * Any glort used for mcast must be reserved
-                 */
-                if (FM_IS_GLORT_MCG_FREE(lportInfo, glort))
-                {
-                    if (freeCount == 0)
-                    {
-                        *offBasePtr = offBase;
-                    }
-
-                    ++freeCount;
-
-                    if (freeCount >= numPorts)
-                    {
-                        *allocEntryPtr = allocEntry;
-                        /* Done */
-                        goto ABORT;
-                    }
-                }
-                else
-                {
-                    freeCount = 0;
-                }
+                *offBasePtr = glort - allocEntry->baseGlort;
+                *allocEntryPtr = allocEntry;
+                goto ABORT;
             }
         }
 
@@ -5760,7 +5701,7 @@ const char * fmSpecialPortToText(fm_int port)
 /** fmRemoveGlortCamEntry
  * \ingroup intPort
  *
- * \desc            Removes an entry from the glort CAM/RAM.
+ * \desc            Removes an entry from the GloRT CAM/RAM.
  *                  Assumes switch protection lock has already been acquired
  *                  and that the switch pointer is valid.
  *
@@ -5853,46 +5794,6 @@ void fmResetLogicalPortInfo(fm_logicalPortInfo* lportInfo)
     }
 
 }   /* end fmResetLogicalPortInfo */
-
-
-
-
-/*****************************************************************************/
-/** fmVerifyGlortRange
- * \ingroup intPort
- *
- * \desc            Verifies that glort range is valid.
- *
- * \param[in]       glort is the start glort.
- *
- * \param[in]       size is the size of the range.
- *
- * \return          FM_OK if range is okay.
- * \return          FM_FAIL if out of physical range.
- *
- *****************************************************************************/
-fm_status fmVerifyGlortRange(fm_uint32 glort, fm_int size)
-{
-
-    if ((size <= 0) || (size > FM_MAX_GLORT))
-    {
-        return FM_FAIL;
-    }
-
-    if ((glort == 0) || (glort > FM_MAX_GLORT))
-    {
-        return FM_FAIL;
-    }
-
-    if ((glort + size) > FM_MAX_GLORT)
-    {
-        return FM_FAIL;
-    }
-
-    return FM_OK;
-
-}   /* end fmVerifyGlortRange */
-
 
 
 
@@ -6008,17 +5909,17 @@ fm_status fmFreeMcastLogicalPort(fm_int sw, fm_int port)
  *
  * \chips           FM6000, FM10000
  *
- * \desc            Check if the given glort is within LAG glort range.
+ * \desc            Check if the given GloRT is within LAG GloRT range.
  *
  * \note            This function assumes switch protection lock has already
  *                  been acquired and that the switch pointer is valid.
  *
  * \param[in]       sw is the switch on which to operate.
  *
- * \param[in]       glort is the glort which should be checked.
+ * \param[in]       glort is the GloRT which should be checked.
  *
- * \return          TRUE if glort is in the LAG glort range.
- *                  FALSE if glort is not in the LAG glort range.
+ * \return          TRUE if glort is in the LAG GloRT range.
+ *                  FALSE if glort is not in the LAG GloRT range.
  *
  *****************************************************************************/
 fm_bool fmIsInLAGGlortRange(fm_int sw, fm_uint32 glort)
@@ -6041,7 +5942,7 @@ fm_bool fmIsInLAGGlortRange(fm_int sw, fm_uint32 glort)
  *
  * \chips           FM3000, FM4000, FM6000, FM10000
  *
- * \desc            Displays the glort configuration of a switch.
+ * \desc            Displays the GloRT configuration of a switch.
  *
  * \param[in]       sw is the switch on which to operate.
  *

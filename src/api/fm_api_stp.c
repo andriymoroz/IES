@@ -29,7 +29,7 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
+ *****************************************************************************/
 
 #include <fm_sdk_int.h>
 
@@ -314,9 +314,7 @@ static fm_stpInstanceInfo *StpInstanceAllocate(fm_int sw, fm_int stpInstance)
     newInstance->states[cpi] = FM_STP_STATE_FORWARDING;
 
     /* Get default state for instance ports */
-    defaultStpState = fmGetIntApiProperty(
-        FM_AAK_API_STP_DEF_STATE_VLAN_NON_MEMBER,
-        FM_AAD_API_STP_DEF_STATE_VLAN_NON_MEMBER);
+    defaultStpState = GET_PROPERTY()->defStateVlanNonMember;
 
     for ( cpi = 0 ; cpi < switchPtr->numCardinalPorts ; cpi++ )
     {
@@ -450,9 +448,8 @@ ABORT:
  * \param[in]       sw is the switch to operate on.
  *
  * \param[in]       stpInstance is the instance number to add to, from 0 to
- *                  a chip-specific maximum value (see ''FM2000_MAX_STP_INSTANCE'',
- *                  ''FM4000_MAX_STP_INSTANCE'', FM6000_MAX_STP_INSTANCE,
- *                  and ''FM10000_MAX_STP_INSTANCE'').  If the instance argument
+ *                  a chip-specific maximum value (see
+ *                  ''FM10000_MAX_STP_INSTANCE'').  If the instance argument
  *                  is NULL, a lookup is performed to find the instance structure.
  *
  * \param[in]       instance points to the instance structure representing
@@ -477,7 +474,8 @@ fm_status AddSpanningTreeVlanInternal(fm_int sw,
     fm_tree *           stpInfo;
     fm_bool             isMember;
 
-    FM_LOG_ENTRY(FM_LOG_CAT_STP, "sw=%d stpInstance=%d vlanID=%d\n",
+    FM_LOG_ENTRY(FM_LOG_CAT_STP,
+                 "sw=%d stpInstance=%d vlanID=%d\n",
                  sw, stpInstance, vlanID);
 
     switchPtr = GET_SWITCH_PTR(sw);
@@ -538,9 +536,7 @@ ABORT:
  * \param[in]       sw is the switch to operate on.
  *
  * \param[in]       stpInstance is the instance number to delete from, from 0 to
- *                  a chip-specific maximum value (see ''FM2000_MAX_STP_INSTANCE'',
- *                  ''FM4000_MAX_STP_INSTANCE'', FM6000_MAX_STP_INSTANCE,
- *                  and ''FM10000_MAX_STP_INSTANCE'').
+ *                  a chip-specific maximum value (see ''FM10000_MAX_STP_INSTANCE'').
  *
  * \param[in]       vlanID is the vlan to delete, from 0 to (FM_MAX_VLAN - 1).
  *
@@ -558,7 +554,8 @@ static fm_status DeleteSpanningTreeVlanInternal(fm_int sw,
     fm_tree *           stpInfo;
     fm_stpInstanceInfo *instance;
 
-    FM_LOG_ENTRY(FM_LOG_CAT_STP, "sw=%d stpInstance=%d vlanID=%d\n",
+    FM_LOG_ENTRY(FM_LOG_CAT_STP,
+                 "sw=%d stpInstance=%d vlanID=%d\n",
                  sw, stpInstance, vlanID);
 
     stpInfo   = GET_STP_INFO(sw);
@@ -819,7 +816,8 @@ fm_status fmRefreshStpState(fm_int sw,
     fm_tree *           stpInfo;
     fm_stpInstanceInfo *instance;
 
-    FM_LOG_ENTRY(FM_LOG_CAT_STP, "sw=%d stpInstance=%d vlanID=%d port=%d\n",
+    FM_LOG_ENTRY(FM_LOG_CAT_STP,
+                 "sw=%d stpInstance=%d vlanID=%d port=%d\n",
                  sw, stpInstance, vlanID, port);
 
     switchPtr = GET_SWITCH_PTR(sw);
@@ -1071,9 +1069,7 @@ fm_status fmResetMultipleSpanningTreeState(fm_int sw)
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_STP, err);
 
     /* Get default state for a port that is not a member of a VLAN. */
-    defaultStpState = fmGetIntApiProperty(
-        FM_AAK_API_STP_DEF_STATE_VLAN_NON_MEMBER,
-        FM_AAD_API_STP_DEF_STATE_VLAN_NON_MEMBER);
+    defaultStpState = GET_PROPERTY()->defStateVlanNonMember;
 
     for (cpi = 1 ; cpi < switchPtr->numCardinalPorts ; cpi++)
     {
@@ -1149,8 +1145,7 @@ ABORT:
  *
  * \param[in]       stpInstance is the instance number to create and may range
  *                  from 1 to a chip-specific maximum value (see
- *                  FM2000_MAX_STP_INSTANCE, FM4000_MAX_STP_INSTANCE,
- *                  FM6000_MAX_STP_INSTANCE, and ''FM10000_MAX_STP_INSTANCE'').
+ *                  ''FM10000_MAX_STP_INSTANCE'').
  *
  * \return          FM_OK if successful.
  * \return          FM_ERR_INVALID_SWITCH if sw is invalid.
@@ -1391,8 +1386,7 @@ ABORT:
  *
  * \param[in]       stpInstance is the instance number to delete and may range
  *                  from 1 to a chip-specific maximum value (see
- *                  FM2000_MAX_STP_INSTANCE, FM4000_MAX_STP_INSTANCE,
- *                  FM6000_MAX_STP_INSTANCE, and ''FM10000_MAX_STP_INSTANCE'').
+ *                  ''FM10000_MAX_STP_INSTANCE'').
  *
  * \return          FM_OK if successful.
  * \return          FM_ERR_INVALID_SWITCH if sw is invalid.
@@ -1481,7 +1475,7 @@ ABORT:
  *
  * \param[in]       stpInstance is the instance number to add the VLAN to and
  *                  may range from 0 to a chip-specific maximum value (see
- *                  FM6000_MAX_STP_INSTANCE, and ''FM10000_MAX_STP_INSTANCE'').
+ *                  ''FM10000_MAX_STP_INSTANCE'').
  *
  * \param[in]       vlanID is the VLAN to add and may range from 1 to 
  *                  (''FM_MAX_VLAN'' - 1).
@@ -1597,9 +1591,7 @@ ABORT:
  *
  * \param[in]       stpInstance is the spanning tree instance from which to
  *                  delete the VLAN and may range from 1 to a chip-specific
- *                  maximum value (see FM2000_MAX_STP_INSTANCE,
- *                  FM4000_MAX_STP_INSTANCE, FM6000_MAX_STP_INSTANCE,
- *                  and ''FM10000_MAX_STP_INSTANCE'').
+ *                  maximum value (see ''FM10000_MAX_STP_INSTANCE'').
  *
  * \param[in]       vlanID is the VLAN to delete and may range from 1 to
  *                  (''FM_MAX_VLAN'' - 1).
@@ -1788,19 +1780,21 @@ ABORT:
  *                  only be called with stpInstance set to 0. Otherwise,
  *                  error ''FM_ERR_INVALID_STP_MODE'' will be returned.
  *
+ * \note            Use ''fmSetVlanPortState'' to set the spanning tree
+ *                  state for LAG logical ports.
+ *
  * \param[in]       sw is the switch on which to operate.
  *
  * \param[in]       stpInstance is the spanning tree instance number. In
  *                  multiple spanning tree mode, this instance number may
  *                  range from 0 to a chip-specific maximum value (see
- *                  FM2000_MAX_STP_INSTANCE, FM4000_MAX_STP_INSTANCE,
- *                  FM6000_MAX_STP_INSTANCE, and ''FM10000_MAX_STP_INSTANCE'').
+ *                  ''FM10000_MAX_STP_INSTANCE'').
  *                  For all other spanning tree modes, 0 is the only valid
  *                  instance number.
  *
- * \param[in]       port is the logical port number to set the state for.  The
- *                  logical port number must represent a physical port and
- *                  not a virtual port like a LAG or a multicast group.
+ * \param[in]       port is the logical port number to set the state for.
+ *                  The logical port number must represent a physical port
+ *                  and not a virtual port like a LAG or a multicast group.
  *
  * \param[in]       stpState is the desired spanning tree state. See
  *                  ''Spanning Tree States'' for possible values.
@@ -1884,8 +1878,7 @@ fm_status fmSetSpanningTreePortState(fm_int sw,
         /* Cannot change the STP state of an internal port, the state
          * is forced to FM_STP_STATE_FORWARDING */
 
-        if ( !fmGetBoolApiProperty(FM_AAK_API_STP_ENABLE_INTERNAL_PORT_CTRL, 
-                                   FM_AAD_API_STP_ENABLE_INTERNAL_PORT_CTRL) )
+        if (!GET_PROPERTY()->stpEnIntPortCtrl)
         {
 
             if (currentStpState != FM_STP_STATE_FORWARDING)
@@ -1958,8 +1951,7 @@ ABORT:
  * \param[in]       stpInstance is the spanning tree instance number. In
  *                  multiple spanning tree mode, this instance number may
  *                  range from 1 to a chip-specific maximum value (see
- *                  FM2000_MAX_STP_INSTANCE, FM4000_MAX_STP_INSTANCE,
- *                  FM6000_MAX_STP_INSTANCE, and ''FM10000_MAX_STP_INSTANCE'').
+ *                  ''FM10000_MAX_STP_INSTANCE'').
  *                  For all other spanning tree modes, 0 is the only valid
  *                  instance number.
  *
@@ -2450,11 +2442,7 @@ void fmDbgDumpSpanningTree(fm_int sw, fm_int instance)
 {
     fm_switch *switchPtr;
 
-    if ( (sw < 0) || (sw >= FM_MAX_NUM_SWITCHES) )
-    {
-        FM_LOG_PRINT("ERROR: invalid switch %d\n", sw);
-        return;
-    }
+    VALIDATE_SWITCH_NO_RETURN(sw);
 
     PROTECT_SWITCH(sw);
 

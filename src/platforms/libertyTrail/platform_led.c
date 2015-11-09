@@ -29,7 +29,7 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
+ *****************************************************************************/
 
 #include <fm_sdk_fm10000_int.h>
 
@@ -169,7 +169,7 @@ static fm_status GetPortTrafficLedState(fm_int  sw,
 
     return FM_OK;
 
-} /* GetPortTrafficLedState */
+}   /* end GetPortTrafficLedState */
 
 
 
@@ -447,7 +447,8 @@ ABORT:
 
     }   /* end while (1) */
 
-}       /* end fmPlatformLedThread */
+}   /* end fmPlatformLedThread */
+
 
 
 /*****************************************************************************

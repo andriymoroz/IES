@@ -109,11 +109,11 @@ typedef enum
 } fm_utilSpiPeripheralLockOwner;
 
 
-#define FM_UTIL_ERROR(...)  fmLogMessage(0, FM_LOG_LEVEL_ERROR, __FILE__, __FUNCTION__, __LINE__, __VA_ARGS__);
-#define FM_UTIL_WARN(...)   fmLogMessage(0, FM_LOG_LEVEL_WARNING, __FILE__, __FUNCTION__, __LINE__, __VA_ARGS__);
-#define FM_UTIL_INFO(...)   fmLogMessage(0, FM_LOG_LEVEL_INFO, __FILE__, __FUNCTION__, __LINE__, __VA_ARGS__);
-#define FM_UTIL_DEBUG(...)  fmLogMessage(0, FM_LOG_LEVEL_DEBUG, __FILE__, __FUNCTION__, __LINE__, __VA_ARGS__);
-#define FM_UTIL_PRINT(...)  fmLogMessage(0, FM_LOG_LEVEL_PRINT, __FILE__, __FUNCTION__, __LINE__, __VA_ARGS__);
+#define FM_UTIL_ERROR(...)  fmLogMessage(0, FM_LOG_LEVEL_ERROR, __FILE__, __func__, __LINE__, __VA_ARGS__);
+#define FM_UTIL_WARN(...)   fmLogMessage(0, FM_LOG_LEVEL_WARNING, __FILE__, __func__, __LINE__, __VA_ARGS__);
+#define FM_UTIL_INFO(...)   fmLogMessage(0, FM_LOG_LEVEL_INFO, __FILE__, __func__, __LINE__, __VA_ARGS__);
+#define FM_UTIL_DEBUG(...)  fmLogMessage(0, FM_LOG_LEVEL_DEBUG, __FILE__, __func__, __LINE__, __VA_ARGS__);
+#define FM_UTIL_PRINT(...)  fmLogMessage(0, FM_LOG_LEVEL_PRINT, __FILE__, __func__, __LINE__, __VA_ARGS__);
 
 #define FM_UTIL_HELP_FORMAT     "    %-30s - %-s\n"
 

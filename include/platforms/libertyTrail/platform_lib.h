@@ -124,7 +124,7 @@ typedef fm_status (*fm_platGetVrmVoltage)(fm_int     sw,
                                           fm_uint32  hwResourceId,
                                           fm_uint32 *mVolt);
 
-#define FM_PLAT_GET_LIB_FUNCS_PTR(sw) (&(fmPlatformProcessState[sw].libFuncs))
+#define FM_PLAT_GET_LIB_FUNCS_PTR(sw) (&(fmPlatformProcessState[0].libFuncs))
 
 /* Structure to store platform shared library function pointers */
 typedef struct _fm_platformLib

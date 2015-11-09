@@ -5,7 +5,7 @@
  * Creation Date:   July 2, 2013 from fm6000_api_stp.c
  * Description:     Implement FM10000 specific STP functions.
  *
- * Copyright (c) 2005 - 2014, Intel Corporation
+ * Copyright (c) 2005 - 2015, Intel Corporation
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -29,7 +29,7 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
+ *****************************************************************************/
 
 #include <fm_sdk_fm10000_int.h>
 
@@ -230,13 +230,13 @@ static fm_status WriteEgressMstTable(fm_int sw, fm_int index, fm_uint64 value)
 /** fm10000CreateSpanningTree
  * \ingroup intStp
  *
- * \desc            FM10000 specific implementation of STP instance creation
- *                  method.  Always returns an error if the mode is incorrect.
+ * \desc            Creates a spanning tree instance.
+ *                  Always returns an error if the mode is incorrect.
+ *                  Called through the CreateSpanningTree function pointer.
  *
  * \param[in]       sw is the switch number to operate on.
  *
  * \param[in]       stpInstance is the instance number being created. 
- *
  *
  * \return          FM_OK if successful.
  * \return          FM_ERR_INVALID_STP_MODE if the mode is not MULTIPLE.
@@ -272,13 +272,13 @@ fm_status fm10000CreateSpanningTree(fm_int sw, fm_int stpInstance)
  * \ingroup intStp
  *
  * \desc            Adds a vlan to a spanning tree.
+ *                  Called through the AddSpanningTreeVlan function pointer.
  *
  * \param[in]       sw is the switch number to operate on.
  *
  * \param[in]       stpInstance is the spanning tree instance.
  *
  * \param[in]       vlan is the vlan ID.
- *
  *
  * \return          FM_OK if successful.
  *
@@ -306,11 +306,11 @@ fm_status fm10000AddSpanningTreeVlan(fm_int sw, fm_int stpInstance, fm_int vlan)
 /** fm10000DeleteSpanningTreeVlan
  * \ingroup intStp
  *
- * \desc            This function implements the FM10000 specific portion of
- *                  deleting a VLAN from a spanning tree.  The function
- *                  simply updates the VLAN entry in the hardware by assuming
- *                  that the vlan should be put into the default spanning-tree
- *                  instance.
+ * \desc            Implements the FM10000 specific portion of deleting a
+ *                  VLAN from a spanning tree. The function simply updates
+ *                  the VLAN entry in the hardware by assuming that the vlan
+ *                  should be put into the default spanning-tree instance.
+ *                  Called through the DeleteSpanningTreeVlan function pointer.
  *
  * \param[in]       sw is the switch number to operate on.
  *
@@ -353,6 +353,7 @@ fm_status fm10000DeleteSpanningTreeVlan(fm_int sw,
  * \desc            Optimized refresh routing to apply a STP state change
  *                  to all member VLANs.  Assumes the STP instance info
  *                  has already been updated.
+ *                  Called through the RefreshSpanningTree function pointer.
  *
  * \param[in]       sw is the switch number to operate on.
  *
@@ -547,7 +548,8 @@ ABORT:
  * \ingroup intVlan
  *
  * \desc            Resets the spanning tree state for each port in the VLAN
- *                  to the non-member default value.
+ *                  to the non-member default value. Called through the
+ *                  ResetVlanSpanningTreeState function pointer.
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -592,6 +594,7 @@ ABORT:
  * \ingroup intStp
  *
  * \desc            Dumps the software and hardware spanning tree tables.
+ *                  Called through the DbgDumpSpanningTree function pointer.
  *
  * \param[in]       sw is the switch number to operate on.
  *
@@ -847,7 +850,6 @@ ABORT:
  *
  * \param[in]       sw is the switch number to operate on.
  *
- *
  * \return          FM_OK if successful.
  *
  *****************************************************************************/
@@ -885,9 +887,7 @@ fm_status fm10000EnableMultipleSpanningTreeMode(fm_int sw)
         }
         else
         {
-            instance->states[cpi] = 
-                fmGetIntApiProperty(FM_AAK_API_STP_DEF_STATE_VLAN_NON_MEMBER,
-                                    FM_AAD_API_STP_DEF_STATE_VLAN_NON_MEMBER);
+            instance->states[cpi] = GET_PROPERTY()->defStateVlanNonMember;
         }
     }
 
@@ -919,7 +919,6 @@ ABORT:
  *                  which removes all stp instances greater than 0.
  *
  * \param[in]       sw is the switch number to operate on.
- *
  *
  * \return          FM_OK if successful.
  *
@@ -982,9 +981,7 @@ fm_status fm10000EnableSharedSpanningTreeMode(fm_int sw)
         }
         else
         {
-            instance->states[cpi] = 
-                fmGetIntApiProperty(FM_AAK_API_STP_DEF_STATE_VLAN_NON_MEMBER,
-                                    FM_AAD_API_STP_DEF_STATE_VLAN_NON_MEMBER);
+            instance->states[cpi] = GET_PROPERTY()->defStateVlanNonMember;
         }
     }
 

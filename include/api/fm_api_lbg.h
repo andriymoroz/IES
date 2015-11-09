@@ -29,13 +29,13 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
+ *****************************************************************************/
 
 #ifndef __FM_FM_API_LBG_H
 #define __FM_FM_API_LBG_H
 
 /** The number of bins to use in a load balancing group distribution map on
- *  FM3000 and FM4000 devices.
+ *  FM3000/FM4000 devices.
  *  \ingroup constSystem */
 #define FM_LBG_MAX_BINS_PER_DISTRIBUTION  1000
 
@@ -61,7 +61,7 @@ typedef struct _fm_LBGParams
 {
     /** The number of bins to be used.
      *                                                                  \lb\lb
-     *  For FM3000 and FM4000 devices, this number is used for
+     *  For FM3000/FM4000 devices, this number is used for
      *  ''FM_LBG_MODE_MAPPED'' to determine the number of internal
      *  bins used for the LBG. If the value is set to 0, the number
      *  of bins will be selected automatically to the optimal value
@@ -84,12 +84,18 @@ typedef struct _fm_LBGParams
      *  value.  The attribute ''FM_LBG_DISTRIBUTION_MAP_SIZE'' can be used 
      *  to retrieve the chosen value.
      *  
-     *  For FM10000 devices, this number is used for both
-     *  ''FM_LBG_MODE_REDIRECT'' and ''FM_LBG_MODE_MAPPED''. If the value is
-     *  set to 0, the number of bins will be equal to
+     *  For FM10000 devices, this number is used for modes
+     *  ''FM_LBG_MODE_REDIRECT'' , ''FM_LBG_MODE_MAPPED'', and
+     *  ''FM_LBG_MODE_MAPPED_L234HASH''.
+     *                                                                  \lb\lb
+     *  For ''FM_LBG_MODE_REDIRECT'' and ''FM_LBG_MODE_MAPPED'', if the
+     *  value is set to 0, the number of bins will be equal to
      *  ''FM_FM10000_LBG_DEFAULT_BINS_PER_DISTRIBUTION''. Valid sizes are any
      *  integer between 1 and 16 bins. Above 16, the number of bins must be a
-     *  power of 2 and must not exceed 4096. */
+     *  power of 2 and must not exceed 4096.
+     *                                                                  \lb\lb
+     *  For ''FM_LBG_MODE_MAPPED_L234HASH'', valid sizes are any integer
+     *  between 1 and 16 bins. */
     fm_int     numberOfBins;
 
     /** Indicates which load balancing group mode to use. This value overrides
@@ -172,6 +178,9 @@ typedef enum
      *  group. */
     FM_LBG_MEMBER_TYPE_L234_LBG,
 
+    /** Member type is Tunnel */
+    FM_LBG_MEMBER_TYPE_TUNNEL,
+
     /** UNPUBLISHED: For internal use only. */
     FM_LBG_MEMBER_TYPE_MAX
  
@@ -216,6 +225,14 @@ typedef struct _fm_LBGMember
     /** Handle of ''FM_LBG_MODE_MAPPED_L234HASH'' load balancing group.
      *  Valid when lbgMemberType is ''FM_LBG_MEMBER_TYPE_L234_LBG''. */
     fm_int            l234Lbg;
+
+    /** Tunnel group of Next Hop. Valid when lbgMemberType is 
+     *  ''FM_LBG_MEMBER_TYPE_TUNNEL''. */
+    fm_int            tunnelGrp;
+
+    /** Tunnel rule of NextHop. Valid when lbgMemberType is 
+     *  ''FM_LBG_MEMBER_TYPE_TUNNEL''. */
+    fm_int            tunnelRule;
 
  } fm_LBGMember;
 
@@ -293,7 +310,7 @@ enum _fm_lbgAttr
      *  method is to sort the ports in glort order, before populating the 
      *  bins. 
      *                                                                  \lb\lb
-     *  On FM3000 and FM4000 devices, use ''FM_LBG_DISTRIBUTION_MAP''.
+     *  On FM3000/FM4000 devices, use ''FM_LBG_DISTRIBUTION_MAP''.
      *
      *  \chips  FM6000, FM10000 */
     FM_LBG_DISTRIBUTION_MAP_RANGE,
@@ -358,7 +375,7 @@ enum _fm_lbgAttr
      *  switches. A recommended method is to sort the ports in glort order,
      *  before populating the bins.
      *                                                                  \lb\lb
-     *  On FM3000 and FM4000 devices, use ''FM_LBG_DISTRIBUTION_MAP''.
+     *  On FM3000/FM4000 devices, use ''FM_LBG_DISTRIBUTION_MAP''.
      *                                                                  \lb\lb
      *  On FM6000 devices, use ''FM_LBG_DISTRIBUTION_MAP_RANGE''.
      *

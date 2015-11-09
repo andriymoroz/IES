@@ -64,7 +64,6 @@ static fm_status SendApiAutoNegEvent( fm_int            sw,
                                       fm_int            logPort,
                                       fm_portLinkStatus status,
                                       fm_uint64         msg );
-static fm_status FilterAn73Ability( fm_int sw, fm_int port, fm_uint64 *txMsg );
 static fm_status ConfigureAn73BasePage( fm_smEventInfo *eventInfo, 
                                         void           *userInfo );
 static fm_status ConfigureAn37BasePage( fm_smEventInfo *eventInfo, 
@@ -174,15 +173,11 @@ static fm_status ConfigureAn37Timers( fm_smEventInfo *eventInfo,
 
     if ( anMode == FM_PORT_AUTONEG_SGMII )
     {
-        linkTimeoutUsec =
-            fmGetIntApiProperty(FM_AAK_API_FM10000_AUTONEG_SGMII_TIMEOUT,
-                                FM_AAD_API_FM10000_AUTONEG_SGMII_TIMEOUT);
+        linkTimeoutUsec = GET_FM10000_PROPERTY()->autonegSgmiiTimeout;
     }
     else if ( anMode == FM_PORT_AUTONEG_CLAUSE_37 )
     {
-        linkTimeoutUsec =
-            fmGetIntApiProperty(FM_AAK_API_FM10000_AUTONEG_CLAUSE_37_TIMEOUT,
-                                FM_AAD_API_FM10000_AUTONEG_CLAUSE_37_TIMEOUT);        
+        linkTimeoutUsec = GET_FM10000_PROPERTY()->autonegCl37Timeout;
     }
 
     fm10000AnGetTimeScale( linkTimeoutUsec, 
@@ -577,8 +572,7 @@ static fm_status SendApiAutoNegEvent( fm_int            sw,
                      status, 
                      msg );
 
-    if ( !fmGetBoolApiProperty(FM_AAK_API_FM10000_AUTONEG_GENERATE_EVENTS,
-                               FM_AAD_API_FM10000_AUTONEG_GENERATE_EVENTS) )
+    if (!GET_FM10000_PROPERTY()->autonegGenerateEvents)
     {
         /* exit if not allowed */
         FM_LOG_EXIT_V2(FM_LOG_CAT_PORT_AUTONEG, logPort, FM_OK)
@@ -624,132 +618,6 @@ static fm_status SendApiAutoNegEvent( fm_int            sw,
 }   /* end SendApiAutoNegEvent */
 
 
-/*****************************************************************************/
-/** FilterAn73Ability
- * \ingroup intPort
- *
- * \desc            Filter Clause 73 base page ability based on the actual
- *                  scheduler configuration.
- * 
- * \param[in]       sw is the switch on which to operate.
- *
- * \param[in]       port is the port on which to operate.
- *
- * \param[in,out]   txMsg refer to the base page to filter.
- *
- * \return          FM_OK if successful
- * 
- *****************************************************************************/
-static fm_status FilterAn73Ability( fm_int sw, fm_int port, fm_uint64 *txMsg )
-{
-    fm_status              status;
-    fm10000_schedSpeedInfo speed;
-    fm_int                 physSw;
-    fm_int                 physPort;
-    fm_uint32              ability;
-    fm_bool                is40GCapable;
-    fm_bool                is100GCapable;
-
-    /* Only update the ability field of the base page */
-    ability = FM_GET_FIELD64( *txMsg, FM10000_AN_73_BASE_PAGE_TX, A );
-
-
-    if (fmGetBoolApiProperty(FM_AAK_API_SCH_IGNORE_BW_VIOLATION,
-                             FM_AAD_API_SCH_IGNORE_BW_VIOLATION))
-    {
-        FM_LOG_WARNING(FM_LOG_CAT_SWITCH, 
-                       "AN-73 Ability filter for port=%d was disabled\n",
-                       port);
-        status = FM_OK;
-        goto ABORT;
-    }
-    else if (fmGetBoolApiProperty(FM_AAK_API_SCH_IGNORE_BW_VIOLATION_NO_WARNING,
-                                  FM_AAD_API_SCH_IGNORE_BW_VIOLATION_NO_WARNING))
-    {
-        status = FM_OK;
-        goto ABORT;
-    }
-
-    status = fmPlatformMapLogicalPortToPhysical(sw, port, &physSw, &physPort);
-    FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT_AUTONEG, port, status);
-
-    status = fm10000GetSchedPortSpeed(sw, 
-                                      physPort, 
-                                      &speed);
-    FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT_AUTONEG, port, status);
-
-    status = fm10000GetMultiLaneCapabilities(sw, 
-                                             port, 
-                                             &is40GCapable, 
-                                             &is100GCapable);
-    FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT_AUTONEG, port, status);
-
-    /* Multi-Lane is possible */
-    if (is40GCapable || is100GCapable)
-    {
-        /* Filter out any mode that can't be supported based on current
-         * scheduler token allocation and port capabilities. */
-        if ( ( (speed.multiLaneSpeed < 100000)  &&
-               (speed.assignedSpeed < 100000) ) ||
-             (!is100GCapable) )
-        {
-            ability &= ~FM10000_AN73_ABILITIES_100G;
-        }
-
-        if ( ( (speed.multiLaneSpeed < 40000)  &&
-               (speed.assignedSpeed < 40000) ) ||
-             (!is40GCapable) )
-        {
-            ability &= ~FM10000_AN73_ABILITIES_40G;
-        }
-
-        if ( (speed.singleLaneSpeed < 10000) &&
-             (speed.assignedSpeed < 10000) )
-        {
-            ability &= ~FM10000_AN73_ABILITY_10GBASE_KR;
-        }
-
-        if ( (speed.singleLaneSpeed < 2500) &&
-             (speed.assignedSpeed < 2500) )
-        {
-            ability = 0LL;
-            status = FM_FAIL;
-        }
-
-        /* Update the ability field of the base page */
-        FM_SET_FIELD64( *txMsg, FM10000_AN_73_BASE_PAGE_TX, A, ability );
-
-        /* Exit */
-        FM_LOG_EXIT_V2( FM_LOG_CAT_PORT_AUTONEG, port, status);
-    }
-
-    /* Single Lane AN */
-    ability &= ~FM10000_AN73_ABILITY_MULTI_LANE;
-
-    /* Filter out any mode that can't be supported based on current scheduler
-     * token allocation. */
-    if ( (speed.singleLaneSpeed < 10000) &&
-         (speed.assignedSpeed < 10000) )
-    {
-        ability &= ~FM10000_AN73_ABILITY_10GBASE_KR;
-    }
-
-    if ( (speed.singleLaneSpeed < 2500) &&
-         (speed.assignedSpeed < 2500) )
-    {
-        ability = 0LL;
-        status = FM_FAIL;
-    }
-
-ABORT:
-
-    /* Update the ability field of the base page */
-    FM_SET_FIELD64( *txMsg, FM10000_AN_73_BASE_PAGE_TX, A, ability );
-
-    FM_LOG_EXIT_V2( FM_LOG_CAT_PORT_AUTONEG, port, status);
-
-}   /* end FilterAn73Ability */
-
 
 /*****************************************************************************/
 /** ConfigureAn73BasePage
@@ -783,6 +651,8 @@ static fm_status ConfigureAn73BasePage( fm_smEventInfo *eventInfo,
     fm_int            sw;
     fm_int            epl;
     fm_bool           nextPageEnabled;
+    fm_bool           is40GCapable;
+    fm_bool           is100GCapable;
 
     switchPtr   = (( fm10000_portSmEventInfo *)userInfo)->switchPtr;
     portExt     = (( fm10000_portSmEventInfo *)userInfo)->portExt;
@@ -822,14 +692,28 @@ static fm_status ConfigureAn73BasePage( fm_smEventInfo *eventInfo,
 
         /* Technology Ability */
         ability = FM10000_AN73_SUPPORTED_ABILITIES;
+
+        status = fm10000GetMultiLaneCapabilities(sw,
+                                                 port,
+                                                 &is40GCapable,
+                                                 &is100GCapable);
+        FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status);
+
+        if (!is40GCapable)
+        {
+            ability &= ~FM10000_AN73_ABILITIES_40G;
+        }
+
+        if (!is100GCapable)
+        {
+            ability &= ~FM10000_AN73_ABILITIES_100G;
+        }
+
         FM_SET_FIELD64( txMsg, FM10000_AN_73_BASE_PAGE_TX, A, ability );
 
         /* FEC Capability */
         FM_SET_FIELD64(txMsg, FM10000_AN_73_BASE_PAGE_TX, F, 0);
     }
-
-    status = FilterAn73Ability(sw, port, &txMsg);
-    FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT_AUTONEG, port, status);
 
     /* Advise Energy-Efficient Ethernet (EEE) if enabled */
     if ( portAttrExt->eeeEnable )

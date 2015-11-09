@@ -58,6 +58,14 @@ static fm_status StartTimeoutTimer(fm_smEventInfo *eventInfo,
 static fm_status EnableRxBistMode(fm_smEventInfo *eventInfo,
                                   void           *userInfo,
                                   fm_int          bistSubMode);
+static fm_status ConfigureWidthMode( fm_smEventInfo *eventInfo,
+                                     void           *userInfo );
+static fm_status CompleteConfigureSerdes(fm_smEventInfo *eventInfo,
+                                         void           *userInfo,
+                                         fm_int         *nextState);
+static fm_status SerDesInterruptThrotle( fm_smEventInfo *eventInfo,
+                                         void           *userInfo,
+                                         fm_int         increment);
 
 
 /*****************************************************************************
@@ -493,6 +501,300 @@ static fm_status EnableRxBistMode(fm_smEventInfo *eventInfo,
     if (err == FM_OK)
     {
         err = fm10000ResetSerdesErrorCounter(sw, serDes);
+    }
+
+    return err;
+
+}
+
+
+
+
+/*****************************************************************************/
+/** ConfigureWidthMode
+ * \ingroup intSerdes
+ *
+ * \desc            Configures the SerDes Tx and Rx width mode according to
+ *                  the current ethernet mode.
+ *
+ * \param[in]       eventInfo is a pointer the generic event descriptor.
+ *
+ * \param[in]       userInfo pointer a purpose specific event descriptor (must
+ *                  be casted to ''fm10000_serdesSmEventInfo'')
+ *
+ * \return          FM_OK if successful.
+ * \return          Other ''Status Codes'' as appropriate in case of failure.
+ *
+ *****************************************************************************/
+static fm_status ConfigureWidthMode( fm_smEventInfo *eventInfo,
+                                     void           *userInfo )
+{
+    fm_status           err;
+    fm_int              sw;
+    fm_int              serDes;
+    fm_serdesWidthMode  widthMode;
+    fm10000_lane       *laneExt;
+
+
+    FM_NOT_USED(eventInfo);
+
+    sw      = ((fm10000_serDesSmEventInfo *)userInfo)->switchPtr->switchNumber;
+    laneExt = ((fm10000_serDesSmEventInfo *)userInfo)->laneExt;
+    serDes  = laneExt->serDes;
+
+    err = fm10000GetSerdesWidthModeRateSel(serDes, laneExt->bitRate, &widthMode, NULL);
+
+
+    if (err == FM_OK)
+    {
+
+        FM_LOG_DEBUG_V2(FM_LOG_CAT_SERDES,serDes,
+                        "Configure Serdes %d, widthMode=%d\n",
+                        serDes,
+                        widthMode);
+
+        err = fm10000SerdesSetWidthMode(sw,serDes,widthMode);
+
+        if (err != FM_OK)
+        {
+            FM_LOG_ERROR_V2( FM_LOG_CAT_SERDES,
+                             serDes,
+                             "Cannot set Width Mode on serDes 0x%2.2x\n",
+                             serDes );
+        }
+    }
+
+    return err;
+
+}
+
+
+
+
+/*****************************************************************************/
+/** CompleteConfigureSerdes
+ * \ingroup intSerdes
+ *
+ * \desc            Completes serdes configuration once both PLL are locked.
+ *
+ * \param[in]       eventInfo is a pointer the generic event descriptor (unused
+ *                  in this function)
+ *
+ * \param[in]       userInfo pointer a purpose specific event descriptor (must
+ *                  be casted to ''fm10000_serdesSmEventInfo'')
+ *
+ * \param[in]       nextState is a pointer to a caller-allocated area where
+ *                  this function will return the state the state machine
+ *                  will transition to
+ *
+ * \return          FM_OK if successful.
+ * \return          Other ''Status Codes'' as appropriate in case of failure.
+ *
+ *****************************************************************************/
+static fm_status CompleteConfigureSerdes(fm_smEventInfo *eventInfo,
+                                         void           *userInfo,
+                                         fm_int         *nextState)
+{
+    fm_status      err;
+    fm10000_lane  *pLaneExt;
+    fm_int         serDes;
+    fm_int         sw;
+    fm_int         progressInd;
+
+    FM_NOT_USED(eventInfo);
+
+    sw        = ((fm10000_serDesSmEventInfo *)userInfo)->switchPtr->switchNumber;
+    pLaneExt  = ((fm10000_serDesSmEventInfo *)userInfo)->laneExt;
+    serDes    = pLaneExt->serDes;
+
+    progressInd = 0;
+
+
+    fmDelay(0, FM10000_SERDES_CONFIG_DELAY);
+    err = fm10000ConfigurePcslBitSlip(sw, serDes);
+
+    if (err == FM_OK)
+    {
+        progressInd++;
+        fmDelay(0, FM10000_SERDES_CONFIG_DELAY);
+        err = ConfigureWidthMode(eventInfo, userInfo);
+    }
+
+    if (err == FM_OK)
+    {
+
+        progressInd++;
+        fmDelay(0, FM10000_SERDES_CONFIG_DELAY);
+        err = fm10000SerDesEnableTxOutput(eventInfo,userInfo);
+    }
+
+    if (err == FM_OK)
+    {
+        progressInd++;
+        fmDelay(0, FM10000_SERDES_CONFIG_DELAY);
+        err = fm10000SerDesSetStaticDfeSignalDtctNormal(eventInfo, userInfo);
+    }
+
+    if ( err == FM_OK )
+    {
+        progressInd++;
+        fmDelay(0, FM10000_SERDES_CONFIG_DELAY);
+        err = fm10000SerDesInitSignalOk(eventInfo,userInfo);
+    }
+
+    if (err == FM_OK)
+    {
+        if (!pLaneExt->nearLoopbackEn )
+        {
+
+            *nextState = FM10000_SERDES_STATE_POWERED_UP;
+        }
+        else
+        {
+            progressInd++;
+            fmDelay(0, FM10000_SERDES_CONFIG_DELAY);
+            err = fm10000SerDesDisableLanePolarity(eventInfo,userInfo);
+
+            if (err == FM_OK)
+            {
+                progressInd++;
+                fmDelay(0, FM10000_SERDES_CONFIG_DELAY);
+                err = fm10000SerDesEnableNearLoopback(eventInfo,userInfo);
+            }
+
+            if (err == FM_OK)
+            {
+                progressInd++;
+                fmDelay(0, FM10000_SERDES_CONFIG_DELAY);
+                err = fm10000SerDesDisableTxOutput(eventInfo,userInfo);
+            }
+
+            if (err == FM_OK)
+            {
+                progressInd++;
+                err = fm10000SerDesSetSignalDtctNormal(eventInfo,userInfo);
+            }
+            *nextState = FM10000_SERDES_STATE_LOOPBACK;
+        }
+
+
+        pLaneExt->serdesInterruptMask = FM10000_SERDES_OPSTATE_INTR_MASK;
+    }
+
+
+    if (err == FM_OK)
+    {
+        progressInd += 10;
+        err = fm10000SerDesStartTimeoutTimerShrt(eventInfo, userInfo);
+    }
+
+    if (err == FM_OK)
+    {
+        progressInd++;
+        err = fm10000SerDesSendPortLaneReadyInd( eventInfo, userInfo);
+    }
+
+    if ( err != FM_OK )
+    {
+        FM_LOG_DEBUG_V2( FM_LOG_CAT_SERDES,
+                         serDes,
+                         "Error processing RxTx Lock Events, serdes= %d, progressInd=%d\n",
+                         serDes,
+                         progressInd);
+    }
+
+    return err;
+
+}
+
+
+
+/*****************************************************************************/
+/** SerDesInterruptThrotle
+ * \ingroup intSerdes
+ *
+ * \desc            Implements a simple interrupt moderation algorithm to
+ *                  limit signalOk interrupts rate for Ethernet modes that
+ *                  use static DFE in some particular setups.
+ *
+ * \param[in]       eventInfo is a pointer the generic event descriptor.
+ *
+ * \param[in]       userInfo pointer a purpose specific event descriptor (must
+ *                  be casted to ''fm10000_serdesSmEventInfo'')
+ *
+ * \param[in]       increment is the value to be added to the interrupt counter
+ *                  used by the throtle system.
+ *
+ * \return          FM_OK if successful.
+ * \return          Other ''Status Codes'' as appropriate in case of failure.
+ *
+ *****************************************************************************/
+static fm_status SerDesInterruptThrotle( fm_smEventInfo *eventInfo,
+                                         void           *userInfo,
+                                         fm_int         increment)
+{
+    fm_status       err;
+    fm_int          sw;
+    fm10000_lane *  laneExt;
+    fm_switch*      switchPtr;
+
+
+    FM_NOT_USED(eventInfo);
+
+    sw      = ((fm10000_serDesSmEventInfo *)userInfo)->switchPtr->switchNumber;
+    laneExt = ((fm10000_serDesSmEventInfo *)userInfo)->laneExt;
+    switchPtr = ((fm10000_serDesSmEventInfo *)userInfo)->switchPtr;
+    err = FM_OK;
+
+
+    if (laneExt->dfeMode == FM_DFE_MODE_STATIC)
+    {
+
+        if (increment > MF10000_SERDES_INTR_THROTLE_MAX_INC)
+        {
+            increment = MF10000_SERDES_INTR_THROTLE_MAX_INC;
+        }
+        else if (increment < -MF10000_SERDES_INTR_THROTLE_MAX_INC)
+        {
+            increment = -MF10000_SERDES_INTR_THROTLE_MAX_INC;
+        }
+
+
+        laneExt->interruptCounter += increment;
+
+        if (laneExt->interruptCounter < 0)
+        {
+            laneExt->interruptCounter = 0;
+        }
+        else if (laneExt->interruptCounter > MF10000_SERDES_INTR_THROTLE_COUNT_MAX)
+        {
+            laneExt->interruptCounter = MF10000_SERDES_INTR_THROTLE_COUNT_MAX;
+        }
+
+
+        if (laneExt->interruptCounter > MF10000_SERDES_INTR_THROTLE_THRESH_HI &&
+            laneExt->serdesInterruptMask != 0)
+        {
+
+            fm10000SerDesDisableInterrupts(eventInfo,userInfo);
+        }
+        else if (laneExt->interruptCounter < MF10000_SERDES_INTR_THROTLE_THRESH_LO &&
+                 laneExt->serdesInterruptMask == 0)
+        {
+
+            laneExt->serdesInterruptMask = FM10000_SERDES_OPSTATE_INTR_MASK;
+
+            TAKE_REG_LOCK( sw );
+
+            err = switchPtr->WriteUINT32( sw,
+                                          FM10000_SERDES_IM(laneExt->epl, laneExt->physLane),
+                                         ~laneExt->serdesInterruptMask );
+            DROP_REG_LOCK( sw );
+        }
+    }
+    else
+    {
+        laneExt->interruptCounter = 0;
     }
 
     return err;
@@ -1696,6 +1998,7 @@ fm_status fm10000SerDesInitStateVar( fm_smEventInfo *eventInfo,
     pLaneExt->bistActive = FALSE;
     pLaneExt->bistTxSubMode = FM_BIST_MAX;
     pLaneExt->bistRxSubMode = FM_BIST_MAX;
+    pLaneExt->interruptCounter = 0;
 
 
     err = fm10000SerdesGetOpMode(sw,0,&serdesOpMode,NULL,NULL);
@@ -1746,6 +2049,7 @@ fm_status fm10000SerDesSaveDfeConfig(fm_smEventInfo *eventInfo,
     pLaneExt = ((fm10000_serDesSmEventInfo *)userInfo)->laneExt;
     newDfeModeExt = (((fm10000_serDesSmEventInfo *)userInfo)->info.dfeMode);
     newDfeMode = newDfeModeExt & 0xff;
+    pLaneExt->krExt.pCalEnable = FALSE;
 
 
     if (newDfeMode < 0 || newDfeMode > FM_DFE_MODE_ICAL_ONLY )
@@ -1760,6 +2064,16 @@ fm_status fm10000SerDesSaveDfeConfig(fm_smEventInfo *eventInfo,
         if ( newDfeMode == FM_DFE_MODE_KR )
         {
             pLaneExt->krExt.pCalMode = newDfeModeExt >> 8;
+
+
+
+
+            if (GET_PROPERTY()->dfeAllowKrPcal == TRUE &&
+                (!pLaneExt->eeeModeActive ||
+                 GET_FM10000_PROPERTY()->allowKrPcalOnEee) )
+            {
+                pLaneExt->krExt.pCalEnable = TRUE;
+            }
         }
     }
 
@@ -2130,6 +2444,8 @@ fm_status fm10000SerDesRstSignalOkDebounce(fm_smEventInfo *eventInfo,
 
     pLaneExt->signalOkDebounce = 0;
 
+    SerDesInterruptThrotle(eventInfo,userInfo,3);
+
     return err;
 
 }
@@ -2254,8 +2570,7 @@ fm_status fm10000SerDesSetStaticDfeSignalDtctNormal(fm_smEventInfo *eventInfo,
 
 
 
-    linkDependsOnDfe = fmGetBoolApiProperty(FM_AAK_API_FM10000_LINK_DEPENDS_ON_DFE,
-                                            FM_AAD_API_FM10000_LINK_DEPENDS_ON_DFE);
+    linkDependsOnDfe = GET_FM10000_PROPERTY()->linkDependsOfDfe;
 
     if ( pLaneExt->dfeMode != FM_DFE_MODE_KR           &&
         (!linkDependsOnDfe                             ||
@@ -2382,113 +2697,34 @@ fm_status fm10000SerDesConfigureBitRateAndWidthMode( fm_smEventInfo *eventInfo,
     portExt  = pLaneExt->parentPortExt;
 
 
-    err = fm10000SerdesTxRxEnaCtrl(sw,
-                                   serDes,
-                                   FM10000_SERDES_CTRL_TX_ENA_MASK      |
-                                   FM10000_SERDES_CTRL_RX_ENA_MASK      |
-                                   FM10000_SERDES_CTRL_OUTPUT_ENA_MASK  |
-                                   0);
 
+    FM_LOG_DEBUG_V2(FM_LOG_CAT_SERDES,serDes,
+                    "Configure Serdes %d, bitRate=%d, widthMode=%d, rateSel=%d\n",
+                    serDes,
+                    pLaneExt->bitRate,
+                    pLaneExt->widthMode,
+                    pLaneExt->bitRate);
 
+    fmDelay(0, FM10000_SERDES_CONFIG_DELAY);
+    err = fm10000SerdesSetBitRate(sw,serDes,pLaneExt->rateSel);
 
-    if (err == FM_OK)
-    {
-        FM_LOG_DEBUG_V2(FM_LOG_CAT_SERDES,serDes,
-                        "Configure Serdes %d, bitRate=%d, widthMode=%d, rateSel=%d\n",
-                        serDes,
-                        pLaneExt->bitRate,
-                        pLaneExt->widthMode,
-                        pLaneExt->bitRate);
-
-        err = fm10000SerdesSetBitRate(sw,serDes,pLaneExt->rateSel);
-
-        if (err != FM_OK)
-        {
-            FM_LOG_ERROR_V2( FM_LOG_CAT_SERDES,
-                             serDes,
-                             "Cannot set Bit Rate on serDes 0x%2.2x\n",
-                             serDes );
-        }
-        else
-        {
-
-            err = fm10000SetPcslCfgWidthMode(sw, serDes, pLaneExt->widthMode);
-
-            if ( err != FM_OK )
-            {
-                FM_LOG_ERROR_V2( FM_LOG_CAT_SERDES,
-                                 serDes,
-                                 "Cannot set PCSl width mode on serDes 0x%2.2x\n",
-                                 serDes );
-            }
-        }
-    }
-    else
+    if (err != FM_OK)
     {
         FM_LOG_ERROR_V2( FM_LOG_CAT_SERDES,
                          serDes,
-                         "Cannot disable serDes 0x%2.2x\n",
+                         "Cannot set Bit Rate on serDes 0x%2.2x\n",
                          serDes );
     }
-
-
-    return err;
-
-}
-
-
-
-
-/*****************************************************************************/
-/** fm10000SerDesConfigureWidthMode
- * \ingroup intSerdes
- *
- * \desc            Action configuring the SerDes Tx and Rx width
- *                  mode according to the current ethernet mode.
- *
- * \param[in]       eventInfo is a pointer the generic event descriptor.
- *
- * \param[in]       userInfo pointer a purpose specific event descriptor (must
- *                  be casted to ''fm10000_serdesSmEventInfo'')
- *
- * \return          FM_OK if successful.
- * \return          Other ''Status Codes'' as appropriate in case of failure.
- *
- *****************************************************************************/
-fm_status fm10000SerDesConfigureWidthMode( fm_smEventInfo *eventInfo,
-                                           void           *userInfo )
-{
-    fm_status           err;
-    fm_int              sw;
-    fm_int              serDes;
-    fm_serdesWidthMode  widthMode;
-    fm10000_lane       *laneExt;
-
-
-    FM_NOT_USED(eventInfo);
-
-    sw      = ((fm10000_serDesSmEventInfo *)userInfo)->switchPtr->switchNumber;
-    laneExt = ((fm10000_serDesSmEventInfo *)userInfo)->laneExt;
-    serDes  = laneExt->serDes;
-
-    err = fm10000GetSerdesWidthModeRateSel(serDes, laneExt->bitRate, &widthMode, NULL);
-
-
-    if (err == FM_OK)
+    else
     {
 
-        FM_LOG_DEBUG_V2(FM_LOG_CAT_SERDES,serDes,
-                        "Configure Serdes %d, widthMode=%d\n",
-                        serDes,
-                        widthMode);
+        err = fm10000SetPcslCfgWidthMode(sw, serDes, pLaneExt->widthMode);
 
-        err = fm10000SerdesSetWidthMode(sw,serDes,widthMode);
-
-        if (err != FM_OK)
+        if ( err != FM_OK )
         {
             FM_LOG_ERROR_V2( FM_LOG_CAT_SERDES,
                              serDes,
-                             "Cannot set Width Mode on serDes 0x%2.2x\n",
+                             "Cannot set PCSl width mode on serDes 0x%2.2x\n",
                              serDes );
         }
     }
@@ -4783,18 +5019,14 @@ fm_status fm10000SerDesProcessRxTxPllLockEvents( fm_smEventInfo *eventInfo,
     fm_status      err;
     fm10000_lane  *pLaneExt;
     fm_int         sw;
-    fm_int         serDes;
-    fm_int         progressInd;
 
 
     FM_NOT_USED(eventInfo);
 
     sw = ((fm10000_serDesSmEventInfo *)userInfo)->switchPtr->switchNumber;
     pLaneExt = ((fm10000_serDesSmEventInfo *)userInfo)->laneExt;
-    serDes   = pLaneExt->serDes;
 
     err = FM_OK;
-    progressInd = 0;
 
     switch (eventInfo->eventId)
     {
@@ -4817,96 +5049,12 @@ fm_status fm10000SerDesProcessRxTxPllLockEvents( fm_smEventInfo *eventInfo,
     if (err == FM_OK && ((pLaneExt->serDesPllStatus & 0x03) == 0x03))
     {
 
-
-
-        err = fm10000ConfigurePcslBitSlip(sw, serDes);
-
-        if (err == FM_OK)
-        {
-            progressInd++;
-            err = fm10000SerDesConfigureWidthMode(eventInfo, userInfo);
-        }
-
-        if (err == FM_OK)
-        {
-
-            progressInd++;
-            err = fm10000SerDesEnableTxOutput(eventInfo,userInfo);
-        }
-
-
-        if (err == FM_OK)
-        {
-            progressInd++;
-            err = fm10000SerDesStartTimeoutTimerShrt(eventInfo, userInfo);
-        }
-
-        if (err == FM_OK)
-        {
-            progressInd++;
-            err = fm10000SerDesSendPortLaneReadyInd(eventInfo,userInfo);
-        }
-
-        if (err == FM_OK)
-        {
-            progressInd++;
-            err = fm10000SerDesSetStaticDfeSignalDtctNormal(eventInfo, userInfo);
-        }
-
-        if ( err == FM_OK )
-        {
-            progressInd++;
-            err = fm10000SerDesInitSignalOk(eventInfo,userInfo);
-        }
-
-        if (err == FM_OK)
-        {
-
-            if (!pLaneExt->nearLoopbackEn )
-            {
-                *nextState = FM10000_SERDES_STATE_POWERED_UP;
-            }
-            else
-            {
-                progressInd++;
-                err = fm10000SerDesDisableLanePolarity(eventInfo,userInfo);
-
-                if (err == FM_OK)
-                {
-                    progressInd++;
-                    err = fm10000SerDesEnableNearLoopback(eventInfo,userInfo);
-                }
-
-                if (err == FM_OK)
-                {
-                    progressInd++;
-                    err = fm10000SerDesDisableTxOutput(eventInfo,userInfo);
-                }
-
-                if (err == FM_OK)
-                {
-                    progressInd++;
-                    err = fm10000SerDesSetSignalDtctNormal(eventInfo,userInfo);
-                }
-                *nextState = FM10000_SERDES_STATE_LOOPBACK;
-            }
-
-            pLaneExt->serdesInterruptMask = FM10000_SERDES_OPSTATE_INTR_MASK;
-        }
+        err = CompleteConfigureSerdes(eventInfo,userInfo,nextState);
     }
     else
     {
 
         pLaneExt->serdesInterruptMask = FM10000_SERDES_PWRUP_INTR_MASK;
-    }
-
-    if ( err != FM_OK )
-    {
-        FM_LOG_DEBUG_V2( FM_LOG_CAT_SERDES,
-                         serDes,
-                         "Error processing RxTx Lock Events, serdes= %d, progressInd=%d\n",
-                         serDes,
-                         progressInd);
     }
 
     return err;
@@ -4949,7 +5097,6 @@ fm_status fm10000SerDesProcessRxTxPllLockTimeout( fm_smEventInfo *eventInfo,
     fm_int         sw;
     fm_bool        txRdy;
     fm_bool        rxRdy;
-    fm_switch *    switchPtr;
 
 
     FM_NOT_USED(eventInfo);
@@ -4961,7 +5108,6 @@ fm_status fm10000SerDesProcessRxTxPllLockTimeout( fm_smEventInfo *eventInfo,
     sw        = ((fm10000_serDesSmEventInfo *)userInfo)->switchPtr->switchNumber;
     pLaneExt  = ((fm10000_serDesSmEventInfo *)userInfo)->laneExt;
     serDes    = pLaneExt->serDes;
-    switchPtr = ((fm10000_serDesSmEventInfo *)userInfo)->switchPtr;
 
     if (pLaneExt->serDesEnableRetryCtrl == 0)
     {
@@ -4973,92 +5119,7 @@ fm_status fm10000SerDesProcessRxTxPllLockTimeout( fm_smEventInfo *eventInfo,
             {
 
 
-
-
-                pLaneExt->serDesPllStatus = 0x03;
-
-
-                err = fm10000ConfigurePcslBitSlip(sw, serDes);
-
-                if (err == FM_OK)
-                {
-                    err = fm10000SerDesConfigureWidthMode(eventInfo, userInfo);
-                }
-
-                if (err == FM_OK)
-                {
-
-                    err = fm10000SerDesEnableTxOutput(eventInfo,userInfo);
-                }
-
-
-                if (err == FM_OK)
-                {
-                    err = fm10000SerDesStartTimeoutTimerShrt(eventInfo, userInfo);
-                }
-
-                if (err == FM_OK)
-                {
-                    err = fm10000SerDesSendPortLaneReadyInd( eventInfo, userInfo);
-                }
-
-                if (err == FM_OK)
-                {
-                    err = fm10000SerDesSetStaticDfeSignalDtctNormal(eventInfo, userInfo);
-                }
-
-                if ( err == FM_OK )
-                {
-                    err = fm10000SerDesInitSignalOk(eventInfo,userInfo);
-                }
-
-                if (err == FM_OK)
-                {
-                    if (!pLaneExt->nearLoopbackEn )
-                    {
-
-                        *nextState = FM10000_SERDES_STATE_POWERED_UP;
-                    }
-                    else
-                    {
-                        err = fm10000SerDesDisableLanePolarity(eventInfo,userInfo);
-
-                        if (err == FM_OK)
-                        {
-                            err = fm10000SerDesEnableNearLoopback(eventInfo,userInfo);
-                        }
-
-                        if (err == FM_OK)
-                        {
-                            err = fm10000SerDesDisableTxOutput(eventInfo,userInfo);
-                        }
-
-                        if (err == FM_OK)
-                        {
-                            err = fm10000SerDesSetSignalDtctNormal(eventInfo,userInfo);
-                        }
-                        *nextState = FM10000_SERDES_STATE_LOOPBACK;
-                    }
-
-
-                    pLaneExt->serdesInterruptMask = FM10000_SERDES_OPSTATE_INTR_MASK;
-
-                    TAKE_REG_LOCK( sw );
-
-                    err = switchPtr->WriteUINT32( sw,
-                                                  FM10000_SERDES_IP(pLaneExt->epl, pLaneExt->physLane),
-                                                  ~0 );
-
-                    if (err == FM_OK)
-                    {
-                        err = switchPtr->WriteUINT32( sw,
-                                                      FM10000_SERDES_IM(pLaneExt->epl, pLaneExt->physLane),
-                                                      ~pLaneExt->serdesInterruptMask);
-                    }
-
-                    DROP_REG_LOCK( sw );
-                }
-
+                err = CompleteConfigureSerdes(eventInfo,userInfo,nextState);
             }
             else
             {
@@ -5403,20 +5464,22 @@ fm_status fm10000SerDesProcessSignalOkAsserted(fm_smEventInfo *eventInfo,
     fm10000_lane * pLaneExt;
     fm_int         serDes;
     fm_bool        restartTimer;
+    fm_bool        validSignal;
+    fm_int         sw;
 
     pLaneExt = ((fm10000_serDesSmEventInfo *)userInfo)->laneExt;
     serDes   = pLaneExt->serDes;
+    sw       = ((fm10000_serDesSmEventInfo *)userInfo)->switchPtr->switchNumber;
 
     err = FM_OK;
     locErr = FM_OK;
     restartTimer = TRUE;
+    validSignal = TRUE;
 
     switch (pLaneExt->dfeMode)
     {
         case FM_DFE_MODE_STATIC:
         {
-
-
 
 
 
@@ -5441,11 +5504,17 @@ fm_status fm10000SerDesProcessSignalOkAsserted(fm_smEventInfo *eventInfo,
 
             pLaneExt->signalOkDebounce = 1;
 
-            if ( fmGetBoolApiProperty(FM_AAK_API_DFE_ENABLE_SIGNALOK_DEBOUNCING,
-                                      FM_AAD_API_DFE_ENABLE_SIGNALOK_DEBOUNCING) == FALSE )
+            if (GET_PROPERTY()->dfeEnableSigOkDebounce == FALSE)
 
             {
-                err = fm10000SerDesSendDfeStartTuningReq(eventInfo,userInfo);
+
+
+                err = fm10000SerdesValidateSignal(sw, serDes, &validSignal);
+
+                if ( err == FM_OK && validSignal)
+                {
+                    err = fm10000SerDesSendDfeStartTuningReq(eventInfo,userInfo);
+                }
 
                 if (err != FM_OK)
                 {
@@ -5486,11 +5555,17 @@ fm_status fm10000SerDesProcessSignalOkAsserted(fm_smEventInfo *eventInfo,
 
     }
 
+    SerDesInterruptThrotle(eventInfo,userInfo,1);
 
     if ( restartTimer )
     {
 
         locErr = fm10000SerDesStartTimeoutTimerShrt(eventInfo,userInfo);
+    }
+    else
+    {
+
+        locErr = fm10000SerDesStartTimeoutTimerDebounce(eventInfo,userInfo);
     }
 
 
@@ -5508,7 +5583,8 @@ fm_status fm10000SerDesProcessSignalOkAsserted(fm_smEventInfo *eventInfo,
  * \ingroup intSerdes
  *
  * \desc            Conditional transition callback processing signalOk
- *                  assertion events when only Rx is enabled.
+ *                  assertion events when only Rx is enabled. No signalOk
+ *                  debounce is supported by this action.
  *
  * \param[in]       eventInfo is a pointer the generic event descriptor.
  *
@@ -5726,6 +5802,8 @@ fm_status fm10000SerDesProcessSignalOkDeasserted(fm_smEventInfo *eventInfo,
         locErr = fm10000SerDesStartTimeoutTimerLng(eventInfo,userInfo);
     }
 
+    SerDesInterruptThrotle(eventInfo,userInfo,1);
+
 
     err = (err != FM_OK)? err : locErr;
 
@@ -5857,10 +5935,12 @@ fm_status fm10000SerDesProcessSignalOkTimeout(fm_smEventInfo *eventInfo,
     fm10000_lane  *pLaneExt;
     fm_int         serDes;
     fm_bool        signalOk;
+    fm_bool        validSignal;
     fm_int         sw;
     fm_int         currentState;
     fm_switch *    switchPtr;
     fm_bool        debounceActive;
+    fm_bool        dfeTuningStarted;
 
 
     pLaneExt  = ((fm10000_serDesSmEventInfo *)userInfo)->laneExt;
@@ -5871,6 +5951,8 @@ fm_status fm10000SerDesProcessSignalOkTimeout(fm_smEventInfo *eventInfo,
 
     currentState = *nextState;
     debounceActive = FALSE;
+    validSignal = TRUE;
+    dfeTuningStarted = FALSE;
 
 
 
@@ -5902,14 +5984,32 @@ fm_status fm10000SerDesProcessSignalOkTimeout(fm_smEventInfo *eventInfo,
             case FM_DFE_MODE_CONTINUOUS:
             case FM_DFE_MODE_ICAL_ONLY:
             {
-                if ( pLaneExt->signalOkDebounce++ > FM10000_SERDES_SIGNALOK_DEBOUNCE_THRESHOLD ||
-                     (fmGetBoolApiProperty(FM_AAK_API_DFE_ENABLE_SIGNALOK_DEBOUNCING,
-                                           FM_AAD_API_DFE_ENABLE_SIGNALOK_DEBOUNCING) == FALSE) )
+                debounceActive = TRUE;
+
+                if ( ++pLaneExt->signalOkDebounce > FM10000_SERDES_SIGNALOK_DEBOUNCE_THRESHOLD ||
+                     (GET_PROPERTY()->dfeEnableSigOkDebounce == FALSE) )
 
                 {
 
-                    err = fm10000SerDesSendDfeStartTuningReq(eventInfo,userInfo);
-                    if (err != FM_OK)
+
+                    err = fm10000SerdesValidateSignal(sw, serDes, &validSignal);
+
+                    if ( err == FM_OK && validSignal )
+                    {
+
+                        err = fm10000SerDesSendDfeStartTuningReq(eventInfo,userInfo);
+                        debounceActive = FALSE;
+                    }
+                    else
+                    {
+                        pLaneExt->signalOkDebounce = 0;
+                    }
+
+                    if ( err == FM_OK )
+                    {
+                        dfeTuningStarted = TRUE;
+                    }
+                    else
                     {
                         FM_LOG_ERROR_V2(FM_LOG_CAT_SERDES,
                                         serDes,
@@ -5918,7 +6018,6 @@ fm_status fm10000SerDesProcessSignalOkTimeout(fm_smEventInfo *eventInfo,
                     }
                 }
 
-                debounceActive = TRUE;
                 break;
             }
             case FM_DFE_MODE_KR:
@@ -5942,7 +6041,7 @@ fm_status fm10000SerDesProcessSignalOkTimeout(fm_smEventInfo *eventInfo,
 
         }
 
-        if ( currentState == *nextState)
+        if ( currentState == *nextState || dfeTuningStarted)
         {
             fm10000SerDesDontSaveTransitionRecord(eventInfo,userInfo);
         }
@@ -5975,12 +6074,18 @@ fm_status fm10000SerDesProcessSignalOkTimeout(fm_smEventInfo *eventInfo,
     }
 
 
+    SerDesInterruptThrotle(eventInfo,userInfo,-1);
 
 
 
-    if ( debounceActive ||
-        (currentState != *nextState &&
-         *nextState != FM10000_SERDES_STATE_KR_TRAINING))
+
+
+    if ( debounceActive )
+    {
+        err = fm10000SerDesStartTimeoutTimerDebounce(eventInfo,userInfo);
+    }
+    else if (currentState != *nextState &&
+             *nextState   != FM10000_SERDES_STATE_KR_TRAINING)
     {
         err = fm10000SerDesStartTimeoutTimerShrt(eventInfo,userInfo);
     }
@@ -6239,8 +6344,7 @@ fm_status fm10000SerDesProcessDfeICalComplete(fm_smEventInfo *eventInfo,
     locErr = FM_OK;
 
     if ( pLaneExt->bistActive == FALSE  &&
-         (fmGetBoolApiProperty(FM_AAK_API_DFE_ALLOW_EARLY_LINK_UP_MODE,
-                              FM_AAD_API_DFE_ALLOW_EARLY_LINK_UP_MODE) == TRUE) )
+         (GET_PROPERTY()->dfeAllowEarlyLinkUp == TRUE) )
     {
         err = fm10000SerDesSetSignalDtctNormal(eventInfo,userInfo);
 
@@ -6403,8 +6507,7 @@ fm_status fm10000SerDesProcessKrTrainingTimeout(fm_smEventInfo *eventInfo,
                     fm10000SerdesGetEyeHeight(sw,serDes,&pLaneExt->krExt.eyeScoreHeight, NULL);
 
 
-                    if ( fmGetBoolApiProperty(FM_AAK_API_DFE_ALLOW_KR_PCAL_MODE,
-                                              FM_AAD_API_DFE_ALLOW_KR_PCAL_MODE) == TRUE)
+                    if (pLaneExt->krExt.pCalEnable == TRUE)
                     {
                         *nextState = FM10000_SERDES_STATE_KR_COMPLETE;
                     }
@@ -6566,8 +6669,7 @@ fm_status fm10000SerDesProcessKrTrainingSignalOk(fm_smEventInfo *eventInfo,
 
                     fm10000SerdesGetEyeHeight(sw,serDes,&pLaneExt->krExt.eyeScoreHeight, NULL);
 
-                    if ( fmGetBoolApiProperty(FM_AAK_API_DFE_ALLOW_KR_PCAL_MODE,
-                                              FM_AAD_API_DFE_ALLOW_KR_PCAL_MODE) == TRUE)
+                    if (pLaneExt->krExt.pCalEnable == TRUE)
                     {
                         *nextState = FM10000_SERDES_STATE_KR_COMPLETE;
                     }
@@ -6661,9 +6763,8 @@ fm_status fm10000SerDesProcessKrTrainingComplete(fm_smEventInfo *eventInfo,
  * \ingroup intSerdes
  *
  * \desc            Conditional transition callback processing timeout events
- *                  related to signalOk assertion detection. This is a signalOk
- *                  polling mechanism used used as a recovery when a signalOk
- *                  assertion interrupt is missed.
+ *                  waiting for DFE tuning completion, used mostly to revover
+ *                  from out of sync situations.
  *
  * \param[in]       eventInfo is a pointer the generic event descriptor.
  *
@@ -6688,12 +6789,14 @@ fm_status fm10000SerDesProcessDfeTuningTimeout(fm_smEventInfo *eventInfo,
     fm_int         serDes;
     fm_bool        dfeTuningActive;
     fm_bool        signalOk;
+    fm_bool        validSignal;
     fm_int         sw;
 
 
     pLaneExt = ((fm10000_serDesSmEventInfo *)userInfo)->laneExt;
     serDes   = pLaneExt->serDes;
     sw       = ((fm10000_serDesSmEventInfo *)userInfo)->switchPtr->switchNumber;
+    validSignal = TRUE;
 
     err = fm10000SerdesIsDfeTuningActive(sw, serDes, &dfeTuningActive);
 
@@ -6708,9 +6811,11 @@ fm_status fm10000SerDesProcessDfeTuningTimeout(fm_smEventInfo *eventInfo,
         {
             err = fm10000SerdesGetSignalOk(sw, serDes, &signalOk);
 
-            if (err == FM_OK)
+            if (err == FM_OK && signalOk)
             {
-                if (signalOk)
+                err = fm10000SerdesValidateSignal(sw, serDes, &validSignal);
+
+                if (err == FM_OK && validSignal)
                 {
 
                     err = fm10000SerDesSendDfeStartTuningReq(eventInfo,userInfo);
@@ -6865,6 +6970,8 @@ fm_status fm10000SerDesProcessSignalNokTimeout(fm_smEventInfo *eventInfo,
 
     }
 
+    SerDesInterruptThrotle(eventInfo,userInfo,-1);
+
 
 
 
@@ -6885,7 +6992,14 @@ fm_status fm10000SerDesProcessSignalNokTimeout(fm_smEventInfo *eventInfo,
     }
     else
     {
-        err = fm10000SerDesStartTimeoutTimerXLng(eventInfo,userInfo);
+        if (pLaneExt->interruptCounter >= MF10000_SERDES_INTR_THROTLE_THRESH_LO )
+        {
+            err = fm10000SerDesStartTimeoutTimerLng(eventInfo,userInfo);
+        }
+        else
+        {
+            err = fm10000SerDesStartTimeoutTimerXLng(eventInfo,userInfo);
+        }
 
 
         fm10000SerDesDontSaveTransitionRecord(eventInfo,userInfo);

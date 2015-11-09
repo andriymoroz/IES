@@ -1950,8 +1950,7 @@ fm_status fmFlushAddresses(fm_int sw, fm_flushMode mode, fm_flushParams params)
 
     switchPtr = GET_SWITCH_PTR(sw);
 
-    autoFlush = fmGetBoolApiProperty(FM_AAK_API_MA_FLUSH_ON_VLAN_CHANGE, 
-                                     FM_AAD_API_MA_FLUSH_ON_VLAN_CHANGE);
+    autoFlush = GET_PROPERTY()->maFlushOnVlanChange;
 
     checkPort = FALSE;
     checkVid1 = FALSE;

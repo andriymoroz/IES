@@ -1102,7 +1102,7 @@ static fm_status UpdateArpEntriesVlanValue(fm_int                  sw,
  *                  function will place the group allocation index (offset)
  * 
  * \return          FM_OK if successful.
- * \return          FM_ERR_NO_MEM if ressources cannot be allocated
+ * \return          FM_ERR_NO_MEM if resources cannot be allocated
  * \return          FM_ERR_INVALID_ARGUMENT if an argument is invalid.
  *
  *****************************************************************************/
@@ -1222,7 +1222,7 @@ static fm_status AllocEcmpGroupInt(fm_int                sw,
  *                  information about allocated next hops is stored.
  *
  * \return          FM_OK if successful.
- * \return          FM_ERR_NO_MEM if ressources cannot be allocated
+ * \return          FM_ERR_NO_MEM if resources cannot be allocated
  *
  *****************************************************************************/
 static fm_status AllocNextHopInt(fm_int            sw,
@@ -1285,7 +1285,7 @@ static fm_status AllocNextHopInt(fm_int            sw,
         }
     }
 
-    /* if error: free all allocated ressources */
+    /* if error: free all allocated resources */
     if (err != FM_OK)
     {
         if ( pEcmpGroup->nextHops != NULL )
@@ -2032,7 +2032,7 @@ static fm_status FindInterfaceAddrEntry(fm_int                          sw,
  * \param[in]       sw is the switch number.
  *
  * \return          FM_OK if successful.
- * \return          FM_ERR_NO_MEM if ressources cannot be allocated
+ * \return          FM_ERR_NO_MEM if resources cannot be allocated
  *
  *****************************************************************************/
 fm_status fmNextHopAlloc(fm_int sw)
@@ -3087,7 +3087,7 @@ fm_status fmCreateECMPGroupInternal(fm_int                sw,
                 errValid = ValidateEcmpGroup(sw, pEcmpGroup, NULL);
             }
 
-            /* if error, free allocated ressources */
+            /* if error, free allocated resources */
             if ( (err != FM_OK)  || (errValid != FM_OK) )
             {
                 if (pEcmpGroup != NULL)

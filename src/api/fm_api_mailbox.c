@@ -425,8 +425,7 @@ static fm_status AddMacFilterAclRule(fm_int               sw,
         case FM_MAILBOX_TUNNEL_TYPE_NVGRE:
 
             aclCond |= FM_ACL_MATCH_L4_DST_PORT_WITH_MASK;
-            aclCondData.L4DstStart = fmGetIntApiProperty(FM_AAK_API_VN_ENCAP_PROTOCOL,
-                                                         FM_AAD_API_VN_ENCAP_PROTOCOL);
+            aclCondData.L4DstStart = GET_PROPERTY()->vnEncapProtocol;
             aclCondData.L4DstMask  = 0xFFFF;
 
             if (macFilter->vni != FM_HOST_SRV_INN_OUT_MAC_VNI_NO_MATCH)
@@ -980,8 +979,7 @@ static fm_status SetMgmtXcastModes(fm_int              sw,
 
     switchPtr = GET_SWITCH_PTR(sw);
 
-    mcastHNIFlooding = fmGetBoolApiProperty(FM_AAK_API_MULTICAST_HNI_FLOODING,
-                                            FM_AAD_API_MULTICAST_HNI_FLOODING);
+    mcastHNIFlooding = GET_PROPERTY()->hniMcastFlooding;
 
     status = fmGetGlortLogicalPort(sw,
                                    srvXcastMode.glort,
@@ -2413,8 +2411,7 @@ fm_status fmSetXcastModesProcess(fm_int                   sw,
 
     switchPtr = GET_SWITCH_PTR(sw);
 
-    mcastHNIFlooding = fmGetBoolApiProperty(FM_AAK_API_MULTICAST_HNI_FLOODING,
-                                            FM_AAD_API_MULTICAST_HNI_FLOODING);
+    mcastHNIFlooding = GET_PROPERTY()->hniMcastFlooding;
 
     FM_API_CALL_FAMILY(status,
                        switchPtr->ValidateMailboxMessageLength,
@@ -2492,12 +2489,6 @@ fm_status fmSetXcastModesProcess(fm_int                   sw,
     listener.port = logicalPort;
 
     xcastFloodMode = 0;
-
-    /* Force the XCAST mode of the management port to NONE */
-    if (switchPtr->cpuPort == pepPort)
-    {
-        srvXcastMode.mode = FM_HOST_SRV_XCAST_MODE_NONE;
-    }
 
     switch (srvXcastMode.mode)
     {
@@ -3038,8 +3029,8 @@ fm_status fmUpdateMacFwdRuleProcess(fm_int                   sw,
     macAddrEntry.port       = logicalPort;
 
     FM_LOG_DEBUG(FM_LOG_CAT_MAILBOX,
-                 "Processing MAC %012llx\n",
-                 macAddrEntry.macAddress);
+                 "Processing MAC %012llx on VLAN %d\n",
+                 macAddrEntry.macAddress, macAddrEntry.vlanID);
 
     info = GET_MAILBOX_INFO(sw);
 

@@ -34,6 +34,11 @@
 #ifndef __FM_FM10000_API_FLOODING_INT_H
 #define __FM_FM10000_API_FLOODING_INT_H
 
+/* Flood Trap Codes */
+#define FM10000_TRAP_BCAST         0xFB
+#define FM10000_TRAP_MCAST         0xFF
+#define FM10000_TRAP_UCAST         0xFA
+
 
 /*****************************************************************************
  * Macros, Constants & Types
@@ -49,6 +54,9 @@ typedef struct _fm10000_floodInfo
 
     /* Cached value of the api.FM10000.initBcastFloodingTriggers property. */
     fm_bool initBcastFlooding;
+
+    /* Cached value of the api.FM10000.initReservedMacTriggers property. */
+    fm_bool initReservedMacControl;
 
     /* Cached value of the api.FM10000.floodingTrapPriority property. */
     fm_int  trapPri;
@@ -67,6 +75,9 @@ typedef struct _fm10000_floodInfo
     fm_int  ucastDropSet;
     fm_int  ucastTrapSet;
     fm_int  ucastLogSet;
+
+    /* Reserved MAC control trigger port set */
+    fm_int  reservedSet;
 
     /* Auxiliary trigger port sets.*/
     fm_int  dropMaskSet;

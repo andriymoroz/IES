@@ -6,7 +6,7 @@
  * Description:     Internal Link Aggregation Group functions. 
  *                  Refactored from fm_api_lag.c.
  *
- * Copyright (c) 2005 - 2014, Intel Corporation
+ * Copyright (c) 2005 - 2015, Intel Corporation
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -30,7 +30,7 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
+ *****************************************************************************/
 
 #include <fm_sdk_int.h>
 
@@ -635,9 +635,7 @@ fm_status fmInitLAGTable(fm_int sw)
     }
 
     /* Cache the LAG management mode as defined by the API attribute. */
-    switchPtr->perLagMgmt = 
-                fmGetBoolApiProperty(FM_AAK_API_PER_LAG_MANAGEMENT, 
-                                     FM_AAD_API_PER_LAG_MANAGEMENT);
+    switchPtr->perLagMgmt = GET_PROPERTY()->perLagManagement;
 
     for (lagIndex = 0 ; lagIndex < FM_MAX_NUM_LAGS ; lagIndex++)
     {
@@ -773,6 +771,11 @@ void fmFreeLAG(fm_int sw, fm_int lagIndex)
     switchPtr = GET_SWITCH_PTR(sw);
     lagInfo   = GET_LAG_INFO_PTR(sw);
     lagPtr    = GET_LAG_PTR(sw,lagIndex);
+
+    if (!FM_IS_LAG_IN_USE(lagInfo, lagIndex))
+    {
+        FM_LOG_DEBUG(FM_LOG_CAT_LAG, "Deleting LAG %d which is not in use!\n", lagIndex);
+    }
 
     if (lagPtr != NULL)
     {
@@ -2354,7 +2357,6 @@ fm_status fmSetLAGVlanMembership(fm_int    sw,
 {
     fm_lag * lagPtr;
     fm_port *portPtr;
-    fm_int   stp;
     fm_byte  value = 0;
 
     FM_LOG_ENTRY(FM_LOG_CAT_LAG, 
@@ -2388,10 +2390,7 @@ fm_status fmSetLAGVlanMembership(fm_int    sw,
     }
 
     /* Get default state for a port that is a member of a VLAN. */
-    stp = fmGetIntApiProperty(FM_AAK_API_STP_DEF_STATE_VLAN_MEMBER,
-                              FM_AAD_API_STP_DEF_STATE_VLAN_MEMBER);
-
-    value |= stp << FM_LAG_VLAN_STP_LOW_BIT;
+    value |= GET_PROPERTY()->defStateVlanMember << FM_LAG_VLAN_STP_LOW_BIT;
 
     lagPtr->vlanMembership[vlanID] = value;
 

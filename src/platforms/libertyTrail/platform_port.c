@@ -195,11 +195,11 @@ static fm_status GetPortSerdesTxCfg(fm_int     sw,
                                     fm_int *   postCursor)
 {
     fm_platSerdesBitRate bitRate;
+    fm_platformCfgSwitch *swCfg;
     fm_platformCfgPort * portCfg;
     fm_platformCfgLane * laneCfg;
     fm_int               appCfg;
     fm_status            status;
-    fm_char              buf[MAX_BUF_SIZE+1];
     fm_bool              optical;
 
     portCfg = fmPlatformCfgPortGet(sw, port);
@@ -214,15 +214,10 @@ static fm_status GetPortSerdesTxCfg(fm_int     sw,
         return status;
     }
 
+    swCfg   = FM_PLAT_GET_SWITCH_CFG(sw);
     laneCfg = FM_PLAT_GET_LANE_CFG(sw, portCfg, lane);
     bitRate = EthModeToBitRate(ethMode);
-
-    FM_SNPRINTF_S(buf,
-                  MAX_BUF_SIZE,
-                  FM_AAK_API_PLATFORM_KEEP_SERDES_CFG,
-                  sw);
-    appCfg = fmGetIntApiProperty(buf, FM_AAD_API_PLATFORM_KEEP_SERDES_CFG);
-
+    appCfg  = swCfg->keepSerdesCfg;
 
     /* Get cursor value */
     if ( appCfg && (laneCfg->appCfgState & FM_STATE_SERDES_TX_CURSOR) )
@@ -926,6 +921,9 @@ fm_status fmPlatformMapPhysicalPortToLogical(fm_int  switchNum,
  *
  * \param[in]       port is the logical port number.
  *
+ * \param[out]      phySw points to storage where the physical switch number
+ *                  should be stored.
+ * 
  * \param[out]      swNum points to storage where the platform switch number
  *                  should be stored.
  *
@@ -944,12 +942,17 @@ fm_status fmPlatformMapPhysicalPortToLogical(fm_int  switchNum,
  *****************************************************************************/
 fm_status fmPlatformMapLogicalPortToPlatform(fm_int               sw,
                                              fm_int               port,
+                                             fm_int *             phySw,
                                              fm_int *             swNum,
                                              fm_uint32 *          hwResId,
                                              fm_platformCfgPort **portCfg)
 {
     fm_status           err = FM_OK;
     fm_platformCfgPort *pcfg;
+#if FM_SUPPORT_SWAG
+    fm_int              realSw;
+    fm_int              realPort;
+#endif
 
     /* NOTE: Logging is removed to reduce overhead */
 
@@ -961,6 +964,7 @@ fm_status fmPlatformMapLogicalPortToPlatform(fm_int               sw,
     if ( (sw >= FM_FIRST_FOCALPOINT) && (sw < FM_PLAT_NUM_SW) )
     {
         *swNum = FM_PLAT_GET_SWITCH_CFG(sw)->swNum;
+        *phySw = sw;
 
         if (port <= FM_PLAT_GET_SWITCH_CFG(sw)->maxLogicalPortValue)
         {
@@ -985,10 +989,33 @@ fm_status fmPlatformMapLogicalPortToPlatform(fm_int               sw,
             err = FM_ERR_INVALID_PORT;
         }
     }
+#if FM_SUPPORT_SWAG
+    else
+    {
+        /* Switch-aggregate logical switch */
+        err = fmGetSwitchAndPortForSWAGPort(sw,
+                                            port,
+                                            &realSw,
+                                            &realPort);
+
+        if (err != FM_OK)
+        {
+            return err;
+        }
+
+        err= fmPlatformMapLogicalPortToPlatform(realSw,
+                                                realPort,
+                                                phySw,
+                                                swNum,
+                                                hwResId,
+                                                portCfg);
+    }
+#else
     else
     {
         return FM_ERR_INVALID_SWITCH;
     }
+#endif
 
     return err;
 

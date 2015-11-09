@@ -30,7 +30,7 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
+ *****************************************************************************/
 
 #include <fm_sdk_int.h>
 
@@ -38,9 +38,6 @@
  * Macros, Constants & Types
  *****************************************************************************/
 
-/* Define ENABLE_TIMER to measure the time it takes
-   for the sweeper to go through the entire loop */
-#undef ENABLE_TIMER
 
 /*****************************************************************************
  * Global Variables
@@ -65,158 +62,6 @@
 /*****************************************************************************
  * Public Functions
  *****************************************************************************/
-
-
-/*****************************************************************************/
-/** fmParitySweeperTask
- * \ingroup intParity
- * 
- * \chips           FM4000, FM6000
- *
- * \desc            Generic thread wrapper for chip specific parity
- *                  sweeper thread.
- *
- * \param[in]       args contains a pointer to the thread information.
- *
- * \return          Should never exit.
- *
- *****************************************************************************/
-void * fmParitySweeperTask(void * args)
-{
-    fm_thread *  thread;
-    fm_switch *  switchPtr;
-    fm_thread *  eventHandler;
-    fm_int       sw;
-    fm_bool      doParityTask = FALSE;
-    fm_bool      switchProtected = FALSE;
-
-#ifdef ENABLE_TIMER
-    fm_bool      startTimer = FALSE;
-    fm_timestamp t1;
-    fm_timestamp t2;
-    fm_timestamp t3;
-#endif
-
-    thread       = FM_GET_THREAD_HANDLE(args);
-    eventHandler = FM_GET_THREAD_PARAM(fm_thread, args);
-
-    /* If logging is disabled, thread and eventHandler won't be used */
-    FM_NOT_USED(thread);
-    FM_NOT_USED(eventHandler);
-
-    FM_LOG_ENTRY(FM_LOG_CAT_SWITCH,
-                 "thread = %s, eventHandler = %s\n",
-                 thread->name,
-                 eventHandler->name);
-
-    /**************************************************
-     * Loop until there is at least one active switch 
-     * on which the parity sweeper is enabled. 
-     **************************************************/
-
-    do 
-    {
-        for (sw = FM_FIRST_FOCALPOINT ; sw <= FM_LAST_FOCALPOINT ; sw++)
-        {
-            if (!SWITCH_LOCK_EXISTS(sw))
-            {
-                continue;
-            }
-
-            PROTECT_SWITCH(sw);
-
-            switchPtr = GET_SWITCH_PTR(sw);
-
-            if ( switchPtr &&
-                (switchPtr->state == FM_SWITCH_STATE_UP) &&
-                 switchPtr->paritySweeperCfg.enabled  &&
-                 switchPtr->ParitySweeperTask )
-            {
-                doParityTask = TRUE;
-            }
-
-            UNPROTECT_SWITCH(sw);
-        }
-        
-        fmDelay(5, 0);
-
-    } 
-    while (!doParityTask);
-
-
-    /**************************************************
-     * Loop forever, calling the switch-specific 
-     * parity sweeper for each active switch in turn. 
-     **************************************************/
-
-    while (TRUE)
-    {
-#ifdef ENABLE_TIMER
-        /* Get time at start of pass. */
-        fmGetTime(&t1);
-#endif
-
-        /* Process each active switch in turn. */
-        for (sw = FM_FIRST_FOCALPOINT ; sw <= FM_LAST_FOCALPOINT ; sw++)
-        {
-            if (!SWITCH_LOCK_EXISTS(sw))
-            {
-                continue;
-            }
-
-            PROTECT_SWITCH(sw);
-            switchProtected = TRUE;
-
-            switchPtr = GET_SWITCH_PTR(sw);
-
-            if ( switchPtr &&
-                (switchPtr->state == FM_SWITCH_STATE_UP) &&
-                 switchPtr->paritySweeperCfg.enabled  &&
-                 switchPtr->ParitySweeperTask )
-            {
-                switchPtr->ParitySweeperTask(sw, &switchProtected, args);
-#ifdef ENABLE_TIMER
-                startTimer = TRUE;
-#endif
-            }
-
-            if ( switchProtected )
-            {
-                UNPROTECT_SWITCH(sw);
-            }
-        }
-
-#ifdef ENABLE_TIMER
-        if (startTimer)
-        {
-            /* Debugging purpose only */
-            fmGetTime(&t2);
-            fmSubTimestamps(&t2, &t1, &t3);
-            FM_LOG_DEBUG(FM_LOG_CAT_SWITCH,
-                         " time: %lld,%lld sec.\n",
-                         t3.sec,
-                         t3.usec);
-        }
-#endif
-
-        fmYield();
-        
-    }   /* end while (TRUE) */
-
-
-    /**************************************************
-     * Should never exit.
-     **************************************************/
-
-    FM_LOG_ERROR(FM_LOG_CAT_SWITCH,
-                 "ERROR: fmParitySweeperTask: exiting inadvertently!\n");
-
-    fmExitThread(thread);
-    return NULL;
-
-}   /* end fmParitySweeperTask */
-
-
 
 
 /*****************************************************************************/
@@ -656,7 +501,7 @@ void fmDbgDumpParityErrorEvent(fm_int                sw,
 
 /*****************************************************************************/
 /** fmGetParityErrorCounters
- * \ingroup intStats
+ * \ingroup stats
  * 
  * \chips           FM10000
  *
@@ -664,26 +509,22 @@ void fmDbgDumpParityErrorEvent(fm_int                sw,
  *
  * \param[in]       sw is the switch on which to operate.
  *
- * \param[out]      counters points to the caller-supplied location in which
- *                  the counters are to be stored.
- * 
- * \param[in]       size is the size of the data area pointed to by counters.
+ * \param[out]      counters points to an ''fm_parityErrorCounters'' structure
+ *                  to be filled in by this function.
  *
  * \return          FM_OK if successful.
  *
  *****************************************************************************/
-fm_status fmGetParityErrorCounters(fm_int  sw,
-                                   void *  counters,
-                                   fm_uint size)
+fm_status fmGetParityErrorCounters(fm_int                  sw,
+                                   fm_parityErrorCounters *counters)
 {
-    fm_switch * switchPtr;
-    fm_status   err;
+    fm_switch *switchPtr;
+    fm_status  err;
 
     FM_LOG_ENTRY_API(FM_LOG_CAT_PARITY, 
-                     "sw=%d counters=%p size=%u\n", 
-                     sw, 
-                     (void *)counters,
-                     size);
+                     "sw=%d counters=%p\n",
+                     sw,
+                     (void *)counters);
 
     VALIDATE_AND_PROTECT_SWITCH(sw);
 
@@ -698,8 +539,7 @@ fm_status fmGetParityErrorCounters(fm_int  sw,
     FM_API_CALL_FAMILY(err,
                        switchPtr->GetParityErrorCounters,
                        sw,
-                       counters,
-                       size);
+                       counters);
 
 ABORT:
     UNPROTECT_SWITCH(sw);
@@ -713,7 +553,7 @@ ABORT:
 
 /*****************************************************************************/
 /** fmResetParityErrorCounters
- * \ingroup intStats
+ * \ingroup stats
  * 
  * \chips           FM10000
  *
@@ -917,3 +757,41 @@ fm_status fmSetParityAttribute(fm_int sw, fm_int attr, void * value)
 
 }   /* end fmSetParityAttribute */
 
+
+
+
+/*****************************************************************************/
+/** fmDbgDumpParityConfig
+ * \ingroup intParity
+ *
+ * \chips           FM10000
+ *
+ * \desc            Shows the parity configuration.
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \return          FM_OK if successful.
+ *
+ *****************************************************************************/
+fm_status fmDbgDumpParityConfig(fm_int sw)
+{
+    fm_switch * switchPtr;
+    fm_status   err;
+
+    FM_LOG_ENTRY_API(FM_LOG_CAT_PARITY,
+                     "sw=%d\n",
+                      sw);
+
+    VALIDATE_AND_PROTECT_SWITCH(sw);
+
+    switchPtr = GET_SWITCH_PTR(sw);
+
+    FM_API_CALL_FAMILY(err, switchPtr->DbgDumpParityConfig, sw);
+
+    UNLOCK_SWITCH(sw);
+
+    UNPROTECT_SWITCH(sw);
+
+    FM_LOG_EXIT_API(FM_LOG_CAT_PARITY, err);
+
+}   /* end fmDbgDumpParityConfig */

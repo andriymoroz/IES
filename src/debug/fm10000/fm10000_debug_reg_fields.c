@@ -573,6 +573,7 @@ const fmRegisterField * fm10000DbgGetRegisterFields(fm_text registerName)
     {
         static const fmRegisterField FUSE_DATA_0[] =
         {
+            { "Sku", 11, 5 },
             { NULL, 0, 0 }
         };
         return FUSE_DATA_0;
@@ -1364,6 +1365,18 @@ const fmRegisterField * fm10000DbgGetRegisterFields(fm_text registerName)
             { NULL, 0, 0 }
         };
         return AN_73_NEXT_PAGE_RX;
+    }
+    if (strcmp(registerName, "LINK_RULES") == 0)
+    {
+        static const fmRegisterField LINK_RULES[] =
+        {
+            { "FaultTicksDown", 13, 5 },
+            { "FaultTicksUp", 4, 5 },
+            { "FaultTimeScaleDown", 9, 4 },
+            { "FaultTimeScaleUp", 0, 4 },
+            { NULL, 0, 0 }
+        };
+        return LINK_RULES;
     }
     if (strcmp(registerName, "MAC_CFG") == 0)
     {

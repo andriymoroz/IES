@@ -29,7 +29,7 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
+ *****************************************************************************/
 
 #include <fm_sdk_fm10000_int.h>
 
@@ -651,10 +651,10 @@ fm_status fm10000AddMacTableEntry(fm_int               sw,
     fm_int          bestIndex;
     fm_uint32       dupMask;
     fm_bool         ageOld;
-    fm_bool         reportNew;
     fm_bool         l2Locked = FALSE;
     fm_bool         isSecure;
     fm_bool         isTcnEvent;
+    fm_bool         isAddrChange;
     fm_int          hashIndex;
     fm_int          i;
     fm_int          reason;
@@ -857,71 +857,99 @@ fm_status fm10000AddMacTableEntry(fm_int               sw,
     l2Locked = FALSE;
     
     /**************************************************
-     * Now report the AGE event for the overwritten
-     * entry, and report a LEARNED event if the 
-     * application requested it. 
+     * Whether this is an address change event.
      **************************************************/
+
+    isAddrChange =
+        oldEntry.state != FM_MAC_ENTRY_STATE_INVALID &&
+        oldEntry.macAddress == newEntry.macAddress &&
+        oldEntry.vlanID == newEntry.vlanID;
     
-    /* See whether the API should send a LEARNED event to application. */
-    if ( (newEntry.state == FM_MAC_ENTRY_STATE_LOCKED &&
-          switchPtr->generateEventOnStaticAddr) ||
-         (newEntry.state != FM_MAC_ENTRY_STATE_LOCKED &&
-          switchPtr->generateEventOnDynamicAddr) ||
-         (source == FM_MAC_SOURCE_TCN_LEARNED) ||
-         (source == FM_MAC_SOURCE_TCN_MOVED) )
-    {
-        reportNew = TRUE;
-    }
-    else
-    {
-        reportNew = FALSE;
-    }
+    /**************************************************
+     * Report an AGED event for the overwritten entry.
+     **************************************************/
 
     if (ageOld)
     {
-        if (newEntry.vlanID     == oldEntry.vlanID &&
-            newEntry.macAddress == oldEntry.macAddress) 
+        /* Determine reason for LEARN and AGE events. */
+        if (isAddrChange) 
         {
             reason =
-                (source == FM_MAC_SOURCE_API_ADDED) ?
-                FM_MAC_REASON_API_LEARN_CHANGED :
-                FM_MAC_REASON_LEARN_CHANGED;
+                (isTcnEvent) ?
+                FM_MAC_REASON_LEARN_CHANGED :
+                FM_MAC_REASON_API_LEARN_CHANGED;
         }
         else 
         {
             reason =
-                (source == FM_MAC_SOURCE_API_ADDED) ?
-                FM_MAC_REASON_API_LEARN_REPLACED :
-                FM_MAC_REASON_LEARN_REPLACED;
+                (isTcnEvent) ?
+                FM_MAC_REASON_LEARN_REPLACED :
+                FM_MAC_REASON_API_LEARN_REPLACED;
         }
 
-        fmGenerateUpdateForEvent(sw,
-                                 &fmRootApi->eventThread,
-                                 FM_EVENT_ENTRY_AGED,
-                                 reason,
-                                 hashIndex,
-                                 &oldEntry,
-                                 numUpdates,
-                                 outEvent);
+        /**************************************************
+         * Report an AGED event for the old entry if: 
+         * 1) This is a TCN FIFO event, or
+         * 2) We are removing a static address and
+         *    generateEventOnStaticAddr is in effect, or
+         * 3) We are removing a dynamic address and
+         *    generateEventOnDynamicAddr is in effect, or
+         * 4) We are changing an existing address and
+         *    generateEventOnAddrChange is in effect.
+         **************************************************/
 
-        if (source == FM_MAC_SOURCE_API_ADDED)
+        if ( isTcnEvent ||
+             (oldEntry.state == FM_MAC_ENTRY_STATE_LOCKED &&
+              switchPtr->generateEventOnStaticAddr) ||
+             (oldEntry.state != FM_MAC_ENTRY_STATE_LOCKED &&
+              switchPtr->generateEventOnDynamicAddr) ||
+             (isAddrChange && switchPtr->generateEventOnAddrChange) )
         {
-            fmDbgDiagCountIncr(sw, FM_CTR_MAC_API_AGED, 1);
-        }
-        else
-        {
-            fmDbgDiagCountIncr(sw, FM_CTR_MAC_LEARN_AGED, 1);
+            fmGenerateUpdateForEvent(sw,
+                                     &fmRootApi->eventThread,
+                                     FM_EVENT_ENTRY_AGED,
+                                     reason,
+                                     hashIndex,
+                                     &oldEntry,
+                                     numUpdates,
+                                     outEvent);
+
+            if (isTcnEvent)
+            {
+                fmDbgDiagCountIncr(sw, FM_CTR_MAC_LEARN_AGED, 1);
+            }
+            else
+            {
+                fmDbgDiagCountIncr(sw, FM_CTR_MAC_API_AGED, 1);
+            }
         }
     }
     else
     {
+        /* Determine reason for LEARN event. */
         reason =
-            (source == FM_MAC_SOURCE_API_ADDED) ?
-            FM_MAC_REASON_API_LEARNED :
-            FM_MAC_REASON_LEARN_EVENT;
+            (isTcnEvent) ?
+            FM_MAC_REASON_LEARN_EVENT :
+            FM_MAC_REASON_API_LEARNED;
     }
+    
+    /**************************************************
+     * Report a LEARNED event for the new entry if:
+     * 1) This is a TCN FIFO event, or
+     * 2) We are adding a static address and
+     *    generateEventOnStaticAddr is in effect, or
+     * 3) We are adding a dynamic address and
+     *    generateEventOnDynamicAddr is in effect, or
+     * 4) We are changing an existing address and
+     *    generateEventOnAddrChange is in effect.
+     **************************************************/
 
-    if (reportNew)
+    if ( isTcnEvent ||
+         (newEntry.state == FM_MAC_ENTRY_STATE_LOCKED &&
+          switchPtr->generateEventOnStaticAddr) ||
+         (newEntry.state != FM_MAC_ENTRY_STATE_LOCKED &&
+          switchPtr->generateEventOnDynamicAddr) ||
+         (isAddrChange && switchPtr->generateEventOnAddrChange) )
     {
         fmGenerateUpdateForEvent(sw,
                                  &fmRootApi->eventThread,
@@ -932,13 +960,13 @@ fm_status fm10000AddMacTableEntry(fm_int               sw,
                                  numUpdates,
                                  outEvent);
 
-        if (source == FM_MAC_SOURCE_API_ADDED)
+        if (isTcnEvent)
         {
-            fmDbgDiagCountIncr(sw, FM_CTR_MAC_API_LEARNED, 1);
+            fmDbgDiagCountIncr(sw, FM_CTR_MAC_LEARN_LEARNED, 1);
         }
         else
         {
-            fmDbgDiagCountIncr(sw, FM_CTR_MAC_LEARN_LEARNED, 1);
+            fmDbgDiagCountIncr(sw, FM_CTR_MAC_API_LEARNED, 1);
         }
 
         if (source == FM_MAC_SOURCE_TCN_MOVED)

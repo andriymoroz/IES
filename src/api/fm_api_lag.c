@@ -5,7 +5,7 @@
  * Creation Date:   2005
  * Description:     Structures and functions for dealing with link aggregation
  *
- * Copyright (c) 2005 - 2014, Intel Corporation
+ * Copyright (c) 2005 - 2015, Intel Corporation
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -29,7 +29,7 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
+ *****************************************************************************/
 
 #include <fm_sdk_int.h>
 
@@ -74,7 +74,7 @@
  * \desc            Create a link aggregation group.
  *
  * \note            This function should not be used after calling
- *                  ''fmAllocateStackLAGs'' (see ''Stacking and GloRT 
+ *                  ''fmAllocateStackLAGs'' (see ''Stacking and GloRT
  *                  Management''). Instead, use ''fmCreateStackLAG''.
  *
  * \param[in]       sw is the switch number.
@@ -118,13 +118,22 @@ fm_status fmCreateLAG(fm_int sw, fm_int *lagNumber)
  *
  * \chips           FM2000, FM3000, FM4000, FM6000, FM10000
  *
- * \desc            Delete a link aggregation group.
+ * \desc            Delete a link aggregation group. The caller is
+ *                  responsible for removing this LAG from other APIs
+ *                  (ACL, MAC Table, etc.) before deleting the LAG.
+ * 
+ * \note            Part of the LAG deletion process is done asynchronously.
+ *                  fmDeleteLAG normally returns after queueing the request.
+ *                  The ''api.lag.asyncDeletion'' API property may be used
+ *                  to override this behavior. If asynchronous deletion is
+ *                  disabled, fmDeleteLAG waits for the request to complete,
+ *                  and does not return until the MA Table has been purged
+ *                  and all resources have been freed.
  *
  * \param[in]       sw is the switch number.
  *
- * \param[in]       lagNumber is the LAG number of the LAG to delete, as
- *                  returned by ''fmCreateLAG'' or
- *                  ''fmCreateStackLAG''.
+ * \param[in]       lagNumber is the identifier of the LAG to delete, as
+ *                  returned by ''fmCreateLAG'' or ''fmCreateStackLAG''.
  *
  * \return          FM_OK if successful.
  * \return          FM_ERR_INVALID_LAG if lagNumber is out of range or is
@@ -134,9 +143,9 @@ fm_status fmCreateLAG(fm_int sw, fm_int *lagNumber)
 fm_status fmDeleteLAG(fm_int sw, fm_int lagNumber)
 {
     fm_switch *  switchPtr;
+    fm_property *prop;
     fm_int       lagIndex;
     fm_status    err;
-    fm_bool      asyncDeletion;
     fm_lag *     lagPtr = NULL;
     fm_char      semName[20];
     fm_timestamp wait;
@@ -145,23 +154,21 @@ fm_status fmDeleteLAG(fm_int sw, fm_int lagNumber)
 
     VALIDATE_AND_PROTECT_SWITCH(sw);
 
-    asyncDeletion = fmGetBoolApiProperty(FM_AAK_API_ASYNC_LAG_DELETION, 
-                                         FM_AAD_API_ASYNC_LAG_DELETION);
-
     switchPtr = GET_SWITCH_PTR(sw);
+    prop      = GET_PROPERTY();
 
     /**************************************************
-     * We need to take the routing lock (for the benefit 
+     * We need to take the routing lock (for the benefit
      * of fmMcastDeleteLagNotify) before the LAG lock
      * to prevent an inversion.
      **************************************************/
-    
+
     err = fmCaptureWriteLock(&switchPtr->routingLock, FM_WAIT_FOREVER);
     if (err != FM_OK)
     {
         FM_LOG_EXIT_API(FM_LOG_CAT_LAG, err);
     }
-    
+
     TAKE_LAG_LOCK(sw);
 
     /* Get the internal index for this LAG. */
@@ -181,7 +188,7 @@ fm_status fmDeleteLAG(fm_int sw, fm_int lagNumber)
      * not a member of a switch aggregate.  For switch aggregates, the
      * synchronized deletion is handled at the swag switch level.
      */
-    if ( !asyncDeletion && (switchPtr->swag < 0) )
+    if ( !prop->lagAsyncDeletion && (switchPtr->swag < 0) )
     {
         lagPtr->deleteSemaphore = (fm_semaphore *) fmAlloc( sizeof(fm_semaphore) );
 
@@ -204,8 +211,7 @@ fm_status fmDeleteLAG(fm_int sw, fm_int lagNumber)
 
     if ( (err == FM_OK) && (lagPtr->deleteSemaphore != NULL) )
     {
-        wait.sec = fmGetIntApiProperty(FM_AAK_API_LAG_DELETE_SEMAPHORE_TIMEOUT,
-                                       FM_AAD_API_LAG_DELETE_SEMAPHORE_TIMEOUT);
+        wait.sec = prop->lagDelSemTimeout;
         wait.usec = 0;
         DROP_LAG_LOCK(sw);
 
@@ -290,7 +296,7 @@ fm_status fmAddLAGPort(fm_int sw, fm_int lagNumber, fm_int port)
                      port);
 
     VALIDATE_AND_PROTECT_SWITCH(sw);
- 
+
     switchPtr = GET_SWITCH_PTR(sw);
     allowedPortTypes = switchPtr->lagInfoTable.allowedPortTypes;
 
@@ -346,7 +352,7 @@ fm_status fmAddLAGPort(fm_int sw, fm_int lagNumber, fm_int port)
         switchPtr->portTable[port]->lagIndex = -1;
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_LAG, err);
     }
-    
+
 ABORT:
     if (lagLockTaken)
     {
@@ -481,7 +487,7 @@ ABORT:
  *
  * \return          FM_OK if successful.
  * \return          FM_ERR_INVALID_SWITCH if sw is invalid.
- * \return          FM_ERR_BUFFER_FULL if maxLags was too small to accommodate 
+ * \return          FM_ERR_BUFFER_FULL if maxLags was too small to accommodate
  *                  the entire list of valid LAGs.
  *
  *****************************************************************************/
@@ -850,7 +856,7 @@ fm_status fmGetLAGPortNext(fm_int  sw,
     fm_int    memberIndex;
     fm_status err;
     fm_int    i;
- 
+
     FM_LOG_ENTRY_API(FM_LOG_CAT_LAG,
                      "sw = %d, lagNumber = %d, currentPort = %d, nextPort = %p\n",
                      sw,
@@ -1043,7 +1049,7 @@ fm_status fmSetLAGAttribute(fm_int sw,
  *                  only be used for FM2000 devices. On all other devices,
  *                  the LAG number returned by ''fmCreateLAG'' is always
  *                  identical to the LAG's logical port number, so this
- *                  function just acts as an identify function. 
+ *                  function just acts as an identify function.
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -1103,7 +1109,7 @@ fm_status fmLogicalPortToLAGNumber(fm_int  sw,
 
 /*****************************************************************************/
 /** fmLAGNumberToLogicalPort
- * \ingroup  lag 
+ * \ingroup  lag
  *
  * \chips           FM2000, FM3000, FM4000, FM6000, FM10000
  *
@@ -1114,7 +1120,7 @@ fm_status fmLogicalPortToLAGNumber(fm_int  sw,
  *                  only be used for FM2000 devices. On all other devices,
  *                  the LAG number returned by ''fmCreateLAG'' is always
  *                  identical to the LAG's logical port number, so this
- *                  function just acts as an identify function. 
+ *                  function just acts as an identify function.
  *
  * \param[in]       sw is the switch on which to operate.
  *

@@ -740,6 +740,7 @@ typedef struct _fmSWAG_switch
     fm_vsiData               vsiData[FM_SWAG_NUM_TE][FM_SWAG_NUM_VSI];
     fm_virtualNetwork *      vnVsi[FM_SWAG_NUM_VSI];
     fm_uint                  vnVxlanUdpPort;
+    fm_uint                  vnGpeUdpPort;
     fm_uint                  vnGeneveUdpPort;
     fm_macaddr               pauseSmac;
     fm_int                   reservedMacAction[FM_NUM_RESERVED_MACS];

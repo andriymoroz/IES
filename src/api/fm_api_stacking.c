@@ -30,7 +30,7 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
+ *****************************************************************************/
 
 #include <fm_sdk_int.h>
 
@@ -856,6 +856,12 @@ fm_status fmGetStackGlortRange(fm_int sw,
  *                  ''fmCreateStackLAG'', ''fmCreateStackLBG'', and 
  *                  ''fmCreateStackMcastGroup'', should be used to create 
  *                  stack-global LAGs, LBGs, and multicast groups.
+ *                                                                      \lb\lb
+ *                  For FM10000 devices, Load Balancing Groups (LBGs) of type
+ *                  ''FM_LBG_MODE_MAPPED_L234HASH'' are created using the
+ *                  ''fmCreateStackLBGExt'' function, and LBGs of other types
+ *                  are created using the ''fmCreateLBG'' or ''fmCreateLBGExt''
+ *                  function.
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -2488,12 +2494,17 @@ fm_status fmCreateStackLAG(fm_int sw, fm_int lagNumber)
  *
  * \chips           FM3000, FM4000, FM6000, FM10000
  *
- * \desc            Allocate a set of stacked load balancing group numbers 
+ * \desc            Allocate a set of stacked load balancing group numbers
  *                  given a glort range. The function returns the base LBG
  *                  number (the first logical port reserved for the LBGs)
- *                  and the number of LBG numbers allocated. 
- *                  The returned set of LBG numbers can then
- *                  be used in subsequent calls to ''fmCreateStackLBG''.
+ *                  and the number of LBG numbers allocated. The returned
+ *                  set of LBG numbers can then be used in subsequent calls
+ *                  to ''fmCreateStackLBGExt''.
+ *                                                                      \lb\lb
+ *                  For FM10000, this function is required only when creating
+ *                  LBGs of mode ''FM_LBG_MODE_MAPPED_L234HASH''. The returned
+ *                  set of LBG numbers can then be used in subsequent calls
+ *                  to ''fmCreateStackLBGExt'' for these LBGs.
  *
  * \note            The returned set of LBG numbers must be used
  *                  in step-sized increments:
@@ -2504,12 +2515,13 @@ fm_status fmCreateStackLAG(fm_int sw, fm_int lagNumber)
  *                                                                      \lb\lb
  *                  The returned base LBG number might not be the 
  *                  same on different switches.
- *                                                                           \lb
- *                  Resources from this allocation is reserved based on the current
- *                  LBG mode. If the caller allocates the LBGs with one LBG mode and
- *                  then uses the LBG in another mode, either resources is under-
- *                  utilized or insufficient resources is available thus causing
- *                  an error to return.
+ *                                                                      \lb\lb
+ *                  Resources from this allocation are reserved based on the
+ *                  current LBG mode. If the caller allocates the LBGs with
+ *                  one LBG mode and then uses the LBG in another mode,
+ *                  either resources are under-utilized or insufficient
+ *                  resources are available, causing an error to be
+ *                  returned.
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -2596,7 +2608,7 @@ fm_status fmAllocateStackLBGs(fm_int     sw,
 /** fmFreeStackLBGs
  * \ingroup stacking 
  *
- * \chips           FM3000, FM4000, FM6000
+ * \chips           FM3000, FM4000, FM6000, FM10000
  *
  * \desc            Free stacked load balancing group numbers previously 
  *                  allocated with ''fmAllocateStackLBGs''.
@@ -2700,10 +2712,18 @@ fm_status fmCreateStackLBG(fm_int sw, fm_int lbgNumber)
  *                  configuration.  This function is similar to 
  *                  ''fmCreateStackLBG'', but provides additional parameters
  *                  for the configuration of the resulting LBG.
+ *                                                                      \lb\lb
+ *                  For FM10000, this function is only used for LBG mode
+ *                  ''FM_LBG_MODE_MAPPED_L234HASH''. For other LBG modes,
+ *                  ''fmCreateLBGExt'' should be used instead.
+ *                                                                      \lb\lb
+ *                  In FM10000, LBGs are referenced using internal identifiers.
+ *                  ''fmGetStackLBGHandle'' can be used to retrieve lbgHandle,
+ *                  which should be used in all other LBG API functions.
  *
  * \param[in]       sw is the switch on which to operate.
  *
- * \param[in]       lbgNumber is the LBG number (logical port) of the desired LBG.
+ * \param[in]       lbgNumber is the identifier of the desired LBG.
  *                  Note that lbgNumber must be from the set preallocated by
  *                  a call to ''fmAllocateStackLBGs''.
  *
@@ -2716,8 +2736,8 @@ fm_status fmCreateStackLBG(fm_int sw, fm_int lbgNumber)
  *                  lbg structure.
  *
  *****************************************************************************/
-fm_status fmCreateStackLBGExt(fm_int sw, 
-                              fm_int lbgNumber, 
+fm_status fmCreateStackLBGExt(fm_int        sw, 
+                              fm_int        lbgNumber, 
                               fm_LBGParams *params)
 {
     fm_status    err;
@@ -2752,6 +2772,8 @@ fm_status fmCreateStackLBGExt(fm_int sw,
  *
  * \desc            Returns lbgHandle of the logical port belonging to a 
  *                  load-balancing group of mode ''FM_LBG_MODE_MAPPED_L234HASH''.
+ *                  The returned lbgHandle can subsequently be used in other
+ *                  LBG API functions.
  *
  * \param[in]       sw is the switch on which to operate.
  *

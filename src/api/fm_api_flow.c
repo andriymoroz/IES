@@ -91,8 +91,7 @@
  *                  FM6000_MAX_RULE_PER_FLOW_TCAM_TABLE (FM6000 devices) or
  *                  ''FM10000_MAX_RULE_PER_FLOW_TABLE'' (FM10000 devices).
  * 
- * \param[in]       maxAction is the maximum number of actions supported by
- *                  rules in this table (must be at least 1).
+ * \param[in]       maxAction is not used.
  *
  * \return          FM_OK if successful.
  * \return          FM_ERR_INVALID_SWITCH if sw is invalid.
@@ -220,8 +219,7 @@ fm_status fmDeleteFlowTCAMTable(fm_int sw,
  *                  no larger than FM6000_MAX_RULE_PER_FLOW_BST_TABLE
  *                  (FM6000 devices).
  * 
- * \param[in]       maxAction is the maximum number of actions supported by
- *                  rules in this table (must be at least 1).
+ * \param[in]       maxAction is not used.
  *
  * \return          FM_OK if successful.
  * \return          FM_ERR_INVALID_SWITCH if sw is invalid.
@@ -349,8 +347,7 @@ fm_status fmDeleteFlowBSTTable(fm_int sw,
  * 
  * \param[in]       maxEntries is the size of the flow table. 
  * 
- * \param[in]       maxAction is the maximum number of actions supported by
- *                  rules in this table (must be at least 1).
+ * \param[in]       maxAction is not used.
  *
  * \return          FM_OK if successful.
  * \return          FM_ERR_INVALID_SWITCH if sw is invalid.
@@ -1759,6 +1756,7 @@ fm_status fmConvertFlowToACLParam(fm_flowParam   *flowParam,
     aclParam->switchPriority = flowParam->switchPriority;
     aclParam->dscp = flowParam->dscp;
     aclParam->lbgNumber = flowParam->lbgNumber;
+    aclParam->mirrorGrp = flowParam->mirrorGrp;
     
 ABORT:
     return err;
@@ -1814,6 +1812,7 @@ fm_status fmConvertACLToFlowParam(fm_aclParamExt *aclParam,
     flowParam->switchPriority = aclParam->switchPriority;
     flowParam->dscp = aclParam->dscp;
     flowParam->lbgNumber = aclParam->lbgNumber;
+    flowParam->mirrorGrp = aclParam->mirrorGrp;
     
 ABORT:
     return err;
@@ -1899,6 +1898,22 @@ fm_status fmConvertFlowToTEParams(fm_flowParam            *flowParam,
                 flowParam->outerNgeData,
                 sizeof(flowParam->outerNgeData));
 
+    if (flowParam->tunnelType == FM_TUNNEL_TYPE_GPE_NSH)
+    {
+        encapParam->gpeVni    = flowParam->outerVni;
+        encapParam->nshLength = flowParam->outerNshLength;
+        encapParam->nshCritical = flowParam->outerNshCritical;
+        encapParam->nshMdType = flowParam->outerNshMdType;
+        encapParam->nshSvcPathId = flowParam->outerNshSvcPathId;
+        encapParam->nshSvcIndex = flowParam->outerNshSvcIndex;
+        encapParam->nshDataMask = flowParam->outerNshDataMask;
+
+        FM_MEMCPY_S(encapParam->nshData,
+                    sizeof(encapParam->nshData),
+                    flowParam->outerNshData,
+                    sizeof(flowParam->outerNshData));
+    }
+
 ABORT:
     return err;
 
@@ -1978,6 +1993,22 @@ fm_status fmConvertTEParamsToFlow(fm_tunnelActionParam    *tunnelParam,
                 sizeof(flowParam->outerNgeData),
                 encapParam->ngeData,
                 sizeof(encapParam->ngeData));
+
+    if (flowParam->tunnelType == FM_TUNNEL_TYPE_GPE_NSH)
+    {
+        flowParam->outerVni          = encapParam->gpeVni;
+        flowParam->outerNshLength    = encapParam->nshLength;
+        flowParam->outerNshCritical  = encapParam->nshCritical;
+        flowParam->outerNshMdType    = encapParam->nshMdType;
+        flowParam->outerNshSvcPathId = encapParam->nshSvcPathId;
+        flowParam->outerNshSvcIndex  = encapParam->nshSvcIndex;
+        flowParam->outerNshDataMask  = encapParam->nshDataMask;
+
+        FM_MEMCPY_S(flowParam->outerNshData,
+                    sizeof(flowParam->outerNshData),
+                    encapParam->nshData,
+                    sizeof(encapParam->nshData));
+    }
 
 ABORT:
     return err;

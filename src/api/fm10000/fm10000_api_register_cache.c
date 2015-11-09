@@ -126,6 +126,7 @@ static fm_uint32   *fm10000GetCacheTeExvet(fm_int sw);
 static fm_uint32   *fm10000GetCacheTeDmac(fm_int sw);
 static fm_uint32   *fm10000GetCacheTeSmac(fm_int sw);
 static fm_uint32   *fm10000GetCacheTeTrapCfg(fm_int sw);
+static fm_uint32   *fm10000GetCacheSchedMonitor(fm_int sw);
 
 #ifdef FAST_CACHE
 
@@ -1129,6 +1130,21 @@ const fm_cachedRegs fm10000CacheSafMatrix =
     { FM10000_SAF_MATRIX_ENTRIES }
 };
 
+/* SCHED_MONITOR_DRR_CFG_PERPORT register set descriptor */
+const fm_cachedRegs fm10000CacheSchedMonitorDrrCfg =
+{
+    CACHE_METHODS(fm10000GetCacheSchedMonitor,
+                  NULL,
+                  fm10000GetCacheRegisterDefaultZero),
+    FM10000_SCHED_MONITOR_DRR_CFG_PERPORT(0),
+    FM10000_SCHED_MONITOR_DRR_CFG_PERPORT_WIDTH,
+    FM_REGS_CACHE_ONE_INDEX_USED,
+    TRUE,
+    { FM10000_SCHED_MONITOR_DRR_CFG_PERPORT(1) -
+      FM10000_SCHED_MONITOR_DRR_CFG_PERPORT(0) },
+    { FM10000_SCHED_MONITOR_DRR_CFG_PERPORT_ENTRIES }
+};
+
 /**************************************************
  * Definition of the cacheable register list.
  **************************************************/
@@ -1206,6 +1222,7 @@ const fm_cachedRegs *fm10000CachedRegisterList[] =
     &fm10000CacheTeDmac,
     &fm10000CacheTeSmac,
     &fm10000CacheTeTrapCfg,
+    &fm10000CacheSchedMonitorDrrCfg,
     NULL
 };
 
@@ -1713,6 +1730,10 @@ static fm_uint32 *fm10000GetCacheTeTrapCfg(fm_int sw)
 
 }   /* end fm10000GetCacheTeTrapCfg */
 
+static fm_uint32 *fm10000GetCacheSchedMonitor(fm_int sw)
+{
+    return fm10000GetCacheFromSwitch(sw)->shedMonitorCfg;
+}
 
 #ifdef FAST_CACHE
 

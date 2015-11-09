@@ -39,9 +39,10 @@
  * Macros, Constants & Types
  *****************************************************************************/
 
-#define FM10000_FFU_SLICE_CRM_ID(slice) (slice)
-#define FM10000_GLORT_CAM_CRM_ID        32
-#define FM10000_NUM_CRM_IDS             (FM10000_GLORT_CAM_CRM_ID + 1)
+#define FM10000_FFU_SLICE_CRM_ID(slice)  (slice)
+#define FM10000_GLORT_CAM_CRM_ID         32
+#define FM10000_NUM_CRM_IDS              (FM10000_GLORT_CAM_CRM_ID + 1)
+#define FM10000_CRM_TIMEOUT              20
 
 #define GET_CRM_INFO(sw) \
     &(((fm10000_switch *)GET_SWITCH_EXT(sw))->crmInfo)
@@ -52,6 +53,7 @@ typedef struct _fm10000_crmUserInfo
     fm_int    crmId;
     fm_int    sw;
     fm_bool   notifyTimeout;
+
 } fm10000_crmUserInfo;
 
 /******************************************
@@ -92,6 +94,7 @@ fm_status fm10000DisableCrmMonitor(fm_int sw, fm_int crmId);
 fm_status fm10000EnableCrmMonitor(fm_int sw, fm_int crmId);
 fm_status fm10000InitCrm(fm_int sw);
 fm_status fm10000StartCrmMonitors(fm_int sw);
+fm_status fm10000StopCrmMonitors(fm_int sw);
 fm_status fm10000CrmUpdateChecksum(fm_smEventInfo *eventInfo, void *userInfo);
 fm_status fm10000FreeCrmStructures(fm_int sw);
 
@@ -103,7 +106,7 @@ fm_status fmDbgStopCrm(fm_int sw);
 fm_status fmDbgUpdateCrmChecksum(fm_int sw, fm_int crmId);
 fm_status fmDbgUpdateCrmMonitors(fm_int sw);
 
-fm_status NotifyCRMEvent(fm_int sw, fm_int crmId, fm_int eventId);
+fm_status fm10000NotifyCRMEvent(fm_int sw, fm_int crmId, fm_int eventId);
 
 #endif /* __FM_FM10000_API_CRM_INT_H */
 

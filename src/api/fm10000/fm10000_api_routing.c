@@ -1037,7 +1037,7 @@ static fm_status InitRouteTable(fm_int                 sw,
  * \return          Pointer to the routing table.
  *
  *****************************************************************************/
-static fm10000_RoutingTable *GetRouteTable(fm_int            sw,
+static fm10000_RoutingTable *GetRouteTable(fm_int             sw,
                                            fm10000_RouteTypes routeType)
 {
     fm10000_switch *pSwitchExt;
@@ -1726,7 +1726,7 @@ static fm_bool SelectCascadeFromSliceRangeFullSearch(fm_int               sw,
         ppDestSlice != NULL &&
         pSliceIndex != NULL &&
         maxSlices >= 0      &&
-        maxSlices < FM10000_MAX_FFU_SLICES )
+        maxSlices <= FM10000_MAX_FFU_SLICES )
     {
         *ppDestSlice = NULL;
 
@@ -1863,7 +1863,7 @@ static fm_bool SelectCascadeFromSliceRange(fm_int               sw,
         ppDestSlice == NULL       ||
         pSliceIndex == NULL       ||
         maxSlices < 0             ||
-        maxSlices >= FM10000_MAX_FFU_SLICES)
+        maxSlices > FM10000_MAX_FFU_SLICES)
     {
         FM_LOG_ERROR(FM_LOG_CAT_ROUTING,"Invalid argument: NULL pointer or argument out of range\n");
     }
@@ -3275,6 +3275,11 @@ static fm_bool MoveRouteElsewhereWithinPrefix(fm_int                  sw,
  *
  * \note            This function only returns physical route information -
  *                  it does not use any simulated route tables.
+ *
+ * \note            This function may create a prefix record and insert it into
+ *                  the route table prefix tree (see GetPrefixRecord function).
+ *                  It should be taken into account during the caller function
+ *                  cleanup.
  *
  * \param[in]       sw contains the switch number.
  *
@@ -9219,19 +9224,11 @@ fm_status SetInitialSliceBoundaries (fm_int                sw,
     {
         /* Get unicast and multicast slice boundaries */
 
-        firstUnicastSlice =
-            fmGetIntApiProperty(FM_AAK_API_FM10000_FFU_UNICAST_SLICE_1ST,
-                                FM_AAD_API_FM10000_FFU_UNICAST_SLICE_1ST);
-        lastUnicastSlice =
-            fmGetIntApiProperty(FM_AAK_API_FM10000_FFU_UNICAST_SLICE_LAST,
-                                FM_AAD_API_FM10000_FFU_UNICAST_SLICE_LAST);
+        firstUnicastSlice = GET_FM10000_PROPERTY()->ffuUcastSliceRangeFirst;
+        lastUnicastSlice = GET_FM10000_PROPERTY()->ffuUcastSliceRangeLast;
 
-        firstMulticastSlice =
-            fmGetIntApiProperty(FM_AAK_API_FM10000_FFU_MULTICAST_SLICE_1ST,
-                                FM_AAD_API_FM10000_FFU_MULTICAST_SLICE_1ST);
-        lastMulticastSlice =
-            fmGetIntApiProperty(FM_AAK_API_FM10000_FFU_MULTICAST_SLICE_LAST,
-                                FM_AAD_API_FM10000_FFU_MULTICAST_SLICE_LAST);
+        firstMulticastSlice = GET_FM10000_PROPERTY()->ffuMcastSliceRangeFirst;
+        lastMulticastSlice = GET_FM10000_PROPERTY()->ffuMcastSliceRangeLast;
 
         if (firstUnicastSlice > lastUnicastSlice    ||
             firstMulticastSlice > lastMulticastSlice)
@@ -9472,12 +9469,8 @@ fm_status fm10000RouterInit(fm_int sw)
     pSwitchExt = GET_SWITCH_EXT(sw);
 
     /* Get the unicast/multicast min precedence values */
-    pSwitchExt->unicastMinPrecedence =
-        fmGetIntApiProperty(FM_AAK_API_FM10000_FFU_UNICAST_PRECEDENCE_MIN,
-                            FM_AAD_API_FM10000_FFU_UNICAST_PRECEDENCE_MIN);
-    pSwitchExt->multicastMinPrecedence =
-        fmGetIntApiProperty(FM_AAK_API_FM10000_FFU_MULTICAST_PRECEDENCE_MIN,
-                            FM_AAD_API_FM10000_FFU_MULTICAST_PRECEDENCE_MIN);
+    pSwitchExt->unicastMinPrecedence = GET_FM10000_PROPERTY()->ffuUcastPrecedenceMin;
+    pSwitchExt->multicastMinPrecedence = GET_FM10000_PROPERTY()->ffuMcastPrecedenceMin;
 
     pStateTable = &pSwitchExt->routeStateTable;
     pStateTable->actualState = TRUE;
@@ -9892,6 +9885,7 @@ fm_status fm10000AddRoute(fm_int            sw,
                  (void *) pNewRoute);
 
     err        = FM_OK;
+    status     = FM_OK;
     switchPtr  = GET_SWITCH_PTR(sw);
     pSwitchExt = GET_SWITCH_EXT(sw);
     tcamRoute  = NULL;
@@ -9914,9 +9908,10 @@ fm_status fm10000AddRoute(fm_int            sw,
     ClassifyRoute(sw, pNewRoute, &routeInfo);
 
     /**************************************************
-    * ClassifyRoute function may insert TCAM route into
-    * the tree. From now use FM_LOG_ABORT instead of
-    * FM_LOG_EXIT to perform cleanup correctly.
+    * ClassifyRoute function may create a prefix record
+    * and insert it into the tree. From now on, use
+    * FM_LOG_ABORT instead of FM_LOG_EXIT to perform
+    * the cleanup process correctly.
     **************************************************/
 
     routeTable = routeInfo.routeTable;
@@ -12481,6 +12476,7 @@ fm_status fm10000SetRouteAction(fm_int            sw,
                                 fm_intRouteEntry *route)
 {
     fm_status               err;
+    fm_status               status;
     fm_switch *             switchPtr;
     fm10000_RouteInfo       routeInfo;
     fm10000_RoutingTable *  routeTable;
@@ -12492,18 +12488,47 @@ fm_status fm10000SetRouteAction(fm_int            sw,
     fm_ffuAction            ffuAction;
     fm_bool                 valid;
     fm_bool                 foundRow;
+    fm10000_RouteTypes      routeType;
+    fm_bool                 foundPrefix;
 
     FM_LOG_ENTRY(FM_LOG_CAT_ROUTING, "sw=%d, route=%p\n", sw, (void *) route);
 
-    switchPtr = GET_SWITCH_PTR(sw);
+    err         = FM_OK;
+    status      = FM_OK;
+    switchPtr   = GET_SWITCH_PTR(sw);
+    routeTable  = NULL;
+    foundPrefix = FALSE;
 
     if (route == NULL)
     {
         FM_LOG_EXIT(FM_LOG_CAT_ROUTING, FM_ERR_INVALID_ARGUMENT);
     }
 
+    /* Check if a specific prefix record already exists. If not, it must be
+     * removed in case of fail (ClassifyRoute function may create one). */
+    routeType  = GetRouteType(&route->route);
+    if (routeType != FM10000_ROUTE_TYPE_UNUSED)
+    {
+        routeTable = GetRouteTable(sw, routeType);
+        if (routeTable != NULL)
+        {
+            err = fmCustomTreeFind(&routeTable->prefixTree,
+                                   &route->prefix,
+                                   NULL);
+            foundPrefix = (err == FM_OK) ? TRUE : FALSE;
+            err = FM_OK;
+        }
+    }
+
     /* Consolidate route information into the routeInfo structure. */
     ClassifyRoute(sw, route, &routeInfo);
+
+    /**************************************************
+    * ClassifyRoute function may create a prefix record
+    * and insert it into the tree. From now on, use
+    * FM_LOG_ABORT instead of FM_LOG_EXIT to perform
+    * the cleanup process correctly.
+    **************************************************/
 
     routeTable = routeInfo.routeTable;
 
@@ -12517,7 +12542,7 @@ fm_status fm10000SetRouteAction(fm_int            sw,
 
     /* Initialize the action structure */
     err = InitFfuRouteAction(sw, route, &routeInfo, &ffuAction);
-    FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_ROUTING, err);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_ROUTING, err);
 
     /* Find an available FFU rule for this route. */
     err = FindFfuEntryForNewRoute(sw,
@@ -12542,11 +12567,11 @@ fm_status fm10000SetRouteAction(fm_int            sw,
 
     /* Build the rule key */
     err = SetFFuRuleKeyForRoute(sw, &routeInfo, &ruleKey[0]);
-    FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_ROUTING, err);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_ROUTING, err);
 
     /* Build the rule action */
     err = SetFfuRouteAction(sw, route, &routeInfo, &ffuAction, &valid);
-    FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_ROUTING, err);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_ROUTING, err);
 
     /* Write the rule to the hardware */
     err = fm10000SetFFURule(sw,
@@ -12557,7 +12582,7 @@ fm_status fm10000SetRouteAction(fm_int            sw,
                             &ffuAction,
                             TRUE,
                             TRUE);
-    FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_ROUTING, err);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_ROUTING, err);
 
     /* Store the final FFU action structure into the route */
     FM_MEMCPY_S( &tcamRoute->ffuAction,
@@ -12583,7 +12608,35 @@ fm_status fm10000SetRouteAction(fm_int            sw,
         }
     }
 
-    FM_LOG_EXIT(FM_LOG_CAT_ROUTING, FM_OK);
+ABORT:
+    status = err;
+
+    /* Check if a specific prefix record was created for this route.
+     * If so, just delete it */
+    if ( (status != FM_OK) &&
+         (routeInfo.routePrefix != NULL) &&
+         (!foundPrefix) )
+    {
+        /* remove prefix from the prefix tree */
+        err = fmCustomTreeRemove(&routeTable->prefixTree,
+                                 &routeInfo.routePrefix->prefix,
+                                 NULL);
+
+        if (err != FM_OK)
+        {
+            FM_LOG_ERROR(FM_LOG_CAT_ROUTING,
+                         "Cannot remove prefix record from Tree, prefix=%d\n",
+                         routeInfo.routePrefix->prefix);
+        }
+        else
+        {
+            /* release the prefix */
+            fmFree(routeInfo.routePrefix);
+            routeInfo.routePrefix = NULL;
+        }
+    }
+
+    FM_LOG_EXIT(FM_LOG_CAT_ROUTING, status);
 
 }   /* end fm10000SetRouteAction */
 

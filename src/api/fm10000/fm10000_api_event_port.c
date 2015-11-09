@@ -46,7 +46,7 @@
 /*****************************************************************************
  * Local Variables
  *****************************************************************************/
-
+fm_uint64 portStateEventNotifications = 0;
 
 /*****************************************************************************
  * Local function prototypes.
@@ -66,33 +66,51 @@ static void EventFreeHandler(fm_int sw)
     fm_int     physPort;
     fm_int     port;
     fm_int     mac;
+    fm_bool    pushedFreeEventNotify;
 
     switchPtr = GET_SWITCH_PTR(sw);
 
     for ( cpi = 1 ; cpi < switchPtr->numCardinalPorts ; cpi++ )
     {
         fmMapCardinalPortInternal(switchPtr, cpi, &port, &physPort);
-        if ( physPort < 4 )
-        {
-            continue;
-        }
 
         portPtr = GET_PORT_PTR(sw, port);
 
         /* On FM10000 port mac is not used (not configurable), set to 0. */
         mac = 0;
 
-        status = switchPtr->SendLinkUpDownEvent(sw,
-                                                physPort,
-                                                mac,
-                                                portPtr->linkUp,
-                                                FM_EVENT_PRIORITY_LOW);
-
-        if (status != FM_OK)
+        /* try to send event for ports with pending notifications */
+        if ( portPtr->waitForFreeEventBuffer ) 
         {
-            FM_LOG_FATAL(FM_LOG_CAT_EVENT_PORT,
-                         "Can't send link event for port %d\n",
-                         port);
+            /* Clear wait for free event's buffer indication flag */
+            portPtr->waitForFreeEventBuffer = FALSE;
+
+            /* Do not send event notifications when no link state change 
+               is reported - the last event sent was for the same link state 
+               as now */
+            if( portPtr->linkUp != 
+                   (fm_bool)( (portStateEventNotifications >> physPort) & 1 ))
+            {
+                status = switchPtr->SendLinkUpDownEventV2(sw,
+                                                          physPort,
+                                                          mac,
+                                                          portPtr->linkUp,
+                                                          FM_EVENT_PRIORITY_LOW,
+                                                          &pushedFreeEventNotify);
+
+                if (status != FM_OK)
+                {
+                    FM_LOG_FATAL(FM_LOG_CAT_EVENT_PORT,
+                                 "Can't send link event for port %d\n",
+                                 port);
+                }
+
+                if (pushedFreeEventNotify)
+                {
+                    /* There are not free buffers */
+                    break;
+                }
+            }
         }
     }
 
@@ -130,17 +148,71 @@ fm_status fm10000SendLinkUpDownEvent(fm_int           sw,
                                      fm_bool          linkUp,
                                      fm_eventPriority priority)
 {
-    fm_status     err;
-    fm_event *    event;
-    fm_eventPort *portEvent;
-    fm_int        logPort;
-    fm_switch *   switchPtr;
+    fm_status   err;
 
     FM_LOG_ENTRY(FM_LOG_CAT_EVENT_PORT,
                  "sw=%d physPort=%d mac=%d linkUp=%d priority=%d\n",
                  sw, physPort, mac, linkUp, priority);
 
+    err = fm10000SendLinkUpDownEventV2(sw,physPort,mac,linkUp,priority,NULL);
+
+    FM_LOG_EXIT(FM_LOG_CAT_EVENT_PORT, err);
+
+}   /* end fm10000SendLinkUpDownEvent */
+
+
+
+
+/*****************************************************************************/
+/** fm10000SendLinkUpDownEventV2
+ * \ingroup intDriver
+ *
+ * \desc            Function to inject a link up or link down event into the
+ *                  event queue.
+ *
+ * \param[in]       sw is the switch number.
+ *
+ * \param[in]       physPort is the physical port number for the port.
+ *
+ * \param[in]       mac is the MAC number for the port (Not used).
+ *
+ * \param[in]       linkUp is TRUE if a link-up event is to be injected,
+ *                  FALSE to inject a link-down event.
+ *
+ * \param[in]       priority is the priority to send the event at
+ * 
+ * \param[in]       pAddedFreeEvent points to the caller-allocated storage that
+ *                  this function will set to TRUE if there was no available
+ *                  and an event free notify has been pushed into the event
+ *                  queue.
+ *
+ * \return          None.
+ *
+ *****************************************************************************/
+fm_status fm10000SendLinkUpDownEventV2(fm_int           sw,
+                                       fm_int           physPort,
+                                       fm_int           mac,
+                                       fm_bool          linkUp,
+                                       fm_eventPriority priority,
+                                       fm_bool *        pAddedFreeEvent)
+{
+    fm_status     err;
+    fm_event *    event;
+    fm_eventPort *portEvent;
+    fm_int        logPort;
+    fm_switch *   switchPtr;
+    fm_port *       portEntry;
+
+    FM_LOG_ENTRY(FM_LOG_CAT_EVENT_PORT,
+                 "sw=%d physPort=%d mac=%d linkUp=%d priority=%d pAddedFreeEvent=%p\n",
+                 sw, physPort, mac, linkUp, priority, (void*)pAddedFreeEvent);
+
     switchPtr = fmRootApi->fmSwitchStateTable[sw];
+
+    if (pAddedFreeEvent)
+    {
+        *pAddedFreeEvent = FALSE;
+    }
 
     fmMapPhysicalPortToLogical(switchPtr, physPort, &logPort);
 
@@ -166,11 +238,26 @@ fm_status fm10000SendLinkUpDownEvent(fm_int           sw,
      */
     if (event == NULL)
     {
-        /* Will get notify when a free event is available */
-        fmAddEventFreeNotify(sw, EVENT_FREE_NOTIFY_LINK_TRANSITION, EventFreeHandler);
+        portEntry = GET_PORT_PTR(sw, logPort);
 
-        fmDbgDiagCountIncr(sw, FM_CTR_LINK_CHANGE_OUT_OF_EVENTS, 1);
+        /* Make sure that no free notification was not added */
+        if(portEntry->waitForFreeEventBuffer != TRUE)
+        {
+            portEntry->waitForFreeEventBuffer = TRUE;
+            /* Will get notify when a free event is available, skip returning  
+               error when trying to add redundant event handler */
+            fmAddEventFreeNotify(sw, 
+                                 EVENT_FREE_NOTIFY_LINK_TRANSITION, 
+                                 EventFreeHandler);
 
+            fmDbgDiagCountIncr(sw, FM_CTR_LINK_CHANGE_OUT_OF_EVENTS, 1);
+
+            if (pAddedFreeEvent)
+            {
+                *pAddedFreeEvent = TRUE;
+            }
+        }
+        /* Return error - sending link state change event failed */
         FM_LOG_EXIT(FM_LOG_CAT_EVENT_PORT, FM_ERR_NO_EVENTS_AVAILABLE);
     }
 
@@ -201,11 +288,17 @@ fm_status fm10000SendLinkUpDownEvent(fm_int           sw,
 
         FM_LOG_EXIT(FM_LOG_CAT_EVENT_PORT, err);
     }
-
+    else
+    {
+        /* Set portStateEventNotifications */
+        portStateEventNotifications = 
+           ( portStateEventNotifications & ~(FM_LITERAL_U64(1) << physPort) ) | 
+           ( ( linkUp & FM_LITERAL_U64(1) ) << physPort );
+    }
 
     FM_LOG_EXIT(FM_LOG_CAT_EVENT_PORT, FM_OK);
 
-}   /* end fm10000SendLinkUpDownEvent */
+}   /* end fm10000SendLinkUpDownEventV2 */
 
 
 

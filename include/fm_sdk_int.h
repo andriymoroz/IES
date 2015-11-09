@@ -6,7 +6,7 @@
  * Description:     Wrapper file to include all needed internal files.
  *                  For SDK internal use only.
  *
- * Copyright (c) 2007 - 2011, Intel Corporation
+ * Copyright (c) 2007 - 2015, Intel Corporation
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -30,7 +30,7 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
+ *****************************************************************************/
 
 #ifndef __FM_FM_SDK_INT_H
 #define __FM_FM_SDK_INT_H
@@ -41,7 +41,6 @@
  * No dependencies upon Fulcrum ControlPoint SDK definitions
  *
  * No known order dependencies
- *
  */
 #include <fm_alos_sys_int.h>
 
@@ -54,10 +53,18 @@
 #include <fm_sdk.h>
 
 /*
+ * Internal definitions needed by the OS abstraction layer.
+ */
+#include <common/fm_property_int.h>
+
+#if defined(FM_SUPPORT_FM10000)
+#include <common/fm10000_property_int.h>
+#endif
+
+/*
  * ALOS
  *
  * Internal code related to the OS abstraction layer.
- *
  */
 #include <fm_alos_int.h>
 
@@ -73,7 +80,6 @@
  *
  * the non-API files should really be listed at this level instead of
  * inside fm_api_int.h, but this works for now
- *
  */
 #include <api/internal/fm_api_int.h>
 

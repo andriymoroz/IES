@@ -30,7 +30,7 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
+ *****************************************************************************/
 
 #ifndef __FM_FM_API_INIT_H
 #define __FM_FM_API_INIT_H
@@ -174,44 +174,6 @@ typedef struct _fm_fibmSwitchConfig
     fm_int                slaveMgmtPort; 
     
 } fm_fibmSwitchConfig;
-
-
-/**************************************************/
-/** \ingroup typeStruct
- *  Used as the argument type for the 
- *  ''FM_PARITY_SWEEPER_CONFIG'' switch attribute.
- *  Specifies the behavior of the parity sweeper
- *  for the switch.
- *                                          \lb\lb
- *  Note that this configuration has no effect if
- *  the ''api.paritySweeper.enable'' API property
- *  is not set to TRUE.
- **************************************************/
-typedef struct _fm_paritySweeperConfig 
-{
-    /** Indicates whether parity sweeping will occur on this switch. 
-     *  the default for switches accessed via FIBM will be FALSE.
-     *  The default for non-FIBM switches will be TRUE. */
-    fm_bool enabled;
-
-    /** Indicates the number of register reads performed by the parity 
-     *  sweeper between sleep cycles. A larger number makes the sweeper
-     *  scan the entire chip more quickly, resulting in faster reporting
-     *  of detected errors, but consumes more CPU bandwidth
-     *  resulting in a negative impact on the perfomance of other API threads. 
-     *  The ''api.paritySweeper.readBurstSize'' API property provides the 
-     *  default value for this parameter. */
-    fm_int  readBurstSize;
-
-    /** Indicates how long the parity sweeper should sleep between read bursts.
-     *  A smaller number makes the sweeper scan the entire chip more quickly, 
-     *  resulting in faster reporting of detected errors, but consumes more 
-     *  CPU bandwidth resulting in a negative impact on the perfomance of 
-     *  other API threads. The ''api.paritySweeper.sleepPeriod'' API property 
-     *  provides the default value for this parameter. */
-    fm_int  sleepPeriod;
-
-} fm_paritySweeperConfig;
 
 
 
@@ -573,6 +535,8 @@ fm_status fmGetSwitchNext(fm_int currentSwitch, fm_int *nextSwitch);
  */
 fm_uint fmGetSwitchCount(void);
 
+/* Returns the API version string. */
+fm_status fmGetApiVersion(char * buf, int len);
 
 /* different boot related enables */
 fm_status fmEnableEEPROMMode(fm_int sw, fm_bool enable);

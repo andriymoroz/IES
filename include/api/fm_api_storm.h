@@ -305,8 +305,8 @@ typedef enum
      *  \chips  FM3000, FM4000, FM10000 */
     FM_STORM_COND_SECURITY_VIOL_NEW_MAC,
 
-    /** Include the security violation frames due to unknown source MAC 
-     *  address. The param member of ''fm_stormCondition'' is not used.
+    /** Include the security violation frames due to a MAC address
+     *  move. The param member of ''fm_stormCondition'' is not used.
      *                                                                  \lb\lb
      *  On FM3000/FM4000 devices, may be combined with:                     \lb
      *  ''FM_STORM_COND_SECURITY_VIOL_NEW_MAC''                             \lb

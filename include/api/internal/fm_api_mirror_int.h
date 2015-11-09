@@ -36,6 +36,19 @@
 #define __FM_FM_API_MIRROR_INT_H
 
 
+/**************************************************
+ * Identifies where Mirror is being used
+ **************************************************/
+typedef enum
+{
+    /* Mirror used by Application */
+    FM_MIRROR_USAGE_TYPE_APP = 0,
+
+    /* Mirror used by SFlow */
+    FM_MIRROR_USAGE_TYPE_SFLOW,
+
+} fm_mirrorUsageType;
+
 /* holds information about port mirror groups */
 typedef struct
 {
@@ -108,6 +121,9 @@ typedef struct
     /* Trap Code ID of mirrored frames */
     fm_int              trapCodeId;
 
+    /* Defines where the mirror is used. (Application,sFlow) */
+    fm_mirrorUsageType  mirrorUsageType;
+
 } fm_portMirrorGroup;
 
 
@@ -120,5 +136,61 @@ fm_status fmFreePortMirrorDataStructures(fm_switch *switchPtr);
  *  the port is not being mirrored */
 fm_int fmGetMirrorPortDest(fm_int sw, fm_int port, fm_mirrorType mirrorType);
 
+fm_status fmCreateMirrorInt(fm_int             sw,
+                            fm_int             group,
+                            fm_int             mirrorPort,
+                            fm_mirrorType      mirrorType,
+                            fm_mirrorUsageType mirrorUsageType);
+
+fm_status fmSetMirrorAttributeInt(fm_int sw,
+                                  fm_int group,
+                                  fm_int attr,
+                                  void * value);
+
+fm_status fmDeleteMirrorInt(fm_int sw, fm_int group);
+
+fm_status fmAddMirrorPortInternal(fm_int        sw,
+                                  fm_int        group,
+                                  fm_int        port,
+                                  fm_mirrorType mirrorType);
+
+fm_status fmDeleteMirrorPortInt(fm_int sw, fm_int group, fm_int port);
+
+fm_status fmSetMirrorAttributeInt(fm_int sw,
+                                  fm_int group,
+                                  fm_int attr,
+                                  void * value);
+
+fm_status fmGetMirrorAttributeInt(fm_int sw,
+                                  fm_int group,
+                                  fm_int attr,
+                                  void * value);
+
+fm_status fmGetMirrorPortFirstInt(fm_int sw, fm_int group, fm_int *firstPort);
+
+fm_status fmGetMirrorPortNextInt(fm_int  sw,
+                                 fm_int  group,
+                                 fm_int  currentPort,
+                                 fm_int *nextPort);
+
+fm_status fmAddMirrorVlanInternal(fm_int            sw,
+                                  fm_int            group,
+                                  fm_vlanSelect     vlanSel,
+                                  fm_uint16         vlanID,
+                                  fm_mirrorVlanType direction);
+
+fm_status fmDeleteMirrorVlanInternal(fm_int        sw,
+                                     fm_int        group,
+                                     fm_vlanSelect vlanSel,
+                                     fm_uint16     vlanID);
+
+fm_status fmGetMirrorPortListsInt(fm_int  sw,
+                                  fm_int  group,
+                                  fm_int *numIngressPorts,
+                                  fm_int *ingressPortList,
+                                  fm_int  maxIngressPorts,
+                                  fm_int *numEgressPorts,
+                                  fm_int *egressPortList,
+                                  fm_int  maxEgressPorts);
 
 #endif /* __FM_FM_API_MIRROR_INT_H */

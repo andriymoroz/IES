@@ -184,6 +184,8 @@ fm_status fm10000StopDeferredLpiTimer( fm_smEventInfo *eventInfo, void *userInfo
 fm_status fm10000DeferredLpiMode( fm_smEventInfo *eventInfo, void *userInfo );
 fm_status fm10000StartPortStatusPollingTimer( fm_smEventInfo *eventInfo, void *userInfo );
 fm_status fm10000StopPortStatusPollingTimer( fm_smEventInfo *eventInfo, void *userInfo );
+fm_status fm10000CheckAndPreReserveSchedBw( fm_smEventInfo *eventInfo, void *userInfo );
+fm_status fm10000RequestSchedBwAdmUpAn( fm_smEventInfo *eventInfo, void *userInfo );
 
 
 

@@ -116,6 +116,10 @@ typedef struct fm10000_schedSpeedInfo
     /* The speed currently requested/reserved for this port */
     fm_int reservedSpeed;
 
+    /* The speed preReserved for this port. Only ports configured with AN, 
+     * have different values for reservedSpeed and preReservedSpeed. */
+    fm_int preReservedSpeed;
+
     /* Will be set to true if the port is currently configured / reserved as
      * a quad port */
     fm_bool isQuad;
@@ -300,6 +304,13 @@ typedef struct _fm10000_schedInfo
     fm10000_schedSpeed    reservedSpeed[FM10000_SCHED_NUM_PORTS];
     fm_bool               reservedQuad[FM10000_SCHED_NUM_PORTS];
 
+    /* Table that holds the speed pre reserved per physical port and it's quad 
+     * bit setting. It is mainly used in the case of Dynamic Scheduler and AN73.
+     * In Dynamic Scheduler mode, Bandwidth availability is checked based on 
+     * this table. */
+    fm10000_schedSpeed    preReservedSpeed[FM10000_SCHED_NUM_PORTS];
+    fm_bool               preReservedQuad[FM10000_SCHED_NUM_PORTS];
+
 } fm10000_schedInfo;
 
 
@@ -398,6 +409,16 @@ fm_status fm10000ReserveSchedBw(fm_int               sw,
 fm_status fm10000RegenerateSchedule(fm_int sw);
 
 fm_status fm10000GetSchedAttributes(fm_int sw, fm10000_schedAttr *attr);
+
+fm_status fm10000PreReserveSchedBw(fm_int               sw,
+                                   fm_int               physPort,
+                                   fm_int               speed,
+                                   fm_schedulerPortMode mode);
+
+fm_status fm10000ReserveSchedBwForAnPort(fm_int               sw,
+                                         fm_int               physPort,
+                                         fm_int               speed,
+                                         fm_schedulerPortMode mode);
 
 #endif /* __FM_FM10000_API_SCHED_INT_H */
 

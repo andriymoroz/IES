@@ -30,7 +30,7 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
+ *****************************************************************************/
 
 #ifndef __FM_FM_API_ADDR_INT_H
 #define __FM_FM_API_ADDR_INT_H
@@ -64,18 +64,18 @@
  * MA Table Address Type masks and predicates.
  **************************************************/
 
-/* Static address types. */
+/* Mask for all static address types. */
 #define FM_ADDR_TYPE_MASK_STATIC                    \
      ((1 << FM_ADDRESS_STATIC)                  |   \
       (1 << FM_ADDRESS_SECURE_STATIC))
 
-/* Dynamic address types. */
+/* Mask for all dynamic address types. */
 #define FM_ADDR_TYPE_MASK_DYNAMIC                   \
      ((1 << FM_ADDRESS_DYNAMIC)                 |   \
       (1 << FM_ADDRESS_SECURE_DYNAMIC)          |   \
       (1 << FM_ADDRESS_PROVISIONAL))
 
-/* Secure address types. */
+/* Mask for all secure address types. */
 #define FM_ADDR_TYPE_MASK_SECURE                    \
       ((1 << FM_ADDRESS_SECURE_STATIC)          |   \
        (1 << FM_ADDRESS_SECURE_DYNAMIC))
@@ -93,13 +93,13 @@
  * MA Table Entry state masks and predicates.
  **************************************************/
 
-/* Dynamic address entries. */
+/* Mask for all dynamic address entries. */
 #define FM_MAC_ENTRY_STATE_MASK_DYNAMIC             \
         ((1 << FM_MAC_ENTRY_STATE_OLD)          |   \
          (1 << FM_MAC_ENTRY_STATE_YOUNG)        |   \
          (1 << FM_MAC_ENTRY_STATE_EXPIRED))
 
-/* Young address entries. */
+/* Mask for all young address entries. */
 #define FM_MAC_ENTRY_STATE_MASK_YOUNG               \
         ((1 << FM_MAC_ENTRY_STATE_YOUNG)        |   \
          (1 << FM_MAC_ENTRY_STATE_MOVED)        |   \
@@ -135,10 +135,10 @@ typedef enum
 
 
 /**************************************************
- * Internal MA Table Entry type. 
- * (fm_internalMacAddrEntry::entryType) 
- * Note that this field is only valid following 
- * a call to fmGetAddressInternal. 
+ * Internal MA Table Entry type.
+ * (fm_internalMacAddrEntry::entryType)
+ * Note that this field is only valid following
+ * a call to fmGetAddressInternal.
  **************************************************/
 typedef enum
 {
@@ -158,7 +158,7 @@ typedef enum
 
 /**************************************************
  * Internal MA Table Entry dirty state.
- * (fm_internalMacAddrEntry::dirty) 
+ * (fm_internalMacAddrEntry::dirty)
  **************************************************/
 enum
 {
@@ -200,10 +200,10 @@ typedef enum
  **************************************************/
 typedef struct _fm_internalMacAddrEntry
 {
-    /* Logical port mask (FM2000 and FM4000 only) */
+    /* Logical port mask. (FM2000 and FM4000 only) */
     fm_uint32  destMask;
 
-    /* Logical port (valid only if destMask is FM_DESTMASK_UNUSED) */
+    /* Logical port (valid only if destMask is FM_DESTMASK_UNUSED). */
     fm_int     port;
 
     /* Entry state (INVALID, OLD, YOUNG, LOCKED, etc).
@@ -215,41 +215,43 @@ typedef struct _fm_internalMacAddrEntry
     fm_bool    memError;
 
     /* Type of address entry (FM_MAC_ENTRY_TYPE_CACHE, etc.).
+     * See fm_macEntryType for values.
      * At present, this field is only reliable following a call to
      * fmGetAddressInternal. */
     fm_byte    entryType;
 
     /* Address type specified when the entry was created.
+     * See enum _fm_addressTypes for values.
      * (FM10000 and SWAG only) */
     fm_uint16  addrType;
 
-    /* trigger # to fire for match (FM2000, FM4000, FM10000) */
+    /* Trigger # to fire for match. (FM2000, FM4000, FM10000) */
     fm_uint32  trigger;
 
     /* Lower 12 bits of chosen VID. For the FM6000 and FM10000, this
      * is replaced by the FID. */
     fm_uint16  vlanID;
 
-    /* lower 12 bits of chosen VID2 (FM6000 only) */
+    /* Lower 12 bits of chosen VID2. (FM6000 only) */
     fm_uint16  vlanID2;
 
-    /* MAC Address */
+    /* MAC Address. */
     fm_macaddr macAddress;
 
-    /* Aging counter, used for soft aging */
+    /* Aging counter, used for soft aging. */
     fm_uint64  agingCounter;
-    
+
     /* Dirty bits (WAITING, DIRTY, POSTED, RECORDED - FM6000 only) */
     fm_int     dirty;
-    
-    /* Remote ID filled with TAG[11:8] | DATA (FM6000 only) */
+
+    /* Remote ID filled with TAG[11:8] | DATA. (FM6000 only) */
     fm_uint16  remoteID;
 
     /* Flag to let the pipeline know that reaching this MAC will be
      * done using TRILL enabled ports. TAG[7] (FM6000 only) */
     fm_bool    remoteMac;
 
-    /* TAG secure bit (FM6000 and FM10000 only) */
+    /* TAG secure bit. (FM6000, FM10000) */
     fm_bool    secure;
 
 } fm_internalMacAddrEntry;
@@ -296,7 +298,7 @@ fm_status fmDeleteAddressFromTable(fm_int              sw,
                                    fm_bool             updateHw,
                                    fm_int              bank);
 
-fm_int fmCompareInternalMacAddressEntries(const void *key1, 
+fm_int fmCompareInternalMacAddressEntries(const void *key1,
                                           const void *key2);
 
 /* returns the internal entry used by a mac address */
@@ -333,8 +335,8 @@ fm_status fmCommonCheckFlushRequest(fm_int          sw,
                                     fm_flushMode    mode,
                                     fm_flushParams *params);
 
-fm_status fmCommonFindAndInvalidateAddr(fm_int     sw, 
-                                        fm_macaddr macAddress, 
+fm_status fmCommonFindAndInvalidateAddr(fm_int     sw,
+                                        fm_macaddr macAddress,
                                         fm_uint16  vlanID,
                                         fm_uint16  vlanID2,
                                         fm_int     bank,

@@ -40,21 +40,21 @@
  *****************************************************************************/
 
 /* The maximum number of sFlows that may be defined. */
-#define FM10000_MAX_SFLOWS              FM10000_MAX_HW_TRIGGERS
+#define FM10000_MAX_SFLOWS              4
 
 #define FM10000_SFLOW_RULE_NONE         -1
 #define FM10000_SFLOW_RES_ID_NONE       -1
 
 #define FM10000_SFLOW_MAX_SAMPLE_RATE   0xffffff
+#define FM10000_SFLOW_TRAPCODE_ID_START 12
 
 /**************************************************
  * Information related to an sFlow.
  **************************************************/
 typedef struct _fm10000_sflowEntry
 {
-    /* Rule number of the trigger assigned to this sFlow.
-     * FM10000_SFLOW_RULE_NONE if unassigned. */
-    fm_int          rule;
+    /* Mirror Id of the associated mirror. */
+    fm_int          mirrorId;
 
     /* Type of sFlow (ingress or egress). */
     fm_sFlowType    sflowType;
@@ -63,20 +63,15 @@ typedef struct _fm10000_sflowEntry
      * attribute. Will be FM_SFLOW_VLAN_ANY if unassigned. */
     fm_uint16       vlanID;
 
-    /* Trigger resource identifier assigned to the VLAN.
-     * FM10000_SFLOW_RES_ID_NONE if unassigned. */
-    fm_int          vlanResId;
-
-    /* Set of ports assigned to this SFlow, or FM_PORT_SET_NONE
-     * if unassigned. */
-    fm_int          portSet;
-
     /* SFlow sampling rate, as specified by the FM_SFLOW_SAMPLE_RATE
      * attribute. */
     fm_uint         sampleRate;
 
     /* Whether this sFlow is valid. */
     fm_bool         isValid;
+
+    /* Trap Code ID */
+    fm_int          trapCodeId;
 
 } fm10000_sflowEntry;
 

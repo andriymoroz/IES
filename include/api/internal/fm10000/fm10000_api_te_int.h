@@ -480,13 +480,16 @@ typedef enum
                                             FM10000_TE_DEFAULT_TUNNEL_NGE_MASK | 
                                             FM10000_TE_DEFAULT_TUNNEL_NGE_TIME),
 
+    /** Write all NSH fields. */
+    FM10000_TE_DEFAULT_TUNNEL_NSH_ALL = (FM10000_TE_DEFAULT_NSH_BASE_HDR   |
+                                         FM10000_TE_DEFAULT_NSH_SERVICE_HDR|
+                                         FM10000_TE_DEFAULT_NSH_DATA),
+
     /** Write all GPE/NSH fields. */
     FM10000_TE_DEFAULT_TUNNEL_GPE_NSH_ALL = (FM10000_TE_DEFAULT_GPE_NSH_CLEAR  |
                                              FM10000_TE_DEFAULT_GPE_NEXT_PROT  |
                                              FM10000_TE_DEFAULT_GPE_VNI        |
-                                             FM10000_TE_DEFAULT_NSH_BASE_HDR   |
-                                             FM10000_TE_DEFAULT_NSH_SERVICE_HDR|
-                                             FM10000_TE_DEFAULT_NSH_DATA),
+                                             FM10000_TE_DEFAULT_TUNNEL_NSH_ALL),
 
 } fm_fm10000TeDefTunnelSel;
 

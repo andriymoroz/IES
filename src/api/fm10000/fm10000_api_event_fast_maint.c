@@ -57,26 +57,8 @@
 #define USED_TABLE_SAMPLE_UNIT          1
 
 
-#if 0
-#define FM_AAK_API_FM10000_MA_USED_TABLE_SAMPLE_SIZE    "api.FM10000.usedTableSampleSize"
-#define FM_AAT_API_FM10000_MA_USED_TABLE_SAMPLE_SIZE    FM_API_ATTR_INT
-#define FM_AAD_API_FM10000_MA_USED_TABLE_SAMPLE_SIZE    (512 / 8)
-
-#define FM_AAK_API_FM10000_MA_USED_TABLE_SAMPLE_UNIT    "api.FM10000.usedTableSampleUnit"
-#define FM_AAT_API_FM10000_MA_USED_TABLE_SAMPLE_UNIT    FM_API_ATTR_INT
-#define FM_AAD_API_FM10000_MA_USED_TABLE_SAMPLE_UNIT    1
-#endif
-
-#define FM_AAK_API_FM10000_MA_USED_TABLE_AGING_FACTOR   "api.FM10000.usedTableAgingFactor"
-#define FM_AAT_API_FM10000_MA_USED_TABLE_AGING_FACTOR   FM_API_ATTR_FLOAT
 #define FM_AAD_API_FM10000_MA_USED_TABLE_AGING_FACTOR   0.5
-
-#define FM_AAK_API_FM10000_MA_USED_TABLE_EXPIRY_FACTOR  "api.FM10000.usedTableExpiryFactor"
-#define FM_AAT_API_FM10000_MA_USED_TABLE_EXPIRY_FACTOR  FM_API_ATTR_FLOAT
 #define FM_AAD_API_FM10000_MA_USED_TABLE_EXPIRY_FACTOR  1.05
-
-#define FM_AAK_API_FM10000_MA_USED_TABLE_READY_FACTOR   "api.FM10000.usedTableReadyFactor"
-#define FM_AAT_API_FM10000_MA_USED_TABLE_READY_FACTOR   FM_API_ATTR_FLOAT
 #define FM_AAD_API_FM10000_MA_USED_TABLE_READY_FACTOR   0.5
 
 
@@ -149,28 +131,14 @@ static void EnterActiveState(fm_int sw, fm_uint64 currentTime)
     switchPtr = GET_SWITCH_PTR(sw);
     switchExt = switchPtr->extension;
 
-    agingFactor =
-        fmGetFloatApiProperty(FM_AAK_API_FM10000_MA_USED_TABLE_AGING_FACTOR,
-                              FM_AAD_API_FM10000_MA_USED_TABLE_AGING_FACTOR);
+    agingFactor = FM_AAD_API_FM10000_MA_USED_TABLE_AGING_FACTOR;
 
-    expiryFactor =
-        fmGetFloatApiProperty(FM_AAK_API_FM10000_MA_USED_TABLE_EXPIRY_FACTOR,
-                              FM_AAD_API_FM10000_MA_USED_TABLE_EXPIRY_FACTOR);
+    expiryFactor = FM_AAD_API_FM10000_MA_USED_TABLE_EXPIRY_FACTOR;
 
     agingTicks = (fm_float) switchPtr->macAgingTicks;
 
     switchExt->usedTableAgingTime  = (fm_uint64) (agingTicks * agingFactor);
     switchExt->usedTableExpiryTime = (fm_uint64) (agingTicks * expiryFactor);
-
-#if 0
-    switchExt->usedTableSampleSize =
-        fmGetIntApiProperty(FM_AAK_API_FM10000_MA_USED_TABLE_SAMPLE_SIZE,
-                            FM_AAD_API_FM10000_MA_USED_TABLE_SAMPLE_SIZE);
-
-    switchExt->usedTableSampleCount =
-        fmGetIntApiProperty(FM_AAK_API_FM10000_MA_USED_TABLE_SAMPLE_COUNT,
-                            FM_AAD_API_FM10000_MA_USED_TABLE_SAMPLE_COUNT);
-#endif
 
     switchExt->usedTableSweeperIndex = 0;
     switchExt->usedTableNumExpired = 0;
@@ -479,9 +447,7 @@ static void UsedSweeperReadyState(fm_int sw, fm_uint64 currentTime)
     /* Elapsed time in milliseconds since start of previous pass. */
     elapsedTime = currentTime - switchExt->usedTableLastSweepTime;
 
-    readyFactor =
-        fmGetFloatApiProperty(FM_AAK_API_FM10000_MA_USED_TABLE_READY_FACTOR,
-                              FM_AAD_API_FM10000_MA_USED_TABLE_READY_FACTOR);
+    readyFactor = FM_AAD_API_FM10000_MA_USED_TABLE_READY_FACTOR;
 
     /* Minimum interval until start of next pass. */
     startInterval = (fm_uint64) (readyFactor * switchPtr->macAgingTicks);

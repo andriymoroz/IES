@@ -29,7 +29,7 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
+ *****************************************************************************/
 
 #include <fm_sdk_fm10000_int.h>
 #include <common/fm_version.h>
@@ -3305,7 +3305,7 @@ fm_status fmFillAbstractKeyTree(fm_int               sw,
     fm_byte rxTagMask = 0;
     fm_int  physicalPort;
 
-    /* Key related to any port will be added independantly */
+    /* Key related to any port will be added independently */
     if ( (cond & FM_ACL_MATCH_INGRESS_PORT_SET) != 0 && err == FM_OK )
     {
         if (portSetId == NULL)
@@ -6821,7 +6821,7 @@ fm_status fm10000ACLCompile(fm_int    sw,
         compiledAcl->sliceInfo.actionEnd = compiledAcl->sliceInfo.keyEnd +
                                            maxActionSlices - 1;
 
-        /* The abstract key tree is only valid for each independant ACL. */
+        /* The abstract key tree is only valid for each independent ACL. */
         fmTreeDestroy(&abstractKey, NULL);
 
         /* Process instance specific functionality */
@@ -8298,16 +8298,13 @@ fm_status fm10000AclInit(fm_int sw)
     InitializeCompiledAcls(sw, switchExt->appliedAcls);
 
     switchExt->aclPrecedenceMin =
-        fmGetIntApiProperty(FM_AAK_API_FM10000_FFU_ACL_PRECEDENCE_MIN,
-                            FM_AAD_API_FM10000_FFU_ACL_PRECEDENCE_MIN);
+        GET_FM10000_PROPERTY()->ffuAclPrecedenceMin;
 
     switchExt->aclPrecedenceMax =
-        fmGetIntApiProperty(FM_AAK_API_FM10000_FFU_ACL_PRECEDENCE_MAX,
-                            FM_AAD_API_FM10000_FFU_ACL_PRECEDENCE_MAX);
+        GET_FM10000_PROPERTY()->ffuAclPrecedenceMax;
 
     switchExt->aclStrictCount =
-        fmGetBoolApiProperty(FM_AAK_API_FM10000_FFU_ACL_STRICT_COUNT_POLICE,
-                             FM_AAD_API_FM10000_FFU_ACL_STRICT_COUNT_POLICE);
+        GET_FM10000_PROPERTY()->ffuAclStrictCountPolice;
 
     
 ABORT:

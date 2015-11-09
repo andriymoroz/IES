@@ -124,7 +124,10 @@ typedef enum
     FM_PORT_MODE_ADMIN_DOWN    = FM_PORT_STATE_ADMIN_DOWN,
 
     /** The port is administratively set down with the SERDES
-     *  shut down and no signal transmitted. */
+     *  shut down and no signal transmitted.
+     *                                                                  \lb\lb
+     *  Note: on the FM10000, for a PEP port, FM_PORT_MODE_ADMIN_PWRDOWN is
+     *  interpreted as FM_PORT_MODE_ADMIN_DOWN. */
     FM_PORT_MODE_ADMIN_PWRDOWN = FM_PORT_STATE_ADMIN_PWRDOWN,
 
     /** The receiver is expecting a Built In Self Test sequence. The subMode

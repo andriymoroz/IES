@@ -37,8 +37,8 @@
  * Macros, Constants & Types
  *****************************************************************************/
 
-#define TAKE_SFLOW_LOCK(sw)     TAKE_TRIGGER_LOCK(sw)
-#define DROP_SFLOW_LOCK(sw)     DROP_TRIGGER_LOCK(sw)
+#define TAKE_SFLOW_LOCK(sw)     TAKE_MIRROR_LOCK(sw)
+#define DROP_SFLOW_LOCK(sw)     DROP_MIRROR_LOCK(sw)
 
 
 /*****************************************************************************
@@ -97,271 +97,6 @@ static fm10000_sflowEntry * GetSflowEntry(fm_int sw, fm_int sflowId)
 
 
 /*****************************************************************************/
-/** ConfigTriggerCond
- * \ingroup intSflow
- *
- * \desc            Configures an SFlow trigger.
- *
- * \param[in]       sw is the switch to operate on.
- * 
- * \param[in]       sflowId is the SFlow identifier.
- *
- * \return          FM_OK if successful.
- *
- *****************************************************************************/
-static fm_status ConfigTriggerCond(fm_int sw, fm_int sflowId)
-{
-    fm10000_sflowEntry *sflowEntry;
-    fm_triggerCondition trigCond;
-    fm_status           err;
-
-    FM_LOG_ENTRY(FM_LOG_CAT_SFLOW, "sw=%d sflowId=%d\n", sw, sflowId);
-
-    sflowEntry = GetSflowEntry(sw, sflowId);
-
-    if (sflowEntry == NULL)
-    {
-        /* Should never happen. */
-        err = FM_ERR_INVALID_ARGUMENT;
-        goto ABORT;
-    }
-
-    /**************************************************
-     * Initialize trigger condition.
-     **************************************************/
-
-    err = fmInitTriggerCondition(sw, &trigCond);
-    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
-
-    /**************************************************
-     * Configure Tx/Rx port masks.
-     **************************************************/
-
-    if (sflowEntry->sflowType == FM_SFLOW_TYPE_INGRESS)
-    {
-        /* Match selected ingress ports. */
-        /* Match all egress ports (by default). */
-        trigCond.cfg.rxPortset = sflowEntry->portSet;
-    }
-    else
-    {
-        /* Match all ingress ports. */
-        /* Match selected egress ports. */
-        trigCond.cfg.rxPortset = FM_PORT_SET_ALL;
-        trigCond.cfg.txPortset = sflowEntry->portSet;
-        trigCond.cfg.matchTx   = FM_TRIGGER_TX_MASK_CONTAINS;
-    }
-
-    /**************************************************
-     * Configure vlan trigger.
-     **************************************************/
-
-    if (sflowEntry->vlanID == FM_SFLOW_VLAN_ANY)
-    {
-        /* Match any vlan. */
-        trigCond.cfg.matchVlan = FM_TRIGGER_MATCHCASE_MATCHUNCONDITIONAL;
-        trigCond.param.vidId = 0;
-    }
-    else if (sflowEntry->vlanResId != FM10000_SFLOW_RES_ID_NONE)
-    {
-        /* Match selected vlan. */
-        trigCond.cfg.matchVlan = FM_TRIGGER_MATCHCASE_MATCHIFEQUAL;
-        trigCond.param.vidId = sflowEntry->vlanResId;
-    }
-
-    /**************************************************
-     * Configure sample rate.
-     **************************************************/
-
-    if (sflowEntry->sampleRate)
-    {
-        trigCond.cfg.matchRandomNumber = TRUE;
-        trigCond.param.randGenerator = FM_TRIGGER_RAND_GEN_A;
-        trigCond.param.randMatchThreshold = 
-            ((FM10000_SFLOW_MAX_SAMPLE_RATE + 1) / sflowEntry->sampleRate) - 1;
-    }
-
-    /**************************************************
-     * Set trigger condition.
-     **************************************************/
-
-    err = fm10000SetTriggerCondition(sw,
-                                     FM10000_TRIGGER_GROUP_SFLOW,
-                                     sflowEntry->rule,
-                                     &trigCond,
-                                     TRUE);
-    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
-
-ABORT:
-    FM_LOG_EXIT(FM_LOG_CAT_SFLOW, err);
-
-}   /* end ConfigTriggerCond */
-
-
-
-
-/*****************************************************************************/
-/** FreePortSet
- * \ingroup intSflow
- *
- * \desc            Frees the specified port set.
- *
- * \param[in]       sw is the switch on which to operate.
- * 
- * \param[in,out]   portSet points to a location containing the identifier
- *                  of the port set to be freed.
- *
- * \return          FM_OK if successful.
- *
- *****************************************************************************/
-static fm_status FreePortSet(fm_int sw, fm_int * portSet)
-{
-    fm_status   err;
-
-    if (portSet == NULL)
-    {
-        return FM_ERR_INVALID_ARGUMENT;
-    }
-
-    if (*portSet == FM_PORT_SET_NONE)
-    {
-        return FM_OK;
-    }
-
-    err = fmDeletePortSetInt(sw, *portSet);
-
-    if (err == FM_ERR_INVALID_PORT_SET)
-    {
-        err = FM_OK;
-    }
-    else if (err != FM_OK)
-    {
-        FM_LOG_ERROR(FM_LOG_CAT_SWITCH,
-                     "Error deleting portSet (%d): %s\n",
-                     *portSet,
-                     fmErrorMsg(err));
-    }
-
-    *portSet = FM_PORT_SET_NONE;
-
-    return err;
-
-}   /* end FreePortSet */
-
-
-
-
-/*****************************************************************************/
-/** FreeTrigger
- * \ingroup intSflow
- *
- * \desc            Frees the specified trigger.
- *
- * \param[in]       sw is the switch on which to operate.
- * 
- * \param[in]       group is the trigger group number.
- * 
- * \param[in]       rule is the trigger rule number.
- *
- * \return          FM_OK if successful.
- *
- *****************************************************************************/
-static fm_status FreeTrigger(fm_int sw, fm_int group, fm_int rule)
-{
-    fm_status   err;
-
-    err = fm10000DeleteTrigger(sw, group, rule, TRUE);
-
-    if (err == FM_ERR_INVALID_TRIG)
-    {
-        err = FM_OK;
-    }
-    else if (err != FM_OK)
-    {
-        FM_LOG_ERROR(FM_LOG_CAT_SWITCH,
-                     "Error deleting trigger (%d, %d): %s\n",
-                     group,
-                     rule,
-                     fmErrorMsg(err));
-    }
-
-    return err;
-
-}   /* end FreeTrigger */
-
-
-
-
-/*****************************************************************************/
-/** FreeVlanResource
- * \ingroup intSflow
- *
- * \desc            Frees the VLAN resource identifier.
- *
- * \param[in]       sw is the switch on which to operate.
- * 
- * \param[in]       sflowId is the SFlow on which to operate
- *
- * \return          FM_OK if successful.
- *
- *****************************************************************************/
-static fm_status FreeVlanResource(fm_int sw, fm_int sflowId)
-{
-    fm10000_sflowEntry *sflowEntry;
-    fm10000_vlanEntry * ventryExt;
-    fm_status           retVal;
-    fm_status           err;
-
-    FM_LOG_ENTRY_VERBOSE(FM_LOG_CAT_SFLOW, "sw=%d sflowId=%d\n", sw, sflowId);
-
-    sflowEntry = GetSflowEntry(sw, sflowId);
-
-    retVal = FM_OK;
-
-    if (sflowEntry &&
-        sflowEntry->isValid &&
-        sflowEntry->vlanID != FM_SFLOW_VLAN_ANY &&
-        sflowEntry->vlanResId != FM10000_SFLOW_RES_ID_NONE)
-    {
-        ventryExt = GET_VLAN_EXT(sw, sflowEntry->vlanID);
-        if (ventryExt->trigger != 0)
-        {
-            if (ventryExt->trigger == sflowEntry->vlanResId)
-            {
-                /* Remove trigger from VLAN entry. */
-                err = fm10000SetVlanTrigger(sw, sflowEntry->vlanID, 0);
-                FM_ERR_COMBINE(retVal, err);
-            }
-            else
-            {
-                /* This should never happen. If it does, it probably means
-                 * that two entities (SFlow and Mirroring) are assigning
-                 * triggers to the same VLAN. */
-                FM_LOG_ERROR(FM_LOG_CAT_SFLOW,
-                             "VLAN triggerId (%d) != SFLOW triggerId (%d)\n",
-                             ventryExt->trigger,
-                             sflowEntry->vlanResId);
-            }
-        }
-
-        /* Free vlan trigger resource. */
-        err = fm10000FreeTriggerResource(sw,
-                                         FM_TRIGGER_RES_VLAN,
-                                         sflowEntry->vlanResId,
-                                         TRUE);
-        FM_ERR_COMBINE(retVal, err);
-
-        sflowEntry->vlanResId = FM10000_SFLOW_RES_ID_NONE;
-    }
-
-    FM_LOG_EXIT_VERBOSE(FM_LOG_CAT_SFLOW, retVal);
-
-}   /* end FreeVlanResource */
-
-
-
-
-/*****************************************************************************/
 /** FreeSFlow
  * \ingroup intSflow
  *
@@ -377,29 +112,19 @@ static fm_status FreeVlanResource(fm_int sw, fm_int sflowId)
 static fm_status FreeSFlow(fm_int sw, fm_int sflowId)
 {
     fm10000_sflowEntry *sflowEntry;
-    fm_status           retVal;
-    fm_status           err;
+    fm_status           err = FM_OK;
 
     sflowEntry = GetSflowEntry(sw, sflowId);
-
-    retVal = FM_OK;
-
     if (sflowEntry && sflowEntry->isValid)
     {
-        err = FreeTrigger(sw, FM10000_TRIGGER_GROUP_SFLOW, sflowEntry->rule);
-        sflowEntry->rule = FM10000_SFLOW_RULE_NONE;
-        FM_ERR_COMBINE(retVal, err);
-
-        err = FreeVlanResource(sw, sflowId);
-        FM_ERR_COMBINE(retVal, err);
-
-        err = FreePortSet(sw, &sflowEntry->portSet);
-        FM_ERR_COMBINE(retVal, err);
-
+        err = fmDeleteMirrorInt(sw, sflowEntry->mirrorId);
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SFLOW, err);
+        
         sflowEntry->isValid = FALSE;
     }
 
-    return retVal;
+ABORT:
+    return err;
 
 }   /* end FreeSFlow */
 
@@ -449,7 +174,10 @@ static fm_status SetSampleRate(fm_int sw, fm_int sflowId, fm_uint sampleRate)
 
     sflowEntry->sampleRate = sampleRate;
 
-    err = ConfigTriggerCond(sw, sflowId);
+    err = fmSetMirrorAttributeInt(sw, 
+                                  sflowEntry->mirrorId, 
+                                  FM_MIRROR_SAMPLE_RATE, 
+                                  (void *)&sampleRate);
 
 ABORT:
     FM_LOG_EXIT(FM_LOG_CAT_SFLOW, err);
@@ -477,9 +205,8 @@ ABORT:
 static fm_status SetVlan(fm_int sw, fm_int sflowId, fm_uint16 vlanID)
 {
     fm10000_sflowEntry *sflowEntry;
-    fm10000_vlanEntry * ventryExt;
-    fm_uint32           vlanResId;
     fm_status           err;
+    fm_mirrorVlanType   mirrorVlanType;
 
     FM_LOG_ENTRY(FM_LOG_CAT_SFLOW,
                  "sw=%d sflowId=%d vlanID=%u\n",
@@ -487,6 +214,7 @@ static fm_status SetVlan(fm_int sw, fm_int sflowId, fm_uint16 vlanID)
                  sflowId,
                  vlanID);
 
+    err = FM_OK;
     sflowEntry = GetSflowEntry(sw, sflowId);
 
     if (sflowEntry == NULL)
@@ -503,40 +231,44 @@ static fm_status SetVlan(fm_int sw, fm_int sflowId, fm_uint16 vlanID)
         goto ABORT;
     }
 
-    /* Free VLAN resource if one is in use. */
-    err = FreeVlanResource(sw, sflowId);
-    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SFLOW, err);
-
-    /* Save VLAN identifier in SFlow entry. */
-    sflowEntry->vlanID = vlanID;
-
-    /* Allocate new resource if needed. */
-    if (vlanID != FM_SFLOW_VLAN_ANY)
+    switch (sflowEntry->sflowType)
     {
-        err = fm10000AllocateTriggerResource(sw,
-                                             FM_TRIGGER_RES_VLAN,
-                                             &vlanResId,
-                                             TRUE);
-        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SFLOW, err);
+        case FM_SFLOW_TYPE_INGRESS:
+            mirrorVlanType = FM_MIRROR_VLAN_INGRESS;
+            break;
 
-        sflowEntry->vlanResId = vlanResId;
+        case FM_SFLOW_TYPE_EGRESS:
+            mirrorVlanType = FM_MIRROR_VLAN_EGRESS;
+            break;
 
-        ventryExt = GET_VLAN_EXT(sw, vlanID);
-        if (ventryExt->trigger != 0)
-        {
-            FM_LOG_ERROR(FM_LOG_CAT_SFLOW,
-                         "VLAN %u has existing trigger assignment (%d)\n",
-                         vlanID,
-                         ventryExt->trigger);
-            err = FM_FAIL;
+        default:
+            err = FM_ERR_INVALID_ARGUMENT;
             goto ABORT;
-        }
+    }
 
-        err = fm10000SetVlanTrigger(sw, vlanID, vlanResId);
+    /* If there is existing VLAN, then delete the VLAN in the 
+     * mirror group and then add new VLAN */
+    if (sflowEntry->vlanID  != FM_SFLOW_VLAN_ANY)
+    {
+        err = fmDeleteMirrorVlanInternal(sw,
+                                         sflowEntry->mirrorId,
+                                         FM_VLAN_SELECT_VLAN1,
+                                         sflowEntry->vlanID);
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SFLOW, err);
     }
 
-    err = ConfigTriggerCond(sw, sflowId);
+    if (vlanID != FM_SFLOW_VLAN_ANY)
+    {
+        err = fmAddMirrorVlanInternal(sw, 
+                                      sflowEntry->mirrorId, 
+                                      FM_VLAN_SELECT_VLAN1,
+                                      vlanID,
+                                      mirrorVlanType);
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SFLOW, err);
+    }
+    sflowEntry->vlanID = vlanID;
+
+
 
 ABORT:
     FM_LOG_EXIT(FM_LOG_CAT_SFLOW, err);
@@ -577,9 +309,10 @@ fm_status fm10000InitSFlows(fm_int sw)
 
         FM_CLEAR(*sflowEntry);
 
-        sflowEntry->rule     = FM10000_SFLOW_RULE_NONE;
-        sflowEntry->portSet  = FM_PORT_SET_NONE;
-        sflowEntry->isValid  = FALSE;
+        sflowEntry->mirrorId   = GET_SWITCH_PTR(sw)->mirrorTableSize
+                                  - sflowId - 1;
+        sflowEntry->isValid    = FALSE;
+        sflowEntry->trapCodeId = sflowId;
     }
 
     FM_LOG_EXIT(FM_LOG_CAT_SFLOW, FM_OK);
@@ -647,16 +380,16 @@ fm_status fm10000FreeSFlows(fm_int sw)
 fm_status fm10000CreateSFlow(fm_int sw, fm_int sFlowId, fm_sFlowType sFlowType)
 {
     fm10000_sflowEntry *sflowEntry;
-    fm_triggerAction    trigAction;
-    fm_char             trigName[32];
     fm_status           err;
-    fm_bool             triggerAlloc;
-    fm_bool             portSetAlloc;
+    fm_bool             mirrorAlloc;
+    fm_mirrorType       mirrorType;
+    fm_int              mirrorTrapCodeId;
+    fm_switch          *switchPtr;
 
     FM_LOG_ENTRY(FM_LOG_CAT_SFLOW, "sw=%d, sFlowId=%d\n", sw, sFlowId);
 
-    triggerAlloc = FALSE;
-    portSetAlloc = FALSE;
+    mirrorAlloc = FALSE;
+    switchPtr   = GET_SWITCH_PTR(sw);
 
     TAKE_SFLOW_LOCK(sw);
 
@@ -675,7 +408,11 @@ fm_status fm10000CreateSFlow(fm_int sw, fm_int sFlowId, fm_sFlowType sFlowType)
     switch (sFlowType)
     {
         case FM_SFLOW_TYPE_INGRESS:
+            mirrorType = FM_MIRROR_TYPE_INGRESS;
+            break;
+
         case FM_SFLOW_TYPE_EGRESS:
+            mirrorType = FM_MIRROR_TYPE_EGRESS;
             break;
 
         default:
@@ -683,61 +420,34 @@ fm_status fm10000CreateSFlow(fm_int sw, fm_int sFlowId, fm_sFlowType sFlowType)
             goto ABORT;
     }
 
-    sflowEntry->rule        = FM10000_SFLOW_RULE_NONE;
-    sflowEntry->portSet     = FM_PORT_SET_NONE;
     sflowEntry->sampleRate  = 1;    /* is this correct? */
     sflowEntry->sflowType   = sFlowType;
     sflowEntry->vlanID      = FM_SFLOW_VLAN_ANY;
-    sflowEntry->vlanResId   = FM10000_SFLOW_RES_ID_NONE;
 
     /**************************************************
-     * Create the trigger.
+     * Create mirror.
      **************************************************/
+    err = fmCreateMirrorInt(sw, 
+                            sflowEntry->mirrorId, 
+                            switchPtr->cpuPort,
+                            mirrorType,
+                            FM_MIRROR_USAGE_TYPE_SFLOW);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SFLOW, err);
+    
+    mirrorAlloc = TRUE;
 
-    FM_SPRINTF_S(trigName, sizeof(trigName), "sFlowTrigger[%d]", sFlowId);
+    mirrorTrapCodeId = FM10000_SFLOW_TRAPCODE_ID_START + 
+                       sflowEntry->trapCodeId;
 
-    sflowEntry->rule = sFlowId * 10;
+    err = fmSetMirrorAttributeInt(sw,
+                                  sflowEntry->mirrorId,
+                                  FM_MIRROR_TRAPCODE_ID,
+                                  (void *)&mirrorTrapCodeId );
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SFLOW, err);
 
-    err = fm10000CreateTrigger(sw,
-                               FM10000_TRIGGER_GROUP_SFLOW,
-                               sflowEntry->rule,
-                               TRUE,
-                               trigName);
-    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
+    err = SetSampleRate(sw, sFlowId, sflowEntry->sampleRate);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SFLOW, err);
 
-    triggerAlloc = TRUE;
-
-    /**************************************************
-     * Create the port set.
-     **************************************************/
-
-    err = fmCreatePortSetInt(sw, &sflowEntry->portSet, TRUE);
-    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
-
-    portSetAlloc = TRUE;
-
-    /**************************************************
-     * Configure trigger action.
-     **************************************************/
-
-    err = fmInitTriggerAction(sw, &trigAction);
-    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
-
-    trigAction.cfg.trapAction = FM_TRIGGER_TRAP_ACTION_LOG;
-
-    err = fm10000SetTriggerAction(sw,
-                                  FM10000_TRIGGER_GROUP_SFLOW,
-                                  sflowEntry->rule,
-                                  &trigAction,
-                                  TRUE);
-    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
-
-    /**************************************************
-     * Configure trigger condition.
-     **************************************************/
-
-    err = ConfigTriggerCond(sw, sFlowId);
-    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
 
     /**************************************************
      * Mark the SFlow as active.
@@ -746,20 +456,14 @@ fm_status fm10000CreateSFlow(fm_int sw, fm_int sFlowId, fm_sFlowType sFlowType)
     sflowEntry->isValid = TRUE;
 
 ABORT:
-    if (err != FM_OK && sflowEntry)
-    {
-        if (triggerAlloc)
-        {
-            FreeTrigger(sw, FM10000_TRIGGER_GROUP_SFLOW, sflowEntry->rule);
-            sflowEntry->rule = FM10000_SFLOW_RULE_NONE;
-        }
 
-        if (portSetAlloc)
+    if (err != FM_OK)
+    {
+        if (mirrorAlloc)
         {
-            FreePortSet(sw, &sflowEntry->portSet);
+            fmDeleteMirrorInt(sw, sflowEntry->mirrorId);
         }
     }
-
     DROP_SFLOW_LOCK(sw);
 
     FM_LOG_EXIT(FM_LOG_CAT_SFLOW, err);
@@ -791,6 +495,12 @@ fm_status fm10000DeleteSFlow(fm_int sw, fm_int sFlowId)
 
     FM_LOG_ENTRY(FM_LOG_CAT_SFLOW, "sw=%d, sFlowId=%d\n", sw, sFlowId);
 
+    /* ACL Lock needs to be taken prior to the mirror lock for lock inversion
+     * prevention. The ACL lock is needed on fmDeleteMirrorInt() because some
+     * validation is done at the ACL level to make sure this group is currently
+     * unused. */
+    FM_TAKE_ACL_LOCK(sw);
+
     TAKE_SFLOW_LOCK(sw);
 
     sflowEntry = GetSflowEntry(sw, sFlowId);
@@ -805,6 +515,7 @@ fm_status fm10000DeleteSFlow(fm_int sw, fm_int sFlowId)
     }
 
     DROP_SFLOW_LOCK(sw);
+    FM_DROP_ACL_LOCK(sw);
  
     FM_LOG_EXIT(FM_LOG_CAT_SFLOW, err);
 
@@ -832,9 +543,8 @@ fm_status fm10000DeleteSFlow(fm_int sw, fm_int sFlowId)
 fm_status fm10000AddSFlowPort(fm_int sw, fm_int sFlowId, fm_int port)
 {
     fm10000_sflowEntry *sflowEntry;
-    fm_triggerCondition trigCond;
-    fm_triggerAction    trigAction;
     fm_status           err;
+    fm_mirrorType       mirrorType;
 
     FM_LOG_ENTRY(FM_LOG_CAT_SFLOW,
                  "sw=%d, sFlowId=%d, port=%d\n",
@@ -852,22 +562,22 @@ fm_status fm10000AddSFlowPort(fm_int sw, fm_int sFlowId, fm_int port)
         goto ABORT;
     }
 
-    err = fm10000GetTrigger(sw,
-                            FM10000_TRIGGER_GROUP_SFLOW,
-                            sflowEntry->rule,
-                            &trigCond,
-                            &trigAction);
-    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SFLOW, err);
+    switch (sflowEntry->sflowType)
+    {
+        case FM_SFLOW_TYPE_INGRESS:
+            mirrorType = FM_MIRROR_TYPE_INGRESS;
+            break;
 
-    err = fmAddPortSetPortInt(sw, sflowEntry->portSet, port);
-    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SFLOW, err);
+        case FM_SFLOW_TYPE_EGRESS:
+            mirrorType = FM_MIRROR_TYPE_EGRESS;
+            break;
 
-    err = fm10000SetTriggerCondition(sw,
-                                     FM10000_TRIGGER_GROUP_SFLOW,
-                                     sflowEntry->rule,
-                                     &trigCond,
-                                     TRUE);
-    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SFLOW, err);
+        default:
+            err = FM_ERR_INVALID_ARGUMENT;
+            goto ABORT;
+    }
+
+    err = fmAddMirrorPortInternal(sw, sflowEntry->mirrorId, port, mirrorType);
 
 ABORT:
     DROP_SFLOW_LOCK(sw);
@@ -897,8 +607,6 @@ ABORT:
 fm_status fm10000DeleteSFlowPort(fm_int sw, fm_int sFlowId, fm_int port)
 {
     fm10000_sflowEntry *sflowEntry;
-    fm_triggerCondition trigCond;
-    fm_triggerAction    trigAction;
     fm_status           err;
 
     FM_LOG_ENTRY(FM_LOG_CAT_SFLOW,
@@ -917,22 +625,7 @@ fm_status fm10000DeleteSFlowPort(fm_int sw, fm_int sFlowId, fm_int port)
         goto ABORT;
     }
 
-    err = fm10000GetTrigger(sw,
-                            FM10000_TRIGGER_GROUP_SFLOW,
-                            sflowEntry->rule,
-                            &trigCond,
-                            &trigAction);
-    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SFLOW, err);
-
-    err = fmDeletePortSetPortInt(sw, sflowEntry->portSet, port);
-    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SFLOW, err);
-
-    err = fm10000SetTriggerCondition(sw,
-                                     FM10000_TRIGGER_GROUP_SFLOW,
-                                     sflowEntry->rule,
-                                     &trigCond,
-                                     TRUE);
-    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SFLOW, err);
+    err = fmDeleteMirrorPortInt(sw, sflowEntry->mirrorId, port);
 
 ABORT:
     DROP_SFLOW_LOCK(sw);
@@ -978,7 +671,11 @@ fm_status fm10000GetSFlowPortFirst(fm_int  sw, fm_int sFlowId, fm_int *firstPort
 
     if (sflowEntry && sflowEntry->isValid)
     {
-        err = fmGetPortSetPortFirstInt(sw, sflowEntry->portSet, firstPort);
+        err = fmGetMirrorPortFirstInt(sw, sflowEntry->mirrorId, firstPort);
+        if (err == FM_ERR_NO_PORTS_IN_MIRROR_GROUP)
+        {
+            err = FM_ERR_NO_SFLOW_PORT;
+        }
     }
     else
     {
@@ -1034,10 +731,14 @@ fm_status fm10000GetSFlowPortNext(fm_int   sw,
 
     if (sflowEntry && sflowEntry->isValid)
     {
-        err = fmGetPortSetPortNextInt(sw,
-                                      sflowEntry->portSet,
-                                      startPort,
-                                      nextPort);
+        err = fmGetMirrorPortNextInt(sw, 
+                                     sflowEntry->mirrorId, 
+                                     startPort,
+                                     nextPort);
+        if (err == FM_ERR_NO_PORTS_IN_MIRROR_GROUP)
+        {
+            err = FM_ERR_NO_SFLOW_PORT;
+        }
     }
     else
     {
@@ -1099,11 +800,32 @@ fm_status fm10000GetSFlowPortList(fm_int   sw,
 
     if (sflowEntry && sflowEntry->isValid)
     {
-        err = fmPortSetToPortList(sw,
-                                  sflowEntry->portSet,
-                                  numPorts,
-                                  portList,
-                                  maxPorts);
+        if (sflowEntry->sflowType == FM_SFLOW_TYPE_INGRESS)
+        {
+            err = fmGetMirrorPortListsInt(sw,
+                                          sflowEntry->mirrorId,
+                                          numPorts,
+                                          portList,
+                                          maxPorts,
+                                          NULL,
+                                          NULL,
+                                          0);
+        }
+        else if (sflowEntry->sflowType == FM_SFLOW_TYPE_EGRESS)
+        {
+            err = fmGetMirrorPortListsInt(sw,
+                                          sflowEntry->mirrorId,
+                                          NULL,
+                                          NULL,
+                                          0,
+                                          numPorts,
+                                          portList,
+                                          maxPorts);
+        }
+        else
+        {
+            err = FM_ERR_INVALID_SFLOW_INSTANCE;
+        }
     }
     else
     {
@@ -1221,6 +943,7 @@ fm_status fm10000GetSFlowAttribute(fm_int sw,
 {
     fm10000_sflowEntry *sflowEntry;
     fm_status           err;
+    fm_int              mirrorCntAttr;
 
     FM_LOG_ENTRY(FM_LOG_CAT_SFLOW,
                  "sw=%d, sFlowId=%d, attr=%d, value=%p\n",
@@ -1252,15 +975,17 @@ fm_status fm10000GetSFlowAttribute(fm_int sw,
     switch (attr)
     {
         case FM_SFLOW_COUNT:
-            err = fm10000GetTriggerAttribute(sw,
-                                             FM10000_TRIGGER_GROUP_SFLOW,
-                                             sflowEntry->rule,
-                                             FM_TRIGGER_ATTR_COUNTER,
-                                             value);
+            mirrorCntAttr = (sflowEntry->sflowType == FM_SFLOW_TYPE_INGRESS) ?
+                            FM_MIRROR_INGRESS_COUNTER :
+                            FM_MIRROR_EGRESS_COUNTER;    
+            err = fmGetMirrorAttributeInt(sw,
+                                          sflowEntry->mirrorId,
+                                          mirrorCntAttr,
+                                          value);            
             break;
 
         case FM_SFLOW_TRAP_CODE:
-            *( (fm_int *) value) = sflowEntry->rule;
+            *( (fm_int *) value) = sflowEntry->trapCodeId;
             break;
 
         case FM_SFLOW_VLAN:
@@ -1311,9 +1036,7 @@ fm_status fm10000CheckSFlowLogging(fm_int            sw,
 {
     fm10000_sflowEntry *sflowEntry;
     fm_int              sflowId;
-    fm_int              group;
-    fm_int32            rule;
-    fm_status           err;
+    fm_int              sflowTrapCodeId;
 
     FM_LOG_ENTRY(FM_LOG_CAT_SFLOW,
                  "sw=%d, pktEvent=%p, isPktSFlowLogged=%p\n",
@@ -1322,25 +1045,24 @@ fm_status fm10000CheckSFlowLogging(fm_int            sw,
                  (void *) isPktSFlowLogged);
 
     *isPktSFlowLogged = FALSE;
+    sflowTrapCodeId   = pktEvent->trapAction - 
+                        FM10000_MIRROR_CPU_CODE_BASE -
+                        FM10000_SFLOW_TRAPCODE_ID_START;
 
-    err = fm10000GetTriggerFromTrapCode(sw, pktEvent->trapAction, &group, &rule);
+    TAKE_SFLOW_LOCK(sw);
 
-    if (err == FM_OK && group == FM10000_TRIGGER_GROUP_SFLOW)
+    for (sflowId = 0 ; sflowId < FM10000_MAX_SFLOWS ; ++sflowId)
     {
-        TAKE_SFLOW_LOCK(sw);
-
-        for (sflowId = 0 ; sflowId < FM10000_MAX_SFLOWS ; ++sflowId)
+        sflowEntry = GetSflowEntry(sw, sflowId);
+        if (sflowEntry && sflowEntry->isValid && 
+            sflowEntry->trapCodeId == sflowTrapCodeId)
         {
-            sflowEntry = GetSflowEntry(sw, sflowId);
-            if (sflowEntry && sflowEntry->isValid && sflowEntry->rule == rule)
-            {
-                *isPktSFlowLogged = TRUE;
-                break;
-            }
+            *isPktSFlowLogged = TRUE;
+            break;
         }
-
-        DROP_SFLOW_LOCK(sw);
     }
+
+    DROP_SFLOW_LOCK(sw);
 
     FM_LOG_EXIT(FM_LOG_CAT_SFLOW, FM_OK);
 
@@ -1399,27 +1121,29 @@ fm_status fm10000GetSFlowType(fm_int sw, fm_int sFlowId, fm_sFlowType *sFlowType
 
 
 /*****************************************************************************/
-/** fmDbgPrintPortSet
+/** fmDbgPrintPortList
  * \ingroup intSflow
  *
  * \desc            Prints a port set as a list of comma-separated ranges.
  *
  * \param[in]       sw is the switch on which to operate.
  * 
- * \param[in]       portSet is the port set to dump.
+ * \param[in]       numPorts is the number of ports in the array.
  *
+ * \param[in]       portList is the array which contains the list of ports.
+ *
+ * \return          FM_OK if successful.
  * \return          FM_OK if successful.
  *
  *****************************************************************************/
-static fm_status fmDbgPrintPortSet(fm_int sw, fm_int portSet)
+static fm_status fmDbgPrintPortList(fm_int sw, fm_int numPorts, fm_int *portList)
 {
     fm_switch * switchPtr;
-    fm_portmask portMask;
-    fm_status   err;
     fm_int      cpi;
     fm_int      port;
     fm_int      lastPort;
     fm_bool     inSet;
+    fm_int      i;
 
     enum { EMPTY, FIRST, RANGE, GAP } state;
 
@@ -1427,17 +1151,17 @@ static fm_status fmDbgPrintPortSet(fm_int sw, fm_int portSet)
     lastPort  = -1;
     state     = EMPTY;
 
-    err = fmPortSetToPortMask(sw, portSet, &portMask);
-    if (err != FM_OK)
-    {
-        FM_LOG_PRINT("(ERROR)");
-        return err;
-    }
-
     for (cpi = 0 ; cpi < switchPtr->numCardinalPorts ; ++cpi)
     {
         port  = GET_LOGICAL_PORT(sw, cpi);
-        inSet = FM_PORTMASK_IS_BIT_SET(&portMask, cpi);
+        inSet = FALSE;
+        for (i = 0; i < numPorts; i++)
+        {
+            if (portList[i] == port)
+            {
+                inSet = TRUE;
+            }
+        }
 
         switch (state)
         {
@@ -1496,7 +1220,7 @@ static fm_status fmDbgPrintPortSet(fm_int sw, fm_int portSet)
 
     return FM_OK;
 
-}   /* end fmDbgPrintPortSet */
+}   /* end fmDbgPrintPortList */
 
 
 
@@ -1517,12 +1241,14 @@ fm_status fm10000DbgDumpSFlows(fm_int sw)
     fm10000_sflowEntry *sflowEntry;
     fm_int              sflowId;
     fm_text             typeText;
+    fm_int              portList[48];
+    fm_int              numPorts;
 
     VALIDATE_AND_PROTECT_SWITCH(sw);
 
     FM_LOG_PRINT("\n");
-    FM_LOG_PRINT("Id  rule  sflowType  vlanID  resId  portSet  ports\n");
-    FM_LOG_PRINT("--  ----  ---------  ------  -----  -------  --------------------\n");
+    FM_LOG_PRINT("Id  MirId sflowType  vlanID  ports\n");
+    FM_LOG_PRINT("--  ----  ---------  ------  --------------------\n");
 
     for (sflowId = 0 ; sflowId < FM10000_MAX_SFLOWS ; ++sflowId)
     {
@@ -1549,30 +1275,21 @@ fm_status fm10000DbgDumpSFlows(fm_int sw)
 
         FM_LOG_PRINT("%2d  %4d  %-9s  ",
                      sflowId,
-                     sflowEntry->rule,
+                     sflowEntry->mirrorId,
                      typeText);
 
         if (sflowEntry->vlanID == FM_SFLOW_VLAN_ANY)
         {
-            FM_LOG_PRINT("%5s   %4s   ", "ANY", "--");
+            FM_LOG_PRINT("%5s   ", "ANY");
         }
         else
         {
-            FM_LOG_PRINT("%5u   %4d   ",
-                         sflowEntry->vlanID,
-                         sflowEntry->vlanResId);
+            FM_LOG_PRINT("%5u   ",
+                         sflowEntry->vlanID);
         }
 
-        if (sflowEntry->portSet == FM_PORT_SET_NONE)
-        {
-            FM_LOG_PRINT("%5s  ", "NONE");
-        }
-        else
-        {
-            FM_LOG_PRINT("%5d    ", sflowEntry->portSet);
-            fmDbgPrintPortSet(sw, sflowEntry->portSet);
-        }
-
+        fm10000GetSFlowPortList(sw, sflowId, &numPorts, portList, 48);
+        fmDbgPrintPortList(sw, numPorts, portList);
         FM_LOG_PRINT("\n");
 
     }   /* end for (sflowId = 0 ; sflowId < FM10000_MAX_SFLOWS ; ++sflowId) */

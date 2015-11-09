@@ -29,7 +29,7 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
+ *****************************************************************************/
 
 #include <fm_sdk_int.h>
 
@@ -45,9 +45,9 @@
  *****************************************************************************/
 
 /* Set to 1 to read the FM_PORT_MASK attribute instead of reading the
-   PORT_CFG_2 register from the switch. This is used for the EEPROM
-   image generation. */
-fm_int fmDbgUsePortMaskAttribute=0;
+ * PORT_CFG_2 register from the switch. This is used for EEPROM image
+ * generation. */
+fm_int fmDbgUsePortMaskAttribute = 0;
 
 /*****************************************************************************
  * Local Variables
@@ -795,7 +795,7 @@ fm_status fmDbgWriteRegisterV2(fm_int    sw,
  *
  * \note            This function is provided for FM6000 devices (which have 
  *                  triply indexed registers), but it can be successfully 
- *                  called for the FM2000, FM3000 and FM4000 devices as well. 
+ *                  called for the FM2000 and FM3000/FM4000 devices as well. 
  *                  Singly indexed and non-indexed registers can also be 
  *                  accessed with ''fmDbgWriteRegister''. Doubly indexed 
  *                  registers can also be accessed with ''fmDbgWriteRegisterV2''.

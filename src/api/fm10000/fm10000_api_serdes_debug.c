@@ -893,4 +893,105 @@ fm_status fm10000DbgInterruptSpico(fm_int      sw,
 
 
 
+/*****************************************************************************/
+/** fm10000DbgSerDesSetDfeParameter
+ * \ingroup intSerDes
+ *
+ * \desc            Set, for the given serDes, the value of the DFE parameter
+ *                  indicated by paramSelector to paramValue
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \param[in]       serDes is the SERDES number on which to operate.
+ *
+ * \param[in]       paramSelector is the selector of the parameter to be set
+ *
+ * \param[in]       paramValue is the value to be set on the selected parameter
+ *
+ * \return          FM_OK if successful
+ * \return          Other ''Status Codes'' as appropriate in case of failure.
+ *
+ *****************************************************************************/
+fm_status fm10000DbgSerDesSetDfeParameter(fm_int      sw,
+                                          fm_int      serDes,
+                                          fm_uint32   paramSelector,
+                                          fm_uint32   paramValue)
+{
+    fm_status        err;
+    fm10000_serdes  *serdesPtr;
+    fm10000_switch  *switchExt;
+
+
+    switchExt = GET_SWITCH_EXT(sw);
+    serdesPtr = &switchExt->serdesXServices;
+
+    err = FM_ERR_UNSUPPORTED;
+
+    if (serdesPtr->magicNumber != FM10000_SERDES_STRUCT_MAGIG_NUMBER)
+    {
+
+        err = FM_ERR_UNINITIALIZED;
+    }
+    else if (serdesPtr->dbgSetDfeParameter != NULL)
+    {
+        err = serdesPtr->dbgSetDfeParameter(sw, serDes, paramSelector, paramValue);
+    }
+
+    return err;
+
+}
+
+
+
+
+/*****************************************************************************/
+/** fm10000DbgSerDesGetDfeParameter
+ * \ingroup intSerDes
+ *
+ * \desc            Get, for the given serDes, the value of the DFE parameter
+ *                  indicated by paramSelector.
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \param[in]       serDes is the SERDES number on which to operate.
+ *
+ * \param[in]       paramSelector is the selector of the parameter to be get
+ *
+ * \param[in]       pParamValue is a pointer to a caller-allocated area where
+ *                  this function will return the value of the selected
+ *                  parameter.If NULL, the parameter will be just printed.
+ *
+ * \return          FM_OK if successful
+ * \return          Other ''Status Codes'' as appropriate in case of failure.
+ *
+ *****************************************************************************/
+fm_status fm10000DbgSerDesGetDfeParameter(fm_int      sw,
+                                          fm_int      serDes,
+                                          fm_uint32   paramSelector,
+                                          fm_uint32 * pParamValue)
+{
+    fm_status        err;
+    fm10000_serdes  *serdesPtr;
+    fm10000_switch  *switchExt;
+
+
+    switchExt = GET_SWITCH_EXT(sw);
+    serdesPtr = &switchExt->serdesXServices;
+
+    err = FM_ERR_UNSUPPORTED;
+
+    if (serdesPtr->magicNumber != FM10000_SERDES_STRUCT_MAGIG_NUMBER)
+    {
+
+        err = FM_ERR_UNINITIALIZED;
+    }
+    else if (serdesPtr->dbgSetDfeParameter != NULL)
+    {
+        err = serdesPtr->dbgGetDfeParameter(sw, serDes, paramSelector, pParamValue);
+    }
+
+    return err;
+
+}
+
 

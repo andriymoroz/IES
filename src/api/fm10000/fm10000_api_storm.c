@@ -642,6 +642,98 @@ ABORT:
 
 
 /*****************************************************************************/
+/** DumpStormControllerCompTable
+ * \ingroup intstorm
+ *
+ * \desc            Dump storm controller compatibility table. 
+ *
+ * \return          FM_OK if successful.
+ * 
+ *****************************************************************************/
+static fm_status DumpStormControllerCompTable(void)
+{
+    fm_status err = FM_OK;
+    fm_int    i;
+    fm_int    j;
+    fm_char   sep[80];
+    fm_char   buf[10];
+
+    FM_LOG_PRINT("\n");
+    FM_LOG_PRINT("Supported Conditions and their ID:\n");
+    FM_LOG_PRINT("==========================================\n");
+
+    for (i = 0; i < FM_STORM_COND_MAX; i++)
+    {
+        if (conditionSupportedTable[i] == TRUE)
+        {
+            FM_LOG_PRINT(" %02d - %s\n", i, fmStormCondTypeToText(i));
+        }
+    }
+
+    FM_LOG_PRINT("\n");
+    FM_LOG_PRINT("Condition Compatibility Table\n");
+    FM_LOG_PRINT("==========================================\n\n");
+
+
+    FM_LOG_PRINT("    ");
+    FM_STRCPY_S(sep, sizeof(sep), " ---");
+
+    /* column */
+    for (j = 0; j < FM_STORM_COND_MAX; j++)
+    {
+        if (conditionSupportedTable[j] == FALSE)
+        {
+            continue;
+        }
+
+        FM_LOG_PRINT("| %02d ", j);
+        FM_STRCAT_S(sep, sizeof(sep), "+----");
+    }
+    FM_LOG_PRINT("|\n");
+    FM_STRCAT_S(sep, sizeof(sep), "+\n");
+    FM_LOG_PRINT("%s", sep);
+
+    /* row */
+    for (i = 0; i < FM_STORM_COND_MAX; i++)
+    {
+        if (conditionSupportedTable[i] == FALSE)
+        {
+            continue;
+        }
+
+        FM_LOG_PRINT(" %02d ", i);
+
+        /* column */
+        for (j = 0; j < FM_STORM_COND_MAX; j++)
+        {
+            if (conditionSupportedTable[j] == FALSE)
+            {
+                continue;
+            }
+
+            if (conditionCompatibleTable[i][j] == TRUE)
+            {
+                FM_LOG_PRINT("| x  ");
+            }
+            else
+            {
+                FM_LOG_PRINT("|    ");
+            }
+        }
+        
+        FM_LOG_PRINT("|\n");
+        FM_LOG_PRINT("%s", sep);
+    }
+
+    FM_LOG_PRINT("\n\n");
+
+    return err;
+}
+
+
+
+
+/*****************************************************************************/
 /** DumpStormController
  * \ingroup intstorm
  *
@@ -2443,6 +2535,9 @@ void fm10000DbgDumpStormCtrl(fm_int sw, fm_int stormController)
     /* Iterate on all storm controllers */
     if ( stormController < 0 )
     {
+        err = DumpStormControllerCompTable();
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_STORM, err);
+
         FM_LOG_PRINT("Dumping all storm controllers:\n\n");
 
         for (i = 0; i < FM10000_MAX_NUM_STORM_CTRL; i++)

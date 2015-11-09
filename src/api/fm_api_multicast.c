@@ -1922,9 +1922,7 @@ fm_status fmCreateMcastGroupInt(fm_int  sw,
     group->attrLogicalPort    = FM_LOGICAL_PORT_NONE;
     group->internal           = internal;
 
-    group->singleAddressMode  =
-        fmGetBoolApiProperty(FM_AAK_API_1_ADDR_PER_MCAST_GROUP,
-                             FM_AAD_API_1_ADDR_PER_MCAST_GROUP);
+    group->singleAddressMode  = GET_PROPERTY()->multicastSingleAddress;
 
     if (forceRPFAction)
     {
@@ -3144,8 +3142,7 @@ fm_status fmAddMcastGroupListenerInternal(fm_int                 sw,
         FM_LOG_EXIT(FM_LOG_CAT_MULTICAST, FM_ERR_INVALID_ARGUMENT);
     }
 
-    mcastHNIFlooding = fmGetBoolApiProperty(FM_AAK_API_MULTICAST_HNI_FLOODING,
-                                            FM_AAD_API_MULTICAST_HNI_FLOODING);
+    mcastHNIFlooding = GET_PROPERTY()->hniMcastFlooding;
 
     switchPtr          = GET_SWITCH_PTR(sw);
     routingLockTaken   = FALSE;
@@ -3533,8 +3530,7 @@ fm_status fmAddMcastGroupListenerListInternal(fm_int                 sw,
     routingLockTaken = FALSE;
     flowLockTaken    = FALSE;
 
-    mcastHNIFlooding = fmGetBoolApiProperty(FM_AAK_API_MULTICAST_HNI_FLOODING,
-                                            FM_AAD_API_MULTICAST_HNI_FLOODING);
+    mcastHNIFlooding = GET_PROPERTY()->hniMcastFlooding;
 
     /*****************************************************
      * Validate the logical ports.
@@ -3901,8 +3897,7 @@ fm_status fmDeleteMcastGroupListenerInternal(fm_int                 sw,
     routingLockTaken = FALSE;
     flowLockTaken    = FALSE;
 
-    mcastHNIFlooding = fmGetBoolApiProperty(FM_AAK_API_MULTICAST_HNI_FLOODING,
-                                            FM_AAD_API_MULTICAST_HNI_FLOODING);
+    mcastHNIFlooding = GET_PROPERTY()->hniMcastFlooding;
 
     switch (listener->listenerType)
     {
@@ -5375,6 +5370,10 @@ ABORT:
  *
  * \desc            Retrieve the next address attached to a multicast group.
  *
+ * \note            This function fails if legacy multicast group
+ *                  restrictions are enabled, since in this mode only
+ *                  one address can be attached to a multicast group.
+ *
  * \param[in]       sw is the switch on which to operate.
  *
  * \param[in]       mcastGroup is the multicast group number (returned by
@@ -5506,7 +5505,9 @@ ABORT:
  * \note            This function may not be called for a multicast group that
  *                  is currently activated, i.e., the group must first be
  *                  deactivated using ''fmDeactivateMcastGroup'' before the
- *                  address can be changed.
+ *                  address can be changed. Prior to setting the address, this
+ *                  function clears all addresses attached to the multicast
+ *                  group.
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -5751,6 +5752,8 @@ ABORT:
  *                  not a multicast address.
  * \return          FM_ERR_MCAST_ADDRESS_IN_USE if the address is already
  *                  in use by another multicast group.
+ * \return          FM_ERR_UNSUPPORTED if legacy multicast group restrictions
+ *                  are enabled.
  *
  *****************************************************************************/
 fm_status fmAddMcastGroupAddressInt(fm_int               sw,
@@ -5964,6 +5967,8 @@ ABORT:
  *                  not a multicast address.
  * \return          FM_ERR_MCAST_ADDRESS_IN_USE if the address is already
  *                  in use by another multicast group.
+ * \return          FM_ERR_UNSUPPORTED if legacy multicast group restrictions
+ *                  are enabled.
  *
  *****************************************************************************/
 fm_status fmAddMcastGroupAddress(fm_int               sw,
@@ -6013,6 +6018,8 @@ fm_status fmAddMcastGroupAddress(fm_int               sw,
  *                  range or is not the handle of an existing multicast group.
  * \return          FM_ERR_NOT_FOUND if the address could not be found in
  *                  the multicast group.
+ * \return          FM_ERR_UNSUPPORTED if legacy multicast group restrictions
+ *                  are enabled.
  *
  *****************************************************************************/
 fm_status fmDeleteMcastGroupAddress(fm_int               sw,
@@ -6104,6 +6111,11 @@ fm_status fmDeleteMcastGroupAddress(fm_int               sw,
                               (void *) addrKey,
                               NULL);
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MULTICAST, err);
+
+    if (group->singleMcastAddr == addrKey)
+    {
+        group->singleMcastAddr = NULL;
+    }
 
     fmFree(addrKey);
 
@@ -6207,7 +6219,7 @@ fm_status fmClearMcastGroupAddressesInt(fm_int                sw,
  *
  * \chips           FM3000, FM4000, FM6000, FM10000
  *
- * \desc            Removes the address targeted by a multicast group.
+ * \desc            Removes all addresses attached to a multicast group.
  *                  This function may not be called for an activated
  *                   group, i.e., the group must be deactivated using
  *                  ''fmDeactivateMcastGroup'' before the address can be
@@ -6389,7 +6401,10 @@ fm_status fmGetMcastGroupAddress(fm_int               sw,
  *                  range or is not the handle of an existing multicast group.
  * \return          FM_ERR_MCAST_GROUP_ACTIVE if the group is already active.
  * \return          FM_ERR_MCAST_ADDR_NOT_ASSIGNED if a multicast
- *                  address has not been assigned to the group.
+ *                  address has not been assigned to the group. This error is
+ *                  returned only if legacy multicast group restrictions are
+ *                  enabled. Otherwise it is not required for a multicast group
+ *                  to have an address attached prior to activation.
  * \return          FM_FAIL if multicast group could not share a replication
  *                  group with other multicast groups due to a common listener
  *                  port, or an internal logic error occurs.
@@ -6663,8 +6678,15 @@ fm_status fmActivateMcastGroupInt(fm_int sw,
 
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MULTICAST, err);
 
-        err = AddAddressToHardware(sw, group, addrKey);
-        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MULTICAST, err);
+        /* Adding mac address to MAC table for switches in a SWAG is performed
+         * on a SWAG level as a part of fmSWAGAddAddressToTablePre,
+         * so skip it here. */
+        if ( (switchPtr->swag < 0) ||
+             (addrKey->addr.addressType != FM_MCAST_ADDR_TYPE_L2MAC_VLAN) )
+        {
+            err = AddAddressToHardware(sw, group, addrKey);
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MULTICAST, err);
+        }
     }
 
 ABORT:
@@ -6811,7 +6833,10 @@ ABORT:
  *                  range or is not the handle of an existing multicast group.
  * \return          FM_ERR_MCAST_GROUP_ACTIVE if the group is already active.
  * \return          FM_ERR_MCAST_ADDR_NOT_ASSIGNED if a multicast
- *                  address has not been assigned to the group.
+ *                  address has not been assigned to the group. This error is
+ *                  returned only when legacy multicast group restrictions are
+ *                  enabled. Otherwise it is not required for a multicast group
+ *                  to have an address attached prior to activation.
  * \return          FM_FAIL if multicast group could not share a replication
  *                  group with other multicast groups due to a common listener
  *                  port, or an internal logic error occurs.

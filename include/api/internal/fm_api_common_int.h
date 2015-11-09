@@ -6,7 +6,7 @@
  * Description:     Contains structure definitions and constants related to the
  *                  initialization of the system and keeping system state
  *
- * Copyright (c) 2005 - 2014, Intel Corporation
+ * Copyright (c) 2005 - 2015, Intel Corporation
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -30,7 +30,7 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
+ *****************************************************************************/
 
 #ifndef __FM_FM_API_COMMON_INT_H
 #define __FM_FM_API_COMMON_INT_H
@@ -73,7 +73,7 @@ extern fm_eventHandler fmEventHandler;
 #define VLAN_OUT_OF_BOUNDS(v)  ( (v) >= FM_MAX_VLAN || (v) <= 0 )
 
 #define SWITCH_LOCK_EXISTS(sw)                                \
-    ( ( ( (sw) >= 0 ) && ( (sw) < FM_MAX_NUM_SWITCHES ) &&    \
+    ( ( ( (sw) >= 0 ) && ( (sw) < fmRootPlatform->cfg.numSwitches ) &&    \
        (fmRootApi->fmSwitchLockTable[sw] != NULL) ) ? TRUE : FALSE )
 
 #define PROTECT_SWITCH(sw) \
@@ -95,12 +95,12 @@ extern fm_eventHandler fmEventHandler;
     }
 
 #define VALIDATE_SWITCH_INDEX(sw)                                 \
-    if ( (sw) < 0 || (sw) >= FM_MAX_NUM_SWITCHES )                \
+    if ( (sw) < 0 || (sw) >= fmRootPlatform->cfg.numSwitches )    \
     {                                                             \
         FM_LOG_ERROR(FM_LOG_CAT_SWITCH,                           \
                      "VALIDATE_SWITCH_INDEX: %d not in [0,%d]\n", \
                      (sw),                                        \
-                     FM_MAX_NUM_SWITCHES);                        \
+                     fmRootPlatform->cfg.numSwitches);            \
         return FM_ERR_INVALID_SWITCH;                             \
     }
 

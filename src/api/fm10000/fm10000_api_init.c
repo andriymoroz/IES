@@ -56,17 +56,18 @@
 #define FM10000_PFL_FREQ_SEL_F300             4
 
 /* SKU values */
-#define FM10840_SKU                           0
-#define FM10420_SKU                           1
-#define FM10824_SKU                           2
-#define FM10064_SKU                           3
-#define FM10036_SKU                           4
-#define NO_SKU                             0xFF
+#define FM10000_SKU_FM10840             0
+#define FM10000_SKU_FM10420             1
+#define FM10000_SKU_FM10824             2
+#define FM10000_SKU_FM10064             3
+#define FM10000_SKU_FM10036             4
+#define FM10000_SKU_NONE                0xFF
 
 /* Closest binary value to 980000000 */
-#define BINARY_980_MHZ                979369984
+#define BINARY_980_MHZ                  980000000
+
 /* Closest binary value to 700000000 */
-#define BINARY_700_MHZ                699404761
+#define BINARY_700_MHZ                  699404761
 
 /* INTERRUPT_MASK bits to unmask for parity error detection. */
 #define FM10000_INT_PARITY_DETECT   \
@@ -103,6 +104,7 @@ const fm_switch FM10000SwitchDefaultTable =
     .macTableBankCount                  = FM10000_MAC_ADDR_BANK_COUNT,
     .macTableBankSize                   = FM10000_MAC_ADDR_BANK_SIZE,
     .mirrorTableSize                    = FM10000_MAX_MIRRORS_GRP,
+    .maxSflows                          = FM10000_MAX_SFLOWS,
     .maxSTPInstances                    = FM10000_MAX_STP_INSTANCE,
     .maxPhysicalLags                    = FM_MAX_NUM_LAGS,
     .maxPhysicalPortsPerLag             = FM10000_MAX_PHYS_PORTS_PER_LAG,
@@ -235,6 +237,7 @@ const fm_switch FM10000SwitchDefaultTable =
      **************************************************/
     .EventHandlingInitialize            = fm10000EventHandlingInitialize,
     .SendLinkUpDownEvent                = fm10000SendLinkUpDownEvent,
+    .SendLinkUpDownEventV2              = fm10000SendLinkUpDownEventV2,
     .DebounceLinkStates                 = fm10000DebounceLinkStates,
     /* QOS support functions.  */
     .GetSwitchQOS                       = fm10000GetSwitchQOS,
@@ -404,7 +407,11 @@ const fm_switch FM10000SwitchDefaultTable =
     .GetVNRemoteAddressMaskFirst        = fm10000GetVNRemoteAddressMaskFirst,
     .GetVNRemoteAddressMaskNext         = fm10000GetVNRemoteAddressMaskNext,
     .ConfigureVN                        = fm10000ConfigureVN,
+    .ConfigureVNDefaultGpe              = fm10000ConfigureVNDefaultGpe,
+    .ConfigureVNDefaultNsh              = fm10000ConfigureVNDefaultNsh,
     .GetVNConfiguration                 = fm10000GetVNConfiguration,
+    .GetVNDefaultGpe                    = fm10000GetVNDefaultGpe,
+    .GetVNDefaultNsh                    = fm10000GetVNDefaultNsh,
     .AddVNLocalPort                     = fm10000AddVNLocalPort,
     .DeleteVNLocalPort                  = fm10000DeleteVNLocalPort,
     .GetVNLocalPortList                 = fm10000GetVNLocalPortList,
@@ -629,6 +636,8 @@ const fm_switch FM10000SwitchDefaultTable =
     .DbgSetSerDesPostCursor             = fm10000SetSerdesPostCursor,
     .DbgSetSerDesPolarity               = fm10000DbgSetSerdesPolarity,
     .DbgSetSerDesLoopback               = fm10000DbgSetSerdesLoopback,
+    .DbgSetSerDesDfeParam               = fm10000DbgSerDesSetDfeParameter,
+    .DbgGetSerDesDfeParam               = fm10000DbgSerDesGetDfeParameter,
 #if 0
     .DbgPlotEyeDiagram                  = fm10000DbgPlotEyeDiagram,
     .DbgDeleteEyeDiagram                = fm10000DbgDeleteEyeDiagram,
@@ -671,6 +680,7 @@ const fm_switch FM10000SwitchDefaultTable =
     .DbgDumpWatermarksV2                = fm10000DbgDumpWatermarksV2,
     .DbgDumpMemoryUsageV2               = fm10000DbgDumpMemoryUsageV2,
 #endif
+    .DbgDumpMulticastTables             = fm10000DbgDumpMulticastVlanTable,
 
     /***************************************************
      * Parity Error management
@@ -679,6 +689,7 @@ const fm_switch FM10000SwitchDefaultTable =
     .GetParityErrorCounters             = fm10000GetParityErrorCounters,
     .ResetParityErrorCounters           = fm10000ResetParityErrorCounters,
     .SetParityAttribute                 = fm10000SetParityAttribute,
+    .DbgDumpParityConfig                = fm10000DbgDumpParityConfig,
 
     .ParityRepairTask                   = fm10000ParityRepairTask,
     .parityRepairEnabled                = TRUE,
@@ -882,9 +893,7 @@ static fm_status InitSpecialPort(fm_int sw, fm_int port)
         case FM_PORT_FLOOD:
             fmPortMaskEnableAll(&destMask, switchPtr->numCardinalPorts);
 
-            addPepsToFlooding =
-                fmGetBoolApiProperty(FM_AAK_API_PORT_ADD_PEPS_TO_FLOODING,
-                                     FM_AAD_API_PORT_ADD_PEPS_TO_FLOODING);
+            addPepsToFlooding = GET_PROPERTY()->addPepsToFlooding;
 
             for (cpi = 0 ; cpi < switchPtr->numCardinalPorts ; cpi++)
             {
@@ -1088,37 +1097,26 @@ ABORT:
 static void GetIMProperties(fm_int sw)
 {
     fm10000_switch *switchExt;
+    fm10000_property *fm10kProp;
 
     switchExt = GET_SWITCH_EXT(sw);
+    fm10kProp = GET_FM10000_PROPERTY();
 
     /* API property interrupt masks to override interrupt handler behaviour */
-    switchExt->anImProp =
-        fmGetIntApiProperty(FM_AAK_API_FM10000_INTR_AUTONEG_IGNORE_MASK,
-                            FM_AAD_API_FM10000_INTR_AUTONEG_IGNORE_MASK);
+    switchExt->anImProp = fm10kProp->intrAutonegIgnoreMask;
 
-    switchExt->linkImProp =
-        fmGetIntApiProperty(FM_AAK_API_FM10000_INTR_LINK_IGNORE_MASK,
-                            FM_AAD_API_FM10000_INTR_LINK_IGNORE_MASK);
+    switchExt->linkImProp = fm10kProp->intrLinkIgnoreMask;
 
-    switchExt->serdesImProp =
-        fmGetIntApiProperty(FM_AAK_API_FM10000_INTR_SERDES_IGNORE_MASK,
-                            FM_AAD_API_FM10000_INTR_SERDES_IGNORE_MASK);
+    switchExt->serdesImProp = fm10kProp->intrSerdesIgnoreMask;
 
-    switchExt->pcieImProp =
-        fmGetIntApiProperty(FM_AAK_API_FM10000_INTR_PCIE_IGNORE_MASK,
-                            FM_AAD_API_FM10000_INTR_PCIE_IGNORE_MASK);
+    switchExt->pcieImProp = fm10kProp->intrPcieIgnoreMask;
 
-    switchExt->maTcnImProp =
-        fmGetIntApiProperty(FM_AAK_API_FM10000_INTR_MATCN_IGNORE_MASK,
-                            FM_AAD_API_FM10000_INTR_MATCN_IGNORE_MASK);
+    switchExt->maTcnImProp = fm10kProp->intrMaTcnIgnoreMask;
 
-    switchExt->fhTailImProp =
-        fmGetIntApiProperty(FM_AAK_API_FM10000_INTR_FHTAIL_IGNORE_MASK,
-                            FM_AAD_API_FM10000_INTR_FHTAIL_IGNORE_MASK);
+    switchExt->fhTailImProp = fm10kProp->intrFhTailIgnoreMask;
 
-    switchExt->swImProp =
-        fmGetIntApiProperty(FM_AAK_API_FM10000_INTR_SW_IGNORE_MASK,
-                            FM_AAD_API_FM10000_INTR_SW_IGNORE_MASK);
+    switchExt->swImProp = fm10kProp->intrSwIgnoreMask;
+
 }   /* end GetIMProperties */
 
 
@@ -1214,9 +1212,7 @@ static fm_status fm10000InitializeGlortRanges(fm_int sw)
 
     if (glorts->mcastBaseGlort == (fm_uint32) ~0)
     {
-        numStackMcastGroups =
-            fmGetIntApiProperty(FM_AAK_API_FM10000_MCAST_NUM_STACK_GROUPS,
-                                FM_AAD_API_FM10000_MCAST_NUM_STACK_GROUPS);
+        numStackMcastGroups = GET_FM10000_PROPERTY()->mcastNumStackGroups;
 
         /* Allocate the local multicast groups glort range from the end.
          * If stacking is used, the boundary will not have to be calculated,
@@ -1267,9 +1263,7 @@ static fm_status fm10000InitializeGlortRanges(fm_int sw)
      * The value must be a a power of 2 greater then 64 but not greater
      * then FM_MCG_MAX_ENTRIES_PER_GLORT
      ****************************************************************/
-    switchPtr->mcastMaxEntryPerGlort =
-        fmGetIntApiProperty(FM_AAK_API_FM10000_MCAST_MAX_ENTRIES_PER_CAM,
-                            FM_AAD_API_FM10000_MCAST_MAX_ENTRIES_PER_CAM);
+    switchPtr->mcastMaxEntryPerGlort = GET_FM10000_PROPERTY()->mcastMaxEntriesPerCam;
 
     switchPtr->mcastMaxEntryPerCam = 0;
     while ((1 << switchPtr->mcastMaxEntryPerCam) < switchPtr->mcastMaxEntryPerGlort)
@@ -1327,8 +1321,7 @@ static fm_status fm10000InitializeAfterReset(fm_int sw)
     switchPtr = GET_SWITCH_PTR(sw);
     switchExt = GET_SWITCH_EXT(sw);
 
-    isWhiteModel = fmGetBoolApiProperty(FM_AAK_API_PLATFORM_IS_WHITE_MODEL,
-                                        FM_AAD_API_PLATFORM_IS_WHITE_MODEL);
+    isWhiteModel = GET_PROPERTY()->isWhiteModel;
 
     /***************************************************
      * Initialize glort ranges
@@ -1500,12 +1493,14 @@ static fm_status fm10000InitializeAfterReset(fm_int sw)
 
             if (err != FM_OK)
             {
-                FM_LOG_DEBUG(FM_LOG_CAT_SWITCH,
-                             "logical port %d not defined, skipped\n",
-                             port);
+                FM_LOG_WARNING(FM_LOG_CAT_SWITCH,
+                               "pepId=%d has no logical port defined\n",
+                               pepId);
 
                 /* Flag the mapping as invalid */
                 switchExt->pepPortMapping[pepId] = FM10000_PCIE_INVALID_LOGICAL_PORT;
+
+                err = FM_OK;
                 continue;
             }
 
@@ -1597,6 +1592,14 @@ static fm_status InitDefaultAttributes(fm_int sw)
                                       FM_PORT_LANE_NA,
                                       FM_PORT_RX_PAUSE,
                                       &portAttr->rxPause);
+        FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_SWITCH, err);
+
+        err = fm10000SetPortAttribute(sw,
+                                      port,
+                                      FM_PORT_ACTIVE_MAC,
+                                      FM_PORT_LANE_NA,
+                                      FM_PORT_TX_CLASS_PAUSE,
+                                      &portAttr->txClassPause);
         FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_SWITCH, err);
 
         err = fm10000SetPortAttribute(sw,
@@ -2043,7 +2046,7 @@ static fm_status SetFHClockFreq(fm_int sw, fm_int fhClock)
 
     if (rv == 0)
     {
-        sku = NO_SKU;
+        sku = FM10000_SKU_NONE;
     }
     else
     {
@@ -2057,18 +2060,18 @@ static fm_status SetFHClockFreq(fm_int sw, fm_int fhClock)
     featureCode = FM_GET_FIELD(rv, FM10000_PLL_FABRIC_LOCK, FeatureCode);
     freqSel     = FM_GET_FIELD(rv, FM10000_PLL_FABRIC_LOCK, FreqSel);
 
-    switch(sku)
+    switch (sku)
     {
-        case FM10840_SKU:
-        case FM10064_SKU:
-            refDiv   = 0x1f;
+        case FM10000_SKU_FM10840:
+        case FM10000_SKU_FM10064:
+            refDiv   = 0x19;
             outDiv   = 0x5;
             fbDiv4   = 0x1;
-            fbDiv255 = 0xf3;
+            fbDiv255 = 0xC4;
             skuClock = BINARY_980_MHZ;
             break;
-        case FM10824_SKU:
-        case NO_SKU:
+        case FM10000_SKU_FM10824:
+        case FM10000_SKU_NONE:
         default:
             refDiv   = 0x3;
             outDiv   = 0x7;
@@ -2091,7 +2094,7 @@ static fm_status SetFHClockFreq(fm_int sw, fm_int fhClock)
                                       &outFhClock);
             FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
 
-            if ( ( outFhClock > (fm_uint32)skuClock ) && ( sku != NO_SKU ) )
+            if ( ( outFhClock > (fm_uint32)skuClock ) && ( sku != FM10000_SKU_NONE ) )
             {
                 FM_LOG_WARNING(FM_LOG_CAT_SWITCH,
                                "fhClock=%d is greater than maximum SKU frequency %d, using %d\n",
@@ -2101,7 +2104,7 @@ static fm_status SetFHClockFreq(fm_int sw, fm_int fhClock)
             }
             else
             {
-                if ( ( outFhClock > (fm_uint32)skuClock ) && ( sku == NO_SKU ) )
+                if ( ( outFhClock > (fm_uint32)skuClock ) && ( sku == FM10000_SKU_NONE ) )
                 {
                     FM_LOG_WARNING(FM_LOG_CAT_SWITCH,
                                    "This part has no SKU and has not been tested for fhClock %d\n",
@@ -2181,7 +2184,7 @@ static fm_status SetFHClockFreq(fm_int sw, fm_int fhClock)
                 break;
         }
 
-        if(maxFreq > skuClock)
+        if (maxFreq > skuClock)
         {
             maxFreq = skuClock;
         }
@@ -3184,7 +3187,6 @@ fm_status fm10000BootSwitch(fm_int sw)
     fm_int              i;
     fm_uint32           rvMult[4] = {0,0,0,0};
     fm_bool             regLockTaken;
-    fm_char             buf[MAX_BUF_SIZE+1];
     fm_int              fhClock;
 #if 0
     fm_timestamp t1;
@@ -3226,17 +3228,13 @@ fm_status fm10000BootSwitch(fm_int sw)
      **************************************************/
 
     /* Retrieve the clock from platform config attribute */
-    FM_SNPRINTF_S(buf,
-                  MAX_BUF_SIZE,
-                  FM_AAK_API_PLATFORM_FH_CLOCK,
-                  sw);
-    fhClock = fmGetIntApiProperty(buf, FM_AAD_API_PLATFORM_FH_CLOCK);
+    fhClock = switchPtr->fhClock;
 
     if ( ( (fhClock < 0) && (fhClock != -1)) ||
          (fhClock > MAX_INT_VALUE) )
     {
         FM_LOG_ERROR(FM_LOG_CAT_SWITCH,
-                     FM_AAK_API_PLATFORM_FH_CLOCK " is out of range: [-1, %d]\n",
+                     "Switch %d frame handler clock is out of range: [-1, %d]\n",
                      sw,
                      MAX_INT_VALUE);
 
@@ -3278,8 +3276,7 @@ fm_status fm10000BootSwitch(fm_int sw)
     err = fm10000InitSwSerdes(sw);
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
 
-    if (fmGetBoolApiProperty(FM_AAK_API_PLATFORM_IS_WHITE_MODEL,
-                             FM_AAD_API_PLATFORM_IS_WHITE_MODEL))
+    if (GET_PROPERTY()->isWhiteModel)
     {
         /* Must be done after ReleaseSwitch because the model starts changing
          * SOFT_RESET during its init */
@@ -3507,6 +3504,8 @@ fm_status fm10000IdentifySwitch(fm_int            sw,
     fm_uint32   partNumber;
     fm_uint32   vpd;
     fm_uint32   rv;
+    fm_uint32   fuse0;
+    fm_uint32   sku;
     fm_uint32   chipVersion;
 
     FM_LOG_ENTRY(FM_LOG_CAT_SWITCH,
@@ -3537,7 +3536,6 @@ fm_status fm10000IdentifySwitch(fm_int            sw,
     if (partNumber == 0xAE21)
     {
         *family  = FM_SWITCH_FAMILY_FM10000;
-        *model   = FM_SWITCH_MODEL_FM10440;
 
         status = switchPtr->ReadUINT32(sw, FM10000_CHIP_VERSION(), &rv);
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, status);
@@ -3557,6 +3555,30 @@ fm_status fm10000IdentifySwitch(fm_int            sw,
             FM_LOG_ERROR(FM_LOG_CAT_SWITCH,
                          "Unable to identify switch %d: Version=0x%x\n",
                          sw, chipVersion);
+        }
+
+        status = switchPtr->ReadUINT32(sw, FM10000_FUSE_DATA_0(), &fuse0);
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, status);
+        
+        sku = FM_GET_FIELD(fuse0, FM10000_FUSE_DATA_0, Sku);
+        
+        if (sku == FM10000_SKU_FM10840)
+        {
+            *model = FM_SWITCH_MODEL_FM10840;
+        }
+        else if (sku == FM10000_SKU_FM10420)
+        {
+            *model = FM_SWITCH_MODEL_FM10420;
+        }
+        else if (sku == FM10000_SKU_FM10064)
+        {
+            *model = FM_SWITCH_MODEL_FM10064;
+        }
+        else
+        {
+            FM_LOG_ERROR(FM_LOG_CAT_SWITCH,
+                         "Unable to identify switch %d: Sku=0x%x\n",
+                         sw, sku);
         }
 
         FM_LOG_DEBUG(FM_LOG_CAT_SWITCH, "Identified 10xxx series device\n");
@@ -3594,8 +3616,6 @@ fm_status fm10000InitSwitch(fm_switch *switchPtr)
     fm_bool         regLockTaken;
     fm_int          pepId;
     fm_int          epl;
-    fm_char         buf[MAX_BUF_SIZE+1];
-    fm_int          msiEnabled;
     fm_int          sw;
     fm_uint32       xclkMode;
     fm_uint32       xclkStatus;
@@ -3639,9 +3659,7 @@ fm_status fm10000InitSwitch(fm_switch *switchPtr)
     switchPtr->extension = extension;
 
     /* Initialize the number of portSets */
-    switchPtr->maxPortSets =
-        fmGetIntApiProperty(FM_AAK_API_MAX_PORT_SETS,
-                            FM_AAD_API_MAX_PORT_SETS);
+    switchPtr->maxPortSets = GET_PROPERTY()->maxPortSets;
 
     /* Initially there is no owner of ethernet timestamps. */
     extension->ethTimestampsOwnerPort = -1;
@@ -3789,13 +3807,7 @@ fm_status fm10000InitSwitch(fm_switch *switchPtr)
                                     0x0);
 
     /* Select the desired interrupt mask register */
-    FM_SNPRINTF_S(buf,
-                  MAX_BUF_SIZE,
-                  FM_AAK_API_PLATFORM_MSI_ENABLED,
-                  sw);
-    msiEnabled = fmGetBoolApiProperty(buf, FM_AAD_API_PLATFORM_MSI_ENABLED);
-
-    if (msiEnabled)
+    if (switchPtr->msiEnabled)
     {
         msiPep = switchPtr->msiPep;
 
@@ -4105,7 +4117,7 @@ fm_status fm10000InitPortTable(fm_switch *switchPtr)
         switchPtr->laneTable[cnt] = lanePtr;
 
         lanePtr->extension = fmAlloc(sizeof(fm10000_lane));
-        if( lanePtr->extension == NULL )
+        if ( lanePtr->extension == NULL )
         {
             FM_LOG_FATAL( FM_LOG_CAT_PORT,
                           "Unable to allocate memory for lane "
@@ -4492,6 +4504,7 @@ fm_status fm10000InitPort( fm_int sw, fm_port *portPtr )
     portAttrExt->parserVlan2First        = FM_DISABLED;
     portAttrExt->modifyVid2First         = FM_DISABLED;
     portAttrExt->replaceVlanFields       = FM_DISABLED;
+    portAttrExt->linkOptimizationMode    = FM_PORT_LINK_OPTIMIZATION_BALANCE;
 
     FM_PORTMASK_ENABLE_ALL(&portExt->internalPortMask,
                            switchPtr->numCardinalPorts);
@@ -4606,6 +4619,7 @@ fm_status fm10000InitPort( fm_int sw, fm_port *portPtr )
             {
                 portAttr->maxFrameSize = FM10000_PCIE_MAX_FRAME_SIZE;
                 portAttr->minFrameSize = FM10000_PCIE_MIN_FRAME_SIZE;
+                portAttr->learning     = FM_DISABLED;
 
                 /* Create the timer(s) associated to this port */
                 FM_SPRINTF_S( pcieTimerName,
@@ -4771,8 +4785,7 @@ fm_status fm10000PostBootSwitch(fm_int sw)
     switchPtr = GET_SWITCH_PTR(sw);
     switchExt = (fm10000_switch *) switchPtr->extension;
 
-    isWhiteModel = fmGetBoolApiProperty(FM_AAK_API_PLATFORM_IS_WHITE_MODEL,
-                                        FM_AAD_API_PLATFORM_IS_WHITE_MODEL);
+    isWhiteModel = GET_PROPERTY()->isWhiteModel;
 
     /**********************************************************
      * Initialize default values for port and switch attributes
@@ -4823,12 +4836,8 @@ fm_status fm10000PostBootSwitch(fm_int sw)
     FM_CLEAR(switchExt->mapOwnershipInfo);
     FM_CLEAR(switchExt->polOwnershipInfo);
 
-    unicastSliceRangeFirst =
-        fmGetIntApiProperty(FM_AAK_API_FM10000_FFU_UNICAST_SLICE_1ST,
-                            FM_AAD_API_FM10000_FFU_UNICAST_SLICE_1ST);
-    unicastSliceRangeLast =
-        fmGetIntApiProperty(FM_AAK_API_FM10000_FFU_UNICAST_SLICE_LAST,
-                            FM_AAD_API_FM10000_FFU_UNICAST_SLICE_LAST);
+    unicastSliceRangeFirst = GET_FM10000_PROPERTY()->ffuUcastSliceRangeFirst;
+    unicastSliceRangeLast = GET_FM10000_PROPERTY()->ffuUcastSliceRangeLast;
 
     if (unicastSliceRangeFirst >= 0)
     {
@@ -4847,12 +4856,8 @@ fm_status fm10000PostBootSwitch(fm_int sw)
         }
     }
 
-    multicastSliceRangeFirst =
-        fmGetIntApiProperty(FM_AAK_API_FM10000_FFU_MULTICAST_SLICE_1ST,
-                            FM_AAD_API_FM10000_FFU_MULTICAST_SLICE_1ST);
-    multicastSliceRangeLast =
-        fmGetIntApiProperty(FM_AAK_API_FM10000_FFU_MULTICAST_SLICE_LAST,
-                            FM_AAD_API_FM10000_FFU_MULTICAST_SLICE_LAST);
+    multicastSliceRangeFirst = GET_FM10000_PROPERTY()->ffuMcastSliceRangeFirst;
+    multicastSliceRangeLast = GET_FM10000_PROPERTY()->ffuMcastSliceRangeLast;
 
     if (multicastSliceRangeFirst >= 0)
     {
@@ -4871,12 +4876,8 @@ fm_status fm10000PostBootSwitch(fm_int sw)
         }
     }
 
-    aclSliceRangeFirst =
-        fmGetIntApiProperty(FM_AAK_API_FM10000_FFU_ACL_SLICE_1ST,
-                            FM_AAD_API_FM10000_FFU_ACL_SLICE_1ST);
-    aclSliceRangeLast =
-        fmGetIntApiProperty(FM_AAK_API_FM10000_FFU_ACL_SLICE_LAST,
-                            FM_AAD_API_FM10000_FFU_ACL_SLICE_LAST);
+    aclSliceRangeFirst = GET_FM10000_PROPERTY()->ffuAclSliceRangeFirst;
+    aclSliceRangeLast = GET_FM10000_PROPERTY()->ffuAclSliceRangeLast;
 
     if (aclSliceRangeFirst >= 0)
     {
@@ -4897,8 +4898,7 @@ fm_status fm10000PostBootSwitch(fm_int sw)
 
     /* Number of mapper entries available for routing. */
     switchPtr->maxVirtualRouters =
-        fmGetIntApiProperty(FM_AAK_API_FM10000_FFU_MAPMAC_ROUTING,
-                            FM_AAD_API_FM10000_FFU_MAPMAC_ROUTING);
+        GET_FM10000_PROPERTY()->ffuMapMacResvdForRoute;
 
     if (switchPtr->maxVirtualRouters > FM10000_MAX_VIRTUAL_ROUTERS)
     {
@@ -4913,19 +4913,17 @@ fm_status fm10000PostBootSwitch(fm_int sw)
      **************************************************/
 
     /* Maximum number of TCN FIFO entries to process in a cycle. */
-    switchExt->tcnFifoBurstSize =
-        fmGetIntApiProperty(FM_AAK_API_MA_TCN_FIFO_BURST_SIZE,
-                            FM_AAD_API_MA_TCN_FIFO_BURST_SIZE);
+    switchExt->tcnFifoBurstSize = GET_PROPERTY()->maTcnFifoBurstSize;
 
     /* Automatic creation of logical ports for remote glorts/ */
     switchExt->createRemoteLogicalPorts =
-        fmGetBoolApiProperty(FM_AAK_API_FM10000_CREATE_REMOTE_LOGICAL_PORTS,
-                             FM_AAD_API_FM10000_CREATE_REMOTE_LOGICAL_PORTS);
+        GET_FM10000_PROPERTY()->createRemoteLogicalPorts;
 
     /***************************************************
      * Initialize Virtual Networking fields.
      **************************************************/
     switchExt->vnVxlanUdpPort  = FM_VN_VXLAN_UDP_DEST_PORT;
+    switchExt->vnGpeUdpPort    = FM_VN_GPE_UDP_DEST_PORT;
     switchExt->vnGeneveUdpPort = FM_VN_GENEVE_UDP_DEST_PORT;
     switchExt->vnOuterTTL      = 0;
     switchExt->vnEncapAcl      = -1;
@@ -5011,8 +5009,7 @@ fm_status fm10000PostBootSwitch(fm_int sw)
      *  egress port is not mirrored by an egressing mirror.
      ***************************************************************************/
     switchExt->useRateLimiterTrigger =
-              fmGetBoolApiProperty(FM_AAK_API_FM10000_USE_RATE_LIMITER_TRIGGER,
-                                   FM_AAD_API_FM10000_USE_RATE_LIMITER_TRIGGER);
+        GET_FM10000_PROPERTY()->useRateLimiterTrigger;
     trigInfo.requestRateLimiter = switchExt->useRateLimiterTrigger;
 
     err = fmAllocateTriggerExt(sw,
@@ -5032,9 +5029,7 @@ fm_status fm10000PostBootSwitch(fm_int sw)
     /* Determine whether L3 Multicast Group with the attribute
      * FM_MCASTGROUP_FWD_TO_CPU should be mapped to a new switch priority.
      */
-    L3McastFwdToCPU =
-        fmGetIntApiProperty(FM_AAK_API_FM10000_L3_MCAST_FWD_TO_CPU_PRIORITY,
-                            FM_AAD_API_FM10000_L3_MCAST_FWD_TO_CPU_PRIORITY);
+    L3McastFwdToCPU = GET_FM10000_PROPERTY()->l3McastFwdToCpuPriority;
 
     if (L3McastFwdToCPU >= 0)
     {
@@ -5079,8 +5074,7 @@ fm_status fm10000PostBootSwitch(fm_int sw)
      * Enable parity interrupts.
      **************************************************/
 
-    if (fmGetBoolApiProperty(FM_AAK_API_FM10000_PARITY_INTERRUPTS,
-                             FM_AAD_API_FM10000_PARITY_INTERRUPTS))
+    if (GET_FM10000_PROPERTY()->parityEnableInterrupts)
     {
         err = fm10000EnableParityInterrupts(sw);
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
@@ -5090,8 +5084,7 @@ fm_status fm10000PostBootSwitch(fm_int sw)
      * Start TCAM monitors.
      **************************************************/
 
-    if ( ( fmGetBoolApiProperty(FM_AAK_API_FM10000_START_TCAM_MONITORS,
-                                FM_AAD_API_FM10000_START_TCAM_MONITORS) ) &&
+    if ( GET_FM10000_PROPERTY()->parityStartTcamMonitors &&
          (!isWhiteModel) )
     {
         err = fm10000StartCrmMonitors(sw);
@@ -5434,14 +5427,18 @@ fm_status fm10000Write1588SystimeCfg(fm_int sw, fm_int step)
 
     fm_switch * switchPtr;
     fm_status   err;
-    fm_uint32   rvSoftReset;
-    fm_uint32   rvDeviceCfg;
-    fm_uint32   origPcieActive;
-    fm_uint32   newPcieActive;
-    fm_uint64   rv64;
     fm_uint32   regAddr;
     fm_bool     regLockTaken;
     fm_int      i;
+    fm_uint64   rv64;
+    fm_uint32   devCfg;
+    fm_uint32   softReset;
+    fm_int      pepId;
+    fm_uint32   xclkMode;
+    fm_uint32   xclkStatus;
+    fm_uint32   xclkSel;
+    fm_bool     restoreXclkMode;
+    fm_uint32   chipVersion;
 
     FM_LOG_ENTRY(FM_LOG_CAT_SWITCH, "sw=%d step=%d\n", sw, step);
 
@@ -5450,23 +5447,6 @@ fm_status fm10000Write1588SystimeCfg(fm_int sw, fm_int step)
     FM_FLAG_TAKE_REG_LOCK(sw);
 
     err = fm10000TakeSoftResetLock(sw);
-    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
-
-    err = switchPtr->ReadUINT32(sw, FM10000_SOFT_RESET(), &rvSoftReset);
-    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
-
-    /* Cache the value for restoring the value at the end */
-    origPcieActive = FM_GET_FIELD(rvSoftReset, FM10000_SOFT_RESET, PCIeActive);
-
-    /* Force all enabled PEPs out of reset */
-    err = switchPtr->ReadUINT32(sw, FM10000_DEVICE_CFG(), &rvDeviceCfg);
-    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
-
-    newPcieActive = FM_GET_FIELD(rvDeviceCfg, FM10000_DEVICE_CFG, PCIeEnable);
-
-    FM_SET_FIELD(rvSoftReset, FM10000_SOFT_RESET, PCIeActive, newPcieActive);
-
-    err = switchPtr->WriteUINT32(sw, FM10000_SOFT_RESET(), rvSoftReset);
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
 
     /* Update STEP value in global SYSTIME_CFG config */
@@ -5478,6 +5458,87 @@ fm_status fm10000Write1588SystimeCfg(fm_int sw, fm_int step)
     err = switchPtr->WriteUINT64(sw, FM10000_SYSTIME_CFG(0), rv64);
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
 
+    err = switchPtr->ReadUINT32(sw, FM10000_DEVICE_CFG(), &devCfg);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
+
+    for (pepId = 0 ; pepId < FM10000_NUM_PEPS ; pepId++)
+    {
+        restoreXclkMode = 0;
+
+        /* Only enable for enabled PEPs */
+        if (FM_GET_UNNAMED_FIELD(devCfg,
+                                 FM10000_DEVICE_CFG_b_PCIeEnable_0 + pepId,
+                                 1))
+        {
+            err = switchPtr->ReadUINT32(sw, FM10000_CHIP_VERSION(), &chipVersion);
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
+
+            if ( (chipVersion == FM10000_CHIP_VERSION_B0) &&
+                 (pepId != 8) )
+            {
+                err = fm10000GetXrefClkMode( sw, pepId, &xclkMode, &xclkStatus);
+                FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
+
+                xclkSel = FM_GET_UNNAMED_FIELD(xclkStatus,
+                                               FM10000_PCIE_CLK_STAT_l_RefclkSel + (pepId/2),
+                                               1);
+
+                if ( (xclkMode != FM10000_PCIE_CLK_CTRL_MODE_PCIE_REFCLK) &&
+                     (xclkSel == 0) )
+                {
+                    err = fm10000SetXrefClkMode( sw,
+                                                    pepId,
+                                                    FM10000_PCIE_CLK_CTRL_MODE_PCIE_REFCLK,
+                                                    FM10000_PA_ACTIVE_DO_NOTHING);
+                    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
+
+                    restoreXclkMode = 1;
+                }
+            }
+
+            err = switchPtr->ReadUINT32(sw, FM10000_SOFT_RESET(), &softReset);
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
+
+            /* Force PEP into active state so we can update its Step value in its 
+             * SYSTIME_CFG */
+            FM_SET_UNNAMED_FIELD(softReset,
+                                 FM10000_SOFT_RESET_b_PCIeActive_0 + pepId,
+                                 1,
+                                 1);
+
+            err = switchPtr->WriteUINT32(sw, FM10000_SOFT_RESET(), softReset);
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
+
+            regAddr = FM10000_PCIE_PF_ADDR(FM10000_PCIE_SYSTIME_CFG(), pepId);
+
+            err = switchPtr->WriteUINT32(sw, regAddr, step);
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
+
+            if (restoreXclkMode)
+            {
+                 err = fm10000SetXrefClkMode(sw,
+                                                pepId,
+                                                xclkMode,
+                                                FM10000_PA_ACTIVE_CLEAR_AFTER_RESET);
+                FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
+            }
+            else
+            {
+                err = switchPtr->ReadUINT32(sw, FM10000_SOFT_RESET(), &softReset);
+                FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
+
+                /* Restore PEP state */
+                FM_SET_UNNAMED_FIELD(softReset,
+                                     FM10000_SOFT_RESET_b_PCIeActive_0 + pepId,
+                                     1,
+                                     0);
+
+                err = switchPtr->WriteUINT32(sw, FM10000_SOFT_RESET(), softReset);
+                FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
+            }
+        }
+    }
+
     /* Update STEP value in all end points SYSTIME_CFG config */
     for (i = 0 ; i < FM10000_NUM_EPLS ; i++)
     {
@@ -5487,26 +5548,9 @@ fm_status fm10000Write1588SystimeCfg(fm_int sw, fm_int step)
 
     for (i = 0 ; i < FM10000_NUM_TUNNEL_ENGINES ; i++)
     {
-        err = switchPtr->WriteUINT32(sw, FM10000_TE_SYSTIME_CFG(i, 0), step);
+        err = switchPtr->WriteUINT32(sw, FM10000_TE_SYSTIME_CFG(i, 1), step);
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
     }
-
-    for (i = 0 ; i < FM10000_NUM_PEPS ; i++)
-    {
-        if ( newPcieActive & (1 << i))
-        {
-            regAddr = FM10000_PCIE_PF_ADDR(FM10000_PCIE_SYSTIME_CFG(), i);
-
-            err = switchPtr->WriteUINT32(sw, regAddr, step);
-            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
-        }
-    }
-
-    /* Restore PCIeActive back to original value. */
-    FM_SET_FIELD(rvSoftReset, FM10000_SOFT_RESET, PCIeActive, origPcieActive);
-
-    err = switchPtr->WriteUINT32(sw, FM10000_SOFT_RESET(), rvSoftReset);
-    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
 
     err = fm10000DropSoftResetLock(sw);
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);

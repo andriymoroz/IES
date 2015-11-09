@@ -467,7 +467,7 @@ fm_status fm10000IsPortAutonegReady( fm_int     sw,
         if ( anMode == FM_PORT_AUTONEG_CLAUSE_73 )
         {
             *smType = FM10000_CLAUSE73_AN_STATE_MACHINE;
-            if( ethMode == FM_ETH_MODE_AN_73 )
+            if ( ethMode == FM_ETH_MODE_AN_73 )
             {
                 *ready  = TRUE;
             }
@@ -478,7 +478,7 @@ fm_status fm10000IsPortAutonegReady( fm_int     sw,
              anMode == FM_PORT_AUTONEG_SGMII )
         {
             *smType = FM10000_CLAUSE37_AN_STATE_MACHINE;
-            if( ethMode == FM_ETH_MODE_1000BASE_X || 
+            if ( ethMode == FM_ETH_MODE_1000BASE_X || 
                 ethMode == FM_ETH_MODE_SGMII )
             {
                 *ready  = TRUE;
@@ -535,8 +535,7 @@ fm_status fm10000An73SetLinkInhibitTimer( fm_int  sw,
      * from 512 to 1023 will be rounded down to the closest multiple of 10.
      * By default a valid range is from 1 to 511, but it is possible to extend
      * it to <1..1023> by setting attribute api.an.timerAllowOutSpec */
-    if (fmGetBoolApiProperty(FM_AAK_API_AN_INHBT_TIMER_ALLOW_OUT_OF_SPEC,
-                             FM_AAD_API_AN_INHBT_TIMER_ALLOW_OUT_OF_SPEC))
+    if (GET_PROPERTY()->anTimerAllowOutSpec)
     {
         linkTimeoutMax = FM10000_AN73_LINK_FAIL_INHIBIT_TIMEOUT_DEBUG;
     }
@@ -604,8 +603,7 @@ fm_status fm10000An73SetLinkInhibitTimerKx( fm_int  sw,
      * from 512 to 1023 will be rounded down to the closest multiple of 10.
      * By default a valid range is from 1 to 511, but it is possible to extend
      * it to <1..1023> by setting attribute api.an.timerAllowOutSpec */
-    if (fmGetBoolApiProperty(FM_AAK_API_AN_INHBT_TIMER_ALLOW_OUT_OF_SPEC,
-                             FM_AAD_API_AN_INHBT_TIMER_ALLOW_OUT_OF_SPEC))
+    if (GET_PROPERTY()->anTimerAllowOutSpec)
     {
         linkTimeoutMax = FM10000_AN73_LINK_FAIL_INHIBIT_TIMEOUT_DEBUG;
     }
@@ -1263,10 +1261,7 @@ fm_status fm10000AnAddNextPage(fm_int sw, fm_int port, fm_uint64 nextPage)
     fm_portAttr *portAttr;
     fm_int       curNumPages;
 
-    if ( sw >= FM_MAX_NUM_SWITCHES )
-    {
-        return FM_ERR_INVALID_SWITCH;
-    }
+    VALIDATE_SWITCH(sw);
 
     portAttr = GET_PORT_ATTR( sw, port );
 
@@ -1410,6 +1405,8 @@ fm_status fm10000AnVerifyEeeNegotiation(fm_int sw, fm_int port, fm_int ethMode)
  *                  retrieved.
  *
  * \param[in]       basepage is the autonegotiation base page
+ * 
+ * \param[in]       nextPages is NOT DOCUMENTED.
  *
  * \param[out]      maxSpeed is where maximum configured speed as per basepage
  *                  is returned.
@@ -1437,7 +1434,7 @@ fm_status fm10000AnGetMaxSpeedAbilityAndMode(fm_int                sw,
     *maxSpeed = 0;
     *laneMode = FM_SCHED_PORT_MODE_NONE;
 
-    switch(mode)
+    switch (mode)
     {
         case FM_PORT_AUTONEG_CLAUSE_73:
             if (basepage == 0)

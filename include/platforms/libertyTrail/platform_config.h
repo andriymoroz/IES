@@ -129,37 +129,37 @@ typedef enum
 
 typedef enum 
 {
-    FM_PLAT_INTF_TYPE_NONE,
-    FM_PLAT_INTF_TYPE_SFPP,
-    FM_PLAT_INTF_TYPE_QSFP_LANE0,     /* Primary QSFP port */
-    FM_PLAT_INTF_TYPE_QSFP_LANE1,
-    FM_PLAT_INTF_TYPE_QSFP_LANE2,
-    FM_PLAT_INTF_TYPE_QSFP_LANE3,
-    FM_PLAT_INTF_TYPE_PCIE,
+    FM_PLAT_INTF_TYPE_NONE       = 0,
+    FM_PLAT_INTF_TYPE_SFPP       = 1,
+    FM_PLAT_INTF_TYPE_QSFP_LANE0 = 2,     /* Primary QSFP port */
+    FM_PLAT_INTF_TYPE_QSFP_LANE1 = 3,
+    FM_PLAT_INTF_TYPE_QSFP_LANE2 = 4,
+    FM_PLAT_INTF_TYPE_QSFP_LANE3 = 5,
+    FM_PLAT_INTF_TYPE_PCIE       = 6,
 
 } fm_platIntfType;
 
 typedef enum 
 {
-    FM_PLAT_BOOT_MODE_SPI,  /* Boot from SPI flash (EEPROM) */
-    FM_PLAT_BOOT_MODE_EBI,  /* Boot from EBI interface */
-    FM_PLAT_BOOT_MODE_I2C,  /* Boot from I2C interface */
+    FM_PLAT_BOOT_MODE_SPI = 0,  /* Boot from SPI flash (EEPROM) */
+    FM_PLAT_BOOT_MODE_EBI = 1,  /* Boot from EBI interface */
+    FM_PLAT_BOOT_MODE_I2C = 2,  /* Boot from I2C interface */
 
 } fm_platBootMode;
 
 typedef enum 
 {
-    FM_PLAT_REG_ACCESS_PCIE, /* Switch managed from PCIe interface */
-    FM_PLAT_REG_ACCESS_EBI,  /* Switch managed from EBI interface */
-    FM_PLAT_REG_ACCESS_I2C,  /* Switch managed from I2C interface */
+    FM_PLAT_REG_ACCESS_PCIE = 0, /* Switch managed from PCIe interface */
+    FM_PLAT_REG_ACCESS_EBI  = 1, /* Switch managed from EBI interface */
+    FM_PLAT_REG_ACCESS_I2C  = 2, /* Switch managed from I2C interface */
 
 } fm_platRegAccessMode;
 
 typedef enum 
 {
-    FM_PLAT_PCIE_ISR_AUTO,   /* PCIe ISR mode based on boot mode */
-    FM_PLAT_PCIE_ISR_SW,     /* PCIe ISR done in software */
-    FM_PLAT_PCIE_ISR_SPI,    /* PCIe ISR done in SPI flash */
+    FM_PLAT_PCIE_ISR_AUTO = 0,   /* PCIe ISR mode based on boot mode */
+    FM_PLAT_PCIE_ISR_SW   = 1,   /* PCIe ISR done in software */
+    FM_PLAT_PCIE_ISR_SPI  = 2,   /* PCIe ISR done in SPI flash */
 
 } fm_platPcieIsrMode;
 
@@ -174,17 +174,17 @@ typedef enum
 
 typedef enum 
 {
-    FM_LED_BLINK_MODE_NO_BLINK,
-    FM_LED_BLINK_MODE_SW_CONTROL,
-    FM_LED_BLINK_MODE_HW_ASSISTED,
+    FM_LED_BLINK_MODE_NO_BLINK    = 0,
+    FM_LED_BLINK_MODE_SW_CONTROL  = 1,
+    FM_LED_BLINK_MODE_HW_ASSISTED = 2,
 
 } fm_platLedBlinkMode;
 
 
 typedef enum
 {
-    FM_PLAT_PHY_UNKNOWN,
-    FM_PLAT_PHY_GN2412,     /* Semtech KR retimer */
+    FM_PLAT_PHY_UNKNOWN = 0,
+    FM_PLAT_PHY_GN2412  = 1,     /* Semtech KR retimer */
 
 } fm_platPhyModel;
 
@@ -398,6 +398,15 @@ typedef struct
     /* Whether to disable certain function interface */
     fm_uint disableFuncIntf;
 
+    /* Buffer to save shared lib TLVs for shared lib to load later */
+    fm_byte *tlvCfgBuf;
+
+    /* Total size of tlvCfg */
+    fm_uint tlvCfgBufSize;
+
+    /* Length of valid tlv */
+    fm_uint tlvCfgLen;
+
 } fm_platformCfgLib;
 
 
@@ -405,7 +414,11 @@ typedef struct
 {
     /* Unique ID for the platform to identify the hardware resource
      * for the voltage regulator modules */
-    fm_int                  hwResourceId[FM_PLAT_MAX_VRM];
+    fm_int hwResourceId[FM_PLAT_MAX_VRM];
+
+    /* Indicate to program the VRM with the default voltage values when the
+       fuse box is not programmed with the voltage scaling values (set to 0). */
+    fm_int useDefVoltages;
 
 } fm_platformCfgVrm;
 
@@ -429,7 +442,10 @@ typedef struct
     fm_int                  mgmtPep;
 
     /* MSI enabled */
-    fm_bool                 msiEnabled;
+    fm_bool                 msiEnabled
+;
+    /* Frame handler clock */
+    fm_int                  fhClock;
 
     /* Switch boot mode (SPI FLASH, EBI, I2C) */
     fm_platBootMode         bootMode;
@@ -467,6 +483,12 @@ typedef struct
     /* Interrupt polling period in msec (0: polling disabled) */
     fm_int                  intrPollPeriodMsec;
 
+    /* Interrupt timeout count */
+    fm_int                  intrTimeoutCnt;
+
+    /* SerDes preserve their configuration upon ethernet mode change */
+    fm_int                  keepSerdesCfg;
+
 #ifdef FM_SUPPORT_SWAG
     /* The switch role when managed by SWAG */
     fm_switchRole           switchRole;
@@ -502,6 +524,12 @@ typedef struct
     /* Indicate to enable the configuration of the PHY's de-emphasis. */
     fm_int                  enablePhyDeEmphasis;
 
+    /* Scheduler list select */
+    fm_int                  schedListSelect;
+
+    /* I2C clock divider */
+    fm_uint         i2cClkDivider;
+
 } fm_platformCfgSwitch;
 
 
@@ -528,12 +556,15 @@ typedef struct
     fm_swagTopology         topology;
 #endif
 
+    /* EVI device name */
+    fm_char                 ebiDevName[FM_PLAT_MAX_CFG_STR_LEN];
+
 } fm_platformCfg;
 
 
-fm_status fmPlatformCfgLoad(void);
+fm_status fmPlatformCfgInit(void);
+fm_status fmPlatformLoadPropertiesFromLine(fm_text line);
 void fmPlatformCfgDump(void);
-fm_status fmPlatformCfgReloadSpeed(fm_int sw);
 fm_platformCfgSwitch *fmPlatformCfgSwitchGet(fm_int sw);
 fm_int fmPlatformCfgPortGetIndex(fm_int sw, fm_int port);
 fm_platformCfgPort *fmPlatformCfgPortGet(fm_int sw, fm_int port);

@@ -82,9 +82,9 @@ enum _fm_switchAttr
      *  ''FM_VLAN_LEARNING_MODE_INDEPENDENT''. See ''fm_vlanLearningMode'' 
      *  for possible values. 
      *                                                          \lb\lb
-     *  Note: When the value of this attribute is changed, all
-     *  MA Table entries will be immediately deleted, including static entries.
-     *  AGE events will not be generated for the deleted entries.
+     *  Note: When the value of this attribute is changed, all MA Table
+     *  entries will immediately be deleted, including static entries. AGE
+     *  events will not be generated for the deleted entries.
      *
      *  \chips  FM6000, FM10000 */
     FM_VLAN_LEARNING_MODE,
@@ -175,8 +175,8 @@ enum _fm_switchAttr
     FM_TRAP_IEEE_GARP,
 
     /** Type fm_bool: This attribute is non-functional as IGMPv3 
-     *  trapping is not supported on FM2000 devices. For FM3000, FM4000
-     *  and FM6000, use the VLAN attribute FM_VLAN_IGMP_TRAPPING.
+     *  trapping is not supported on FM2000 devices. For FM3000/FM4000 and
+     *  FM6000, use the VLAN attribute FM_VLAN_IGMP_TRAPPING.
      *
      *  \chips  FM2000 */
     FM_TRAP_IEEE_IGMPV3,
@@ -205,8 +205,8 @@ enum _fm_switchAttr
     /** Type fm_bool: Trapping of MTU violations: FM_ENABLED
      *  (default) or FM_DISABLED. This trap is only valid for routed frames.
      *                                                                  \lb\lb
-     *  For FM3000, FM4000, the API property api.FM4000.enableVidAsFid
-     *  must be set to TRUE in order for this attribute to work properly. 
+     *  For FM3000/FM4000, the API property api.FM4000.enableVidAsFid must
+     *  be set to TRUE in order for this attribute to work properly.
      *
      *  \chips  FM3000, FM4000, FM6000, FM10000 */
     FM_TRAP_MTU_VIOLATIONS,
@@ -364,21 +364,24 @@ enum _fm_switchAttr
      *  rounding), which means that the value returned by ''fmGetSwitchAttribute''
      *  may not be identical to the value specified by ''fmSetSwitchAttribute''.
      *                                                                  \lb\lb
+     *  For FM10000, the frame timeout mechanism may not be reliable for
+     *  values less than 10 ms.
+     *                                                                  \lb\lb
      *  For FM2000:                                                     \lb
      *  25MHz => default: 40,960 ms, max: 10,995,116 ms;                \lb
      *  33MHz => default: 31,030 ms, max: 8,329,633 ms;                 \lb
      *  50MHz => default: 20,480 ms, max: 5,497,558 ms;                 \lb
      *  66MHz => default: 15,515 ms, max: 4,164,816 ms;                 \lb
-     *                                                                  \lb\lb
-     *  For FM3000 and FM4000:                                          \lb
+     *                                                                  \lb
+     *  For FM3000/FM4000:                                              \lb
      *  25MHz => default: 0 ms, max: 10,995,116 ms;                     \lb
      *  33MHz => default: 0 ms, max: 8,329,633 ms;                      \lb
      *  50MHz => default: 0 ms, max: 5,497,558 ms;                      \lb
-     *  66MHz => default: 0 ms, max: 4,164,816 ms;                      \lb 
-     *                                                                  \lb\lb
+     *  66MHz => default: 0 ms, max: 4,164,816 ms;                      \lb
+     *                                                                  \lb
      *  For FM6000:                                                     \lb
      *  125Mhz => default: 0 ms, max: 4,398,046 ms;                     \lb
-     *                                                                  \lb\lb
+     *                                                                  \lb
      *  For FM10000:                                                    \lb
      *  300MHz  => default: 0 ms, max: 114,532 ms.                      \lb
      *  700MHz  => default: 0 ms, max: 49,127 ms.                       \lb
@@ -427,15 +430,15 @@ enum _fm_switchAttr
      *                                                                  \lb\lb
      *  FM_ROUTING_HASH_UDP to enable the FM_ROUTING_HASH_L4SRC and
      *  FM_ROUTING_HASH_L4DST bits when the protocol field is UDP.
-     *  (FM3000 and FM4000 only)
+     *  (FM3000/FM4000 only)
      *                                                                  \lb\lb
      *  FM_ROUTING_HASH_PROT1 to enable the FM_ROUTING_HASH_L4SRC and
      *  FM_ROUTING_HASH_L4DST bits when the protocol field matches the
-     *  FM_ROUTING_HASH_PROT_1 attribute. (FM3000 and FM4000 only)
+     *  FM_ROUTING_HASH_PROT_1 attribute. (FM3000/FM4000 only)
      *                                                                  \lb\lb
      *  FM_ROUTING_HASH_PROT2 to enable the FM_ROUTING_HASH_L4SRC and
      *  FM_ROUTING_HASH_L4DST bits when the protocol field matches the
-     *  FM_ROUTING_HASH_PROT_2 attribute. (FM3000 and FM4000 only)
+     *  FM_ROUTING_HASH_PROT_2 attribute. (FM3000/FM4000 only)
      *                                                                  \lb\lb
      *  FM_ROUTING_HASH_L4SRC to include the L4 source port when the
      *  corresponding bit is set for the frame's protocol.
@@ -453,10 +456,9 @@ enum _fm_switchAttr
     /** Type fm_uint32: Deprecated - Use ''FM_L3_HASH_CONFIG'' instead.
      *                                                                  \lb\lb
      *  Represents the value used for the hash rotation portion of the
-     *  routing hash. For FM3000 and FM4000 devices, this attribute
-     *  specifies one of three 12-bit hash rotations for use in ECMP
-     *  binning. The attribute value may range from 0 to 2 with a default
-     *  value of 0.
+     *  routing hash. For FM3000/FM4000 devices, this attribute specifies
+     *  one of three 12-bit hash rotations for use in ECMP binning. The
+     *  attribute value may range from 0 to 2 with a default value of 0.
      *
      *  \chips  FM3000, FM4000 */
     FM_ROUTING_HASH_ROTATION,
@@ -631,7 +633,7 @@ enum _fm_switchAttr
      *  ''FM_PORT_PARSER_FLAG_OPTIONS'' port attribute on the
      *  relevant ports to appropriately flag the relevant options. 
      *                                                                  \lb\lb
-     *  For FM3000 and FM4000: The API property api.FM4000.enableVidAsFid
+     *  For FM3000/FM4000: The API property api.FM4000.enableVidAsFid
      *  must be set to TRUE in order for any of the TRAP values for this
      *  attribute to work properly.
      *                                                                  \lb\lb
@@ -653,7 +655,7 @@ enum _fm_switchAttr
      *  FM_STAT_GROUP_PER_PORT_TX_FRAME_CLASS,                              \lb
      *  FM_STAT_GROUP_PER_PORT_TX_COUNT_BY_LEN. 
      *                                                                  \lb\lb
-     *  For FM3000 and FM4000 devices, see the ''FM_PORT_STAT_GROUP_ENABLE'' 
+     *  For FM3000/FM4000 devices, see the ''FM_PORT_STAT_GROUP_ENABLE'' 
      *  port attribute.   
      *
      *  \chips  FM2000 */
@@ -678,7 +680,7 @@ enum _fm_switchAttr
      *  \chips  FM3000, FM4000, FM6000, FM10000 */
     FM_REDIRECT_CPU_TRAFFIC,
 
-    /** Type ''fm_mtuEntry'': Specifies a VLAN MTU. On FM3000, FM4000, and
+    /** Type ''fm_mtuEntry'': Specifies a VLAN MTU. On FM3000/FM4000 and
      *  FM10000 devices, up to eight MTU values may be specified, each
      *  identified by an index field in the ''fm_mtuEntry'' structure. On
      *  FM6000 devices, up to 16 MTU values may be specified. Once an MTU
@@ -779,16 +781,6 @@ enum _fm_switchAttr
      * \chips   FM6000 */
     FM_SWITCH_DI_L4_VECTOR_INDEX,
 
-    /** Type ''fm_paritySweeperConfig'': Specifies the behavior of the 
-     *  parity sweeper for the switch. See ''fm_paritySweeperConfig'' for
-     *  the various parameters that can be tuned and their default values. 
-     *                                                                  \lb\lb
-     *  Note that this attribute has no effect if the ''api.paritySweeper.enable'' 
-     *  API property is not set to TRUE.
-     *  
-     *  \chips  FM4000 */
-    FM_PARITY_SWEEPER_CONFIG,
-
     /** Type ''fm_trapCodeMapping'': (Read Only) Identifies the numeric
       * trap code used for a particular trap type. The caller must set the
       * trap type in the ''fm_trapCodeMapping'' structure pointed to by the 
@@ -871,6 +863,12 @@ enum _fm_switchAttr
      *
      * \chips   FM6000, FM10000 */
     FM_SWITCH_TUNNEL_DEST_UDP_PORT,
+
+    /** Type fm_uint32: Specifies the UDP destination port used by the
+     *  VXLAN-GPE tunneling protocol. Default value is 4790.
+     *                                                                  \lb\lb
+     * \chips   FM10000 */
+    FM_SWITCH_GPE_TUNNEL_DEST_UDP_PORT,
 
     /** Type fm_uint32: Specifies the UDP destination port used by the Geneve
      *  (NGE) tunneling protocol. Default value is 6081.
@@ -1100,6 +1098,13 @@ enum _fm_switchAttr
      *  \chips  FM10000 */
     FM_SWITCH_ETH_TIMESTAMP_OWNER,
 
+    /** Type ''fm_nvmMac'': Used to retrieve MAC addresses stored in
+     *  NVM. On FM10000, there are nine PEP MACs and four custom
+     *  MACs stored in NVM. This attribute is read-only.
+     *
+     *  \chips  FM10000 */
+    FM_SWITCH_NVM_MAC,
+
     /** UNPUBLISHED: For internal use only. */
     FM_SWITCH_ATTRIBUTE_MAX
 
@@ -1140,10 +1145,10 @@ typedef enum
     
     /** Initial and failover traffic distribution is specified by the 
      *  application using a distribution map of type ''fm_LBGDistributionMap''
-     *  (FM3000 and FM4000 devices) or ''fm_LBGDistributionMapRange'' (FM6000 
-     *  devices) or ''fm_LBGDistributionMapRangeV2'' (FM10000 devices) 
+     *  (FM3000/FM4000 devices) or ''fm_LBGDistributionMapRange'' (FM6000 
+     *  devices) or ''fm_LBGDistributionMapRangeV2'' (FM10000 devices).
      *                                                                  \lb\lb
-     *  On FM3000 and FM4000 devices only:
+     *  On FM3000/FM4000 devices only:
      *                                                                  \lb\lb
      *  (a) The LBG may contain a maximum of 20 member ports. 
      *                                                                  \lb\lb
@@ -1168,7 +1173,6 @@ typedef enum
      *  On FM10000 devices, only Layer 3 and Layer 4 fields of IP frames are 
      *  used in hash computation for traffic distribution. To load balance 
      *  non-IP frames LBG mode ''FM_LBG_MODE_MAPPED_L234HASH'' should be used.
-     *                                                                  \lb\lb
      *  
      *  \chips  FM3000, FM4000, FM6000, FM10000 */
     FM_LBG_MODE_MAPPED,
@@ -1676,6 +1680,32 @@ typedef enum
 
 
 /**************************************************/
+/** \ingroup typeEnum
+ *  Set of possible enumerated values for the
+ *  link optimization mode port attribute
+ *  (''FM_PORT_LINK_OPTIMIZATION_MODE'').
+ **************************************************/
+typedef enum
+{
+    /** Link optimized to balance quality vs speed. */
+    FM_PORT_LINK_OPTIMIZATION_BALANCE = 0,
+
+    /** Link optimized to minimize TTL (time to link-up). */
+    FM_PORT_LINK_OPTIMIZATION_SPEED,
+
+    /** Link optimized to maximize quality, best possible tuning point. */
+    FM_PORT_LINK_OPTIMIZATION_QUALITY,
+
+    /** No link optimization. */
+    FM_PORT_LINK_OPTIMIZATION_NONE,
+
+    /** UNPUBLISHED: For internal use only. */
+    FM_PORT_LINK_OPTIMIZATION_MAX
+
+} fm_linkOptMode;
+
+
+/**************************************************/
 /** \ingroup typeStruct
  *  For the ''FM_PORT_AUTONEG_NEXTPAGES'' and
  *  ''FM_PORT_AUTONEG_PARTNER_NEXTPAGES'' port 
@@ -1724,18 +1754,23 @@ typedef struct _fm_anNextPages
  ****************************************************************************/
 enum _fm_vlanAttr
 {
-    /** Type fm_bool: Reflection on a VLAN: FM_ENABLED or FM_DISABLED (default).
+    /** Type fm_bool: Reflection on a VLAN: FM_ENABLED (default on FM10000) or
+     *  FM_DISABLED (default on other devices).
      *  If enabled, then a frame may be sent out the VLAN it came in on.
      *                                                                  \lb\lb
-     *  On FM2000, FM3000 and FM4000 devices, this attribute affects only
-     *  switched frames, not routed, and reflection is subject to the ingress
-     *  port's ''FM_PORT_MASK'' attribute.
+     *  On FM2000, FM3000/FM4000, and FM10000 devices, this attribute
+     *  affects only switched (not routed) frames, and reflection is subject
+     *  to the ingress port's ''FM_PORT_MASK'' attribute.
      *                                                                  \lb\lb
      *  On FM6000 devices, the effect of setting this attribute is identical
      *  to setting the FM_VLAN_ROUTING_REFLECT_UNICAST,
-     *  FM_VLAN_ROUTING_REFLECT_MULTICAST and FM_VLAN_SWITCHING_REFLECT
+     *  FM_VLAN_ROUTING_REFLECT_MULTICAST, and FM_VLAN_SWITCHING_REFLECT
      *  attributes individually to the same value. See those attributes for
      *  more information.
+     *                                                                  \lb\lb
+     *  On FM10000 devices, disabling reflection on a VLAN disables 
+     *  switching frames on this VLAN between Virtual Functions on the same
+     *  PCIe port.
      *
      *  \chips  FM2000, FM3000, FM4000, FM6000, FM10000 */
     FM_VLAN_REFLECT = 0,
@@ -1813,26 +1848,18 @@ enum _fm_vlanAttr
  ****************************************************************************/
 enum _fm_vlanPortAttr
 {
-    /** Type fm_bool: Indicates whether the port is a member of the VLAN.
-     *  
-     *  \chips FM3000, FM4000, FM6000 */
+    /** Type fm_bool: Indicates whether the port is a member of the VLAN. */
     FM_VLAN_PORT_MEMBERSHIP = 0,
 
-    /** Type fm_bool: Specifies the tagging state of the port in the VLAN.
-     *  
-     *  \chips FM3000, FM4000, FM6000 */
+    /** Type fm_bool: Specifies the tagging state of the port in the VLAN. */
     FM_VLAN_PORT_TAG1,
 
     /** Type fm_bool: Specifies the tagging state of the inner VLAN.
-     *  Will be FALSE if the switch only supports one level of tagging.
-     *  
-     *  \chips FM3000, FM4000, FM6000 */
+     *  Will be FALSE if the switch only supports one level of tagging. */
     FM_VLAN_PORT_TAG2,
 
     /** Type fm_int: The spanning tree forwarding state of the port in the
-     *  VLAN.
-     *  
-     *  \chips FM3000, FM4000, FM6000 */
+     *  VLAN. */
     FM_VLAN_PORT_STP_STATE,
 
     /** UNPUBLISHED: For internal use only. */
@@ -2087,7 +2114,7 @@ enum _fm_maTableAttr
      *  50MHz => max: 700,000 seconds.                                      \lb
      *  66MHz => max: 530,000 seconds.
      *                                                                  \lb\lb
-     *  On FM3000 and FM4000 devices, the maximum value is 94,000 seconds. 
+     *  On FM3000/FM4000 devices, the maximum value is 94,000 seconds. 
      *                                                                  \lb\lb
      *  On FM6000 devices, the maximum value is 2,251,799 seconds. 
      *                                                                  \lb\lb
@@ -2390,9 +2417,15 @@ enum _fm_portAttr
 
     /** Type fm_int: Maximum frame size in bytes, ranging from 0 to 15360 for
      *  FM10000 and 0 to 15864 for all other chips. Default value is 1536 for
-     *  all ports in FM6000, For FM10000, default value of Ethernet port is 
-     *  1536 and PCIE port is 15358. Note that a specified value will be 
+     *  all ports in FM6000, For FM10000, default value for an Ethernet port
+     *  is 1536 and PCIE port is 15360. Note that a specified value will be
      *  rounded up to the nearest multiple of 4.
+     *                                                                  \lb\lb
+     *  In FM10000, frame size is computed from DMAC till the end of FCS.
+     *  Hence the maximum frame size is actually MTU plus size of L2 header 
+     *  and FCS. E.g., if the non-vlan tagged netdev interface (of PCIE) on
+     *  the host has MTU 15342, then the corresponding Max Frame Size is
+     *  15342 + 14 (L2 header) + 4 (FCS) = 15360.
      *                                                                  \lb\lb
      *  Note: For ISL Tag enabled ports, the internal port configuration is
      *  adjusted by the number of bytes required for the ISL Tag.
@@ -2471,7 +2504,7 @@ enum _fm_portAttr
     FM_PORT_SECURITY_TRAP,
 
     /** Type fm_bool: Learning of source addresses on this port: FM_ENABLED
-     *  (default) or FM_DISABLED (default for TE ports).
+     *  (default) or FM_DISABLED (default for PEP and TE ports).
      *                                                                  \lb\lb
      *  Note: the ''fmSetPortSecurity'' API service will override the value of
      *  this attribute. 
@@ -2579,7 +2612,8 @@ enum _fm_portAttr
      *  For FM10000 switch family, the default value is FM_ENABLED. For all
      *  other switch families, the default value is FM_DISABLED.
      *                                                                  \lb\lb
-     *  This attribute is read-only on the CPU interface port.
+     *  On FM2000, FM3000/FM4000, and FM6000 devices, this attribute is
+     *  read-only on the CPU interface port.
      *
      *  \portType6K ETH, LAG
      *  \portType10K ETH, PCIE, TE, LPBK, LAG
@@ -2595,23 +2629,21 @@ enum _fm_portAttr
     /** Type fm_bool: Dropping of untagged frames on ingress: FM_ENABLED or
      *  FM_DISABLED (default).
      *                                                                  \lb\lb
-     *  Note that if enabled on FM2000, FM4000, FM6000 and the 
+     *  Note that if enabled on FM2000, FM4000, or FM6000, and the 
      *  ''FM_PORT_TAGGING'' attribute is set to FM_TAG_ADD or 
      *  FM_TAG_ADD_NO_DEFAULT, then this filter will result in a discard if 
      *  the incoming frame does not have its first level tag. That is, the 
      *  ethertype does not equal the VLAN. 
      *                                                                  \lb\lb
-     *  On FM2000, FM3000, FM4000 and FM10000 devices, if Ethertype = VLAN but 
-     *  the VLAN ID is 0 (priority tagged frame), the frame is considered VLAN 
-     *  untagged and will be dropped per this attribute.
+     *  On FM2000, FM3000/FM4000, and FM10000 devices, if Ethertype = VLAN
+     *  but the VLAN ID is 0 (priority tagged frame), the frame is
+     *  considered VLAN untagged and will be dropped per this attribute.
      *                                                                  \lb\lb
-     *  On FM6000 devices, dropping of priority tagged frames
-     *  (VLAN ID is 0) is controlled by a separate attribute, 
-     *  FM_PORT_DROP_PRIORITY_TAGGED.
+     *  On FM6000 devices, dropping of priority tagged frames (VLAN ID is 0)
+     *  is controlled by a separate attribute, FM_PORT_DROP_PRIORITY_TAGGED.
      *                                                                  \lb\lb
-     *  On FM10000 devices, this attribute is not applicable if 
-     *  port attribute ''FM_PORT_ISL_TAG_FORMAT'' is set to 
-     *  ''FM_ISL_TAG_F56''. 
+     *  On FM10000 devices, this attribute is not applicable if port
+     *  attribute ''FM_PORT_ISL_TAG_FORMAT'' is set to ''FM_ISL_TAG_F56''.
      *                                                                  \lb\lb
      *  This attribute is read-only on the CPU interface port.
      *
@@ -2623,10 +2655,10 @@ enum _fm_portAttr
     /** Type fm_bool: Dropping of tagged frames on ingress: FM_ENABLED or
      *  FM_DISABLED (default). 
      *                                                                  \lb\lb
-     *  On FM2000, FM3000, FM4000 and FM10000 devices, if Ethertype = VLAN but 
-     *  the VLAN ID is 0 (priority tagged frame), the frame is considered VLAN 
-     *  untagged and whether it is dropped is determined by the
-     *  ''FM_PORT_DROP_UNTAGGED'' attribute.
+     *  On FM2000, FM3000/FM4000, and FM10000 devices, if Ethertype = VLAN
+     *  but the VLAN ID is 0 (priority tagged frame), the frame is
+     *  considered VLAN untagged and whether it is dropped is determined by
+     *  the ''FM_PORT_DROP_UNTAGGED'' attribute.
      *                                                                  \lb\lb
      *  On FM6000 devices, dropping of priority tagged frames
      *  (VLAN ID is 0) is controlled by a separate attribute, 
@@ -2688,12 +2720,12 @@ enum _fm_portAttr
      *  ingress port. A one bit in the mask indicates that this port can
      *  forward to the port represented by the bit. The default value is
      *  0x1fffff, indicating that all ports can forward to all other ports.
-     *  Note that the default value for the ''FM_VLAN_REFLECT'' VLAN 
+     *  Note that the value FM_DISABLED for the ''FM_VLAN_REFLECT'' VLAN 
      *  attribute prevents a port from transmitting received packets back to 
      *  itself.
      *                                                                  \lb\lb
-     *  For FM6000 devices (or environments that mix these devices with 
-     *  other switches), use ''FM_PORT_MASK_WIDE'' instead.
+     *  For FM6000 and FM10000 devices (or environments that mix these
+     *  devices with other switches), use ''FM_PORT_MASK_WIDE'' instead.
      *                                                                  \lb\lb
      *  This attribute may be set for the CPU interface port. 
      *
@@ -2723,10 +2755,10 @@ enum _fm_portAttr
      *                                                                  \lb\lb
      *  On FM2000, specify zero to disable PAUSE. 
      *                                                                  \lb\lb
-     *  On FM3000, FM4000 and FM6000, enabling PAUSE on a port is 
-     *  controlled by the ''FM_PORT_LOSSLESS_PAUSE'' or 
-     *  ''FM_PORT_SMP_LOSSLESS_PAUSE'' port attributes in conjunction with 
-     *  the switch QoS attribute ''FM_AUTO_PAUSE_MODE''.
+     *  On FM3000/FM4000 and FM6000, enabling PAUSE on a port is controlled
+     *  by the ''FM_PORT_LOSSLESS_PAUSE'' or ''FM_PORT_SMP_LOSSLESS_PAUSE''
+     *  port attributes in conjunction with the switch QoS attribute
+     *  ''FM_AUTO_PAUSE_MODE''.
      *
      *  \portType6K ETH
      *  \portType10K ETH, PCIE, TE, LPBK
@@ -2736,8 +2768,8 @@ enum _fm_portAttr
     /** Type fm_uint32: The amount of time before the TX resends the PAUSE
      *  ON frame.
      *
-     *  For FM2000, FM3000 and FM4000 devices, the value is in units of 512 
-     *  bit-times. The attribute value may range from 0 to 65535. 
+     *  For FM2000 and FM3000/FM4000 devices, the value is in units of 512
+     *  bit-times. The attribute value may range from 0 to 65535.
      *                                                                  \lb\lb
      *  For FM4000 devices, The hardware uses the frame handler clock as a 
      *  reference and not port speed. Internally, The bit time configuration is 
@@ -2755,12 +2787,13 @@ enum _fm_portAttr
      *  the value read back may not exactly match the value set.
      *                                                                  \lb\lb 
      *  For FM10000 devices, the value is specified in nanoseconds and is 
-     *  calculated based on frame handler clock frequency. The maximum value can
-     *  be calculated as follows: the number of sweeper ports (48) * maximum
-     *  interval (65535) divided by the frequency of the switch. The attribute
-     *  value is converted to internal units , which means that the value
-     *  returned by ''fmGetPortAttribute'' may not be identical to the value
-     *  specified by ''fmSetPortAttribute''.
+     *  tied to the PAUSE sweeper period. (The value divided by PAUSE
+     *  sweeper period is used as a PAUSE interval regeneration register
+     *  setting.) The maximum value can be calculated as follows: PAUSE
+     *  sweeper period [ns] * max register interval value (65535). The
+     *  attribute value is converted to internal units , which means that
+     *  the value returned by ''fmGetPortAttribute'' may not be identical to
+     *  the value specified by ''fmSetPortAttribute''.
      *
      *  \portType6K ETH
      *  \portType10K ETH, PCIE, TE, LPBK
@@ -2783,7 +2816,7 @@ enum _fm_portAttr
     /** Type fm_bool: Receive PAUSE frame processing: FM_ENABLED or
      *  FM_DISABLED (default).
      *                                                                  \lb\lb
-     *  On FM3000, FM4000, FM6000 and FM10000 devices, this attribute will 
+     *  On FM3000/FM4000, FM6000, and FM10000 devices, this attribute will 
      *  enable or disable RX PAUSE for all traffic classes.  Use 
      *  ''FM_PORT_RX_CLASS_PAUSE'' to enable or disable PAUSE for specific 
      *  traffic classes.
@@ -2861,8 +2894,6 @@ enum _fm_portAttr
      *  On FM6000 devices this attribute is a superset of 
      *  ''FM_PORT_LOSSLESS_PAUSE'', which represents the PAUSE enabled bit for
      *  SMP0 only. 
-     *  On FM10000 devices this attribute is read-only on the CPU interface 
-     *  port.
      *                                                                  \lb\lb  
      *
      *  \portType6K ETH
@@ -3072,8 +3103,8 @@ enum _fm_portAttr
      *  (queue) 0, bit one to class 1, etc. A "1" in a bit position indicates
      *  that the corresponding class has PAUSE enabled. 
      *                                                                  \lb\lb
-     *  For FM3000, FM4000 and FM10000 devices, the value is 8-bits and 
-     *  the default value is 0, indicating that PAUSE is disabled for all
+     *  For FM3000/FM4000 and FM10000 devices, the value is 8-bits and the
+     *  default value is 0, indicating that PAUSE is disabled for all
      *  traffic classes.
      *                                                                  \lb\lb
      *  For FM6000 devices, the value is 12-bits and the default value
@@ -3341,13 +3372,19 @@ enum _fm_portAttr
      *  \chips  FM3000, FM4000, FM10000 */
     FM_PORT_PARSER_FLAG_OPTIONS,
 
-    /** Type fm_uint32: Defines the auto-negotiation standard
-     *  used on this port.  Valid values are:
+    /** Type fm_uint32: Defines the auto-negotiation standard used on this
+     *  port.  Valid values are:
      *                                                                  \lb\lb
      *  FM_PORT_AUTONEG_NONE (default),                                     \lb
      *  FM_PORT_AUTONEG_SGMII,                                              \lb
      *  FM_PORT_AUTONEG_CLAUSE_37,                                          \lb
      *  FM_PORT_AUTONEG_CLAUSE_73.
+     *                                                                  \lb\lb
+     *  On FM10000 devices, this attribute is automatically updated when the
+     *  ''FM_PORT_ETHERNET_INTERFACE_MODE'' port attribute is set. For 
+     *  ''FM_ETH_MODE_SGMII'' it is set to FM_PORT_AUTONEG_SGMII, for
+     *  ''FM_ETH_MODE_AN_73'' it is set to FM_PORT_AUTONEG_CLAUSE_73, and
+     *  for all other values it is set to FM_PORT_AUTONEG_NONE.
      *
      *  \portType ETH
      *  \chips  FM3000, FM4000, FM6000, FM10000 */
@@ -3623,14 +3660,16 @@ enum _fm_portAttr
      *                                                                  \lb\lb
      *  FM_PORT_MCAST_DISCARD to drop unknown multicast frames.
      *                                                                  \lb\lb
-     *  For FM3000, FM4000, FM6000 and FM10000: Setting the ''FM_MCAST_FLOODING''
-     *  switch attribute may override the setting of this attribute for all
-     *  ports. See ''FM_MCAST_FLOODING'' for more information.
+     *  For FM3000/FM4000, FM6000, and FM10000: Setting the
+     *  ''FM_MCAST_FLOODING'' switch attribute may override the setting of
+     *  this attribute for all ports. See ''FM_MCAST_FLOODING'' for more
+     *  information.
      *                                                                  \lb\lb
      *  For FM6000 and FM10000: Setting this attribute will change the
      *  ''FM_MCAST_FLOODING'' switch attribute to FM_MCAST_FLOODING_PER_PORT.
      *                                                                  \lb\lb
-     *  This attribute is read-only on the CPU interface port.
+     *  On FM3000/FM4000 and FM6000 devices this attribute is read-only on
+     *  the CPU interface port.
      *
      *  \portType6K ETH, LAG
      *  \portType10K ETH, PCIE, TE, LPBK, LAG
@@ -3652,7 +3691,7 @@ enum _fm_portAttr
      *                                                                  \lb\lb
      *  FM_PORT_UCAST_DISCARD to drop the unicast frames. 
      *                                                                  \lb\lb
-     *  For FM3000, FM4000, FM6000 and FM10000: Setting the 
+     *  For FM3000/FM4000, FM6000, and FM10000: Setting the 
      *  ''FM_UCAST_FLOODING'' switch attribute may override the setting of 
      *  this attribute for all ports. See ''FM_UCAST_FLOODING'' for more 
      *  information.
@@ -3660,7 +3699,8 @@ enum _fm_portAttr
      *  For FM6000 and FM10000: Setting this attribute will change the
      *  ''FM_UCAST_FLOODING'' switch attribute to FM_UCAST_FLOODING_PER_PORT.
      *                                                                  \lb\lb
-     *  This attribute is read-only on the CPU interface port.
+     *  For FM3000/FM4000 and FM6000: This attribute is read-only on the CPU
+     *  interface port.
      *
      *  \portType6K ETH, LAG
      *  \portType10K ETH, PCIE, TE, LPBK, LAG
@@ -3707,14 +3747,15 @@ enum _fm_portAttr
     /** Type fm_bool: Specifies whether a port is to transmit frames in
      *  cut-through mode (if possible) or force store-and-forward mode.
      *  FM_ENABLED (default) permits cut-through operation, FM_DISABLED
-     *  forces store-and-forward operation.
+     *  (default for the CPU interface) forces store-and-forward operation.
      *                                                                  \lb\lb
      *  In a Switch Aggregate environment, this attribute is supported only 
      *  on individual switches. It cannot be set directly using Switch 
      *  Aggregate Id, but it can be retrieved using Switch Aggregate Id. 
      *                                                                  \lb\lb
-     *  This attribute cannot be set for the CPU interface port because that
-     *  port must always be in store-and-forward mode.  
+     *  On FM2000, FM3000/FM4000, and FM6000 devices, this attribute cannot
+     *  be set for the CPU interface port because that port must always be
+     *  in store-and-forward mode.
      *
      *  \portType6K ETH 
      *  \portType10K ETH, PCIE, TE, LPBK
@@ -3724,14 +3765,15 @@ enum _fm_portAttr
     /** Type fm_bool: Specifies whether a port is to receive frames in
      *  cut-through mode (if possible) or force store-and-forward mode.
      *  FM_ENABLED (default) permits cut-through operation, FM_DISABLED
-     *  forces store-and-forward operation.
+     *  (default for the CPU interface) forces store-and-forward operation.
      *                                                                  \lb\lb
      *  In a Switch Aggregate environment, this attribute is supported only 
      *  on individual switches. It cannot be set directly using Switch 
      *  Aggregate Id, but it can be retrieved using Switch Aggregate Id. 
      *                                                                  \lb\lb
-     *  This attribute cannot be set for the CPU interface port because that
-     *  port must always be in store-and-forward mode.  
+     *  On FM2000, FM3000/FM4000, and FM6000 devices, this attribute cannot
+     *  be set for the CPU interface port because that port must always be
+     *  in store-and-forward mode.
      *
      *  \portType6K ETH 
      *  \portType10K ETH, PCIE, TE, LPBK
@@ -3803,9 +3845,9 @@ enum _fm_portAttr
 
     /** Type fm_int: SERDES transmitter emphasis.
      *                                                                   \lb\lb
-     *  For the FM2000, FM3000 and FM4000 devices the value ranges
-     *  from 0 to 15 with a default of 10. The specified value
-     *  corresponds to the emphasis according to the following:
+     *  For the FM2000 and FM3000/FM4000 devices, the value ranges from 0 to
+     *  15 with a default of 10. The specified value corresponds to the
+     *  emphasis according to the following:
      *                                                                   \lb\lb
      *  0  => 0%                                                            \lb
      *  1  => 4%                                                            \lb
@@ -3854,27 +3896,27 @@ enum _fm_portAttr
     FM_PORT_EMPHASIS,
     
     /** Type fm_int: SERDES transmitter drive strength
-     *                                                                   \lb\lb
-     *  For the FM2000, FM3000, and FM4000 devices, this attribute
-     *  represents the drive strength in mA. Value ranges from 6 to 35 with
-     *  a default of 24.
-     *                                                                   \lb\lb
+     *                                                                  \lb\lb
+     *  For the FM2000 and FM3000/FM4000 devices, this attribute represents
+     *  the drive strength in mA. Value ranges from 6 to 35 with a default
+     *  of 24.
+     *                                                                  \lb\lb
      *  On FM6000 devices, this attribute is applied per-lane
      *  per-MAC. Its value ranges from 0 to 23 with a default of 0
      *  and provides control of the values of V1, V2, V3, V4, V5 and
      *  V6 as defined in Figure 72-12 of IEEE Std 802.3ap-2007,
      *  according to the following equations:
-     *                                                                   \lb\lb
-     *  V1 = -V4 = Vmax-Vc*(A+2*Kpre)                                       \lb
-     *  V2 = -V5 = Vmax-Vc*(A+2*(Kpre+Kpost))                               \lb
-     *  V3 = -V6 = Vmax-Vc*(A+2*Kpost)                     
-     *                                                                   \lb\lb
+     *
+     *  V1 = -V4 = Vmax-Vc*(A+2*Kpre)                                   \lb
+     *  V2 = -V5 = Vmax-Vc*(A+2*(Kpre+Kpost))                           \lb
+     *  V3 = -V6 = Vmax-Vc*(A+2*Kpost)
+     *
      *  where:                                                           
-     *                                                                   \lb\lb
-     *  A is the value of this attribute                                    \lb
-     *  Kpre and Kpost are described in ''FM_PORT_EMPHASIS''                \lb
-     *  Vmax=575 mV for 1.1V operations, Vmax=517 mV for 1.0V               \lb
-     *  Vc=16.2 mV for 1.1V operations, Vc=14.5 mV for 1.0V 
+     *
+     *  A is the value of this attribute.                               \lb
+     *  Kpre and Kpost are described in ''FM_PORT_EMPHASIS''.           \lb
+     *  Vmax=575 mV for 1.1V operations, Vmax=517 mV for 1.0V.          \lb
+     *  Vc=16.2 mV for 1.1V operations, Vc=14.5 mV for 1.0V. 
      *
      *  \portType ETH
      *  \chips  FM2000, FM3000, FM4000, FM6000 */
@@ -3882,11 +3924,8 @@ enum _fm_portAttr
 
     /** Type fm_int: SERDES transmitter preCursor.
      *                                                                  \lb\lb
-     *  For the FM10000 the value ranges from -7 to +15 with a          \lb
-     *  default of 0.                                                   \lb\lb
-     *
-     *  On FM10000 devices, this attribute is applied per-lane
-     *  per-MAC.                                                        \lb\lb
+     *  The value ranges from -7 to +15 with a default of 0.
+     *  This attribute is applied per-lane per-MAC.
      *
      *  This attribute provides control of the values of V1, V2, V3,
      *  V4, V5 and V6 as defined in Figure 72-11 of IEEE Std 802.3ap,
@@ -3895,10 +3934,10 @@ enum _fm_portAttr
      *  V1 = -V4 = Vmax-Vc*(Attn+2*Pre)                                 \lb
      *  V2 = -V5 = Vmax-Vc*(Attn+2*(Pre+Post))                          \lb
      *  V3 = -V6 = Vmax-Vc*(Atnn+2*Post)                                \lb  
-     *                                                                  \lb\lb
+     *
      *  where:
-     *                                                                  \lb\lb
-     *  Attn is the value of the ''FM_PORT_TX_LANE_CURSOR'' attribute   \lb
+     *
+     *  Attn is the value of the ''FM_PORT_TX_LANE_CURSOR'' attribute.  \lb
      *  Pre is the value of the ''FM_PORT_TX_LANE_PRECURSOR'' attr.     \lb
      *  Post is the value of the ''FM_PORT_TX_LANE_POSTCURSOR'' attr.   \lb
      *  Vmax=560 mV                                                     \lb
@@ -3910,11 +3949,8 @@ enum _fm_portAttr
 
     /** Type fm_int: SERDES transmitter postCursor.
      *                                                                  \lb\lb
-     *  For the FM10000 the value ranges from -31 to +31 with a         \lb
-     *  default of 0.                                                   \lb\lb
-     *
-     *  On FM10000 devices, this attribute is applied per-lane
-     *  per-MAC.                                                        \lb\lb
+     *  The value ranges from -31 to +31 with a default of 0.
+     *  This attribute is applied per-lane per-MAC.
      *
      *  This attribute provides control of the values of V1, V2, V3,
      *  V4, V5 and V6 as defined in Figure 72-11 of IEEE Std 802.3ap,
@@ -3938,20 +3974,19 @@ enum _fm_portAttr
 
     /** Type fm_int: SERDES transmitter cursor
      *                                                                  \lb\lb
-     *  For the FM10000 the value ranges from 0 to 31 with a default    \lb
-     *  of 0.                                                           \lb\lb
+     *  The value ranges from 0 to 31, with a default of 0.
      *                                                                 
      *  This attribute provides control the values of V1, V2, V3, V4,
      *  V5 and V6 as defined in Figure 72-11 of IEEE Std 802.3ap,
      *  according to the following equations:
-     *                                                                  \lb\lb
+     *
      *  V1 = -V4 = Vmax-Vc*(Attn+2*Pre)                                 \lb
      *  V2 = -V5 = Vmax-Vc*(Attn+2*(Pre+Post))                          \lb
      *  V3 = -V6 = Vmax-Vc*(Atnn+2*Post)                                \lb  
-     *                                                                  \lb\lb
+     *
      *  where:
-     *                                                                  \lb\lb
-     *  Attn is the value of the ''FM_PORT_TX_LANE_CURSOR'' attribute   \lb
+     *
+     *  Attn is the value of the ''FM_PORT_TX_LANE_CURSOR'' attribute.  \lb
      *  Pre is the value of the ''FM_PORT_TX_LANE_PRECURSOR'' attr.     \lb
      *  Post is the value of the ''FM_PORT_TX_LANE_POSTCURSOR'' attr.   \lb
      *  Vmax=560 mV                                                     \lb
@@ -3961,12 +3996,10 @@ enum _fm_portAttr
      *  \chips  FM10000 */       
     FM_PORT_TX_LANE_CURSOR,
 
-
     /** Type fm_int: SERDES transmitter KR init preCursor.
      *                                                                  \lb\lb
-     *  For the FM10000 the value ranges from -7 to +15 with a default of 0.
-     *                                                                  \lb\lb
-     *  On FM10000 devices, this attribute is applied per-lane per-MAC.
+     *  The value ranges from -7 to +15, with a default of 0.
+     *  This attribute is applied per-lane per-MAC.
      *                                                                  \lb\lb
      *  This attribute provides control of the equalization settings
      *  for the initialize state as defined in IEEE Std 802.3 section
@@ -3978,10 +4011,8 @@ enum _fm_portAttr
 
     /** Type fm_int: SERDES transmitter KR init postCursor.
      *                                                                  \lb\lb
-     *  For the FM10000, the value ranges from -31 to +31 with a
-     *  default of 4.
-     *                                                                  \lb\lb
-     *  On FM10000 devices, this attribute is applied per-lane per-MAC.
+     *  The value ranges from -31 to +31, with a default of 4.
+     *  This attribute is applied per-lane per-MAC.
      *                                                                  \lb\lb
      *  This attribute provides control of the equalization settings
      *  for the initialize state as defined in IEEE Std 802.3 section
@@ -3993,7 +4024,7 @@ enum _fm_portAttr
 
     /** Type fm_int: SERDES transmitter KR init cursor
      *                                                                  \lb\lb
-     *  For the FM10000, the value ranges from 0 to 31 with a default of 0.
+     *  The value ranges from 0 to 31 with a default of 0.
      *                                                                  \lb\lb
      *  This attribute provides control of the equalization settings
      *  for the initialize state as defined in IEEE Std 802.3 section
@@ -4006,7 +4037,7 @@ enum _fm_portAttr
     /** Type fm_bool: Whether to configure the initialize state cursor
      *  values during KR training: FM_ENABLED or FM_DISABLED (default).
      *                                                                  \lb\lb
-     *  For FM10000 devices, it is applied per-lane per-MAC.
+     *  This attribute is applied per-lane per-MAC.
      *
      *  \portType ETH
      *  \chips  FM10000 */
@@ -4015,7 +4046,7 @@ enum _fm_portAttr
     /** Type fm_int: SERDES transmitter KR, number of initial pre-cursor DEC
      *  requests when a PRESET request is received.
      *                                                                  \lb\lb
-     *  For the FM10000, the value ranges from 0 to 15 with a default of 0.
+     *  The value ranges from 0 to 15 with a default of 0.
      *                                                                 
      *  \portType ETH
      *  \chips  FM10000 */       
@@ -4024,11 +4055,39 @@ enum _fm_portAttr
     /** Type fm_int: SERDES transmitter KR, number of initial post-cursor
      *  DEC requests.
      *                                                                  \lb\lb
-     *  For the FM10000, the value ranges from 0 to 15 with a default of 0.
+     *  The value ranges from 0 to 15 with a default of 0.
      *                                                                 
      *  \portType ETH
      *  \chips  FM10000 */       
     FM_PORT_TX_LANE_KR_INITIAL_POST_DEC,
+
+    /** Type fm_int: SERDES transition threshold. The minimum number of
+     *  transitions in an 80-bit sample of the incoming signal to be 
+     *  considered as a good signal. Used to validate the incoming signal
+     *  for Ethernet modes that perform DFE tuning. Validation may be
+     *  disabled by setting the value to 0.
+     *                                                                  \lb\lb
+     *  The value ranges from 0 to 70, with a default of 20.
+     *                                                                 
+     *  \portType ETH
+     *  \chips  FM10000 */       
+    FM_PORT_SERDES_SIGNAL_TRANSITION_THRESHOLD,
+
+    /** UNPUBLISHED: Type fm_int: SERDES KR, extended configuration options 1.
+     *                                                                  \lb\lb
+     *  Debugging only. By default is equal to 0.
+     *                                                                 
+     *  \portType ETH
+     *  \chips  FM10000 */       
+    FM_PORT_TX_LANE_KR_XCONFIG1,
+
+    /** UNPUBLISHED: Type fm_int: SERDES KR, extended configuration options 2.
+     *                                                                  \lb\lb
+     *  Debugging only. By default is equal to 0.
+     *                                                                 
+     *  \portType ETH
+     *  \chips  FM10000 */       
+    FM_PORT_TX_LANE_KR_XCONFIG2,
 
     /** Type fm_uint64: Specifies the BIST User Patterns for the custom10,
      *  custom20, and custom40 BIST submodes. Also defines the lower 40 bits
@@ -4111,15 +4170,14 @@ enum _fm_portAttr
      *
      *  \portType10K ETH, PCIE:ro
      *  \chips FM10000 */
-
     FM_PORT_RX_TERMINATION,
 
-    /** Type fm_uint32: Receive lane polarity. On FM2000, FM3000 and FM4000
+    /** Type fm_uint32: Receive lane polarity. On FM2000 and FM3000/FM4000
      *  devices, the value is a 4-bit mask (0x0 - 0xF), where bit 0 (the
      *  low-order bit) represents lane A, bit 1 is lane B, bit 2 is lane C,
      *  and bit 3 is lane D. A bit value of zero indicates normal polarity,
-     *  and a bit value of 1 indicates reverse polarity. For convenience, the
-     *  following mask values are pre-defined:
+     *  and a bit value of 1 indicates reverse polarity. For convenience,
+     *  the following mask values are pre-defined:
      *                                                                  \lb\lb
      *  FM_PORT_LANE_POLARITY_NORMAL (default) to set normal lane polarity 
      *  on all lanes.
@@ -4146,7 +4204,7 @@ enum _fm_portAttr
      *  \chips  FM3000, FM4000, FM6000, FM10000 */
     FM_PORT_RX_LANE_POLARITY,
 
-    /** Type fm_uint32: Transmit lane polarity. On FM2000, FM3000 and FM4000
+    /** Type fm_uint32: Transmit lane polarity. On FM2000 and FM3000/FM4000
      *  devices, the value is:
      *                                                                  \lb\lb
      *  FM_PORT_LANE_POLARITY_NORMAL (default) to set normal lane polarity 
@@ -4232,12 +4290,20 @@ enum _fm_portAttr
      *  \chips  FM6000, FM10000 */
     FM_PORT_ETHERNET_INTERFACE_MODE,
     
-    /** Type fm_bool: Whether received errored frames
-     *  will be discarded if the error is detected prior to
-     *  transmission: FM_ENABLED (default on FM6000) or FM_DISABLED
-     *  (default on FM4000). A frame is considered errored if it is
-     *  received with a bad CRC, PHY error or invalid length field.
-     *  The attribute applies to the ingress port.
+    /** Type ''fm_linkOptMode'': The link optimization mode, per MAC.
+     *  Dictates how the port behaves when it is configured with non-KR
+     *  modes. Settings are: NONE (no optimization), SPEED (link up
+     *  time optimization), QUALITY (best possible tuning) and BALANCE.
+     *
+     *  \portType ETH
+     *  \chips  FM10000 */
+    FM_PORT_LINK_OPTIMIZATION_MODE,
+    
+    /** Type fm_bool: Whether received errored frames will be discarded if
+     *  the error is detected prior to transmission: FM_ENABLED (default on
+     *  FM6000) or FM_DISABLED (default on FM4000). A frame is considered
+     *  errored if it is received with a bad CRC, PHY error or invalid
+     *  length field. The attribute applies to the ingress port.
      *  
      *  \portType ETH
      *  \chips  FM3000, FM4000, FM6000 */
@@ -4323,7 +4389,6 @@ enum _fm_portAttr
      *  \chips  FM6000, FM10000 */
     FM_PORT_FINE_DFE_STATE,
 
-
     /** Type fm_int: Represents three possible settings of the transmitter 
      *  output waveform rise times. This attribute is applied per-lane,
      *  per-MAC.
@@ -4338,7 +4403,6 @@ enum _fm_portAttr
      *  \chips  FM6000 */
     FM_PORT_SLEW_RATE,
 
-
     /** Type fm_bool: Whether ARP packets should be trapped to the 
      *  CPU: FM_ENABLED (default) or FM_DISABLED.
      *                                                                  \lb\lb
@@ -4349,7 +4413,6 @@ enum _fm_portAttr
      *  \chips FM6000 */
     FM_PORT_TRAP_ARP,
 
-
     /** Type fm_bool: Indicates whether this port will check if learning is
      *  enabled on VID2: FM_ENABLED (default) or FM_DISABLED.
      *
@@ -4357,9 +4420,7 @@ enum _fm_portAttr
      *  \chips FM6000 */
     FM_PORT_CHECK_LEARNING_VID2,
 
-
-    /* Undocumented CJPAT enable, to be superseded by BIST mode CJPAT support */
-    /** Type fm_bool: Unsupported - do not use. */
+    /** UNPUBLISHED: Superseded by BIST mode CJPAT support. */
     FM_PORT_TRANSMIT_CJPAT,
 
     /** Type fm_int: The threshold for signal detection. This attribute is 
@@ -4786,7 +4847,6 @@ enum _fm_portAttr
      *  \chips  FM10000 */
     FM_PORT_TCN_FIFO_WM,
 
-
     /** Type fm_bool: Whether to enable Energy Efficient Ethernet mode on
      *  the port. Defaults to FM_DISABLED on all ports.
      *
@@ -5033,15 +5093,16 @@ typedef enum
 /** Port Tagging Options
  *  \ingroup constPortTagOptions
  *  \page portTagOptions
- *
+ *  Set of possible values for the ''FM_PORT_TAGGING''
+ *  and ''FM_PORT_TAGGING2'' port attributes.
  **************************************************/
 /** \ingroup constPortTagOptions
  * @{ */
 
-/** FM_TAG_KEEP (default) to tag only untagged frames.
+/** Tag only untagged frames. (default)
  *                                                                      \lb\lb
- * For FM10000, this option is only valid for VLAN2 and is the default value.
- *                                                                      \lb\lb
+ *  For FM10000, this option is only valid for VLAN2 and is the default value.
+ *
  *  \chips  FM2000, FM3000, FM4000, FM6000 */
 #define FM_TAG_KEEP                         0
 
@@ -5051,7 +5112,7 @@ typedef enum
  *  802.1Q mode, it gets an additional VLAN1 tag. If the frame leaves the
  *  switch untagged in 802.1Q mode, then any original VLAN1 is preserved,
  *  but this tag is not added.
- *                                                                      \lb\lb
+ *
  *  \chips  FM2000, FM3000, FM4000, FM6000 */
 #define FM_TAG_ADD                          1
 
@@ -5060,15 +5121,15 @@ typedef enum
  *  Note that the port's default VLAN1 is set with the ''FM_PORT_DEF_VLAN''
  *  attribute and the default VPRI1 is set with the ''FM_PORT_DEF_PRI''
  *  attribute.
- *                                                                      \lb\lb
+ *
  *  \chips  FM2000, FM3000, FM4000, FM6000 */
 #define FM_TAG_REPLACE                      2
 
 /** Treat the incoming frame as untagged but do not associate the port default
-*   vlan1 and vpri1 with the frame. In FM3000 and FM4000 devices, this
-*   allows the vlan1 tag to be passed into the FFU for processing, so a
-*   new vlan1 and vpri1 can be assigned.
- *                                                                      \lb\lb
+ *  vlan1 and vpri1 with the frame. On FM3000/FM4000 devices, this
+ *  allows the vlan1 tag to be passed into the FFU for processing, so a
+ *  new vlan1 and vpri1 can be assigned.
+ *
  *  \chips  FM2000, FM3000, FM4000, FM6000 */
 #define FM_TAG_ADD_NO_DEFAULT               3
 
@@ -5418,23 +5479,22 @@ enum _fm_lagAttr
      *  FM_LAG_HASH_SYM turns on symmetric hashing, overriding the settings
      *  of FM_LAG_HASH_SA and FM_LAG_HASH_DA.                               
      *                                                                  \lb\lb
-     *  FM_LAG_HASH_L2IFIP (FM3000 and FM4000 devices only) include the L2 
-     *  header in the hash function if the frame is IP. This bit has no 
-     *  effect if the ''FM_PORT_PARSER'' port attribute is set to 
+     *  FM_LAG_HASH_L2IFIP (FM3000/FM4000 only) includes the L2
+     *  header in the hash function if the frame is IP. This bit has no
+     *  effect if the ''FM_PORT_PARSER'' port attribute is set to
      *  FM_PORT_PARSER_STOP_AFTER_L2.
      *                                                                  \lb\lb
-     *  FM_LAG_HASH_L34 (FM3000 and FM4000 devices only) include the Layer 
-     *  3/4 hash, controlled by the ''FM_ROUTING_HASH'' switch attribute, 
-     *  in the LAG hash. This bit has no effect if the ''FM_PORT_PARSER'' 
-     *  port attribute is set to FM_PORT_PARSER_STOP_AFTER_L2.
+     *  FM_LAG_HASH_L34 (FM3000/FM4000 only) includes the Layer 3/4
+     *  hash, controlled by the ''FM_ROUTING_HASH'' switch attribute, in the
+     *  LAG hash. This bit has no effect if the ''FM_PORT_PARSER'' port
+     *  attribute is set to FM_PORT_PARSER_STOP_AFTER_L2.
      *                                                                  \lb\lb
      *  The default value for FM2000 devices is (FM_LAG_HASH_VLANPRI |
      *  FM_LAG_HASH_VLANID | FM_LAG_HASH_SA | FM_LAG_HASH_DA).
      *                                                                  \lb\lb
-     *  The default value for FM3000 and FM4000 devices is 
-     *  (FM_LAG_HASH_L2IFIP | FM_LAG_HASH_L34 | FM_LAG_HASH_SA | 
-     *  FM_LAG_HASH_DA | FM_LAG_HASH_TYPE | FM_LAG_HASH_VLANPRI | 
-     *  FM_LAG_HASH_VLANID). 
+     *  The default value for FM3000/FM4000 devices is (FM_LAG_HASH_L2IFIP |
+     *  FM_LAG_HASH_L34 | FM_LAG_HASH_SA | FM_LAG_HASH_DA | FM_LAG_HASH_TYPE
+     *  | FM_LAG_HASH_VLANPRI | FM_LAG_HASH_VLANID).
      *                                                                  \lb\lb
      *  Note: If neither FM_LAG_HASH_L2IFIP nor FM_LAG_HASH_L34 is set, which 
      *  is an invalid configuration, then FM_LAG_HASH_L2IFIP will be set by 
@@ -5651,7 +5711,7 @@ enum _fm_qosPortAttr
      *  This QoS attribute may not be set for the CPU interface port on the
      *  FM2000 family.
      *                                                                  \lb\lb
-     *  For FM3000, FM4000 and FM10000 devices, the VLAN egress priority is 0
+     *  For FM3000/FM4000 and FM10000 devices, the VLAN egress priority is 0
      *  through 7 if the ''FM_PORT_TXCFI'' is set to FM_PORT_TXCFI_ASIS or 0
      *  through 15 if the ''FM_PORT_TXCFI'' is set to FM_PORT_TXCFI_ISPRIBIT.
      *  The internal priority is a VLAN priority.
@@ -5698,7 +5758,7 @@ enum _fm_qosPortAttr
      *  specified value up to the nearest 1024-byte boundary. The attribute 
      *  index is not used. 
      *                                                                  \lb\lb
-     *  For FM3000 and FM4000 devices, the attribute value may range from 0 to 
+     *  For FM3000/FM4000 devices, the attribute value may range from 0 to 
      *  4,193,792 with a default value of 4,193,792. The API will round the
      *  specified value up to the nearest 512-byte boundary. The attribute 
      *  index (0 - 3) indicates which one of the four hog watermarks to set 
@@ -5753,7 +5813,7 @@ enum _fm_qosPortAttr
      *  specified value up to the nearest 1024-byte boundary. The attribute 
      *  index is not used. 
      *                                                                  \lb\lb
-     *  For FM3000 and FM4000 devices, the attribute value may range from 0 to 
+     *  For FM3000/FM4000 devices, the attribute value may range from 0 to 
      *  4,193,792 with a default value of 4,193,792. The API will round the
      *  specified value up to the nearest 512-byte boundary. The attribute 
      *  index (0 - 1) indicates the memory partition.
@@ -5802,7 +5862,7 @@ enum _fm_qosPortAttr
      *  specified value up to the nearest 1024-byte boundary. The attribute 
      *  index is not used. 
      *                                                                  \lb\lb
-     *  For FM3000 and FM4000 devices, the attribute value may range from 0 to 
+     *  For FM3000/FM4000 devices, the attribute value may range from 0 to 
      *  4,193,792 with a default value of 4,193,792. The API will round the
      *  specified value up to the nearest 512-byte boundary. The attribute 
      *  index (0 - 1) indicates the memory partition.
@@ -5846,7 +5906,7 @@ enum _fm_qosPortAttr
     /** Type fm_uint32: The private transmit watermark per traffic
      *  class in bytes. The attribute index (0 - 7) indicates the traffic class.
      *
-     *  For  FM3000 and FM4000 devices the attribute value and may range from
+     *  For FM3000/FM4000 devices the attribute value and may range from
      *  0 to 4,193,792 with a default value of 4,193,792. The API will round 
      *  up the specified attribute value to the nearest 512-byte boundary
      *                                                                  \lb\lb
@@ -5936,7 +5996,7 @@ enum _fm_qosPortAttr
      *  the specified attribute value to the nearest 1024-byte boundary. The
      *  attribute index is not used.
      *                                                                  \lb\lb
-     *  For FM3000 and FM4000 devices, the attribute value may range from 0 to 
+     *  For FM3000/FM4000 devices, the attribute value may range from 0 to 
      *  4,193,792 with a default value of 4,193,792. The API will round up 
      *  the specified attribute value to the nearest 512-byte boundary.
      *  The attribute index (0 - 1) indicates the memory partition.
@@ -5975,7 +6035,7 @@ enum _fm_qosPortAttr
      *  the specified attribute value to the nearest 1024-byte boundary. The
      *  attribute index is not used.
      *                                                                  \lb\lb
-     *  For FM3000 and FM4000 devices, the attribute value may range from 0 to 
+     *  For FM3000/FM4000 devices, the attribute value may range from 0 to 
      *  4,193,792 with a default value of 4,193,792. The API will round up 
      *  the specified attribute value to the nearest 512-byte boundary.
      *  The attribute index (0 - 1) indicates the memory partition.
@@ -6061,7 +6121,7 @@ enum _fm_qosPortAttr
      *  attribute value is the shaping group number and defaults to 0.
      *  The attribute index is the traffic class.
      *                                                                  \lb\lb
-     *  For FM3000, FM4000 and FM10000 devices, the shaping group value may 
+     *  For FM3000/FM4000 and FM10000 devices, the shaping group value may 
      *  range from 0 to 7 and the traffic class index may range from 0 to 7.
      *                                                                  \lb\lb
      *  For FM6000 devices, the shaping group value may range from 0 to 11 
@@ -6148,7 +6208,7 @@ enum _fm_qosPortAttr
      *  the value set with ''fmSetPortQOS''. The attribute index is the
      *  shaping group.
      *                                                                  \lb\lb
-     *  For FM3000 and FM4000 devices, the shaping group value may range 
+     *  For FM3000/FM4000 devices, the shaping group value may range 
      *  from 0 to 7.
      *                                                                  \lb\lb
      *  For FM6000 devices, the shaping group value may range from 0
@@ -6264,7 +6324,7 @@ enum _fm_qosPortAttr
      *                                                                  \lb\lb
      *  For FM2000 devices, the granularity of the measurement is 1024 bytes.
      *                                                                  \lb\lb
-     *  For FM3000 and FM4000 devices, the granularity of the measurement 
+     *  For FM3000/FM4000 devices, the granularity of the measurement 
      *  is 512 bytes. 
      *                                                                  \lb\lb
      *  For FM6000 devices, the granularity of the measurement is 160 bytes.
@@ -6283,7 +6343,7 @@ enum _fm_qosPortAttr
      *  for a particular memory partition. This attribute is read-only. The 
      *  index indicates the memory partition. 
      *                                                                  \lb\lb
-     *  On FM3000 and FM4000 devices, the index represents the SMP and
+     *  On FM3000/FM4000 devices, the index represents the SMP and
      *  may range from 0 to 1.
      *                                                                  \lb\lb
      *  On FM6000 devices, the index represents the RXMP and may range from
@@ -6298,7 +6358,7 @@ enum _fm_qosPortAttr
     /** Type fm_uint32: The amount of memory in bytes used by transmit queues.
      *  This attribute is read-only.
      *                                                                  \lb\lb
-     *  For FM3000 and FM4000 devices, the attribute index indicates the 
+     *  For FM3000/FM4000 devices, the attribute index indicates the 
      *  memory partition and may range from 0 to 1. 
      *
      *  For FM6000 devices, the attribute index indicates the TX memory 
@@ -6311,7 +6371,7 @@ enum _fm_qosPortAttr
      *  class in a port's transmit queue in units of bytes. This attribute is
      *  read-only. The attribute index (0 - 7) indicates the traffic class. 
      *
-     *  For FM3000 and FM4000 devices, the granularity of the measurement 
+     *  For FM3000/FM4000 devices, the granularity of the measurement 
      *  is 512 bytes.  
      *
      *  For FM10000 devices, the granularity of the measurement is 192 bytes.
@@ -6634,7 +6694,7 @@ enum _fm_qosSwAttr
      *  calculate an optimal value based on the available memory size, the 
      *  total size of all private receive queues and the maximum frame size.
      *                                                                  \lb\lb
-     *  For FM3000 and FM4000 devices, the attribute value may range from 0 to 
+     *  For FM3000/FM4000 devices, the attribute value may range from 0 to 
      *  33,553,920 with a default value of 2,048,000. The API will round the
      *  specified value up to the nearest 512-byte boundary.
      *                                                                  \lb\lb
@@ -6770,7 +6830,7 @@ enum _fm_qosSwAttr
      *  if the per-port private PAUSE on watermark is exceeded or the receive 
      *  rate limiter is exceeded. 
      *                                                                  \lb\lb
-     *  For FM3000 and FM4000 devices, the attribute value may range from 
+     *  For FM3000/FM4000 devices, the attribute value may range from 
      *  0 to 4,193,792 with a default value of 4,193,792. 
      *  The attribute index (0 - 1) indicates the memory partition.
      *      
@@ -6894,7 +6954,7 @@ enum _fm_qosSwAttr
      *  attribute value is the traffic class and the attribute index is the
      *  switch priority (0 - 15)
      *                                                                  \lb\lb
-     *  On the FM3000 and FM4000, the traffic class value may range from 0 to 7.
+     *  On the FM3000/FM4000, the traffic class value may range from 0 to 7.
      *  The default maps switch priorities 0 through 7 to traffic classes 0 
      *  through 7, respectively and swtich priorities 8 through 15 to traffic 
      *  classes  0 through 7, respectively.     
@@ -6945,7 +7005,7 @@ enum _fm_qosSwAttr
     /** Type fm_uint32: Global traffic class to shared memory
      *  partition map. 
      *
-     *  For FM3000 and FM4000 devices the attribute value is:
+     *  For FM3000/FM4000 devices the attribute value is:
      *                                                                  \lb\lb
      *  FM_QOS_TC_SMP_NONE (default) for non-SMP controlled.
      *                                                                  \lb\lb
@@ -7094,7 +7154,7 @@ enum _fm_qosSwAttr
      *  the amount used by the private per-port receive queues. This attribute 
      *  is read-only.
      *                                                                  \lb\lb
-     *  On FM3000 and FM4000 devices, the attribute index indicates the 
+     *  On FM3000/FM4000 devices, the attribute index indicates the 
      *  memory partition and may range from 0 to 1.
      *                                                                  \lb\lb
      *  On FM6000 devices, the attribute index indicates the RX memory 
@@ -7225,7 +7285,8 @@ enum _fm_qosSwAttr
 typedef enum
 {
     /** All VLANs share a single spanning tree instance. Port spanning tree
-     *  states are set using ''fmSetVlanPortState''. 
+     *  states are set using ''fmSetSpanningTreePortState'' or
+     *  ''fmSetVlanPortState''.
      *                                                                  \lb\lb
      *  For FM2000 and FM4000 devices, source MAC addresses are learned
      *  globally (not per-VLAN). For the FM6000 and FM10000, MAC address
@@ -7235,7 +7296,8 @@ typedef enum
     FM_SPANNING_TREE_SHARED = 0,
 
     /** Each VLAN has its own spanning tree instance. Port spanning tree
-     *  states are set using ''fmSetVlanPortState''.
+     *  states are set using ''fmSetSpanningTreePortState'' or
+     *  ''fmSetVlanPortState''.
      *                                                                  \lb\lb
      *  For FM2000 and FM4000 devices, source MAC addresses are learned
      *  per-VLAN. For the FM6000 and FM10000, MAC address learning is
@@ -7247,8 +7309,8 @@ typedef enum
     /** Multiple spanning tree instances may be created using the
      *  ''Spanning Tree Management'' API services. VLANs are assigned to
      *  spanning tree instances in any combination (all to one, each to its
-     *  own or some VLANs sharing one instance while other VLANs share another
-     *  instance).
+     *  own, or some VLANs sharing one instance while other VLANs share
+     *  another instance).
      *                                                                  \lb\lb
      *  For FM2000 and FM4000 devices, source MAC addresses are learned
      *  per-VLAN. For the FM6000 and FM10000, MAC address learning is
@@ -7791,7 +7853,7 @@ typedef enum
      *  \chips  FM3000, FM4000 */
     FM_TRAPCODE_REMAP_CPU,
 
-    /** Trapped frame due to FFU action.
+    /** Frame trapped due to FFU action.
      * 
      *  For FM6000 devices, this also includes frames logged due to
      *  FFU action.
@@ -7799,7 +7861,7 @@ typedef enum
      *  \chips  FM3000, FM4000, FM6000, FM10000 */
     FM_TRAPCODE_FFU,
 
-    /** Trapped frame due to TTL <= 1 for ICMP frame.
+    /** Frame trapped due to TTL <= 1 for ICMP frame.
      *  
      *  \chips  FM3000, FM4000, FM10000 */
     FM_TRAPCODE_ICMP_TTL,
@@ -7809,7 +7871,7 @@ typedef enum
      *  \chips  FM3000, FM4000, FM6000, FM10000 */
     FM_TRAPCODE_IP_OPTION,
 
-    /** Trapped frame due to MTU violation.
+    /** Frame trapped due to MTU violation.
      *  
      *  \chips  FM3000, FM4000, FM6000, FM10000 */
     FM_TRAPCODE_MTU,
@@ -7819,21 +7881,21 @@ typedef enum
      *  \chips  FM3000, FM4000, FM6000, FM10000 */
     FM_TRAPCODE_IGMP,
 
-    /** On FM3000, FM4000 and FM10000 devices, trapped frame due to TTL <= 1
+    /** On FM3000/FM4000 and FM10000 devices, frame trapped due to TTL <= 1
      *  for non-ICMP frames.
      *                                                                  \lb\lb
-     *  For FM6000 devices, trapped frame due to TTL <= 1 for both ICMP and
+     *  For FM6000 devices, frame trapped due to TTL <= 1 for both ICMP and
      *  non-ICMP frames.
      *  
      *  \chips  FM3000, FM4000, FM6000, FM10000 */
     FM_TRAPCODE_TTL,
 
-    /** Logged frame due to ingress FFU action.
+    /** Frame logged due to ingress FFU action.
      *  
      *  \chips  FM3000, FM4000, FM10000 */
     FM_TRAPCODE_LOG_INGRESS_FFU,
 
-    /** Logged frame due to egress FFU action.
+    /** Frame logged due to egress FFU action.
      *  
      *  \chips  FM3000, FM4000 */
     FM_TRAPCODE_LOG_EGRESS_FFU,
@@ -7904,6 +7966,21 @@ typedef enum
      *  
      *  \chips  FM10000 */
     FM_TRAPCODE_MIRROR_BASE,
+
+    /** Trapped BCAST frames.
+     *
+     *  \chips  FM10000 */
+     FM_TRAPCODE_BCAST,                
+
+    /** Trapped MCAST frames.
+     *
+     *  \chips  FM10000 */
+     FM_TRAPCODE_MCAST,  
+
+    /** Trapped UCAST frames.
+     *
+     *  \chips  FM10000 */
+     FM_TRAPCODE_UCAST, 
 
     /** UNPUBLISHED: For internal use only. */
     FM_TRAPCODE_MAX,
@@ -8247,7 +8324,7 @@ typedef struct _fm_L2HashKey
      *  The valid range is 0 (disable) to 0xffffffffffff (all bits
      *  included).  The default is 0xffffffffffff.
      *                                                                  \lb\lb
-     *  On FM3000, FM4000 and FM10000 devices, this field acts as a Boolean
+     *  On FM3000/FM4000 and FM10000 devices, this field acts as a Boolean
      *  and any value other than 0 will enable this specific key.
      *  
      *  \chips  FM3000, FM4000, FM6000, FM10000 */
@@ -8257,7 +8334,7 @@ typedef struct _fm_L2HashKey
      *  The valid range is 0 (disable) to 0xffffffffffff (all bits
      *  included).  The default is 0xffffffffffff.
      *                                                                  \lb\lb
-     *  On FM300, FM4000 and FM10000 devices, this field acts as a Boolean
+     *  On FM300/FM4000 and FM10000 devices, this field acts as a Boolean
      *  and any value other than 0 will enable this specific key.
      *  
      *  \chips  FM3000, FM4000, FM6000, FM10000 */
@@ -8267,7 +8344,7 @@ typedef struct _fm_L2HashKey
      *  The valid range is 0 (disable) to 0xffff (all bits
      *  included).  The default is 0xffff.
      *                                                                  \lb\lb
-     *  On FM3000, FM4000 and FM10000 devices, this field acts as a Boolean
+     *  On FM3000/FM4000 and FM10000 devices, this field acts as a Boolean
      *  and any value other than 0 will enable this specific key.
      *  
      *  \chips  FM3000, FM4000, FM6000, FM10000 */
@@ -8277,7 +8354,7 @@ typedef struct _fm_L2HashKey
      *  The valid range is 0 (disable) to 0xfff (all bits
      *  included).  The default is 0xfff.
      *                                                                  \lb\lb
-     *  On FM3000, FM4000, FM10000 devices, this field acts as a Boolean
+     *  On FM3000/FM4000 and FM10000 devices, this field acts as a Boolean
      *  and any value other than 0 will enable this specific key.
      *  
      *  \chips  FM3000, FM4000, FM6000, FM10000 */
@@ -8287,7 +8364,7 @@ typedef struct _fm_L2HashKey
      *  The valid range is 0 (disable) to 0xf. The default is 0xf (all
      *  bits included).
      *                                                                  \lb\lb
-     *  On FM3000, FM4000 and FM10000 devices, this field acts as a Boolean
+     *  On FM3000/FM4000 and FM10000 devices, this field acts as a Boolean
      *  and any value other than 0 will enable this specific key.
      *  
      *  \chips  FM3000, FM4000, FM6000, FM10000 */
@@ -8418,7 +8495,7 @@ typedef struct _fm_L3HashConfig
      *  0x000f (all IPV4 bytes included) or 0xffff (all IPv6 bytes
      *  included, default).
      *                                                                  \lb\lb
-     *  On FM3000, FM4000 and FM10000 devices, this field acts as a Boolean
+     *  On FM3000/FM4000 and FM10000 devices, this field acts as a Boolean
      *  and any value other than 0 will enable this specific key.
      *  
      *  On FM6000, if deep inspection is enabled, the SIP data
@@ -8436,7 +8513,7 @@ typedef struct _fm_L3HashConfig
      *  0x000f (all IPV4 bytes included) or 0xffff (all IPv6 bytes
      *  included, default).
      *                                                                  \lb\lb
-     *  On FM3000, FM4000 and FM10000 devices, this field acts as a Boolean
+     *  On FM3000/FM4000 and FM10000 devices, this field acts as a Boolean
      *  and any value other than 0 will enable this specific key.
      *  
      *  On FM6000, if deep inspection is enabled, the DIP data
@@ -8452,7 +8529,7 @@ typedef struct _fm_L3HashConfig
      *  The valid range is 0 (disable) to 0xffff (all bits included).
      *  The default is 0xffff.
      *                                                                  \lb\lb
-     *  On FM3000, FM4000 and FM10000 devices, this field acts as a Boolean
+     *  On FM3000/FM4000 and FM10000 devices, this field acts as a Boolean
      *  and any value other than 0 will enable this specific key.
      *  
      *  \chips  FM3000, FM4000, FM6000, FM10000 */
@@ -8462,7 +8539,7 @@ typedef struct _fm_L3HashConfig
      *  The valid range is 0 (disable) to 0xffff (all bits included).
      *  The default is 0xffff.
      *                                                                  \lb\lb
-     *  On FM3000, FM4000 and FM10000 devices, this field acts as a Boolean
+     *  On FM3000/FM4000 and FM10000 devices, this field acts as a Boolean
      *  and any value other than 0 will enable this specific key.
      *  
      *  \chips  FM3000, FM4000, FM6000, FM10000 */
@@ -8470,7 +8547,7 @@ typedef struct _fm_L3HashConfig
 
     /** Indicates the inclusion bit mask for the DSCP field value.
      *  The valid range is 0 (disable) to 0x3f (all bits included). The
-     *  default is 0xff.
+     *  default is 0x3f.
      * 
      *  \chips  FM3000, FM4000, FM6000, FM10000 */
     fm_uint32  DSCPMask;
@@ -8486,7 +8563,7 @@ typedef struct _fm_L3HashConfig
      *  value. The valid range is 0 (disable) to 0xff (all bits included).
      *  The default is 0xff.
      *                                                                  \lb\lb
-     *  On FM3000, FM4000 and FM10000 devices, this field acts as a Boolean
+     *  On FM3000/FM4000 and FM10000 devices, this field acts as a Boolean
      *  and any value other than 0 will enable this specific key.
      *  
      *  \chips  FM3000, FM4000, FM6000, FM10000 */
@@ -8512,7 +8589,7 @@ typedef struct _fm_L3HashConfig
      *  with opposite SIP & DIP fields will hash the same with respect to
      *  those fields. The default is FALSE.
      *  
-     *  On FM3000, FM4000 and FM10000 devices, this field also controls L4
+     *  On FM3000/FM4000 and FM10000 devices, this field also controls L4
      *  symmetry (source and destination).
      * 
      *  \chips  FM3000, FM4000, FM6000, FM10000 */
@@ -8703,6 +8780,52 @@ typedef struct _fm_reservedMacCfg
     fm_bool useTrapPri;
 
 } fm_reservedMacCfg;
+
+
+
+/**************************************************/
+/** \ingroup typeEnum
+ * Set of possible enumerated values for the
+ * ''fm_nvmMac'' type field.
+ **************************************************/
+typedef enum
+{
+    /** PEP MAC address. */
+    FM_NVM_MAC_TYPE_PEP = 0,
+
+    /** Custom MAC address. May be used for various features, such as router
+     *  MAC assignment and per-port MAC assignment. */
+    FM_NVM_MAC_TYPE_CUSTOM,
+
+    /** UNPUBLISHED: For internal use only. */
+    FM_NVM_MAC_TYPE_MAX,
+
+} fm_nvmMacType;
+
+
+/**************************************************/
+/** \ingroup typeStruct
+ *  Used as the argument type for the
+ *  ''FM_SWITCH_NVM_MAC'' switch attribute.
+ **************************************************/
+typedef struct _fm_nvmMac
+{
+    /** The type of MAC to retrieve (PEP or Custom MAC). */
+    fm_nvmMacType type;
+
+    /** The MAC index to retrieve. May range from 0..8 for
+     *  ''FM_NVM_MAC_TYPE_PEP'' and 0..3 for
+     *  ''FM_NVM_MAC_TYPE_CUSTOM''. */
+    fm_uint32  index;
+
+    /** Control data for the given MAC field (the middle 16-bits
+     *  in the EUI-64 format). This field is read-only. */
+    fm_uint16  ctrlData;
+
+    /** The 48-bit MAC. This field is read-only. */
+    fm_macaddr mac;
+
+} fm_nvmMac;
 
 
 /****************************************************************/

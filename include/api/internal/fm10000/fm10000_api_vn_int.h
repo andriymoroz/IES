@@ -220,6 +220,15 @@ typedef struct _fm10000_vnTunnel
     /* TRUE if the Remote IP Address has been initialized. */
     fm_bool       haveRemoteIp;
 
+    /* TRUE if the NSH Base Header has been configured. */
+    fm_bool       haveNshBaseHdr;
+
+    /* TRUE if the NSH Service Header has been configured. */
+    fm_bool       haveNshServiceHdr;
+
+    /* TRUE if the NSH data has been configured. */
+    fm_bool       haveNshData;
+
     /* Decapsulation ACL Rule Number. */
     fm_int        decapAclRule;
 
@@ -362,7 +371,11 @@ fm_status fm10000GetVNRemoteAddressMaskNext(fm_int             sw,
                                             fm_vnAddress *     addrMask,
                                             fm_int *           tunnelId);
 fm_status fm10000ConfigureVN(fm_int sw, fm_vnConfiguration *config);
+fm_status fm10000ConfigureVNDefaultGpe(fm_int sw, fm_vnGpeCfg *defaultGpe);
+fm_status fm10000ConfigureVNDefaultNsh(fm_int sw, fm_vnNshCfg *defaultNsh);
 fm_status fm10000GetVNConfiguration(fm_int sw, fm_vnConfiguration *config);
+fm_status fm10000GetVNDefaultGpe(fm_int sw, fm_vnGpeCfg *defaultGpe);
+fm_status fm10000GetVNDefaultNsh(fm_int sw, fm_vnNshCfg *defaultNsh);
 fm_status fm10000AddVNDirectTunnelRule(fm_int     sw,
                                        fm_int     tunnelId,
                                        fm_uint32  vni,

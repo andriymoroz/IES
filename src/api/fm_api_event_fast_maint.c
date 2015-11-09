@@ -6,7 +6,7 @@
  * Description:     Generic thread wrapper for chip specific fast maintenance
  *                  thread.
  *
- * Copyright (c) 2005 - 2014, Intel Corporation
+ * Copyright (c) 2005 - 2015, Intel Corporation
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -135,8 +135,7 @@ void *fmFastMaintenanceTask(void *args)
     while (!doFastTask);
 
 
-    delayTime = fmGetIntApiProperty(FM_AAK_API_FAST_MAINTENANCE_PERIOD,
-                                    FM_AAD_API_FAST_MAINTENANCE_PERIOD);
+    delayTime = GET_PROPERTY()->fastMaintenancePer;
 
     for ( ; ; )
     {

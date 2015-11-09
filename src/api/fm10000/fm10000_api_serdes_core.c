@@ -165,6 +165,14 @@ static fm_status DbgSerdesInterruptSpicoInt(fm_int      sw,
                                             fm_int      param,
                                             fm_int      timeout,
                                             fm_uint32  *pResult);
+static fm_status DbgSerdesSetDfeParmeter(fm_int      sw,
+                                         fm_int      serDes,
+                                         fm_uint32   paramSelector,
+                                         fm_uint32   paramValue);
+static fm_status DbgSerdesGetDfeParmeter(fm_int      sw,
+                                         fm_int      serDes,
+                                         fm_uint32   paramSelector,
+                                         fm_uint32 * pParamValue);
 static fm_bool SerdesValidateAttenuationCoefficients(fm_int  att,
                                                      fm_int  pre,
                                                      fm_int  post);
@@ -293,6 +301,7 @@ static fm_text dfeTuneModeStr[] =
 
 static const fm_uint16 *pCurSerdesImage = NULL;
 static fm_int           curRerdesImageSize = 0;
+static fm_uint32        curSerdesCodeVersionBuildId = 0;
 
 /*****************************************************************************
  * Local Functions
@@ -1450,8 +1459,7 @@ static fm_status DbgSerdesInitInt(fm_int  sw,
                      rateSel);
     }
 
-    serdesDbgLvl = fmGetIntApiProperty(FM_AAK_API_FM10000_SERDES_DBG_LVL,
-                                       FM_AAD_API_FM10000_SERDES_DBG_LVL);
+    serdesDbgLvl = GET_FM10000_PROPERTY()->serdesDbgLevel;
 
     if (serdesDbgLvl > 0)
     {
@@ -1644,8 +1652,7 @@ static fm_status DbgSerdesReadSerDesRegisterInt(fm_int     sw,
 
     switchExt = GET_SWITCH_EXT(sw);
 
-    serdesDbgLvl = fmGetIntApiProperty(FM_AAK_API_FM10000_SERDES_DBG_LVL,
-                                       FM_AAD_API_FM10000_SERDES_DBG_LVL);
+    serdesDbgLvl = GET_FM10000_PROPERTY()->serdesDbgLevel;
 
     err = FM_OK;
 
@@ -2177,6 +2184,86 @@ static fm_status DbgSerdesInterruptSpicoInt(fm_int      sw,
 
 
 /*****************************************************************************/
+/** DbgSerdesSetDfeParmeter
+ * \ingroup intSBus
+ *
+ * \desc            Set, for the given serDes, the value of the DFE parameter
+ *                  indicated by paramSelector to paramValue.
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \param[in]       serDes is the SERDES number.
+ *
+ * \param[in]       paramSelector is the selector of the parameter to be set
+ *
+ * \param[in]       paramValue is the value to be set on the selected parameter
+ *
+ *
+ * \return          FM_OK if successful.
+ * \return          Other ''Status Codes'' as appropriate in case of failure.
+ *
+ *****************************************************************************/
+static fm_status DbgSerdesSetDfeParmeter(fm_int      sw,
+                                         fm_int      serDes,
+                                         fm_uint32   paramSelector,
+                                         fm_uint32   paramValue)
+{
+    FM_NOT_USED(sw);
+    FM_NOT_USED(serDes);
+    FM_NOT_USED(paramSelector);
+    FM_NOT_USED(paramValue);
+
+    FM_LOG_PRINT("\n *** Feature not Available ***\n\n");
+
+    return FM_OK;
+
+}
+
+
+
+
+/*****************************************************************************/
+/** DbgSerdesGetDfeParmeter
+ * \ingroup intSBus
+ *
+ * \desc            Get, for the given serDes, the value of the DFE parameter
+ *                  indicated by paramSelector.
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \param[in]       serDes is the SERDES number.
+ *
+ * \param[in]       paramSelector is the selector of the parameter to be set
+ *
+ * \param[in]       pParamValue is a pointer to a caller-allocated area where
+ *                  this function will return the value of the selected
+ *                  parameter.
+ *
+ *
+ * \return          FM_OK if successful.
+ * \return          Other ''Status Codes'' as appropriate in case of failure.
+ *
+ *****************************************************************************/
+static fm_status DbgSerdesGetDfeParmeter(fm_int      sw,
+                                         fm_int      serDes,
+                                         fm_uint32   paramSelector,
+                                         fm_uint32 * pParamValue)
+{
+    FM_NOT_USED(sw);
+    FM_NOT_USED(serDes);
+    FM_NOT_USED(paramSelector);
+    FM_NOT_USED(pParamValue);
+
+    FM_LOG_PRINT("\n *** Feature not Available ***\n\n");
+
+    return FM_OK;
+
+}
+
+
+
+
+/*****************************************************************************/
 /** SerdesValidateAttenuationCoefficients
  * \ingroup intSerdes
  *
@@ -2474,7 +2561,8 @@ fm_status fm10000SerdesInitXServicesInt(fm_int sw)
     serdesPtr->dbgReadSbusRegister      = DbgSerdesReadSBusRegisterInt;
     serdesPtr->dbgWriteSbusRegister     = DbgSerdesWriteSBusRegisterInt;
     serdesPtr->dbgInterruptSpico        = DbgSerdesInterruptSpicoInt;
-
+    serdesPtr->dbgSetDfeParameter       = DbgSerdesSetDfeParmeter;
+    serdesPtr->dbgGetDfeParameter       = DbgSerdesGetDfeParmeter;
 
     FM_LOG_EXIT(FM_LOG_CAT_SWITCH, err);
 
@@ -3443,8 +3531,7 @@ fm_status fm10000SerdesSpicoUploadImage(fm_int           sw,
 
             if (err == FM_OK)
             {
-                if (fmGetIntApiProperty(FM_AAK_API_FM10000_SERDES_DBG_LVL,
-                                        FM_AAD_API_FM10000_SERDES_DBG_LVL) > 0)
+                if (GET_FM10000_PROPERTY()->serdesDbgLevel > 0)
                 {
                     fmGetTime(&tEnd);
                     fmSubTimestamps(&tEnd, &tStart, &tDelta);
@@ -3674,8 +3761,7 @@ fm_status fm10000SerdesSwapUploadImage(fm_int           sw,
 
             if (err == FM_OK)
             {
-                if (fmGetIntApiProperty(FM_AAK_API_FM10000_SERDES_DBG_LVL,
-                                        FM_AAD_API_FM10000_SERDES_DBG_LVL) > 0)
+                if (GET_FM10000_PROPERTY()->serdesDbgLevel > 0)
                 {
                     fmGetTime(&tEnd);
                     fmSubTimestamps(&tEnd, &tStart, &tDelta);
@@ -3801,8 +3887,7 @@ fm_status fm10000SerdesSwapAltUploadImage(fm_int         sw,
 
             if (err == FM_OK)
             {
-                if (fmGetIntApiProperty(FM_AAK_API_FM10000_SERDES_DBG_LVL,
-                                        FM_AAD_API_FM10000_SERDES_DBG_LVL) > 0)
+                if (GET_FM10000_PROPERTY()->serdesDbgLevel > 0)
                 {
                     fmGetTime(&tEnd);
                     fmSubTimestamps(&tEnd, &tStart, &tDelta);
@@ -3921,8 +4006,7 @@ fm_status fm10000SbmSpicoUploadImage(fm_int           sw,
 
             if (err == FM_OK)
             {
-                if (fmGetIntApiProperty(FM_AAK_API_FM10000_SERDES_DBG_LVL,
-                                        FM_AAD_API_FM10000_SERDES_DBG_LVL) > 0)
+                if (GET_FM10000_PROPERTY()->serdesDbgLevel > 0)
                 {
                     fmGetTime(&tEnd);
                     fmSubTimestamps(&tEnd, &tStart, &tDelta);
@@ -4330,8 +4414,7 @@ fm_status fm10000SerdesChckCrcVersionBuildId(fm_int     sw,
     err = FM_OK;
     versionBuildId = 0;
 
-    serdesDbgLvl = fmGetIntApiProperty(FM_AAK_API_FM10000_SERDES_DBG_LVL,
-                                       FM_AAD_API_FM10000_SERDES_DBG_LVL);
+    serdesDbgLvl = GET_FM10000_PROPERTY()->serdesDbgLevel;
 
     for (serdes = firstSerdes; serdes <= lastSerdes; serdes++)
     {
@@ -4387,8 +4470,7 @@ fm_status fm10000SerdesChckCrcVersionBuildId(fm_int     sw,
                      expectedCodeVersionBuildId >> 16,
                      expectedCodeVersionBuildId && 0xFFFF);
 
-        if (fmGetIntApiProperty(FM_AAK_API_FM10000_SERDES_DBG_LVL,
-                                FM_AAD_API_FM10000_SERDES_DBG_LVL) > 0)
+        if (GET_FM10000_PROPERTY()->serdesDbgLevel > 0)
         {
             if (versionBuildId > 0)
             {
@@ -4442,8 +4524,7 @@ fm_status fm10000SbmChckCrcVersionBuildId(fm_int     sw,
 
     switchExt = GET_SWITCH_EXT(sw);
 
-    serdesDbgLvl = fmGetIntApiProperty(FM_AAK_API_FM10000_SERDES_DBG_LVL,
-                                       FM_AAD_API_FM10000_SERDES_DBG_LVL);
+    serdesDbgLvl = GET_FM10000_PROPERTY()->serdesDbgLevel;
 
     err = fm10000SerdesGetOpMode(sw, 0, &serdesOpMode, NULL, NULL);
 
@@ -4551,8 +4632,7 @@ fm_status fm10000SwapImageCheckCrc(fm_int     sw,
                  (ring == FM10000_SERDES_RING_EPL)? "EPL" : "PCIe",
                  swapCrcCode);
 
-    serdesDbgLvl = fmGetIntApiProperty(FM_AAK_API_FM10000_SERDES_DBG_LVL,
-                                       FM_AAD_API_FM10000_SERDES_DBG_LVL);
+    serdesDbgLvl = GET_FM10000_PROPERTY()->serdesDbgLevel;
 
     err = fm10000SwapImageDoCrc(sw, ring, FM10000_SBUS_SPICO_BCAST_ADDR, swapCrcCode);
 
@@ -4752,19 +4832,26 @@ static fm_status fm10000SerdesSpicoInt02Retry(fm_int sw, fm_int serDes, fm_uint3
     fm_uint32     retVal;
 
     delTime = 0;
+    status  = FM_FAIL;
     fmGetTime(&start);
+
     while (delTime < timeoutMsec)
     {
         fmGetTime(&end);
         fmSubTimestamps(&end, &start, &diff);
         delTime = diff.sec*1000 + diff.usec/1000;
+
         status = fm10000SerdesSpicoInt(sw, serDes, FM10000_SPICO_SERDES_INTR_0X02, data, &retVal);
         if (retVal == FM10000_SPICO_SERDES_INTR_0X02)
         {
-            return FM_OK;
+            status = FM_OK;
+            break;
         }
+
+        fmDelay(0, FM10000_SERDES_CONFIG_DELAY);
     }
-    return FM_FAIL;
+
+    return status;
 
 }
 
@@ -5403,6 +5490,7 @@ fm_status fm10000SerdesResetSpico(fm_int sw,
                     FM_SET_BIT(val, FM10000_SERDES_REG_0B, BIT_18, 1);
                     FM_SET_BIT(val, FM10000_SERDES_REG_0B, BIT_19, 1);
                     err = fm10000SerdesWrite(sw, serDes, FM10000_SERDES_REG_0B, val);
+                    fmDelay(0, FM10000_SERDES_RESET_DELAY);
                 }
 
                 if (err == FM_OK)
@@ -5550,6 +5638,38 @@ fm_status fm10000SerdesSpicoSaveImageParam(const fm_uint16 *pRomImg,
 {
     pCurSerdesImage = pRomImg;
     curRerdesImageSize = numWords;
+
+    return FM_OK;
+
+}
+
+
+
+
+/*****************************************************************************/
+/** fm10000SerdesSpicoSaveImageParamV2
+ * \ingroup intSerdes
+ *
+ * \desc            Save the Spico image pointer and size.
+ *
+ * \param[in]       pRomImg is the buffer containing the SerDes SPICO image.
+ *
+ * \param[in]       numWords is the size of the image. It may be set to 0,
+ *                  in which case the upload stage will be skipped.
+ *
+ * \param[in]       serdesFwVersionBuildId is the version and the Build ID
+ *                  of the current SPICO image.
+ *
+ * \return          FM_OK if successful.
+ *
+ *****************************************************************************/
+fm_status fm10000SerdesSpicoSaveImageParamV2(const fm_uint16 *pRomImg,
+                                             fm_int           numWords,
+                                             fm_uint32        serdesFwVersionBuildId)
+{
+    pCurSerdesImage = pRomImg;
+    curRerdesImageSize = numWords;
+    curSerdesCodeVersionBuildId = serdesFwVersionBuildId;
 
     return FM_OK;
 
@@ -6564,10 +6684,19 @@ fm_status fm10000SerdesSetDataCoreSource(fm_int                  sw,
             break;
     }
 
-    err = fm10000SerdesSpicoInt(sw, serdes, FM10000_SPICO_SERDES_INTR_0X02, intData, NULL);
+    err = fm10000SerdesSpicoInt02Retry(sw,serdes,intData,FM10000_SERDES_INT02_TIMEOUT_MSEC);
 
+    if (err == FM_OK)
+    {
 
-    err = fm10000SerdesDmaWrite(sw,serdes, FM10000_SERDES_DMA_TYPE_DMAREG, 0x21, 0x0c00);
+        err = fm10000SerdesDmaWrite(sw,serdes, FM10000_SERDES_DMA_TYPE_DMAREG, 0x21, 0x0c00);
+    }
+    else
+    {
+        FM_LOG_ERROR_V2(FM_LOG_CAT_SERDES, serdes,
+                        "Serdes=%d, Cannot set data data source\n",
+                        serdes);
+    }
 
     FM_LOG_EXIT_V2(FM_LOG_CAT_SWITCH, serdes, err);
 
@@ -8292,13 +8421,24 @@ fm_status fm10000SerdesDfeTuningStartICal(fm_int     sw,
 {
     fm_status   err;
     fm_uint32   dfeControl;
+    fm_int      param;
 
     VALIDATE_SWITCH_INDEX(sw);
     VALIDATE_SERDES(serDes);
 
+    err = fm10000GetPortOptModeDfeParam(sw, serDes, 0, &param);
 
-    dfeControl = 0x01;
-    err = fm10000SerdesSpicoWrOnlyInt(sw, serDes, FM10000_SPICO_SERDES_INTR_0X0A, dfeControl);
+    if (err == FM_OK)
+    {
+        err = fm10000SerdesConfigDfeParam(sw, serDes, 0, param);
+    }
+
+    if (err == FM_OK)
+    {
+
+        dfeControl = 0x01;
+        err = fm10000SerdesSpicoWrOnlyInt(sw, serDes, FM10000_SPICO_SERDES_INTR_0X0A, dfeControl);
+    }
 
     return err;
 
@@ -8327,9 +8467,17 @@ fm_status fm10000SerdesDfeTuningStartPCalSingleExec(fm_int     sw,
 {
     fm_status   err;
     fm_uint32   dfeControl;
+    fm_int      param;
 
     VALIDATE_SWITCH_INDEX(sw);
     VALIDATE_SERDES(serDes);
+
+    err = fm10000GetPortOptModeDfeParam(sw, serDes, 1, &param);
+
+    if (err == FM_OK)
+    {
+        err = fm10000SerdesConfigDfeParam(sw, serDes, 0, param);
+    }
 
 
     dfeControl = 0x02;
@@ -8361,9 +8509,17 @@ fm_status fm10000SerdesDfeTuningStartPCalContinuous(fm_int     sw,
 {
     fm_status   err;
     fm_uint32   dfeControl;
+    fm_int      param;
 
     VALIDATE_SWITCH_INDEX(sw);
     VALIDATE_SERDES(serDes);
+
+    err = fm10000GetPortOptModeDfeParam(sw, serDes, 1, &param);
+
+    if (err == FM_OK)
+    {
+        err = fm10000SerdesConfigDfeParam(sw, serDes, 0, param);
+    }
 
 
     dfeControl = 0x06;
@@ -8854,8 +9010,7 @@ fm_status fm10000SerdesForcedDfeStop(fm_int       sw,
     pLaneExt  = GET_LANE_EXT(sw, serDes);
     pLaneAttr = &(pLaneExt->base->attributes);
 
-    serdesDbgLvl = fmGetIntApiProperty(FM_AAK_API_FM10000_SERDES_DBG_LVL,
-                                       FM_AAD_API_FM10000_SERDES_DBG_LVL);
+    serdesDbgLvl = GET_FM10000_PROPERTY()->serdesDbgLevel;
 
 
     err = fm10000SerdesResetSpico(sw,serDes);
@@ -9068,8 +9223,7 @@ fm_status fm10000SerdesDfeTuningConfig(fm_int     sw,
     }
 
     if (err == FM_OK &&
-        (fmGetBoolApiProperty(FM_AAK_API_DFE_ALLOW_EARLY_LINK_UP_MODE,
-                              FM_AAD_API_DFE_ALLOW_EARLY_LINK_UP_MODE) == TRUE))
+        (GET_PROPERTY()->dfeAllowEarlyLinkUp == TRUE))
     {
         err = fm10000SerdesSpicoInt(sw,
                                     serDes,
@@ -9566,12 +9720,28 @@ fm_status fm10000SerdesSetupKrConfig(fm_int       sw,
             krConfig  = (0x09 << 12);
             krConfig |= pLaneAttr->initializePreCursor;
 
+            FM_LOG_DEBUG2_V2( FM_LOG_CAT_SERDES,
+                              serDes,
+                              "Sw#%d serDes=%d, PMD config(0x%2.2x)=0x%4.4x\n",
+                              sw,
+                              serDes,
+                              FM10000_SPICO_SERDES_INTR_0X3D,
+                              krConfig);
+
             err = fm10000SerdesSpicoWrOnlyInt(sw,serDes, FM10000_SPICO_SERDES_INTR_0X3D, krConfig);
 
             if (err == FM_OK)
             {
                 krConfig  = (0x0a << 12);
                 krConfig |= pLaneAttr->initializeCursor;
+
+                FM_LOG_DEBUG2_V2( FM_LOG_CAT_SERDES,
+                                  serDes,
+                                  "Sw#%d serDes=%d, PMD config(0x%2.2x)=0x%4.4x\n",
+                                  sw,
+                                  serDes,
+                                  FM10000_SPICO_SERDES_INTR_0X3D,
+                                  krConfig);
 
                 err = fm10000SerdesSpicoWrOnlyInt(sw,serDes, FM10000_SPICO_SERDES_INTR_0X3D, krConfig);
             }
@@ -9580,6 +9750,30 @@ fm_status fm10000SerdesSetupKrConfig(fm_int       sw,
             {
                 krConfig  = (0x0b << 12);
                 krConfig |= pLaneAttr->initializePostCursor;
+
+                FM_LOG_DEBUG2_V2( FM_LOG_CAT_SERDES,
+                                  serDes,
+                                  "Sw#%d serDes=%d, PMD config(0x%2.2x)=0x%4.4x\n",
+                                  sw,
+                                  serDes,
+                                  FM10000_SPICO_SERDES_INTR_0X3D,
+                                  krConfig);
+
+                err = fm10000SerdesSpicoWrOnlyInt(sw,serDes, FM10000_SPICO_SERDES_INTR_0X3D, krConfig);
+            }
+
+            if (err == FM_OK)
+            {
+                krConfig  = (0x02 << 12);
+                krConfig |= pLaneAttr->kr_xconfig2;
+
+                FM_LOG_DEBUG2_V2( FM_LOG_CAT_SERDES,
+                                  serDes,
+                                  "Sw#%d serDes=%d, PMD config(0x%2.2x)=0x%4.4x\n",
+                                  sw,
+                                  serDes,
+                                  FM10000_SPICO_SERDES_INTR_0X3D,
+                                  krConfig);
 
                 err = fm10000SerdesSpicoWrOnlyInt(sw,serDes, FM10000_SPICO_SERDES_INTR_0X3D, krConfig);
             }
@@ -9683,6 +9877,8 @@ fm_status fm10000StartKrTraining(fm_int  sw,
 
                 FM_SET_FIELD(krCntrl, FM10000_SPICO_SERDES_INTR_0X04, FIELD_2, pLaneAttr->preCursorDecOnPreset);
                 FM_SET_FIELD(krCntrl, FM10000_SPICO_SERDES_INTR_0X04, FIELD_3, pLaneAttr->postCursorDecOnPreset);
+                pLaneAttr->kr_xconfig1 &= 0xf8;
+                krCntrl |= pLaneAttr->kr_xconfig1;
             }
         }
 
@@ -9693,6 +9889,14 @@ fm_status fm10000StartKrTraining(fm_int  sw,
                          FM10000_SPICO_SERDES_INTR_0X04,
                          FIELD_1,
                          FM10000_SERDES_KR_OP_MODE_START_TRNG_ENABLD);
+
+            FM_LOG_DEBUG2_V2( FM_LOG_CAT_SERDES,
+                              serDes,
+                              "Sw#%d serDes=%d, PMD ctrl(0x%2.2x)=0x%4.4x\n",
+                              sw,
+                              serDes,
+                              FM10000_SPICO_SERDES_INTR_0X04,
+                              krCntrl);
 
             err = fm10000SerdesSpicoWrOnlyInt(sw,
                                               serDes,
@@ -9903,8 +10107,7 @@ fm_status fm10000SerdesConfigureEeeInt(fm_int sw, fm_int serDes)
     err = FM_OK;
 
 
-    if (fmGetBoolApiProperty(FM_AAK_API_FM10000_ENABLE_EEE_SPICO_INTR,
-                             FM_AAD_API_FM10000_ENABLE_EEE_SPICO_INTR) == TRUE)
+    if (GET_FM10000_PROPERTY()->enableEeeSpicoIntr == TRUE)
     {
         data = 0;
         FM_SET_BIT(data, FM10000_SPICO_SERDES_INTR_0X27, BIT_1, 1);
@@ -9921,4 +10124,283 @@ fm_status fm10000SerdesConfigureEeeInt(fm_int sw, fm_int serDes)
 
 
 
+
+/*****************************************************************************/
+/** fm10000SerdesGetCapturedData
+ * \ingroup intSerdes
+ *
+ * \desc            Get a 80 bit data sample from the specified serdes and
+ *                  determine the number of level transitions ('0' to '1' and
+ *                  vice-versa) in the sample.
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \param[in]       serDes is the serdes ID.
+ *
+ * \param[in]       pData10Bit points to the caller-allocated array of 10-bit
+ *                  chunks of data (fm_uint32[8]) where this function will copy
+ *                  the capture data. It may NULL.
+ *
+ * \param[in]       pNumTransitions points to the caller-allocated
+ *                  storage where this function will place the number of
+ *                  transitions in the captured data. It may be NULL.
+ *
+ * \return          FM_OK if successful.
+ * \return          Other ''Status Codes'' as appropriate in case of failure.
+ *
+ *****************************************************************************/
+fm_status fm10000SerdesGetCapturedData(fm_int       sw,
+                                       fm_int       serDes,
+                                       fm_uint32   *pData10Bit,
+                                       fm_uint32   *pNumTransitions)
+{
+    fm_status   err;
+    fm_int      cnt;
+    fm_uint32   data10bit;
+    fm_int      tr_cnt;
+    fm_int      iloop;
+    fm_uint32   lastsample;
+
+    FM_LOG_ENTRY_V2(FM_LOG_CAT_SERDES, serDes,
+                    "sw=%d, serDes=%d, pData10Bit=%p, pNumTransitions=%p\n",
+                    sw,
+                    serDes,
+                    (void*) pData10Bit,
+                    (void*) pNumTransitions);
+
+
+    err = fm10000SerdesSpicoWrOnlyInt(sw,
+                                      serDes,
+                                      FM10000_SPICO_SERDES_INTR_0X1C,
+                                      0);
+
+    if (err == FM_OK)
+    {
+        err = fm10000SerdesSpicoWrOnlyInt(sw,
+                                          serDes,
+                                          FM10000_SPICO_SERDES_INTR_0X18,
+                                          0x04);
+    }
+
+    if (err == FM_OK)
+    {
+        tr_cnt = 0;
+        lastsample = 0;
+
+        for (cnt = 0 ; cnt < 8; cnt++)
+        {
+            err = fm10000SerdesSpicoInt(sw,
+                                        serDes,
+                                        FM10000_SPICO_SERDES_INTR_0X1A,
+                                        0,
+                                        &data10bit);
+            if (err == FM_OK)
+            {
+                if (pData10Bit)
+                {
+                    *pData10Bit++ = data10bit;
+                }
+
+                if (pNumTransitions != NULL)
+                {
+                    if (cnt == 0)
+                    {
+                        lastsample = data10bit & 0x01;
+                    }
+
+                    for (iloop = 0; iloop <10; iloop++)
+                    {
+                        if ( (data10bit ^ lastsample) & 0x01)
+                        {
+                            tr_cnt++;
+                        }
+                        lastsample = data10bit & 0x01;
+                        data10bit >>= 1;
+                    }
+                }
+            }
+            else
+            {
+                break;
+            }
+        }
+
+        if (pNumTransitions != NULL)
+        {
+            *pNumTransitions = tr_cnt;
+        }
+    }
+
+    FM_LOG_EXIT_V2(FM_LOG_CAT_SWITCH, serDes, err);
+
+}
+
+
+
+
+/*****************************************************************************/
+/** fm10000SerdesValidateSignal
+ * \ingroup intSerdes
+ *
+ * \desc            Validate a 80 bit data sample of the incoming signal
+ *                  determining if the number of level transitions ('0' to '1'
+ *                  and vice-versa) is big enough to perform DFE tuning on such
+ *                  signal. Validation may be disabled setting the transition-
+ *                  threshold to zero (0).
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \param[in]       serDes is the serdes ID.
+ *
+ * \param[in]       validSignal points to the caller-allocated storage that
+ *                  this function will set to TRUE if the number of transitions
+ *                  if bigger or equal than the threshold, or FALSE otherwise.
+ *                  If the threshlod is zero (0), the signal validation is
+ *                  disabled and valid signal is set to TRUE. Finally, if
+ *                  a problem happens capturing data, validation is set to
+ *                  TRUE.
+ *
+ * \return          FM_OK if successful.
+ * \return          Other ''Status Codes'' as appropriate in case of failure.
+ *
+ *****************************************************************************/
+fm_status fm10000SerdesValidateSignal(fm_int              sw,
+                                      fm_int              serDes,
+                                      fm_bool            *validSignal)
+{
+    fm_status       err;
+    fm_uint32       transitions;
+    fm_int          transition_threshold;
+    fm_laneAttr    *pLaneAttr;
+
+    FM_LOG_ENTRY_V2(FM_LOG_CAT_SERDES, serDes,
+                    "sw=%d, serDes=%d, validSignal=%p\n",
+                    sw,
+                    serDes,
+                    (void*) validSignal);
+
+    err = FM_OK;
+
+    if (validSignal)
+    {
+        *validSignal = TRUE;
+
+        pLaneAttr = GET_LANE_ATTR( sw, serDes );
+        transition_threshold = pLaneAttr->transitionThreshold;
+
+
+        if (transition_threshold >= 0 &&  transition_threshold <= 70)
+        {
+
+            if (transition_threshold > 0)
+            {
+                err = fm10000SerdesGetCapturedData(sw, serDes, NULL, &transitions);
+
+                if (err == FM_OK)
+                {
+                    if ((fm_int)transitions < transition_threshold)
+                    {
+                        *validSignal = FALSE;
+                    }
+                    FM_LOG_DEBUG2_V2(FM_LOG_CAT_SERDES,serDes,
+                                     "Serdes=0x%2.2x: signal transitions=%2.2d, valid signal=%s\n",
+                                     serDes,
+                                     (fm_int)transitions,
+                                     (*validSignal) ? "TRUE" : "FALSE");
+                }
+                else
+                {
+
+
+                    FM_LOG_DEBUG_V2(FM_LOG_CAT_SERDES,serDes,
+                                    "Serdes=0x%2.2x: cannot get captured data\n",
+                                    serDes);
+                    err = FM_OK;
+                }
+            }
+        }
+        else
+        {
+            FM_LOG_ERROR_V2(FM_LOG_CAT_SERDES,serDes,
+                            "Serdes=0x%2.2x: Invalid transition threshold value=%d\n",
+                            serDes,
+                            transition_threshold);
+
+            pLaneAttr->transitionThreshold = 0;
+        }
+    }
+    else
+    {
+        err = FM_ERR_INVALID_ARGUMENT;
+    }
+
+    FM_LOG_EXIT_V2(FM_LOG_CAT_SWITCH, serDes, err);
+
+}
+
+
+
+
+/*****************************************************************************/
+/** fm10000SerdesConfigDfeParam
+ * \ingroup intSerdes
+ *
+ * \desc            Configures additional parameters before performing DFE
+ *                  tuning.
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \param[in]       serDes is the serdes ID.
+ *
+ * \param[in]       paramSelector is the selector of the parameter to be
+ *                  configured
+ *
+ * \param[in]       paramValue is the value of the parameter to be set.
+ *
+ * \return          FM_OK if successful.
+ * \return          Other ''Status Codes'' as appropriate in case of failure.
+ *
+ *****************************************************************************/
+fm_status fm10000SerdesConfigDfeParam(fm_int    sw,
+                                      fm_int    serDes,
+                                      fm_int    paramSelector,
+                                      fm_int    paramValue)
+{
+    fm_status   err;
+
+
+    err = FM_OK;
+
+    if (paramSelector == 0)
+    {
+        if ( (curSerdesCodeVersionBuildId & 0xffff0000) >= 0x10550000 && paramValue)
+        {
+
+            err = fm10000SerdesSpicoWrOnlyInt(sw,
+                                              serDes,
+                                              FM10000_SPICO_SERDES_INTR_0X18,
+                                              0x07);
+
+            if (err == FM_OK)
+            {
+
+                err = fm10000SerdesSpicoWrOnlyInt(sw,
+                                                  serDes,
+                                                  FM10000_SPICO_SERDES_INTR_0X19,
+                                                  paramValue & 0xffff);
+                if (err == FM_OK)
+                {
+
+                    err = fm10000SerdesSpicoWrOnlyInt(sw,
+                                                      serDes,
+                                                      FM10000_SPICO_SERDES_INTR_0X19,
+                                                      paramValue>>16);
+                }
+            }
+        }
+    }
+
+    return err;
+
+}
 

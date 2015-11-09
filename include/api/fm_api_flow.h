@@ -227,7 +227,7 @@
 
 /** Match on the L4 deep inspection bit field.
  *                                                                      \lb\lb
- *  For FM3000, FM4000 and FM10000 devices this implementation supports
+ *  For FM3000/FM4000 and FM10000 devices, this implementation supports
  *  up to 32 bytes of L4 deep inspection.
  *                                                                      \lb\lb
  *  For FM6000 devices this implementation supports up to 40 bytes
@@ -247,7 +247,7 @@
  *  bytes within the payload of an IP frame for data patterns that are
  *  not covered by the other Flow conditions.
  *                                                                      \lb\lb
- *  For FM3000, FM4000 and FM10000 devices this implementation supports
+ *  For FM3000/FM4000 and FM10000 devices, this implementation supports
  *  up to 32 bytes of L2 deep inspection.
  *                                                                      \lb\lb
  *  For FM6000 devices this implementation supports up to 52 bytes
@@ -919,21 +919,30 @@ enum _fm_flowGroupAttr
  *  \chips  FM3000, FM4000, FM6000, FM10000 */
 #define FM_FLOW_ACTION_SET_FLOOD_DEST    (FM_LITERAL_U64(1) << 32)
 
-/** Specifies whether this rule should keep the outer header in place
- *  even if the decap flag is set.
+/** Keep the outer header in place even if the decap flag is set.
  *                                                                      \lb\lb
  *  For FM10000 devices, this action is available for TE tables.
  *
  *  \chips  FM10000 */
 #define FM_FLOW_ACTION_DECAP_KEEP        (FM_LITERAL_U64(1) << 33)
 
-/** Specifies whether this rule should move the outer header at the end
- *  of the packet and append the Outer Header length
+/** Move the outer header at the end of the packet and append the Outer
+ *  Header length.
  *                                                                      \lb\lb
  *  For FM10000 devices, this action is available for TE tables.
  *
  *  \chips  FM10000 */
 #define FM_FLOW_ACTION_DECAP_MOVE        (FM_LITERAL_U64(1) << 34)
+
+/** Mirror the frame to a mirror group specified in the mirrorGrp field
+ *  of ''fm_flowParam''. The selected mirror group must have the mirror
+ *  attribute FM_MIRROR_ACL enabled.
+ *                                                                      \lb\lb
+ *  For FM10000 devices, this action is available for TCAM tables.
+ *
+ *  \chips  FM10000 */
+#define FM_FLOW_ACTION_MIRROR_GRP            (FM_LITERAL_U64(1) << 35)
+
 
 /** @} (end of Doxygen group) */
 
@@ -1220,7 +1229,13 @@ typedef struct _fm_flowParam
     /** Encapsulation tunnel type. Must be set for ''FM_FLOW_ACTION_ENCAP_SIP'',
      *  ''FM_FLOW_ACTION_ENCAP_TTL'', ''FM_FLOW_ACTION_ENCAP_L4SRC'',
      *  ''FM_FLOW_ACTION_ENCAP_L4DST'', ''FM_FLOW_ACTION_ENCAP_VNI'' and 
-     *  ''FM_FLOW_ACTION_ENCAP_NGE''.  */
+     *  ''FM_FLOW_ACTION_ENCAP_NGE''.
+     *  
+     *  To use FM_TUNNEL_TYPE_GPE_NSH, make sure the tunnel
+     *  engine is configured in the GPE_NSH mode using the attribute
+     *  ''FM_TUNNEL_API_MODE'' with the ''fmSetTunnelApiAttribute''
+     *  function. This must be done BEFORE adding any flow that uses
+     *  the tunnel engine.  */
     fm_tunnelType tunnelType;
 
     /** Destination IP address. Must be set for ''FM_FLOW_ACTION_ENCAP_SIP'',
@@ -1249,6 +1264,51 @@ typedef struct _fm_flowParam
      *  This is the value to set based on each word set in the mask.  */
     fm_uint32     outerNgeData[FM_TUNNEL_NGE_DATA_SIZE];
 
+    /** Must be set to the proper value if fm_flowParam.tunnelType
+     *  == FM_TUNNEL_TYPE_GPE_NSH.
+     *  
+     *  This is length of the NSH header in 4-byte words including
+     *  the Base Header, Service Path Header and Context Data. */
+    fm_byte       outerNshLength;
+
+    /** Must be set to the proper value if fm_flowParam.tunnelType
+     *  == FM_TUNNEL_TYPE_GPE_NSH.
+     *  
+     *  This bit should be set if there are critical TLV that are included in
+     *  the NSH data. */
+    fm_bool       outerNshCritical;  
+      
+    /** Must be set to the proper  
+     *  value if fm_flowParam.tunnelType == FM_TUNNEL_TYPE_GPE_NSH.
+     *
+     *  This field should contain the MD Type. */
+    fm_byte       outerNshMdType;
+
+    /** Must be set to the proper value if fm_flowParam.tunnelType
+     *  == FM_TUNNEL_TYPE_GPE_NSH.
+     *  
+     *  This field should contain the Service Path ID. */
+    fm_uint32     outerNshSvcPathId;
+
+    /** Must be set to the proper value if fm_flowParam.tunnelType
+     *  == FM_TUNNEL_TYPE_GPE_NSH.
+     *
+     *  This field should contain the Service Index. */
+    fm_byte       outerNshSvcIndex;
+
+    /** Must be set to the proper value if fm_flowParam.tunnelType
+     *  == FM_TUNNEL_TYPE_GPE_NSH.
+     *  
+     *  This field should contain the NSH context data that follows
+     *  the service header. */
+    fm_uint32     outerNshData[FM_TUNNEL_NSH_DATA_SIZE];
+
+    /** Must be set to the proper value if fm_flowParam.tunnelType
+     *  == FM_TUNNEL_TYPE_GPE_NSH.
+     *  
+     *  This field is a bitmask of the valid 32-bit words in nshData. */
+    fm_uint16     outerNshDataMask;
+
     /** ECMP group id, for use with ''FM_FLOW_ACTION_ROUTE''. */
     fm_int        ecmpGroup;
 
@@ -1267,6 +1327,9 @@ typedef struct _fm_flowParam
 
     /** Load balancer number, for use with ''FM_FLOW_ACTION_LOAD_BALANCE''. */
     fm_int        lbgNumber;
+
+    /** Mirror group number, for use with ''FM_FLOW_ACTION_MIRROR_GRP''. */
+    fm_byte       mirrorGrp;
 
 } fm_flowParam;
 

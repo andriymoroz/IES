@@ -5,7 +5,7 @@
  * Creation Date:   July 30, 2010
  * Description:     MAC address table purge handling.
  *
- * Copyright (c) 2010 - 2013, Intel Corporation
+ * Copyright (c) 2010 - 2015, Intel Corporation
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -29,7 +29,7 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
+ *****************************************************************************/
 
 #include <fm_sdk_int.h>
 
@@ -301,21 +301,21 @@ static fm_bool GetBitArray(fm_tree *     tree,
     fm_status err;
     fm_bool   retval;    
 
-    FM_LOG_ENTRY(FM_LOG_CAT_EVENT_MAC_MAINT,
-                 "tree=%p, key=%d, bitArray=%p\n",
-                 (void *) tree,
-                 key,
-                 (void *) bitArray);  
+    FM_LOG_ENTRY_VERBOSE(FM_LOG_CAT_EVENT_MAC_MAINT,
+                         "tree=%p, key=%d, bitArray=%p\n",
+                         (void *) tree,
+                         key,
+                         (void *) bitArray);  
 
     err = fmTreeFind(tree, key, (void **) bitArray);
     retval = (err == FM_OK);
 
-    FM_LOG_EXIT_API_CUSTOM(FM_LOG_CAT_EVENT_MAC_MAINT,
-                           retval, 
-                           "%s\n", 
-                           retval ? "TRUE" : "FALSE")
+    FM_LOG_EXIT_CUSTOM_VERBOSE(FM_LOG_CAT_EVENT_MAC_MAINT,
+                               retval,
+                               "%s\n",
+                               retval ? "TRUE" : "FALSE")
 
-}    /* end GetBitArray */
+}   /* end GetBitArray */
 
 
 

@@ -29,7 +29,7 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
+ *****************************************************************************/
 
 #include <fm_sdk_fm10000_int.h>
 #include <platforms/util/fm_util_config_tlv.h>
@@ -45,6 +45,20 @@
 #define BPS_25G     FM_PLAT_SERDES_BITRATE_25G
 
 #define LANE_ALL    -1
+
+#define TLV_ETHMODE_AUTODETECT 15
+
+/* Pair of switch number and port configuration on the switch */
+typedef struct
+{
+    /* Switch number */
+    fm_int swIdx;
+
+    /* Pointer to the port configuration structure */
+    fm_platformCfgPort *portCfg;
+
+} fm_portCfgSwitch;
+
 
 /*****************************************************************************
  * Global Variables
@@ -88,7 +102,7 @@
  * \return          Integer equivalent of the TLV bytes. 
  *
  *****************************************************************************/
-void CopyTlvStr(fm_text dest, fm_int destSize, fm_byte *src, fm_int srcSize)
+static void CopyTlvStr(fm_text dest, fm_int destSize, fm_byte *src, fm_int srcSize)
 {
     fm_int len;
 
@@ -102,7 +116,7 @@ void CopyTlvStr(fm_text dest, fm_int destSize, fm_byte *src, fm_int srcSize)
     FM_MEMCPY_S(dest, destSize, src, len);
     dest[len] = '\0';
 
-} /* CopyTlvStr */
+}   /* end CopyTlvStr */
 
 
 
@@ -112,6 +126,8 @@ void CopyTlvStr(fm_text dest, fm_int destSize, fm_byte *src, fm_int srcSize)
  * \ingroup intPlatform
  *
  * \desc            Get up to 32-bit integer from TLV bytes.
+ *                  Note: All encoding less than 32-bit will be assumed
+ *                  as unsigned integer.
  *
  * \param[in]       tlv is an array of bytes.
  *
@@ -140,6 +156,7 @@ static fm_int GetTlvInt(fm_byte *tlv, fm_int tlvLen)
     return value;
 
 }   /* end GetTlvInt */
+
 
 
 
@@ -186,17 +203,125 @@ static fm_uint64 GetTlvUint64(fm_byte *tlv, fm_int tlvLen)
  *
  * \desc            Get boolean from TLV byte.
  *
- * \param[in]       tlv is a byte.
+ * \param[in]       tlv is the pointer to a byte.
  *
  * \return          Integer equivalent of the TLV bytes. 
  *
  *****************************************************************************/
-static fm_bool GetTlvBool(fm_byte tlv)
+static fm_bool GetTlvBool(fm_byte *tlv)
 {
 
-    return  (tlv ? TRUE : FALSE);
+    return  ((*tlv) ? TRUE : FALSE);
 
 }   /* end GetTlvBool */
+
+
+
+
+
+
+/*****************************************************************************/
+/* CheckHwResourceId
+ * \ingroup intPlatform
+ *
+ * \desc            Check if hwResourceId is valid.
+ *
+ * \param[in]       sw is the switch index on which to operate.
+ *
+ * \param[in]       portCfg is the pointer to the port config.
+ *                  This pointer is inserted to hwResourceIdList if the HW ID
+ *                  is used for the first time.
+ *
+ * \param[in,out]   hwResourceIdList points to an array of ''fm_platformCfgPort''
+ *                  structures. The array must be large enough to hold the
+ *                  maximum number of possible HW Resource ID entries
+ *                  (''FM_NUM_HW_RES_ID'').
+ *
+ * \param[in]       defaultId is the default hwResourceId value.
+ *
+ * \return          FM_OK if ID is valid.
+ * \return          FM_ERR_UNINITIALIZED if NULL pointer is passed as an argument
+ * \return          FM_ERR_INVALID_ARGUMENT if ID is not valid.
+ * \return          FM_ERR_ALREADY_EXISTS if ID already exists and cannot be used
+ *                  again.
+ *
+ *****************************************************************************/
+static fm_status CheckHwResourceId(fm_int              sw,
+                                   fm_platformCfgPort *portCfg,
+                                   fm_portCfgSwitch   *hwResourceIdList,
+                                   fm_uint32           defaultId)
+{
+    fm_uint             hwIdx;
+    fm_platformCfgPort *oldPortCfg;
+
+    if ( (portCfg          == NULL) ||
+         (hwResourceIdList == NULL) )
+    {
+        return FM_ERR_UNINITIALIZED;
+    }
+
+    hwIdx      = HW_RESOURCE_ID_TO_IDX(portCfg->hwResourceId);
+    oldPortCfg = NULL;
+
+    /* Try to insert the non-default HW ID
+     * to the array and check if it is unique */
+    if (portCfg->hwResourceId != defaultId)
+    {
+        if (hwIdx >= FM_NUM_HW_RES_ID)
+        {
+            return FM_ERR_INVALID_ARGUMENT;
+        }
+
+        if (hwResourceIdList[hwIdx].portCfg == NULL)
+        {
+            hwResourceIdList[hwIdx].swIdx = sw;
+            hwResourceIdList[hwIdx].portCfg = portCfg;
+        }
+        else
+        {
+            oldPortCfg = hwResourceIdList[hwIdx].portCfg;
+
+            /* The ID already exists, if ports are not part
+             * of the same QSFP interface, then return error */
+            if ( ( sw != hwResourceIdList[hwIdx].swIdx ) ||
+                 ( portCfg->epl != oldPortCfg->epl     ) ||
+                 ( portCfg->intfType != FM_PLAT_INTF_TYPE_QSFP_LANE0 &&
+                   portCfg->intfType != FM_PLAT_INTF_TYPE_QSFP_LANE1 &&
+                   portCfg->intfType != FM_PLAT_INTF_TYPE_QSFP_LANE2 &&
+                   portCfg->intfType != FM_PLAT_INTF_TYPE_QSFP_LANE3 ) ||
+                   ( oldPortCfg->intfType != FM_PLAT_INTF_TYPE_QSFP_LANE0 &&
+                     oldPortCfg->intfType != FM_PLAT_INTF_TYPE_QSFP_LANE1 &&
+                     oldPortCfg->intfType != FM_PLAT_INTF_TYPE_QSFP_LANE2 &&
+                     oldPortCfg->intfType != FM_PLAT_INTF_TYPE_QSFP_LANE3 ) )
+            {
+                FM_LOG_WARNING(FM_LOG_CAT_PLATFORM,
+                               "Ports %d (sw=%d, EPL=%d) and %d (sw=%d, EPL="
+                               "%d) have the same hwResId - they are on %s "
+                               "(ports must be a part of the same QFSP "
+                               "interface, otherwise the hwResId should be "
+                               "unique).\n",
+                               oldPortCfg->port,
+                               hwResourceIdList[hwIdx].swIdx,
+                               oldPortCfg->epl,
+                               portCfg->port,
+                               sw,
+                               portCfg->epl,
+                               ( (sw != hwResourceIdList[hwIdx].swIdx ) ||
+                                 (portCfg->epl != oldPortCfg->epl ) ?
+                                 "different EPLs" :
+                                 "the same EPL, but the interfaceType of at "
+                                 "least one of them is not set to QSFP_LANE" ));
+
+                return FM_ERR_ALREADY_EXISTS;
+            }
+        }
+    }
+
+    return FM_OK;
+
+}   /* end CheckHwResourceId */
+
+
 
 
 
@@ -247,9 +372,12 @@ static fm_ethMode GetTlvEthMode(fm_byte tlv)
             return FM_ETH_MODE_AN_73;
         case 14:
             return FM_ETH_MODE_SGMII;
+        case TLV_ETHMODE_AUTODETECT:
+            return FM_ETH_MODE_DISABLED;
     }
 
 }   /* end GetTlvEthMode */
+
 
 
 
@@ -319,7 +447,7 @@ void SetPortDefTxEq(fm_int swIdx,
         }
     }
 
-} /* end SetPortDefTxEq */
+}   /* end SetPortDefTxEq */
 
 
 
@@ -475,23 +603,25 @@ void SetPortTxEq(fm_int swIdx,
         }
     }
 
-} /* end SetPortTxEq */
+}   /* end SetPortTxEq */
 
 
 
 
 /*****************************************************************************/
-/* fmPlatformCfgParseTlv
+/* fmPlatformLoadLTCfgTlv
  * \ingroup intPlatform
  *
- * \desc            Parse TLV configuration.
+ * \desc            Load platform LT config TLV configuration.
+ *
+ * \param[in]       tlv is an array of encoded TLV bytes
  *
  * \return          FM_OK if successful.
  * \return          Other ''Status Codes'' as appropriate in case of
  *                  failure.
  *
  *****************************************************************************/
-fm_status fmPlatformCfgParseTlv(fm_byte *tlv)
+fm_status fmPlatformLoadLTCfgTlv(fm_byte *tlv)
 {
     fm_status             status;
     fm_int                swIdx;
@@ -510,12 +640,15 @@ fm_status fmPlatformCfgParseTlv(fm_byte *tlv)
     fm_uint64             categoryMask;
     fm_uint64             valU64;
     fm_int                off;
-
+#ifdef FM_SUPPORT_SWAG
+    fm_platformCfgPort *  portCfg2;
+    fm_int                portIdx2;
+#endif
+    /* hardcode values */
+    fm_int                crossConnect[FM_GN2412_NUM_LANES] = { 6,7,8,9,10,11,
+                                                                0,1,2,3,4,5 };
     fm_uint               tlvType;
     fm_uint               tlvLen;
-
-    fm_char               propTxt[256];
-    fm_int                numProp;
 
     /* Global configuration */
     platCfg = FM_PLAT_GET_CFG;
@@ -523,14 +656,6 @@ fm_status fmPlatformCfgParseTlv(fm_byte *tlv)
 
     tlvType = (tlv[0] << 8) | tlv[1];
     tlvLen = tlv[2];
-    numProp = 0;
-
-    if (platCfg->debug & CFG_DBG_CONFIG)
-    {
-        fmUtilConfigPropertyDecodeTlv(tlv, propTxt, sizeof(propTxt));
-        FM_LOG_PRINT("prop 0x%04x: [%s]\n", tlvType, propTxt);
-    }
-
 
     switch (tlvType)
     {
@@ -588,6 +713,9 @@ fm_status fmPlatformCfgParseTlv(fm_byte *tlv)
 
                 swCfg->intrPollPeriodMsec = FM_AAD_API_PLATFORM_INT_POLL_MSEC;
                 swCfg->xcvrPollPeriodMsec = FM_AAD_API_PLATFORM_XCVR_POLL_MSEC;
+                swCfg->msiEnabled         = FM_AAD_API_PLATFORM_MSI_ENABLED;
+                swCfg->fhClock            = FM_AAD_API_PLATFORM_FH_CLOCK;
+                swCfg->i2cClkDivider      = FM_AAD_API_LIB_I2C_CLKDIVIDER;
                 FM_STRNCPY_S(swCfg->devMemOffset,
                      FM_PLAT_MAX_CFG_STR_LEN,
                      FM_AAD_API_PLATFORM_DEVMEM_OFFSET,
@@ -603,6 +731,10 @@ fm_status fmPlatformCfgParseTlv(fm_byte *tlv)
                 swCfg->gpioPortIntr = FM_PLAT_UNDEFINED;
                 swCfg->gpioI2cReset = FM_PLAT_UNDEFINED;
                 swCfg->gpioFlashWP  = FM_PLAT_UNDEFINED;
+                swCfg->schedListSelect = FM_AAD_API_PLATFORM_SCHED_LIST_SELECT;
+                swCfg->vrm.hwResourceId[FM_PLAT_VRM_VDDS] = FM_PLAT_UNDEFINED;
+                swCfg->vrm.hwResourceId[FM_PLAT_VRM_VDDF] = FM_PLAT_UNDEFINED;
+                swCfg->vrm.hwResourceId[FM_PLAT_VRM_AVDD] = FM_PLAT_UNDEFINED;
             }
             break;
 
@@ -652,6 +784,7 @@ fm_status fmPlatformCfgParseTlv(fm_byte *tlv)
                 portCfg->loopback = FM_PLAT_UNDEFINED;
                 portCfg->phyNum = FM_PLAT_UNDEFINED;
                 portCfg->phyPort = FM_PLAT_UNDEFINED;
+                portCfg->hwResourceId = FM_DEFAULT_HW_RES_ID;
 
                 /* The physical port is the same as portIndex */
                 portCfg->physPort = portIdx;
@@ -661,6 +794,15 @@ fm_status fmPlatformCfgParseTlv(fm_byte *tlv)
                     /* Default the lane ordering to one-to-one between
                        the QSFP lanes and the EPL lanes. */
                     portCfg->lane[lane] = lane;
+                }
+
+                for (epl = 0 ; epl < FM_PLAT_NUM_EPL ; epl ++)
+                {
+                    for (eplLane = 0 ; eplLane < FM_PLAT_LANES_PER_EPL; eplLane++)
+                    {
+                        laneCfg = &swCfg->epls[epl].lane[eplLane];
+                        laneCfg->rxTermination = FM_PLAT_UNDEFINED;
+                    }
                 }
 
                 portCfg->intfType = FM_PLAT_INTF_TYPE_NONE;
@@ -836,16 +978,37 @@ fm_status fmPlatformCfgParseTlv(fm_byte *tlv)
             {
                 return FM_ERR_INVALID_SWITCH;
             }
+            /* Not used field */
             portIdx = GetTlvInt(tlv + 4, 1);
             if (portIdx >= FM_PLAT_NUM_PORT(swIdx))
             {
                 return FM_ERR_INVALID_PORT;
             }
+
+            portIdx = GetTlvInt(tlv + 5, 2);
+            if (portIdx >= FM_PLAT_NUM_PORT(swIdx))
+            {
+                return FM_ERR_INVALID_PORT;
+            }
             portCfg = FM_PLAT_GET_PORT_CFG(swIdx, portIdx);
-            portCfg->swagLink.logicalPort = portIdx = GetTlvInt(tlv + 5, 2);
-            portCfg->swagLink.partnerLogicalPort = portIdx = GetTlvInt(tlv + 7, 2);
- 
-                break;
+
+            portIdx2 = GetTlvInt(tlv + 7, 2);
+            if (portIdx2 >= FM_PLAT_NUM_PORT(swIdx))
+            {
+                return FM_ERR_INVALID_PORT;
+            }
+            portCfg2 = FM_PLAT_GET_PORT_CFG(swIdx, portIdx2);
+
+            portCfg->swagLink.type = FM_SWAG_LINK_INTERNAL;
+            portCfg->swagLink.partnerLogicalPort = portIdx2;
+            portCfg->swagLink.partnerSwitch = portCfg2->swagLink.swId;
+            portCfg->swagLink.partnerPort = portCfg2->swagLink.swPort;
+
+            portCfg2->swagLink.type = FM_SWAG_LINK_INTERNAL;
+            portCfg2->swagLink.partnerLogicalPort = portIdx;
+            portCfg2->swagLink.partnerSwitch = portCfg->swagLink.swId;
+            portCfg2->swagLink.partnerPort = portCfg->swagLink.swPort;
+            break;
         case FM_TLV_PLAT_SW_TOPOLOGY:
             platCfg->topology = GetTlvInt(tlv + 3, 1);
             break;
@@ -872,6 +1035,7 @@ fm_status fmPlatformCfgParseTlv(fm_byte *tlv)
             }
             portCfg = FM_PLAT_GET_PORT_CFG(swIdx, portIdx);
             portCfg->speed = GetTlvInt(tlv + 5, 4);
+            break;
 
         case FM_TLV_PLAT_SW_PORT_DEF_HW_ID:
             swIdx = GetTlvInt(tlv + 3, 1);
@@ -909,6 +1073,7 @@ fm_status fmPlatformCfgParseTlv(fm_byte *tlv)
             {
                 portCfg = FM_PLAT_GET_PORT_CFG(swIdx, portIdx);
                 portCfg->ethMode = GetTlvEthMode(tlv[4]);
+                portCfg->autodetect = (tlv[4] == TLV_ETHMODE_AUTODETECT);
             }
             break;
         case FM_TLV_PLAT_SW_PORTIDX_ETHMODE:
@@ -924,6 +1089,7 @@ fm_status fmPlatformCfgParseTlv(fm_byte *tlv)
             }
             portCfg = FM_PLAT_GET_PORT_CFG(swIdx, portIdx);
             portCfg->ethMode = GetTlvEthMode(tlv[5]);
+            portCfg->autodetect = (tlv[5] == TLV_ETHMODE_AUTODETECT);
             break;
         case FM_TLV_PLAT_SW_PORT_DEF_LANE_POL:
             swIdx = GetTlvInt(tlv + 3, 1);
@@ -1023,6 +1189,76 @@ fm_status fmPlatformCfgParseTlv(fm_byte *tlv)
             eplLane = portCfg->lane[lane];
             laneCfg = &swCfg->epls[epl].lane[eplLane];
             laneCfg->lanePolarity = GetTlvInt(tlv + 6, 1);
+            break;
+        case FM_TLV_PLAT_SW_PORTIDX_LANE_ALL_RX_TERM:
+            swIdx = GetTlvInt(tlv + 3, 1);
+            if (swIdx >= platCfg->numSwitches)
+            {
+                return FM_ERR_INVALID_SWITCH;
+            }
+            swCfg = FM_PLAT_GET_SWITCH_CFG(swIdx);
+            portIdx = GetTlvInt(tlv + 4, 1);
+            if (portIdx >= FM_PLAT_NUM_PORT(swIdx))
+            {
+                return FM_ERR_INVALID_PORT;
+            }
+            portCfg = FM_PLAT_GET_PORT_CFG(swIdx, portIdx);
+            if (portCfg->portType != FM_PLAT_PORT_TYPE_EPL)
+            {
+                return FM_ERR_INVALID_PORT;
+            }
+            for (eplLane = 0 ; eplLane < FM_PLAT_LANES_PER_EPL; eplLane++)
+            {
+                portCfg = FM_PLAT_GET_PORT_CFG(swIdx, portIdx);
+                epl = portCfg->epl;
+                if (epl >= FM_PLAT_NUM_EPL)
+                {
+                    FM_LOG_ERROR(FM_LOG_CAT_PLATFORM,
+                        "epl %d is out of range\n",
+                        epl);
+                    return FM_ERR_INVALID_PORT;
+                }
+                laneCfg = &swCfg->epls[epl].lane[eplLane];
+                laneCfg->rxTermination = GetTlvInt(tlv + 5, 1);
+            }
+            break;
+        case FM_TLV_PLAT_SW_PORTIDX_LANE_RX_TERM:
+            swIdx = GetTlvInt(tlv + 3, 1);
+            if (swIdx >= platCfg->numSwitches)
+            {
+                return FM_ERR_INVALID_SWITCH;
+            }
+            swCfg = FM_PLAT_GET_SWITCH_CFG(swIdx);
+            portIdx = GetTlvInt(tlv + 4, 1);
+            if (portIdx >= FM_PLAT_NUM_PORT(swIdx))
+            {
+                return FM_ERR_INVALID_PORT;
+            }
+            portCfg = FM_PLAT_GET_PORT_CFG(swIdx, portIdx);
+            if (portCfg->portType != FM_PLAT_PORT_TYPE_EPL)
+            {
+                FM_LOG_ERROR(FM_LOG_CAT_PLATFORM,
+                    "Port %d is not EPL type. PortIdx %d\n", portCfg->port, portIdx);
+                return FM_ERR_INVALID_PORT;
+            }
+            epl = portCfg->epl;
+            if (epl >= FM_PLAT_NUM_EPL)
+            {
+                FM_LOG_ERROR(FM_LOG_CAT_PLATFORM,
+                    "epl %d is out of range\n",
+                    epl);
+                return FM_ERR_INVALID_PORT;
+            }
+            lane = GetTlvInt(tlv + 5, 1);
+            if (lane >= FM_PLAT_LANES_PER_EPL)
+            {
+                 FM_LOG_ERROR(FM_LOG_CAT_PLATFORM,
+                    "Lane %d is out of range\n", lane);
+                return FM_ERR_INVALID_PORT;
+            }
+            eplLane = portCfg->lane[lane];
+            laneCfg = &swCfg->epls[epl].lane[eplLane];
+            laneCfg->rxTermination = GetTlvInt(tlv + 6, 1);
             break;
         case FM_TLV_PLAT_SW_PORT_DEF_TXEQ_PRE_CU:
         case FM_TLV_PLAT_SW_PORT_DEF_TXEQ_CUR_CU:
@@ -1257,15 +1493,15 @@ fm_status fmPlatformCfgParseTlv(fm_byte *tlv)
             swCfg = FM_PLAT_GET_SWITCH_CFG(swIdx);
             swCfg->gpioFlashWP = GetTlvInt(tlv + 4, 1);
             break;
-/*        case FM_TLV_PLAT_SW_KEEP_SERDES_CFG:
+        case FM_TLV_PLAT_SW_KEEP_SERDES_CFG:
             swIdx = GetTlvInt(tlv + 3, 1);
             if (swIdx >= platCfg->numSwitches)
             {
                 return FM_ERR_INVALID_SWITCH;
             }
-            swCfg->XXXX = GetTlvInt(tlv + 4, 1);
+            swCfg = FM_PLAT_GET_SWITCH_CFG(swIdx);
+            swCfg->keepSerdesCfg = GetTlvInt(tlv + 4, 1);
             break;
-*/
         case FM_TLV_PLAT_SW_NUM_PHYS:
             swIdx = GetTlvInt(tlv + 3, 1);
             if (swIdx >= platCfg->numSwitches)
@@ -1295,6 +1531,19 @@ fm_status fmPlatformCfgParseTlv(fm_byte *tlv)
             }
             phyCfg = FM_PLAT_GET_PHY_CFG(swIdx, phyIdx);
             phyCfg->model = GetTlvInt(tlv + 5, 1);
+            if (phyCfg->model == FM_PLAT_PHY_GN2412)
+            {
+                for (lane = 0 ; lane < FM_GN2412_NUM_LANES ; lane++)
+                {
+                    phyLaneCfg = &phyCfg->gn2412Lane[lane];
+                    phyLaneCfg->preTap = FM_GN2412_DEF_LANE_PRE_TAP;
+                    phyLaneCfg->attenuation = FM_GN2412_DEF_LANE_ATT;
+                    phyLaneCfg->postTap = GetTlvInt(tlv + 8, 1);
+                    phyLaneCfg->polarity = FM_GN2412_DEF_LANE_POST_TAP;
+                    phyLaneCfg->appMode = 0x74;
+                    phyLaneCfg->rxPort = crossConnect[lane];
+                }
+            }
             break;
         case FM_TLV_PLAT_SW_PHY_ADDR:
             swIdx = GetTlvInt(tlv + 3, 1);
@@ -1353,6 +1602,32 @@ fm_status fmPlatformCfgParseTlv(fm_byte *tlv)
                 return FM_ERR_INVALID_ARGUMENT;
             }
             break;
+        case FM_TLV_PLAT_SW_PHY_APP_MODE:
+            swIdx = GetTlvInt(tlv + 3, 1);
+            if (swIdx >= platCfg->numSwitches)
+            {
+                return FM_ERR_INVALID_SWITCH;
+            }
+            phyIdx = GetTlvInt(tlv + 4, 1);
+            if (phyIdx >= FM_PLAT_NUM_PHY(swIdx))
+            {
+                return FM_ERR_INVALID_ARGUMENT;
+            }
+            phyCfg = FM_PLAT_GET_PHY_CFG(swIdx, phyIdx);
+            lane = GetTlvInt(tlv + 5, 1);
+            if ( phyCfg->model == FM_PLAT_PHY_GN2412  &&
+                 lane < FM_GN2412_NUM_LANES )
+            {
+                phyLaneCfg = &phyCfg->gn2412Lane[lane];
+                phyLaneCfg->appMode = GetTlvInt(tlv + 6, 1);
+            }
+            else
+            {
+                FM_LOG_ERROR(FM_LOG_CAT_PLATFORM,
+                    "Unknown PHY model %d\n", phyCfg->model);
+                return FM_ERR_INVALID_ARGUMENT;
+            }
+            break;
         case FM_TLV_PLAT_SW_MSI_ENABLE:
             swIdx = GetTlvInt(tlv + 3, 1);
             if (swIdx >= platCfg->numSwitches)
@@ -1360,10 +1635,17 @@ fm_status fmPlatformCfgParseTlv(fm_byte *tlv)
                 return FM_ERR_INVALID_SWITCH;
             }
             swCfg = FM_PLAT_GET_SWITCH_CFG(swIdx);
-            swCfg->msiEnabled = GetTlvBool(tlv[4]);
+            swCfg->msiEnabled = GetTlvBool(tlv + 4);
             break;
-        /* FM_TLV_PLAT_SW_FH_CLOCK */
-
+        case FM_TLV_PLAT_SW_FH_CLOCK:
+            swIdx = GetTlvInt(tlv + 3, 1);
+            if (swIdx >= platCfg->numSwitches)
+            {
+                return FM_ERR_INVALID_SWITCH;
+            }
+            swCfg = FM_PLAT_GET_SWITCH_CFG(swIdx);
+            swCfg->fhClock = GetTlvInt(tlv + 4, 4);
+            break;
         case FM_TLV_PLAT_DEV_MEM_OFF:
             swIdx = GetTlvInt(tlv + 3, 1);
             if (swIdx >= platCfg->numSwitches)
@@ -1401,9 +1683,14 @@ fm_status fmPlatformCfgParseTlv(fm_byte *tlv)
                        tlv + 4,
                        tlvLen - 1);
             break;
-        /* FM_TLV_PLAT_EBI_DEVNAME
-         * FM_TLV_PLAT_INTR_TIMEOUT_CNT */
-
+        case FM_TLV_PLAT_INTR_TIMEOUT_CNT:
+            swIdx = GetTlvInt(tlv + 3, 1);
+            if (swIdx >= platCfg->numSwitches)
+            {
+                return FM_ERR_INVALID_SWITCH;
+            }
+            swCfg = FM_PLAT_GET_SWITCH_CFG(swIdx);
+            swCfg->intrTimeoutCnt = GetTlvInt(tlv + 4, 2);
         case FM_TLV_PLAT_BOOT_MODE:
             swIdx = GetTlvInt(tlv + 3, 1);
             if (swIdx >= platCfg->numSwitches)
@@ -1447,24 +1734,183 @@ fm_status fmPlatformCfgParseTlv(fm_byte *tlv)
                 return FM_ERR_INVALID_SWITCH;
             }
             swCfg = FM_PLAT_GET_SWITCH_CFG(swIdx);
-            swCfg->enablePhyDeEmphasis = GetTlvBool(tlv[4]);
+            swCfg->enablePhyDeEmphasis = GetTlvBool(tlv + 4);
             break;
-        /* FM_TLV_PLAT_INTR_POLL */
-        default:
-            /* Unhandled properties will be converted to text  
-             * and be handled the old way
-             */
-            status = fmUtilConfigPropertyDecodeTlv(tlv, propTxt, sizeof(propTxt));
-            if (status == FM_OK)
+        case FM_TLV_PLAT_SW_VDDS_USE_HW_RESOURCE_ID:
+            swIdx = GetTlvInt(tlv + 3, 1);
+            if (swIdx >= platCfg->numSwitches)
             {
-                fmPlatformLoadAttributeFromLine(propTxt, numProp, &numProp);
+                return FM_ERR_INVALID_SWITCH;
             }
+            swCfg = FM_PLAT_GET_SWITCH_CFG(swIdx);
+            swCfg->vrm.hwResourceId[FM_PLAT_VRM_VDDS]  = GetTlvInt(tlv + 4, 4);
+            break;
+        case FM_TLV_PLAT_SW_VDDF_USE_HW_RESOURCE_ID:
+            swIdx = GetTlvInt(tlv + 3, 1);
+            if (swIdx >= platCfg->numSwitches)
+            {
+                return FM_ERR_INVALID_SWITCH;
+            }
+            swCfg = FM_PLAT_GET_SWITCH_CFG(swIdx);
+            swCfg->vrm.hwResourceId[FM_PLAT_VRM_VDDF]  = GetTlvInt(tlv + 4, 4);
+            break;
+        case FM_TLV_PLAT_SW_AVDD_USE_HW_RESOURCE_ID:
+            swIdx = GetTlvInt(tlv + 3, 1);
+            if (swIdx >= platCfg->numSwitches)
+            {
+                return FM_ERR_INVALID_SWITCH;
+            }
+            swCfg = FM_PLAT_GET_SWITCH_CFG(swIdx);
+            swCfg->vrm.hwResourceId[FM_PLAT_VRM_AVDD]  = GetTlvInt(tlv + 4, 4);
+            break;
+        case FM_TLV_PLAT_SW_VRM_USE_DEF_VOLTAGE:
+            swIdx = GetTlvInt(tlv + 3, 1);
+            if (swIdx >= platCfg->numSwitches)
+            {
+                return FM_ERR_INVALID_SWITCH;
+            }
+            swCfg = FM_PLAT_GET_SWITCH_CFG(swIdx);
+            swCfg->vrm.useDefVoltages = GetTlvInt(tlv + 4, 4);
+            break;
+        case FM_TLV_PLAT_SW_I2C_CLKDIVIDER:
+            swIdx = GetTlvInt(tlv + 3, 1);
+            if (swIdx >= platCfg->numSwitches)
+            {
+                return FM_ERR_INVALID_SWITCH;
+            }
+            swCfg = FM_PLAT_GET_SWITCH_CFG(swIdx);
+            swCfg->i2cClkDivider = GetTlvInt(tlv + 4, 1);
+            break;
+        default:
+            status = FM_ERR_INVALID_ARGUMENT;
             break;
     }
 
     return FM_OK;
 
-} /* end fmPlatformCfgParseTlv */
+}   /* end fmPlatformLoadLTCfgTlv */
+
+
+
+/*****************************************************************************/
+/* fmPlatformLoadLibCfgTlv
+ * \ingroup intPlatform
+ *
+ * \desc            Load shared lib config TLV configuration.
+ *
+ * \param[in]       tlv is an array of encoded TLV bytes
+ *
+ * \return          FM_OK if successful.
+ * \return          Other ''Status Codes'' as appropriate in case of
+ *                  failure.
+ *
+ *****************************************************************************/
+fm_status fmPlatformLoadLibCfgTlv(fm_byte *tlv)
+{
+    fm_platformCfgLib *libCfg;
+    fm_uint   tlvLen;
+    fm_int    swIdx;
+    fm_uint   newTlvBufSize;
+    fm_byte  *newTlvBuf;
+
+
+    if (!fmRootPlatform->cfg.switches)
+    {
+        FM_LOG_ERROR(FM_LOG_CAT_PLATFORM,
+            "TLV [0x%02x%02x] must be after numSwitches config\n",
+            tlv[0], tlv[1]);
+        return FM_FAIL;
+    }
+
+    tlvLen = tlv[2] + 3;
+
+    swIdx = 0; /*Assume 0 for now */
+    libCfg = FM_PLAT_GET_LIBS_CFG(swIdx);
+
+    if (tlvLen > (libCfg->tlvCfgBufSize - libCfg->tlvCfgLen))
+    {
+        newTlvBufSize = libCfg->tlvCfgBufSize + 1024;
+        newTlvBuf = fmAlloc(newTlvBufSize);
+        if (newTlvBuf == NULL)
+        {
+            return FM_ERR_NO_MEM;
+        }
+        if (libCfg->tlvCfgBuf)
+        {
+            FM_MEMCPY_S(newTlvBuf, newTlvBufSize, 
+                libCfg->tlvCfgBuf, libCfg->tlvCfgLen);
+            fmFree(libCfg->tlvCfgBuf);
+        }
+        libCfg->tlvCfgBuf = newTlvBuf;
+        libCfg->tlvCfgBufSize = newTlvBufSize;
+    }
+
+    FM_MEMCPY_S(libCfg->tlvCfgBuf + libCfg->tlvCfgLen,
+                libCfg->tlvCfgBufSize - libCfg->tlvCfgLen, 
+                tlv, tlvLen);
+    libCfg->tlvCfgLen += tlvLen;
+
+    return FM_OK;
+
+}   /* end fmPlatformLoadLibCfgTlv  */
+
+
+
+
+/*****************************************************************************/
+/* fmPlatformLoadTlv
+ * \ingroup intPlatform
+ *
+ * \desc            Load TLV property.
+ *
+ * \param[in]       tlv is an array of encoded TLV bytes
+ *
+ * \return          FM_OK if successful.
+ * \return          Other ''Status Codes'' as appropriate in case of
+ *                  failure.
+ *
+ *****************************************************************************/
+fm_status fmPlatformLoadTlv(fm_byte *tlv)
+{
+    fm_status       status;
+    fm_uint         tlvType;
+    fm_platformCfg *platCfg;
+    fm_char         propTxt[256];
+
+    tlvType = (tlv[0] << 8) | tlv[1];
+
+    platCfg = FM_PLAT_GET_CFG;
+
+    if (platCfg->debug & CFG_DBG_CONFIG)
+    {
+        fmUtilConfigPropertyDecodeTlv(tlv, propTxt, sizeof(propTxt));
+        FM_LOG_PRINT("prop 0x%04x: [%s]\n", tlvType, propTxt);
+    }
+
+    if (tlvType < 0x2000)
+    {
+        status = fmLoadApiPropertyTlv(tlv);
+    }
+    else if (tlvType < 0x4000)
+    {
+        status = fmPlatformLoadLTCfgTlv(tlv);
+    }
+    else
+    {
+        status = fmPlatformLoadLibCfgTlv(tlv);        
+    }
+
+    if (status)
+    {
+        FM_LOG_ERROR(FM_LOG_CAT_PLATFORM,
+                "%s: Unable to load tlv 0x%04x\n",
+                 fmErrorMsg(status), tlvType);
+
+    }
+
+    return status;
+
+}   /* end fmPlatformLoadTlv */
 
 
 
@@ -1474,9 +1920,8 @@ fm_status fmPlatformCfgParseTlv(fm_byte *tlv)
  * \ingroup intPlatform
  *
  * \desc            This function can be used to verify for consistency after
- *                  config is load. This also update fields in config structure
+ *                  config is loaded. This also updates fields in config structure
  *                  that are dependent on loaded config.
- *
  *
  * \return          FM_OK if successful.
  *
@@ -1487,18 +1932,36 @@ fm_status fmPlatformCfgVerifyAndUpdate(void)
     fm_platformCfgSwitch *swCfg;
     fm_platformCfgPort *  portCfg;
     fm_int                portIdx;
+    fm_portCfgSwitch      tempHwResourceIdList[FM_NUM_HW_RES_ID];
 
+
+    FM_MEMSET_S(tempHwResourceIdList,
+                FM_NUM_HW_RES_ID * sizeof(fm_portCfgSwitch),
+                0,
+                FM_NUM_HW_RES_ID * sizeof(fm_portCfgSwitch));
 
     for (swIdx = 0; swIdx < FM_PLAT_GET_CFG->numSwitches; swIdx++)
     {
         swCfg = FM_PLAT_GET_SWITCH_CFG(swIdx);
 
         for (portIdx = 0 ; portIdx < swCfg->numPorts ; portIdx++)
-        {
+        { 
             portCfg = FM_PLAT_GET_PORT_CFG(swIdx, portIdx);
 
-            /* Make sure the CPU port is mapped to a PCIE port if the register
-             * access needs it. */
+            /**************************************************
+             * Make sure that HW Resource ID is unique.
+             **************************************************/
+
+            CheckHwResourceId(swIdx,
+                              portCfg,
+                              tempHwResourceIdList,
+                              FM_DEFAULT_HW_RES_ID);
+
+            /**************************************************
+             *  Make sure the CPU port is mapped to a PCIE port
+             *  if the register access needs it.
+             **************************************************/
+
             if (portCfg->port == swCfg->cpuPort)
             {
 #ifndef FM_LT_WHITE_MODEL_SUPPORT
@@ -1524,14 +1987,13 @@ fm_status fmPlatformCfgVerifyAndUpdate(void)
 
     FM_LOG_EXIT(FM_LOG_CAT_PLATFORM, FM_OK);
 
-} /* end fmPlatformCfgVerifyAndUpdate */
-
+}   /* end fmPlatformCfgVerifyAndUpdate */
 
 
 
 
 /*****************************************************************************/
-/** fmPlatformLoadTLV
+/** fmPlatformLoadTlvFile
  * \ingroup intPlatform
  *
  * \desc            Loads TLV properties from a file.
@@ -1541,7 +2003,7 @@ fm_status fmPlatformCfgVerifyAndUpdate(void)
  * \return          FM_OK if successful.
  *
  *****************************************************************************/
-fm_status fmPlatformLoadTLV(fm_text fileName)
+fm_status fmPlatformLoadTlvFile(fm_text fileName)
 {
 
     fm_status       status = FM_OK;
@@ -1576,7 +2038,7 @@ fm_status fmPlatformLoadTLV(fm_text fileName)
         return FM_FAIL;
     }
 
-    /* Read on TLV at a time */
+    /* Read one TLV at a time */
     while ((numRead = fread(tlv, 1, 3, fp)) > 0)
     {
         if (numRead != 3)
@@ -1598,7 +2060,7 @@ fm_status fmPlatformLoadTLV(fm_text fileName)
             return FM_FAIL;            
         }
 
-        status = fmPlatformCfgParseTlv(tlv);
+        status = fmPlatformLoadTlv(tlv);
         if (status != FM_OK)
         {
             FM_LOG_ERROR(FM_LOG_CAT_PLATFORM,
@@ -1620,5 +2082,5 @@ fm_status fmPlatformLoadTLV(fm_text fileName)
 
     return status;
 
-} /* end fmPlatformLoadTLV */
+}    /* end fmPlatformLoadTlvFile */
 

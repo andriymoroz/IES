@@ -29,7 +29,7 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
+ *****************************************************************************/
 
 #include <fm_sdk_fm10000_int.h>
 
@@ -145,6 +145,8 @@ ABORT:
  * \ingroup intVlan
  *
  * \desc            Allocates the state structure for VLAN management.
+ *                  Called through the AllocateVlanTableDataStructures
+ *                  function pointer.
  *
  * \param[in]       switchPtr points to the switch state table
  *
@@ -192,7 +194,8 @@ fm_status fm10000AllocateVlanTableDataStructures(fm_switch *switchPtr)
 /** fm10000FreeVlanTableDataStructures
  * \ingroup intVlan
  *
- * \desc            Free the state structure for VLAN management.
+ * \desc            Free the state structure for VLAN management. Called
+ *                  through the FreeVlanTableDataStructures function pointer.
  *
  * \param[in]       switchPtr points to the switch state table
  *
@@ -234,7 +237,8 @@ fm_status fm10000FreeVlanTableDataStructures(fm_switch *switchPtr)
  * \ingroup intVlan
  *
  * \desc            Initializes each entry of the VLAN table cache to match
- *                  chip defaults
+ *                  chip defaults. Called through the InitVlanTable function
+ *                  pointer.
  *
  * \param[in]       switchPtr points to the switch state table
  *
@@ -310,6 +314,7 @@ fm_status fm10000InitVlanTable(fm_switch *switchPtr)
 
 
 
+
 /*****************************************************************************/
 /** fm10000CreateVlan
  * \ingroup intVlan
@@ -318,6 +323,7 @@ fm_status fm10000InitVlanTable(fm_switch *switchPtr)
  *                  This function only performs switch-specific portions of
  *                  the vlan creation process.  Generic portions are done
  *                  in the API fmCreateVlan function.
+ *                  Called through the CreateVlan function pointer.
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -368,6 +374,7 @@ fm_status fm10000CreateVlan(fm_int sw, fm_uint16 vlanID)
  *                  This function only performs switch-specific portions of
  *                  the vlan deletion process.  Generic portions are done
  *                  in the API fmDeleteVlan function.
+ *                  Called through the DeleteVlan function pointer.
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -396,8 +403,7 @@ fm_status fm10000DeleteVlan(fm_int sw, fm_uint16 vlanID)
 
     FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_VLAN, status);
 
-    if ( fmGetBoolApiProperty(FM_AAK_API_MA_FLUSH_ON_VLAN_CHANGE,
-                              FM_AAD_API_MA_FLUSH_ON_VLAN_CHANGE) )
+    if ( GET_PROPERTY()->maFlushOnVlanChange )
     {
         /* Age MA Table entries for this VLAN. */
         status = fmFlushVlanAddresses(sw, (fm_uint) vlanID);
@@ -573,6 +579,7 @@ ABORT:
  * \ingroup intVlan
  *
  * \desc            Writes the hardware registers for this vlan entry.
+ *                  Called through the WriteVlanEntry function pointer.
  *
  * \param[in]       sw is the switch to access.
  *
@@ -601,6 +608,7 @@ fm_status fm10000WriteVlanEntry(fm_int    sw, fm_uint16 vlanID)
  * \ingroup intVlan
  *
  * \desc            Writes tagging configuration to the hardware.
+ *                  Called through the WriteTagEntry function pointer.
  *
  * \param[in]       sw is the switch to access.
  *
@@ -657,7 +665,6 @@ ABORT:
  *
  * \param[in]       mode is the vlan learning mode.
  *
- *
  * \return          FM_OK if successful.
  *
  *****************************************************************************/
@@ -705,8 +712,9 @@ ABORT:
 /** fm10000SetVlanMembership
  * \ingroup intVlan
  *
- * \desc            Function to set port vlan membership.  This function
- *                  assumes that the caller has taken the L2_LOCK
+ * \desc            Function to set port vlan membership.
+ * 
+ * \note            Assumes that the caller has taken the L2_LOCK
  *                  beforehand.
  *
  * \param[in]       sw is the switch on which to operate.
@@ -771,8 +779,9 @@ fm_status fm10000SetVlanMembership(fm_int        sw,
 /** fm10000GetVlanMembership
  * \ingroup intVlan
  *
- * \desc            Function to retrieve vlan membership state.  The function
- *                  assumes that the caller has taken the L2_LOCK
+ * \desc            Function to retrieve vlan membership state.
+ * 
+ * \note            Assumes that the caller has taken the L2_LOCK
  *                  beforehand.
  *
  * \param[in]       sw is the switch on which to operate.
@@ -828,9 +837,10 @@ fm_status fm10000GetVlanMembership(fm_int        sw,
 /** fm10000SetVlanTag
  * \ingroup intVlan
  *
- * \desc            Function to set port vlan tagging mode.  This function
- *                  assumes that the caller has taken the L2_LOCK
- *                  beforehand.
+ * \desc            Function to set port vlan tagging mode.
+ * 
+ * \note            This function assumes that the caller has taken the
+ *                  L2_LOCK beforehand.
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -879,8 +889,7 @@ fm_status fm10000SetVlanTag(fm_int        sw,
         FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_VLAN, status);
 
         if (islTagFormat &&
-            !fmGetBoolApiProperty(FM_AAK_API_PORT_ALLOW_FTAG_VLAN_TAGGING,
-                                  FM_AAD_API_PORT_ALLOW_FTAG_VLAN_TAGGING))
+            !GET_PROPERTY()->allowFtagVlanTagging)
         {
             FM_LOG_EXIT(FM_LOG_CAT_VLAN, FM_ERR_UNSUPPORTED);
         }
@@ -915,8 +924,9 @@ fm_status fm10000SetVlanTag(fm_int        sw,
 /** fm10000GetVlanTag
  * \ingroup intVlan
  *
- * \desc            Function to retrieve port vlan tagging mode.  This
- *                  function assumes that the caller has taken the
+ * \desc            Function to retrieve port vlan tagging mode.
+ * 
+ * \note            This function assumes that the caller has taken the
  *                  L2_LOCK beforehand.
  *
  * \param[in]       sw is the switch on which to operate.
@@ -1046,6 +1056,7 @@ ABORT:
  * \ingroup intVlan
  *
  * \desc            Adds a list of ports to a VLAN.
+ *                  Called through the AddVlanPortList function pointer.
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -1141,6 +1152,7 @@ ABORT:
  * \ingroup intVlan
  *
  * \desc            Deletes a list of ports from a VLAN.
+ *                  Called through the DeleteVlanPortList function pointer.
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -1230,6 +1242,7 @@ ABORT:
  * \ingroup intVlan
  *
  * \desc            Get a VLAN attribute.
+ *                  Called through the GetVlanAttribute function pointer.
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -1317,6 +1330,7 @@ fm_status fm10000GetVlanAttribute(fm_int    sw,
  * \ingroup intVlan
  *
  * \desc            Set a VLAN attribute.
+ *                  Called through the SetVlanAttribute function pointer.
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -1450,6 +1464,7 @@ fm_status fm10000SetVlanAttribute(fm_int    sw,
  * \ingroup intVlan
  *
  * \desc            Gets a VLAN port attribute.
+ *                  Called through the GetVlanPortAttribute function pointer.
  *
  * \note            This function assumes that vlan and port numbers have been
  *                  validated.
@@ -1533,6 +1548,7 @@ fm_status fm10000GetVlanPortAttribute(fm_int    sw,
  * \ingroup intVlan
  *
  * \desc            Sets the counter ID for this VLAN.
+ *                  Called through the SetVlanCounterID function pointer.
  *
  * \param[in]       sw is the switch number to operate on.
  *
@@ -1574,6 +1590,7 @@ fm_status fm10000SetVlanCounterID(fm_int sw, fm_uint vlanID, fm_uint vcnt)
  * \ingroup intVlan
  *
  * \desc            Wrapper to call fmSetSpanningTreePortState.
+ *                  Called through the SetVlanPortState function pointer.
  *
  * \param[in]       sw is the switch number to operate on.
  *
@@ -1633,12 +1650,13 @@ fm_status fm10000SetVlanPortState(fm_int    sw,
 
 
 
+
 /*****************************************************************************/
 /** fm10000GetVlanPortState
  * \ingroup intVlan
  *
- * \desc            Wrapper to call fmGetSpanningTreePortState.  Only valid in
- *                  shared mode.
+ * \desc            Wrapper to call fmGetSpanningTreePortState.
+ *                  Called through the GetVlanPortState function pointer.
  *
  * \param[in]       sw is the switch number to operate on.
  *

@@ -38,11 +38,13 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
+#include <api/internal/fm10000/fm10000_api_regs_int.h>
 #include <platforms/libertyTrail/platform_lib_api.h>
 #include <platforms/libertyTrail/platform_app_api.h>
 #include <platforms/libertyTrail/platform_attr.h>
 #include <platforms/common/lib/i2c/ipmi/fm_platform_ipmi.h>
 #include <platforms/common/lib/i2c/smbus/fm_platform_smbus.h>
+#include <platforms/util/fm_util_config_tlv.h>
 #include <platforms/util/fm_util.h>
 #include <platforms/util/fm_util_pca.h>
 #include <platforms/util/fm_util_device_lock.h>
@@ -67,44 +69,26 @@
 #define PRINT_STRING(name, string) \
     FM_LOG_PRINT(FIELD_FORMAT_S, name, string)
 
-#define LedTypeStrToValue(str, type) \
-    GetStringValue(str, ledTypeMap, FM_NENTRIES(ledTypeMap), (fm_int*)type)
-
 #define LedTypeToStr(type) \
     GetStrMap(type, ledTypeMap, FM_NENTRIES(ledTypeMap), FALSE, tmpStr, sizeof(tmpStr))
-
-#define LedUsageStrToValue(str, usage) \
-    GetStringValue(str, ledUsageMap, FM_NENTRIES(ledUsageMap), (fm_int*)usage)
 
 #define LedUsageToStr(usage) \
     GetStrMap(usage, ledUsageMap, FM_NENTRIES(ledUsageMap), FALSE, tmpStr, sizeof(tmpStr))
 
-#define BusSelTypeStrToValue(str, type) \
-    GetStringValue(str, busSelTypeMap, FM_NENTRIES(busSelTypeMap), (fm_int*)type)
-
 #define BusSelTypeToStr(type) \
     GetStrMap(type, busSelTypeMap, FM_NENTRIES(busSelTypeMap), FALSE, tmpStr, sizeof(tmpStr))
-
-#define PcaMuxModelStrToValue(str, type) \
-    GetStringValue(str, pcaMuxModelMap, FM_NENTRIES(pcaMuxModelMap), (fm_int*)type)
 
 #define PcaMuxModelToStr(type) \
     GetStrMap(type, pcaMuxModelMap, FM_NENTRIES(pcaMuxModelMap), FALSE, tmpStr, sizeof(tmpStr))
 
-#define PcaIoModelStrToValue(str, type) \
-    GetStringValue(str, pcaIoModelMap, FM_NENTRIES(pcaIoModelMap), (fm_int*)type)
-
 #define PcaIoModelToStr(type) \
     GetStrMap(type, pcaIoModelMap, FM_NENTRIES(pcaIoModelMap), FALSE, tmpStr, sizeof(tmpStr))
 
-#define IntfTypeStrToValue(str, type) \
-    GetStringValue(str, intfTypeMap, FM_NENTRIES(intfTypeMap), (fm_int*)type)
+#define VrmModelToStr(type) \
+    GetStrMap(type, vrmModelMap, FM_NENTRIES(vrmModelMap), FALSE, tmpStr, sizeof(tmpStr))
 
 #define IntfTypeToStr(type) \
     GetStrMap(type, intfTypeMap, FM_NENTRIES(intfTypeMap), FALSE, tmpStr, sizeof(tmpStr))
-
-#define HwResourceStrToValue(str, type) \
-    GetStringValue(str, hwResourceTypeMap, FM_NENTRIES(hwResourceTypeMap), (fm_int*)type)
 
 #define HwResourceToStr(type) \
     GetStrMap(type, hwResourceTypeMap, FM_NENTRIES(hwResourceTypeMap), FALSE, tmpStr, sizeof(tmpStr))
@@ -114,6 +98,9 @@
                ( (bitvalue & 1) << bit ) )
 
 #define GET_BIT(lvalue, bit)  (((lvalue) >> bit) & 0x1)
+
+/* FM10000_CHIP_VERSION_A0 */
+#define CHIP_VERSION_A0             0
 
 #define LIB_MAX_STR_LEN             128
 
@@ -140,10 +127,6 @@
 /* Specify value is not applicable or used */
 #define UINT_NOT_USED               0xFFFFFFFF
 
-#define VAL_INT_NOT_USED(valInt)    ((fm_uint)(valInt) == UINT_NOT_USED)
-#define VAL_UINT_IN_USE(valUInt)    ((valUInt) != UINT_NOT_USED)
-#define VAL_UINT_NOT_USED(valUInt)  ((valUInt) == UINT_NOT_USED)
-
 /* Input Output configuration register value */
 #define IOC_OUTPUT                  0
 #define IOC_INPUT                   1
@@ -158,7 +141,7 @@
 #define LED_USAGE_LINK              (1<<0)
 #define LED_USAGE_TRAFFIC           (1<<1)
 #define LED_USAGE_LINK_TRAFFIC      (1<<2) /* Keep for backward compatibility */
-#define LED_USAGE_1G                (1<<3) 
+#define LED_USAGE_1G                (1<<3)
 #define LED_USAGE_2PT5G             (1<<4)
 #define LED_USAGE_10G               (1<<5)
 #define LED_USAGE_25G               (1<<6)
@@ -177,13 +160,13 @@
 typedef enum
 {
     /* No LED */
-    LED_TYPE_NONE,
+    LED_TYPE_NONE = 0,
 
     /* PCA IO */
-    LED_TYPE_PCA,
+    LED_TYPE_PCA = 1,
 
     /* FPGA Control */
-    LED_TYPE_FPGA,
+    LED_TYPE_FPGA = 2,
 
 } fm_ledType;
 
@@ -374,13 +357,13 @@ typedef struct
 typedef enum
 {
     /* PORT */
-    HWRESOURCE_TYPE_PORT,
+    HWRESOURCE_TYPE_PORT = 0,
 
     /* Voltage regulator module */
-    HWRESOURCE_TYPE_VRM,
+    HWRESOURCE_TYPE_VRM = 1,
 
     /* PHY device */
-    HWRESOURCE_TYPE_PHY,
+    HWRESOURCE_TYPE_PHY = 2,
 
 } fm_hmResourceType;
 
@@ -407,7 +390,7 @@ typedef struct
 typedef struct
 {
     /* device model */
-    fm_text         model;
+    fm_vrmModel     model;
 
     /* i2c bus where the device is located */
     fm_uint         bus;
@@ -455,10 +438,16 @@ typedef struct
 typedef struct
 {
     /* I2C Device name to open */
-    fm_text devName;
+    fm_char devName[128];
 
     /* I2C file handle */
     fm_uintptr handle;
+
+    /* Indicate if that bus uses FM10000 as master */
+    fm_int isSwitchMaster;
+
+    /* FM10000 chip version */
+    fm_uint32  chipVersion;
 
     /* Indicates if the I2C_SMBUS_I2C_BLOCK_DATA transaction type is
      * supported by the linux SMBus driver associated to the i2c file desc.
@@ -509,7 +498,7 @@ typedef struct
     fm_qsfpPin      defQsfpPat;
 
     /* File locking to share resources with other applications */
-    fm_text         fileLockName;
+    fm_char         fileLockName[128];
     int             fileLock;
 
     /* debug control */
@@ -603,6 +592,12 @@ static fm_platformStrMap pcaIoModelMap[] =
     { "PCA9698",     PCA_IO_9698    },
 };
 
+static fm_platformStrMap vrmModelMap[] = {
+	{ "VRM_UNKNOWN", VRM_UNKNOWN  },
+	{ "TPS40425",    VRM_TPS40425 },
+	{ "PX8847",      VRM_PX8847   },
+};
+
 static fm_platformStrMap intfTypeMap[] =
 {
     { "NONE", INTF_TYPE_NONE },
@@ -625,8 +620,8 @@ static fm_platformStrMap debugMap[] =
 static fm_platformStrMap hwResourceTypeMap[] =
 {
     { "PORT",   HWRESOURCE_TYPE_PORT },
-    { "PHY",    HWRESOURCE_TYPE_PHY  },
     { "VRM",    HWRESOURCE_TYPE_VRM  },
+    { "PHY",    HWRESOURCE_TYPE_PHY  },
 };
 
 
@@ -651,86 +646,86 @@ fm_status fmPlatformLibGetVrmVoltage(fm_int     sw,
  ************************************************************************/
 
 /**
- * (Optional) Specifies what interface is used as I2C master to access 
+ * (Optional) Specifies what interface is used as I2C master to access
  * the port logic devices.
  *                                                                      \lb\lb
- * To indicate that the switch I2C is used as I2C master this property 
+ * To indicate that the switch I2C is used as I2C master this property
  * must be set to switchI2C.
  *                                                                      \lb\lb
- * The available values are: 
+ * The available values are:
  *                                                                      \lb\lb
- *  
- * switchI2C - Use FM10000 as master (default) 
+ *
+ * switchI2C - Use FM10000 as master (default)
  *                                                                      \lb
- * /dev/i2c-x - Use CPU i2c/SMBus bus 
+ * /dev/i2c-x - Use CPU i2c/SMBus bus
  *                                                                      \lb
- * /dev/ipmi-x - Use ipmi library 
+ * /dev/ipmi-x - Use ipmi library
  *                                                                      \lb\lb
- * If not defined, api.platform.lib.config.bus0.i2cDevName is 
+ * If not defined, api.platform.lib.config.bus0.i2cDevName is
  * set to switchI2C
  *                                                                      \lb
- * Up to 12 buses can be defined. 
+ * Up to 12 buses can be defined.
  */
 #define FM_AAK_LIB_BUS_I2C_DEV_NAME    "api.platform.lib.config.bus%d.i2cDevName"
 #define FM_AAT_LIB_BUS_I2C_DEV_NAME    FM_API_ATTR_TEXT
 
-/** 
- * (Required) Number of PCA muxes present on the systems. 
+/**
+ * (Required) Number of PCA muxes present on the systems.
  *                                                                      \lb\lb
  * This includes only the PCA muxes attached to an FM10000 I2C bus tree.
  */
 #define FM_AAK_LIB_PCAMUX_COUNT         "api.platform.lib.config.pcaMux.count"
 #define FM_AAT_LIB_PCAMUX_COUNT         FM_API_ATTR_INT
 
-/** 
- * (Required) Specifies the PCA mux model. 
+/**
+ * (Required) Specifies the PCA mux model.
  *                                                                      \lb\lb
- * Supported PCA models: 9541, 9545, 9546 and 9548. 
+ * Supported PCA models: 9541, 9545, 9546 and 9548.
  */
 #define FM_AAK_LIB_PCAMUX_MODEL         "api.platform.lib.config.pcaMux.%d.model"
 #define FM_AAT_LIB_PCAMUX_MODEL         FM_API_ATTR_TEXT
 
-/** 
- * (Optional) Specifies the bus number the mux is attached to. 
+/**
+ * (Optional) Specifies the bus number the mux is attached to.
  *                                                                      \lb\lb
  * If api.platform.lib.config.bus0.i2cDevName is set to switchI2C,
- * the bus number is the switch number the mux is attached to. 
+ * the bus number is the switch number the mux is attached to.
  *                                                                      \lb\lb
  * The default is set to bus 0.
  */
 #define FM_AAK_LIB_PCAMUX_BUS           "api.platform.lib.config.pcaMux.%d.bus"
 #define FM_AAT_LIB_PCAMUX_BUS           FM_API_ATTR_INT
 
-/** 
+/**
  * (Required) Specifies the mux I2C address.
  */
 #define FM_AAK_LIB_PCAMUX_ADDR          "api.platform.lib.config.pcaMux.%d.addr"
 #define FM_AAT_LIB_PCAMUX_ADDR          FM_API_ATTR_INT
 
-/** 
- * (Optional) If the PCA mux is behind another PCA mux, this property 
- * specifies its parent PCA mux index. 
+/**
+ * (Optional) If the PCA mux is behind another PCA mux, this property
+ * specifies its parent PCA mux index.
  */
 #define FM_AAK_LIB_PCAMUX_PARENT_INDEX  "api.platform.lib.config.pcaMux.%d.parent.index"
 #define FM_AAT_LIB_PCAMUX_PARENT_INDEX   FM_API_ATTR_INT
 
-/** 
- * (Optional) If the PCA mux is behind another PCA mux, this property 
- * specifies the value to write to its parent PCA mux to enable this mux. 
+/**
+ * (Optional) If the PCA mux is behind another PCA mux, this property
+ * specifies the value to write to its parent PCA mux to enable this mux.
  */
 #define FM_AAK_LIB_PCAMUX_PARENT_VALUE  "api.platform.lib.config.pcaMux.%d.parent.value"
 #define FM_AAT_LIB_PCAMUX_PARENT_VALUE  FM_API_ATTR_INT
 
-/** 
+/**
  * (Required) Number of PCA IO expanders present on the systems.
  *                                                                      \lb\lb
- * This includes only the IO expander attached to an FM10000 I2C bus 
- * tree. 
+ * This includes only the IO expander attached to an FM10000 I2C bus
+ * tree.
  */
 #define FM_AAK_LIB_PCAIO_COUNT          "api.platform.lib.config.pcaIo.count"
 #define FM_AAT_LIB_PCAIO_COUNT          FM_API_ATTR_INT
 
-/** 
+/**
  * (Required) Specifies the PCA IO expander model.
  *                                                                      \lb\lb
  * Supported PCA models: 9505, 9506, 9551, 9554, 9555, 9634, 9635 and 9698
@@ -738,42 +733,42 @@ fm_status fmPlatformLibGetVrmVoltage(fm_int     sw,
 #define FM_AAK_LIB_PCAIO_MODEL          "api.platform.lib.config.pcaIo.%d.model"
 #define FM_AAT_LIB_PCAIO_MODEL          FM_API_ATTR_TEXT
 
-/** 
+/**
  * (Optional) Specifies the bus number the PCA IO expander is attached to.
  *                                                                      \lb\lb
  * If api.platform.lib.config.bus0.i2cDevName is set to switchI2C,
- * the bus number is the switch number the mux is attached to. 
+ * the bus number is the switch number the mux is attached to.
  *                                                                      \lb\lb
  * The default is set to bus 0.
  */
 #define FM_AAK_LIB_PCAIO_BUS            "api.platform.lib.config.pcaIo.%d.bus"
 #define FM_AAT_LIB_PCAIO_BUS            FM_API_ATTR_INT
 
-/** 
+/**
  * (Required) Specifies the PCA IO expander I2C address.
  */
 #define FM_AAK_LIB_PCAIO_ADDR           "api.platform.lib.config.pcaIo.%d.addr"
 #define FM_AAT_LIB_PCAIO_ADDR           FM_API_ATTR_INT
 
-/** 
- * (Optional) If the PCA IO expander is behind a PCA mux, this property 
- * specifies its parent PCA mux index. 
+/**
+ * (Optional) If the PCA IO expander is behind a PCA mux, this property
+ * specifies its parent PCA mux index.
  */
 #define FM_AAK_LIB_PCAIO_PARENT_INDEX   "api.platform.lib.config.pcaIo.%d.parent.index"
 #define FM_AAT_LIB_PCAIO_PARENT_INDEX   FM_API_ATTR_INT
 
-/** 
- * (Optional) If the PCA IO expander is behind a PCA mux, this property 
- * specifies the value to write to its parent PCA mux to reach this PCA IO. 
+/**
+ * (Optional) If the PCA IO expander is behind a PCA mux, this property
+ * specifies the value to write to its parent PCA mux to reach this PCA IO.
  */
 #define FM_AAK_LIB_PCAIO_PARENT_VALUE   "api.platform.lib.config.pcaIo.%d.parent.value"
 #define FM_AAT_LIB_PCAIO_PARENT_VALUE   FM_API_ATTR_INT
 
-/** 
- * (Optional) Specifies the global blinking period for PCA9551 or PCA9634/35 
- * LED driver. 
+/**
+ * (Optional) Specifies the global blinking period for PCA9551 or PCA9634/35
+ * LED driver.
  *                                                                      \lb\lb
- * For the PCA9634/35, that property defines the 8-bits GFRQ variable in the 
+ * For the PCA9634/35, that property defines the 8-bits GFRQ variable in the
  * following formula. Applies to all LEDs connected to that LED driver.
  *                                                                      \lb\lb
  * Blinking period is controlled through 256 linear steps from
@@ -785,7 +780,7 @@ fm_status fmPlatformLibGetVrmVoltage(fm_int     sw,
  *                                                                      \lb\lb
  * The default is set to 5 for 1/4 sec period.
  *                                                                      \lb\lb
- * For the PCA9551, that property defines the 8-bits PSC variable in the 
+ * For the PCA9551, that property defines the 8-bits PSC variable in the
  * following formula. Applies to all LEDs connected to that LED driver.
  *                                                                      \lb\lb
  * Blinking period is controlled through 256 linear steps from
@@ -800,15 +795,15 @@ fm_status fmPlatformLibGetVrmVoltage(fm_int     sw,
 #define FM_AAK_LIB_PCAIO_LED_BLINK_PERIOD       "api.platform.lib.config.pcaIo.%d.ledBlinkPeriod"
 #define FM_AAT_LIB_PCAIO_LED_BLINK_PERIOD       FM_API_ATTR_INT
 
-/** 
- * (Optional) Specifies the global brightness value for PCA9634/35 LED driver. 
+/**
+ * (Optional) Specifies the global brightness value for PCA9634/35 LED driver.
  *                                                                      \lb\lb
- * In fact that property defines the 8-bits IDC variable in the following 
+ * In fact that property defines the 8-bits IDC variable in the following
  * formula. Applies to all LEDs connected to that LED driver.
  *                                                                      \lb\lb
  * Duty cycle is controlled through 256 linear steps from
  * 00h (0 % duty cycle = LED output off) to
- * FFh (99.6 % duty cycle = LED output at maximum brightness) 
+ * FFh (99.6 % duty cycle = LED output at maximum brightness)
  *                                                                      \lb\lb
  *  duty cycle = IDC[7:0] / 256
  *                                                                      \lb\lb
@@ -817,17 +812,17 @@ fm_status fmPlatformLibGetVrmVoltage(fm_int     sw,
 #define FM_AAK_LIB_PCAIO_LED_BRIGHTNESS         "api.platform.lib.config.pcaIo.%d.ledBrightness"
 #define FM_AAT_LIB_PCAIO_LED_BRIGHTNESS         FM_API_ATTR_INT
 
-/** 
+/**
  * (Optional) Mod_ABS default pin offset from the PCA IO base pin.
  *                                                                      \lb\lb
- * Applies to all SFPP ports. 
+ * Applies to all SFPP ports.
  *                                                                      \lb\lb
  * The default is set to UNUSED (0xffffffff).
  */
 #define FM_AAK_LIB_XCVRSTATE_DEFAULT_MODABS     "api.platform.lib.config.xcvrState.default.modAbs.pin"
 #define FM_AAT_LIB_XCVRSTATE_DEFAULT_MODABS     FM_API_ATTR_INT
 
-/** 
+/**
  * (Optional) Rx_LOS default pin offset from the PCA IO base pin.
  *                                                                      \lb\lb
  * Applies to all SFPP ports.
@@ -837,7 +832,7 @@ fm_status fmPlatformLibGetVrmVoltage(fm_int     sw,
 #define FM_AAK_LIB_XCVRSTATE_DEFAULT_RXLOS      "api.platform.lib.config.xcvrState.default.rxLos.pin"
 #define FM_AAT_LIB_XCVRSTATE_DEFAULT_RXLOS      FM_API_ATTR_INT
 
-/** 
+/**
  * (Optional) Tx_Disable default pin offset from the PCA IO base pin.
  *                                                                      \lb\lb
  * Applies to all SFPP ports.
@@ -847,7 +842,7 @@ fm_status fmPlatformLibGetVrmVoltage(fm_int     sw,
 #define FM_AAK_LIB_XCVRSTATE_DEFAULT_TXDISABLE  "api.platform.lib.config.xcvrState.default.txDisable.pin"
 #define FM_AAT_LIB_XCVRSTATE_DEFAULT_TXDISABLE  FM_API_ATTR_INT
 
-/** 
+/**
  * (Optional) Tx_Fault default pin offset from the PCA IO base pin.
  *                                                                      \lb\lb
  * Applies to all SFPP ports.
@@ -857,7 +852,7 @@ fm_status fmPlatformLibGetVrmVoltage(fm_int     sw,
 #define FM_AAK_LIB_XCVRSTATE_DEFAULT_TXFAULT    "api.platform.lib.config.xcvrState.default.txFault.pin"
 #define FM_AAT_LIB_XCVRSTATE_DEFAULT_TXFAULT    FM_API_ATTR_INT
 
-/** 
+/**
  * (Optional) ModPrsl default pin offset from the PCA IO base pin.
  *                                                                      \lb\lb
  * Applies to all QSFP ports.
@@ -867,7 +862,7 @@ fm_status fmPlatformLibGetVrmVoltage(fm_int     sw,
 #define FM_AAK_LIB_XCVRSTATE_DEFAULT_MODPRSL    "api.platform.lib.config.xcvrState.default.modPrsL.pin"
 #define FM_AAT_LIB_XCVRSTATE_DEFAULT_MODPRSL    FM_API_ATTR_INT
 
-/** 
+/**
  * (Optional) IntL default pin offset from the PCA IO base pin.
  *                                                                      \lb\lb
  * Applies to all QSFP ports.
@@ -877,7 +872,7 @@ fm_status fmPlatformLibGetVrmVoltage(fm_int     sw,
 #define FM_AAK_LIB_XCVRSTATE_DEFAULT_INTL       "api.platform.lib.config.xcvrState.default.intL.pin"
 #define FM_AAT_LIB_XCVRSTATE_DEFAULT_INTL       FM_API_ATTR_INT
 
-/** 
+/**
  * (Optional) LPMode default pin offset from the PCA IO base pin.
  *                                                                      \lb\lb
  * Applies to all QSFP ports.
@@ -887,7 +882,7 @@ fm_status fmPlatformLibGetVrmVoltage(fm_int     sw,
 #define FM_AAK_LIB_XCVRSTATE_DEFAULT_LPMODE     "api.platform.lib.config.xcvrState.default.lpMode.pin"
 #define FM_AAT_LIB_XCVRSTATE_DEFAULT_LPMODE     FM_API_ATTR_INT
 
-/** 
+/**
  * (Optional) resetL default pin offset from the PCA IO base pin.
  *                                                                      \lb\lb
  * Applies to all QSFP ports.
@@ -897,14 +892,14 @@ fm_status fmPlatformLibGetVrmVoltage(fm_int     sw,
 #define FM_AAK_LIB_XCVRSTATE_DEFAULT_RESETL     "api.platform.lib.config.xcvrState.default.resetL.pin"
 #define FM_AAT_LIB_XCVRSTATE_DEFAULT_RESETL     FM_API_ATTR_INT
 
-/** 
- * (Required) Number of hardware resource ID used by the platform shared 
- * library. 
+/**
+ * (Required) Number of hardware resource ID used by the platform shared
+ * library.
  *                                                                      \lb\lb
- * This number is the sum of the ports with the 
- * switch.%d.portIndex.%d.interfaceType property set different than NONE. 
+ * This number is the sum of the ports with the
+ * switch.%d.portIndex.%d.interfaceType property set different than NONE.
  *                                                                      \lb\lb
- * See switch.%d.portIndex.%d.hwResourceId for details. 
+ * See switch.%d.portIndex.%d.hwResourceId for details.
  */
 #define FM_AAK_LIB_HWRESOURCE_ID_COUNT          "api.platform.lib.config.hwResourceId.count"
 #define FM_AAT_LIB_HWRESOURCE_ID_COUNT          FM_API_ATTR_INT
@@ -912,8 +907,8 @@ fm_status fmPlatformLibGetVrmVoltage(fm_int     sw,
 /**
  * (Required) Specifies the interface type for this port.
  *                                                                      \lb\lb
- * Value is one of the following: NONE, SFPP or QSFP. 
- *  
+ * Value is one of the following: NONE, SFPP or QSFP.
+ *
  */
 #define FM_AAK_LIB_HWRES_INTERFACE_TYPE             "api.platform.lib.config.hwResourceId.%d.interfaceType"
 #define FM_AAT_LIB_HWRES_INTERFACE_TYPE             FM_API_ATTR_TEXT
@@ -925,10 +920,10 @@ fm_status fmPlatformLibGetVrmVoltage(fm_int     sw,
 #define FM_AAT_LIB_HWRES_XCVRSTATE_PCAIO_INDEX      FM_API_ATTR_INT
 
 /**
- * (Required) Specifies the PCA expander IO base pin number corresponding to 
- * the first pin of the IO byte the port is attached to. 
+ * (Required) Specifies the PCA expander IO base pin number corresponding to
+ * the first pin of the IO byte the port is attached to.
  *                                                                      \lb\lb
- * For example, the PCA9505 has 5 IO bytes. Each IO byte has 8 pins for 
+ * For example, the PCA9505 has 5 IO bytes. Each IO byte has 8 pins for
  * a total of 5 X 8 = 40 pins. Pin range for each IO byte is:
  * IO0: 0..7
  * IO1: 8..15
@@ -939,83 +934,83 @@ fm_status fmPlatformLibGetVrmVoltage(fm_int     sw,
 #define FM_AAK_LIB_HWRES_XCVRSTATE_PCAIO_BASEPIN    "api.platform.lib.config.hwResourceId.%d.xcvrState.pcaIo.basePin"
 #define FM_AAT_LIB_HWRES_XCVRSTATE_PCAIO_BASEPIN    FM_API_ATTR_INT
 
-/** 
- * (Optional) Mod_ABS pin offset from the PCA IO base pin for the given 
- * SFPP port. 
+/**
+ * (Optional) Mod_ABS pin offset from the PCA IO base pin for the given
+ * SFPP port.
  *                                                                      \lb\lb
  * Default value is specified by the xcvrState.default.modAbs.pin property.
  */
 #define FM_AAK_LIB_HWRES_XCVRSTATE_PCAIO_MODABS     "api.platform.lib.config.hwResourceId.%d.xcvrState.pcaIo.modAbs.pin"
 #define FM_AAT_LIB_HWRES_XCVRSTATE_PCAIO_MODABS     FM_API_ATTR_INT
 
-/** 
- * (Optional) Rx_LOS pin offset from the PCA IO base pin for the given 
- * SFPP port. 
+/**
+ * (Optional) Rx_LOS pin offset from the PCA IO base pin for the given
+ * SFPP port.
  *                                                                      \lb\lb
  * Default value is specified by the xcvrState.default.rxLos.pin property.
  */
 #define FM_AAK_LIB_HWRES_XCVRSTATE_PCAIO_RXLOS      "api.platform.lib.config.hwResourceId.%d.xcvrState.pcaIo.rxLos.pin"
 #define FM_AAT_LIB_HWRES_XCVRSTATE_PCAIO_RXLOS      FM_API_ATTR_INT
 
-/** 
- * (Optional) Tx_Disable pin offset from the PCA IO base pin for the given 
- * SFPP port. 
+/**
+ * (Optional) Tx_Disable pin offset from the PCA IO base pin for the given
+ * SFPP port.
  *                                                                      \lb\lb
  * Default value is specified by the xcvrState.default.txDisable.pin property.
  */
 #define FM_AAK_LIB_HWRES_XCVRSTATE_PCAIO_TXDISABLE  "api.platform.lib.config.hwResourceId.%d.xcvrState.pcaIo.txDisable.pin"
 #define FM_AAT_LIB_HWRES_XCVRSTATE_PCAIO_TXDISABLE  FM_API_ATTR_INT
 
-/** 
- * (Optional) Tx_Fault pin offset from the PCA IO base pin for the given 
- * SFPP port. 
+/**
+ * (Optional) Tx_Fault pin offset from the PCA IO base pin for the given
+ * SFPP port.
  *                                                                      \lb\lb
  * Default value is specified by the xcvrState.default.txFault.pin property.
  */
 #define FM_AAK_LIB_HWRES_XCVRSTATE_PCAIO_TXFAULT    "api.platform.lib.config.hwResourceId.%d.xcvrState.pcaIo.txFault.pin"
 #define FM_AAT_LIB_HWRES_XCVRSTATE_PCAIO_TXFAULT    FM_API_ATTR_INT
 
-/** 
- * (Optional) ModPrsl pin offset from the PCA IO base pin for the given 
- * QSFP port. 
+/**
+ * (Optional) ModPrsl pin offset from the PCA IO base pin for the given
+ * QSFP port.
  *                                                                      \lb\lb
  * Default value is specified by the xcvrState.default.modPrsl.pin property.
  */
 #define FM_AAK_LIB_HWRES_XCVRSTATE_PCAIO_MODPRSL    "api.platform.lib.config.hwResourceId.%d.xcvrState.pcaIo.modPrsl.pin"
 #define FM_AAT_LIB_HWRES_XCVRSTATE_PCAIO_MODPRSL    FM_API_ATTR_INT
 
-/** 
- * (Optional) intL pin offset from the PCA IO base pin for the given 
- * QSFP port. 
+/**
+ * (Optional) intL pin offset from the PCA IO base pin for the given
+ * QSFP port.
  *                                                                      \lb\lb
  * Default value is specified by the xcvrState.default.intL.pin property.
  */
 #define FM_AAK_LIB_HWRES_XCVRSTATE_PCAIO_INTL       "api.platform.lib.config.hwResourceId.%d.xcvrState.pcaIo.intL.pin"
 #define FM_AAT_LIB_HWRES_XCVRSTATE_PCAIO_INTL       FM_API_ATTR_INT
 
-/** 
- * (Optional) LPMode pin offset from the PCA IO base pin for the given 
- * QSFP port. 
+/**
+ * (Optional) LPMode pin offset from the PCA IO base pin for the given
+ * QSFP port.
  *                                                                      \lb\lb
  * Default value is specified by the xcvrState.default.lpMode.pin property.
  */
 #define FM_AAK_LIB_HWRES_XCVRSTATE_PCAIO_LPMODE     "api.platform.lib.config.hwResourceId.%d.xcvrState.pcaIo.lpMode.pin"
 #define FM_AAT_LIB_HWRES_XCVRSTATE_PCAIO_LPMODE     FM_API_ATTR_INT
 
-/** 
- * (Optional) ResetL pin offset from the PCA IO base pin for the given 
- * QSFP port. 
+/**
+ * (Optional) ResetL pin offset from the PCA IO base pin for the given
+ * QSFP port.
  *                                                                      \lb\lb
  * Default value is specified by the xcvrState.default.resetL.pin property.
  */
 #define FM_AAK_LIB_HWRES_XCVRSTATE_PCAIO_RESETL     "api.platform.lib.config.hwResourceId.%d.xcvrState.pcaIo.resetL.pin"
 #define FM_AAT_LIB_HWRES_XCVRSTATE_PCAIO_RESETL     FM_API_ATTR_INT
 
-/** 
- * (Optional) Specifies the default device type used to select the front 
+/**
+ * (Optional) Specifies the default device type used to select the front
  * panel transceiver I2C bus.
  *                                                                      \lb\lb
- * Value is one of the following: PCAMUX, PCAIO. 
+ * Value is one of the following: PCAMUX, PCAIO.
  *                                                                      \lb\lb
  * Currently the platform shared library support PCAMUX type only.
  *                                                                      \lb\lb
@@ -1024,11 +1019,11 @@ fm_status fmPlatformLibGetVrmVoltage(fm_int     sw,
 #define FM_AAK_LIB_XCVRI2C_DEFAULT_BUSSELTYPE       "api.platform.lib.config.xcvrI2C.default.busSelType"
 #define FM_AAT_LIB_XCVRI2C_DEFAULT_BUSSELTYPE       FM_API_ATTR_TEXT
 
-/** 
- * (Optional) Specifies the device type used to select the front panel 
- * transceiver I2C bus. 
+/**
+ * (Optional) Specifies the device type used to select the front panel
+ * transceiver I2C bus.
  *                                                                      \lb\lb
- * Value is one of the following: PCAMUX, PCAIO. 
+ * Value is one of the following: PCAMUX, PCAIO.
  *                                                                      \lb\lb
  * Currently the platform shared library support PCAMUX type only.
  *                                                                      \lb\lb
@@ -1037,36 +1032,36 @@ fm_status fmPlatformLibGetVrmVoltage(fm_int     sw,
 #define FM_AAK_LIB_HWRES_XCVRI2C_BUSSELTYPE         "api.platform.lib.config.hwResourceId.%d.xcvrI2C.busSelType"
 #define FM_AAT_LIB_HWRES_XCVRI2C_BUSSELTYPE         FM_API_ATTR_TEXT
 
-/** 
- * (Required) Specifies the PCA mux index the front panel transceiver 
- * is attached to. 
+/**
+ * (Required) Specifies the PCA mux index the front panel transceiver
+ * is attached to.
  */
 #define FM_AAK_LIB_HWRES_XCVRI2C_PCAMUX_INDEX       "api.platform.lib.config.hwResourceId.%d.xcvrI2C.pcaMux.index"
 #define FM_AAT_LIB_HWRES_XCVRI2C_PCAMUX_INDEX       FM_API_ATTR_INT
 
-/** 
- * (Required) Specifies the value to write in the PCA mux to select the front 
+/**
+ * (Required) Specifies the value to write in the PCA mux to select the front
  *  panel transceiver I2C bus.
  */
 #define FM_AAK_LIB_HWRES_XCVRI2C_PCAMUX_VALUE       "api.platform.lib.config.hwResourceId.%d.xcvrI2C.pcaMux.value"
 #define FM_AAT_LIB_HWRES_XCVRI2C_PCAMUX_VALUE       FM_API_ATTR_INT
 
-/** 
- * (Required) Specifies the PCA IO index the front panel transceiver 
- * is attached to. 
+/**
+ * (Required) Specifies the PCA IO index the front panel transceiver
+ * is attached to.
  */
 #define FM_AAK_LIB_HWRES_XCVRI2C_PCAIO_INDEX       "api.platform.lib.config.hwResourceId.%d.xcvrI2C.pcaIo.index"
 #define FM_AAT_LIB_HWRES_XCVRI2C_PCAIO_INDEX       FM_API_ATTR_INT
 
-/** 
- * (Required) Specifies the PCAIO pin to select the front 
+/**
+ * (Required) Specifies the PCAIO pin to select the front
  *  panel transceiver I2C bus.
  */
 #define FM_AAK_LIB_HWRES_XCVRI2C_PCAIO_PIN        "api.platform.lib.config.hwResourceId.%d.xcvrI2C.pcaIo.pin"
 #define FM_AAT_LIB_HWRES_XCVRI2C_PCAIO_PIN        FM_API_ATTR_INT
 
-/** 
- * (Optional) Specifies the PCAIO pin value to select the front 
+/**
+ * (Optional) Specifies the PCAIO pin value to select the front
  *  panel transceiver I2C bus.
  *
  * Default is 0 to enable.
@@ -1074,7 +1069,7 @@ fm_status fmPlatformLibGetVrmVoltage(fm_int     sw,
 #define FM_AAK_LIB_HWRES_XCVRI2C_PCAIO_PIN_POLARITY  "api.platform.lib.config.hwResourceId.%d.xcvrI2C.pcaIo.pin.polarity"
 #define FM_AAT_LIB_HWRES_XCVRI2C_PCAIO_PIN_POLARITY  FM_API_ATTR_INT
 
-/** 
+/**
  * (Optional) Specifies the device type this port LED is attached to.
  *                                                                      \lb\lb
  * Value is one of the following: NONE, PCA, FPGA.
@@ -1086,13 +1081,13 @@ fm_status fmPlatformLibGetVrmVoltage(fm_int     sw,
 #define FM_AAK_LIB_HWRES_PORTLED_TYPE               "api.platform.lib.config.hwResourceId.%d.portLed.%d.type"
 #define FM_AAT_LIB_HWRES_PORTLED_TYPE               FM_API_ATTR_TEXT
 
-/** 
+/**
  * (Required) Specifies the PCA IO expander index this port LED is attached to.
  */
 #define FM_AAK_LIB_HWRES_PORTLED_PCAIO_INDEX        "api.platform.lib.config.hwResourceId.%d.portLed.%d.pcaIo.index"
 #define FM_AAT_LIB_HWRES_PORTLED_PCAIO_INDEX        FM_API_ATTR_INT
 
-/** 
+/**
  * (Required) Specifies the PCA expander IO pin number controlling this port LED.
  */
 #define FM_AAK_LIB_HWRES_PORTLED_PCAIO_PIN          "api.platform.lib.config.hwResourceId.%d.portLed.%d.pcaIo.pin"
@@ -1101,7 +1096,7 @@ fm_status fmPlatformLibGetVrmVoltage(fm_int     sw,
 #define FM_AAK_LIB_HWRES_PORT_SUBLED_PCAIO_PIN      "api.platform.lib.config.hwResourceId.%d.portLed.%d.%d.pcaIo.pin"
 #define FM_AAT_LIB_HWRES_PORT_SUBLED_PCAIO_PIN      FM_API_ATTR_INT
 
-/** 
+/**
  * (Optional) Specifies the LED usage.
  *                                                                      \lb\lb
  * Value is a comma-separated string (with no spaces), consisting of
@@ -1117,7 +1112,7 @@ fm_status fmPlatformLibGetVrmVoltage(fm_int     sw,
  * 100G     : LED applies to 100G link
  * ALLSPEED : LED applies to all speeds
  *                                                                      \lb\lb
- * The default value is set to LINK,ALLSPEED. 
+ * The default value is set to LINK,ALLSPEED.
  */
 #define FM_AAK_LIB_HWRES_PORTLED_PCAIO_USAGE        "api.platform.lib.config.hwResourceId.%d.portLed.%d.pcaIo.usage"
 #define FM_AAT_LIB_HWRES_PORTLED_PCAIO_USAGE        FM_API_ATTR_TEXT
@@ -1125,15 +1120,15 @@ fm_status fmPlatformLibGetVrmVoltage(fm_int     sw,
 #define FM_AAK_LIB_HWRES_PORT_SUBLED_PCAIO_USAGE    "api.platform.lib.config.hwResourceId.%d.portLed.%d.%d.pcaIo.usage"
 #define FM_AAT_LIB_HWRES_PORT_SUBLED_PCAIO_USAGE    FM_API_ATTR_TEXT
 
-/** 
+/**
  * (Optional) Shared-Lib debug options.
  *                                                                     \lb\lb
  * Value is a comma-separated string (with no spaces), consisting of
  * one or more of the following:
- * NONE, I2C_RW, I2C_MUX, SKIP_SEL_BUS, FORCE_MODPRES. 
+ * NONE, I2C_RW, I2C_MUX, SKIP_SEL_BUS, FORCE_MODPRES.
  *                                                                     \lb\lb
  * The default value is NONE.
- */ 
+ */
 
 #define FM_AAK_LIB_CONFIG_DEBUG        "api.platform.lib.config.debug"
 #define FM_AAT_LIB_CONFIG_DEBUG        FM_API_ATTR_TEXT
@@ -1141,17 +1136,17 @@ fm_status fmPlatformLibGetVrmVoltage(fm_int     sw,
 /**
  * (Optional) Specifies the hardware resource type.
  *                                                                     \lb\lb
- * Value is one of the following: PORT or PHY. 
+ * Value is one of the following: PORT or PHY.
  *                                                                     \lb\lb
  * The default value is PORT.
  */
 #define FM_AAK_LIB_HWRES_TYPE                       "api.platform.lib.config.hwResourceId.%d.type"
 #define FM_AAT_LIB_HWRES_TYPE                       FM_API_ATTR_TEXT
 
-/** 
- * (Optional) Specifies the device type used to select the PHY I2C bus. 
+/**
+ * (Optional) Specifies the device type used to select the PHY I2C bus.
  *                                                                      \lb\lb
- * Value is one of the following: PCAMUX, PCAIO. 
+ * Value is one of the following: PCAMUX, PCAIO.
  *                                                                      \lb\lb
  * Currently the platform shared library support PCAMUX type only.
  *                                                                      \lb\lb
@@ -1160,21 +1155,21 @@ fm_status fmPlatformLibGetVrmVoltage(fm_int     sw,
 #define FM_AAK_LIB_HWRES_PHY_BUSSELTYPE             "api.platform.lib.config.hwResourceId.%d.phy.busSelType"
 #define FM_AAT_LIB_HWRES_PHY_BUSSELTYPE             FM_API_ATTR_TEXT
 
-/** 
- * (Required) Specifies the PCA mux index the PHY device is attached to. 
+/**
+ * (Required) Specifies the PCA mux index the PHY device is attached to.
  */
 #define FM_AAK_LIB_HWRES_PHY_PCAMUX_INDEX           "api.platform.lib.config.hwResourceId.%d.phy.pcaMux.index"
 #define FM_AAT_LIB_HWRES_PHY_PCAMUX_INDEX           FM_API_ATTR_INT
 
-/** 
- * (Required) Specifies the value to write in the PCA mux to select the 
- * PHY device I2C bus. 
+/**
+ * (Required) Specifies the value to write in the PCA mux to select the
+ * PHY device I2C bus.
  */
 #define FM_AAK_LIB_HWRES_PHY_PCAMUX_VALUE           "api.platform.lib.config.hwResourceId.%d.phy.pcaMux.value"
 #define FM_AAT_LIB_HWRES_PHY_PCAMUX_VALUE           FM_API_ATTR_INT
 
-/** 
- * (Optional) Specifies the I2C bus number the PHY device is attached to. 
+/**
+ * (Optional) Specifies the I2C bus number the PHY device is attached to.
  *                                                                      \lb\lb
  * The default is set to bus 0.
  */
@@ -1182,11 +1177,11 @@ fm_status fmPlatformLibGetVrmVoltage(fm_int     sw,
 #define FM_AAT_LIB_HWRES_PHY_BUS                    FM_API_ATTR_INT
 
 
-/** 
- * (Optional) Specifies the device type used to select the 
- * VRM I2C bus. 
+/**
+ * (Optional) Specifies the device type used to select the
+ * VRM I2C bus.
  *                                                                      \lb\lb
- * Value is one of the following: PCAMUX, PCAIO. 
+ * Value is one of the following: PCAMUX, PCAIO.
  *                                                                      \lb\lb
  * Currently the platform shared library support PCAMUX type only.
  *                                                                      \lb\lb
@@ -1195,41 +1190,41 @@ fm_status fmPlatformLibGetVrmVoltage(fm_int     sw,
 #define FM_AAK_LIB_HWRES_VRM_BUSSELTYPE             "api.platform.lib.config.hwResourceId.%d.vrm.busSelType"
 #define FM_AAT_LIB_HWRES_VRM_BUSSELTYPE             FM_API_ATTR_TEXT
 
-/** 
+/**
  * (Required) Specifies the device model.
  *                                                                      \lb\lb
- * Device models: TPS40425, etc... 
+ * Device models: TPS40425, etc...
  */
 #define FM_AAK_LIB_HWRES_VRM_MODEL                  "api.platform.lib.config.hwResourceId.%d.vrm.model"
 #define FM_AAT_LIB_HWRES_VRM_MODEL                  FM_API_ATTR_TEXT
 
-/** 
- * (Required) Specifies the PCA mux index the VRM device is 
- * attached to. 
+/**
+ * (Required) Specifies the PCA mux index the VRM device is
+ * attached to.
  */
 #define FM_AAK_LIB_HWRES_VRM_PCAMUX_INDEX           "api.platform.lib.config.hwResourceId.%d.vrm.pcaMux.index"
 #define FM_AAT_LIB_HWRES_VRM_PCAMUX_INDEX           FM_API_ATTR_INT
 
-/** 
- * (Required) Specifies the value to write in the PCA mux to 
- * select the VRM device I2C bus. 
+/**
+ * (Required) Specifies the value to write in the PCA mux to
+ * select the VRM device I2C bus.
  */
 #define FM_AAK_LIB_HWRES_VRM_PCAMUX_VALUE           "api.platform.lib.config.hwResourceId.%d.vrm.pcaMux.value"
 #define FM_AAT_LIB_HWRES_VRM_PCAMUX_VALUE           FM_API_ATTR_INT
 
-/** 
+/**
  * (Required) Specifies the VRM device I2C address.
  */
 #define FM_AAK_LIB_HWRES_VRM_ADDR                   "api.platform.lib.config.hwResourceId.%d.vrm.addr"
 #define FM_AAT_LIB_HWRES_VRM_ADDR                   FM_API_ATTR_INT
 
-/** 
- * (Optional) Specifies the bus number the VRM device is 
- * attached to. 
+/**
+ * (Optional) Specifies the bus number the VRM device is
+ * attached to.
  *                                                                      \lb\lb
  * If api.platform.lib.config.bus0.i2cDevName is set to switchI2C,
- * the bus number is the switch number the device is attached 
- * to. 
+ * the bus number is the switch number the device is attached
+ * to.
  *                                                                      \lb\lb
  * The default is set to bus 0.
  */
@@ -1247,14 +1242,14 @@ fm_status fmPlatformLibGetVrmVoltage(fm_int     sw,
 
 /************************************************************
  * The following properties are not documented in the
- * Liberty Trail Software Specification as they are intended 
+ * Liberty Trail Software Specification as they are intended
  * for Intel Internal Use only.
  ************************************************************/
 
 /**
- * Enable(1) or disable(0) the switch I2C write-read operation. 
+ * Enable(1) or disable(0) the switch I2C write-read operation.
  *                                                                      \lb\lb
- * if disabled then the write-read operation is performed by doing first 
+ * if disabled then the write-read operation is performed by doing first
  * the write operation and second by doing the read operation.
  */
 #define FM_AAK_LIB_BUS_I2C_WR_RD_ENABLE         "api.platform.lib.config.bus%d.i2cWrRdEn"
@@ -1269,13 +1264,14 @@ static fm_status SwitchI2cWriteRead(fm_uintptr handle,
                                     fm_uint    device,
                                     fm_byte   *data,
                                     fm_uint    wl,
-                                    fm_uint    rl,
-                                    fm_bool    i2cWrRdEn)
+                                    fm_uint    rl)
 {
-    fm_status status;
-    fm_int    i;
-    fm_int    len;
-    fm_int    sw;
+    fm_status  status;
+    fm_int     i;
+    fm_int     len;
+    fm_int     sw;
+    fm_i2cCfg *i2c;
+    fm_uint32  rv;
 
     sw = (fm_int) handle;
 
@@ -1296,16 +1292,29 @@ static fm_status SwitchI2cWriteRead(fm_uintptr handle,
         }
     }
 
-    if (i2cWrRdEn)
+    i2c = &hwCfg.i2c[sw];
+
+    /* Read chip version: FM10000_CHIP_VERSION => register: 0x452 */
+    status = fmReadUINT32(sw, 0x452, &rv);
+    if (status == FM_OK)
     {
-        status = fmI2cWriteRead(sw, device, data, wl, rl);
-    }
-    else
-    {
-        status = fmI2cWriteRead(sw, device, data, wl, 0);
-        if (rl && status == FM_OK)
+        i2c->chipVersion = rv & 0x7F;
+        if ( i2c->chipVersion == CHIP_VERSION_A0 )
         {
-            status = fmI2cWriteRead(sw, device, data, 0, rl);
+            i2c->i2cWrRdEn = FALSE;
+        }
+
+        if (i2c->i2cWrRdEn)
+        {
+            status = fmI2cWriteRead(sw, device, data, wl, rl);
+        }
+        else
+        {
+            status = fmI2cWriteRead(sw, device, data, wl, 0);
+            if (rl && status == FM_OK)
+            {
+                status = fmI2cWriteRead(sw, device, data, 0, rl);
+            }
         }
     }
 
@@ -1329,7 +1338,7 @@ static fm_status SwitchI2cWriteRead(fm_uintptr handle,
     }
     else
     {
-        FM_LOG_PRINT("  i2c error (device %02x)\n", device);
+        FM_LOG_PRINT("i2c error=%d (sw=%d devAddr %02x)\n", status, sw, device);
     }
 
     return status;
@@ -1337,23 +1346,6 @@ static fm_status SwitchI2cWriteRead(fm_uintptr handle,
 }   /* end SwitchI2cWriteRead */
 
 
-static fm_status SwitchI2cWriteRead1(fm_uintptr handle,
-                                     fm_uint    device,
-                                     fm_byte   *data,
-                                     fm_uint    wl,
-                                     fm_uint    rl)
-{
-    return SwitchI2cWriteRead(handle, device, data, wl, rl, TRUE);
-}
-
-static fm_status SwitchI2cWriteRead2(fm_uintptr handle,
-                                     fm_uint    device,
-                                     fm_byte   *data,
-                                     fm_uint    wl,
-                                     fm_uint    rl)
-{
-    return SwitchI2cWriteRead(handle, device, data, wl, rl, FALSE);
-}
 
 
 /*****************************************************************************/
@@ -1513,357 +1505,13 @@ static fm_text GetStrBitMap(fm_int             value,
 
 
 /*****************************************************************************/
-/* GetStringValue
- * \ingroup intPlatform
- *
- * \desc            Get integer equivalent of the string given the string
- *                  mapping.
- *
- * \param[in]       name is the name to find in the string mapping.
- *
- * \param[in]       strMap points to an array of fm_platformStrMap, where the
- *                  mapping of a string representation of a specific value.
- *
- * \param[in]       size is the size of the strMap array.
- *
- * \param[out]      value points to caller-allocated storage where this
- *                  function should place the obtained value
- *
- * \return          FM_OK if successful.
- * \return          Other ''Status Codes'' as appropriate in case of
- *                  failure.
- *
- *****************************************************************************/
-static fm_status GetStringValue(fm_text            name,
-                                fm_platformStrMap *strMap,
-                                fm_int             size,
-                                fm_int *           value)
-{
-    fm_int  cnt;
-    fm_int  lenName;
-    fm_int  lenDesc;
-    fm_text errStr;
-
-    /* Alow numeric value */
-    if (isdigit(name[0]))
-    {
-        if ( (size > 2) && (name[1] == '0') && (name[1] == 'x') )
-        {
-            *value = strtol(name + 2, &errStr, 16);
-        }
-        else
-        {
-            *value = strtol(name, &errStr, 10);
-        }
-
-        /* Input is a number */
-        if (strlen(errStr) == 0)
-        {
-            return FM_OK;
-        }
-    }
-
-    lenName = strlen(name);
-
-    for (cnt = 0 ; cnt < size ; cnt++)
-    {
-        lenDesc = strlen(strMap[cnt].desc);
-        if ( (lenName == lenDesc) &&
-             ( (strncasecmp( name, strMap[cnt].desc, lenDesc) ) == 0))
-        {
-            *value = strMap[cnt].value;
-            return FM_OK;
-        }
-    }
-
-    return FM_ERR_NOT_FOUND;
-
-}   /* end GetStringValue */
-
-
-
-
-/*****************************************************************************/
-/* GetConfigInt
- * \ingroup intPlatform
- *
- * \desc            Get integer configuration.
- *
- * \param[in]       name is the property name to get.
- *
- * \param[in]       defVal is the default value to return if the property
- *                  is not found.
- *
- * \return          configuration value.
- *
- *****************************************************************************/
-static int GetConfigInt(fm_text name, fm_int defVal)
-{
-    fm_int value;
-
-    value = fmGetIntApiProperty(name, -1);
-
-    if (value != -1)
-    {
-        return value;
-    }
-
-    return defVal;
-
-}   /* end GetConfigInt */
-
-
-
-
-/*****************************************************************************/
-/* GetRequiredConfigInt
- * \ingroup intPlatform
- *
- * \desc            Get required integer configuration.
- *
- * \param[in]       name is the property name to get.
- *
- * \param[out]      value points to caller-allocated storage where this
- *                  function should place the obtained value
- *
- * \param[in]       min is the mininum value to check the obtained value.
- *
- * \param[in]       max is the maximun value to check the obtained value.
- *
- * \return          FM_OK if successful.
- * \return          Other ''Status Codes'' as appropriate in case of
- *                  failure.
- *
- *****************************************************************************/
-static fm_status GetRequiredConfigInt(fm_text name,
-                                      fm_int *value,
-                                      fm_int  min,
-                                      fm_int  max)
-{
-    fm_int valInt;
-
-    valInt = fmGetIntApiProperty(name, UNDEF_VAL);
-
-    if (valInt == UNDEF_VAL)
-    {
-        FM_LOG_FATAL(FM_LOG_CAT_PLATFORM,
-                     "Required property '%s' is not found\n",
-                     name);
-        FM_LOG_EXIT(FM_LOG_CAT_PLATFORM, FM_ERR_UNSUPPORTED);
-    }
-
-    if (valInt < min || valInt > max)
-    {
-        FM_LOG_FATAL(FM_LOG_CAT_PLATFORM,
-                     "Required property value '%s'=%d is "
-                     "out of range (%d,%d)\n",
-                     name,
-                     valInt,
-                     min,
-                     max);
-        FM_LOG_EXIT(FM_LOG_CAT_PLATFORM, FM_ERR_INVALID_ARGUMENT);
-    }
-
-    *value = valInt;
-
-    FM_LOG_EXIT(FM_LOG_CAT_PLATFORM, FM_OK);
-
-}   /*  end GetRequiredConfigInt */
-
-
-
-
-/*****************************************************************************/
-/* GetOptionalConfigInt
- * \ingroup intPlatform
- *
- * \desc            Get optional integer configuration.
- *
- * \param[in]       name is the property name to get.
- *
- * \param[out]      value points to caller-allocated storage where this
- *                  function should place the obtained value
- * 
- * \param[in]       defVal is the default value to return if the property
- *                  is not found or invalid.
- *
- * \param[in]       min is the mininum value to check the obtained value.
- *
- * \param[in]       max is the maximun value to check the obtained value.
- *
- * \return          FM_OK if successful.
- * \return          Other ''Status Codes'' as appropriate in case of
- *                  failure.
- *
- *****************************************************************************/
-static fm_status GetOptionalConfigInt(fm_text name,
-                                      fm_int *value,
-                                      fm_int  defVal,
-                                      fm_int  min,
-                                      fm_int  max)
-{
-    fm_status status;
-    fm_int    valInt;
-
-    status = FM_OK;
-
-    valInt = fmGetIntApiProperty(name, UNDEF_VAL);
-
-    if (valInt == UNDEF_VAL)
-    {
-        valInt = defVal;
-    }
-    else if (valInt < min || valInt > max)
-    {
-        valInt = defVal;
-        FM_LOG_ERROR(FM_LOG_CAT_PLATFORM,
-                     "Optional property value '%s'=%d is "
-                     "out of range (%d,%d)\n",
-                     name,
-                     valInt,
-                     min,
-                     max);
-        status = FM_ERR_INVALID_ARGUMENT;
-    }
-
-    *value = valInt;
-
-    FM_LOG_EXIT(FM_LOG_CAT_PLATFORM, status);
-
-}   /*  end GetOptionalConfigInt */
-
-
-
-
-/*****************************************************************************/
-/* GetConfigStrBitMap
- * \ingroup intPlatform
- *
- * \desc            Get bit mask configuration given a string mapping.
- *
- * \param[in]       name is the attribute name to get.
- *
- * \param[out]      value points to caller-allocated storage where this
- *                  function should place the obtained value
- *
- * \param[in]       defVal is the default value to return if the attribute
- *                  is not found.
- *
- * \param[in]       strMap points to an array of fm_platformStrMap, where the
- *                  mapping of a string representation of a specific value.
- *
- * \param[in]       size is the size of the strMap array.
- *
- * \return          FM_OK if successful.
- * \return          Other ''Status Codes'' as appropriate in case of
- *                  failure.
- *
- *****************************************************************************/
-static fm_status GetConfigStrBitMap(fm_text            name,
-                                    fm_int *           value,
-                                    fm_int             defVal,
-                                    fm_platformStrMap *strMap,
-                                    fm_int             size)
-{
-    fm_text  valText;
-    fm_int   valBit;
-    fm_int   i;
-    fm_char *token;
-    fm_char *tokptr;
-    fm_uint  strSize;
-    fm_char  tmpText[LIB_MAX_STR_LEN+1];
-    fm_char  tmpStr[LIB_MAX_STR_LEN+1];
-    fm_int   strLen;
-
-    valText = fmGetTextApiProperty(name, "UNDEF");
-
-    if (strcmp(valText, "UNDEF") == 0)
-    {
-        *value = defVal;
-        return FM_OK;
-    }
-
-    *value = 0;
-
-    strLen = strlen(valText);
-
-    if (strLen > LIB_MAX_STR_LEN)
-    {
-        FM_LOG_ERROR(FM_LOG_CAT_PLATFORM,
-                     "Size of buffer (%d) is too small for input string '%s'. "
-                     "Length = %d.\n",
-                     LIB_MAX_STR_LEN,
-                     valText,
-                     strLen);
-
-        strLen = LIB_MAX_STR_LEN - 1;
-    }
-
-    FM_MEMCPY_S(tmpText, sizeof(tmpText), valText, strLen);
-    tmpText[strLen] = '\0';
-
-    /* Comma delimited values */
-    strSize = LIB_MAX_STR_LEN;
-    token   = FM_STRTOK_S(tmpText, &strSize, ", ", &tokptr);
-
-    if (token == NULL)
-    {
-        return FM_OK;
-    }
-
-    if (GetStringValue(token, strMap, size, &valBit) == FM_OK)
-    {
-        *value |= valBit;
-    }
-    else
-    {
-        *value = defVal;
-        FM_LOG_PRINT("Invalid value '%s' for '%s'. Defaulting to %s\n", 
-                     token,
-                     name,
-                     GetStrBitMap(defVal, strMap, size, tmpStr, sizeof(tmpStr)));
-        FM_LOG_EXIT(FM_LOG_CAT_PLATFORM, FM_ERR_INVALID_ARGUMENT);
-    }
-
-    for (i = 0 ; i < size ; i++)
-    {
-        token = FM_STRTOK_S(NULL, &strSize, ", ", &tokptr);
-
-        if (token == NULL)
-        {
-            break;
-        }
-
-        if (GetStringValue(token, strMap, size, &valBit) == FM_OK)
-        {
-            *value |= valBit;
-        }
-        else
-        {
-            *value = defVal;
-            FM_LOG_PRINT("Invalid value '%s' for '%s'. Defaulting to %s\n", 
-                         token,
-                         name,
-                         GetStrBitMap(defVal, strMap, size, tmpStr, sizeof(tmpStr)));
-            FM_LOG_EXIT(FM_LOG_CAT_PLATFORM, FM_ERR_INVALID_ARGUMENT);
-        }
-    }
-
-    FM_LOG_EXIT(FM_LOG_CAT_PLATFORM, FM_OK);
-
-}   /*  end GetConfigStrBitMap */
-
-
-
-
-/*****************************************************************************/
 /* ValidateBusNumber
  * \ingroup intPlatform
  *
  * \desc            Verify if the bus number is valid
  *
  * \param[in]       bus is the bus number to validate
- * 
+ *
  * \return          FM_OK if successful.
  * \return          Other ''Status Codes'' as appropriate in case of
  *                  failure.
@@ -1896,52 +1544,6 @@ static fm_status ValidateBusNumber(fm_int bus)
     return status;
 
 }   /*  end ValidateBusNumber */
-
-
-
-
-/*****************************************************************************/
-/* GetAndValidateBusNumber
- * \ingroup intPlatform
- *
- * \desc            Get the bus number for the given property name and
- *                  make sure it is a valid bus number.
- *
- * \param[in]       name is the property name to get.
- *
- * \param[out]      *busNum points to caller-allocated storage where this
- *                  function should place the obtained bus number
- * 
- * \return          FM_OK if successful.
- * \return          Other ''Status Codes'' as appropriate in case of
- *                  failure.
- *
- *****************************************************************************/
-static fm_status GetAndValidateBusNumber(fm_text name, fm_uint *busNum)
-{
-    fm_status status;
-    fm_int    bus;
-
-    /* Get the bus number property. Default to 0 if not defined */
-    bus = fmGetIntApiProperty(name, 0);
-
-    status = ValidateBusNumber(bus);
-
-    if ( status != FM_OK )
-    {
-        FM_LOG_FATAL(FM_LOG_CAT_PLATFORM,
-                     "Invalid bus number (%d) for '%s'\n", 
-                     bus, 
-                     name);
-    }
-    else
-    {
-        *busNum = (fm_uint) bus;
-    }
-
-    return status;
-
-}   /*  end GetAndValidateBusNumber */
 
 
 
@@ -1986,9 +1588,9 @@ static fm_bool IsPcaIoLedDriver(fm_pcaIoModel model)
  * \param[in]       usage is the LED usage options
  *
  * \return          true if the speed is supported by the given LED
- * 
+ *
  *****************************************************************************/
-static fm_bool IsPortSpeedSupportedByLed(fm_platPortLedSpeed speed, 
+static fm_bool IsPortSpeedSupportedByLed(fm_platPortLedSpeed speed,
                                          fm_uint             usage)
 {
     fm_bool supported;
@@ -2051,7 +1653,7 @@ static fm_bool IsPortSpeedSupportedByLed(fm_platPortLedSpeed speed,
  * \param[in]       usage is the LED usage options
  *
  * \return          One of the LED_STATE_XXX led state
- * 
+ *
  *****************************************************************************/
 static fm_int GetLedState(fm_uint32 reqLedState, fm_uint usage)
 {
@@ -2083,7 +1685,7 @@ static fm_int GetLedState(fm_uint32 reqLedState, fm_uint usage)
         if ( IsPortSpeedSupportedByLed(speed, usage) )
         {
             /* Yes, is that LED used to report TRAFFIC state */
-            if ( ( (usage & LED_USAGE_TRAFFIC) || 
+            if ( ( (usage & LED_USAGE_TRAFFIC) ||
                    (usage & LED_USAGE_LINK_TRAFFIC) ) )
             {
                 /* Yes, BLINK that LED */
@@ -2112,10 +1714,10 @@ static fm_int GetLedState(fm_uint32 reqLedState, fm_uint usage)
     if (hwCfg.debug & DBG_PORT_LED)
     {
         FM_LOG_PRINT("GetLedState: reqLedState 0x%x usage 0x%x "
-                     "state %d speed %d return -> ledState %d\n", 
+                     "state %d speed %d return -> ledState %d\n",
                      reqLedState,
                      usage,
-                     state, 
+                     state,
                      speed,
                      ledState);
     }
@@ -2128,243 +1730,97 @@ static fm_int GetLedState(fm_uint32 reqLedState, fm_uint usage)
 
 
 /*****************************************************************************/
-/* GetLedPinNum
+/* CopyTlvStr
  * \ingroup intPlatform
  *
- * \desc            Get the pin property for the given (hwId,led,subLed)
- *                  tupple.
+ * \desc            Copy TLV bytes into string buffer.
  *
- * \param[in]       hwId is the HW resource index on which to operate.
+ * \param[in]       dest is the pointer to the string buffer.
  *
- * \param[in]       led is the led number on which to operate.
+ * \param[in]       destSize is the size of the dest buffer.
  *
- * \param[in]       subLed is the sub led number on which to operate.
+ * \param[in]       src is the pointer to the TLV buffer.
  *
- * \param[in/out]   dualIdx indicate if the dual-index format is used or not.
-
- * \param[out]      pin points to caller-allocated storage where this
- *                  function should place the pin number value.
- *                  Will be set to UNDEF_VAL if the pin property is not
- *                  defined.
+ * \param[in]       srcSize is the size of the TLV buffer.
  *
- * \param[in]       min is the mininum value to check the obtained value.
- *
- * \param[in]       max is the maximun value to check the obtained value.
- * 
- * \return          FM_OK if successful.
- * \return          Other ''Status Codes'' as appropriate in case of
- *                  failure.
+ * \return          Integer equivalent of the TLV bytes.
  *
  *****************************************************************************/
-static fm_status GetLedPinNum(fm_uint  hwId, 
-                              fm_uint  led, 
-                              fm_uint  subLed,
-                              fm_bool *dualIdx,
-                              fm_int  *pin,
-                              fm_int   min,
-                              fm_int   max)
+void CopyTlvStr(fm_text dest, fm_int destSize, fm_byte *src, fm_int srcSize)
 {
-    fm_char buf[LIB_MAX_STR_LEN];
+    fm_int len;
 
-#define SPRINTF_LED(name) \
-    FM_SNPRINTF_S(buf, LIB_MAX_STR_LEN, name, hwId, led);
-
-#define SPRINTF_DUAL_LED(name) \
-    FM_SNPRINTF_S(buf, LIB_MAX_STR_LEN, name, hwId, led, subLed);
-
-    if (subLed == 0)
+    /* Reserve one for null terminated character */
+    len = destSize - 1;
+    if (len > srcSize)
     {
-        /**************************************************
-        * Determine if the single-index format
-        *    config.hwResourceId.%d.portLed.%d.pcaIo.pin
-        * or dual-index format
-        *   config.hwResourceId.%d.portLed.%d.%d.pcaIo.pin
-        * is used. 
-        *  
-        * pin property is required for subLed 0  
-        **************************************************/
-        *dualIdx = FALSE;
-
-        /* Get LED pin number using single-index format */
-        SPRINTF_LED(FM_AAK_LIB_HWRES_PORTLED_PCAIO_PIN);
-        *pin = fmGetIntApiProperty(buf, UNDEF_VAL);
-
-        if (*pin == UNDEF_VAL)
-        {
-            /* Now try with dual-index format */
-            SPRINTF_DUAL_LED(FM_AAK_LIB_HWRES_PORT_SUBLED_PCAIO_PIN);
-            *pin = fmGetIntApiProperty(buf, UNDEF_VAL);
-
-            if (*pin == UNDEF_VAL)
-            {
-                FM_LOG_FATAL(FM_LOG_CAT_PLATFORM,
-                             "Required property '%s' is not found\n",
-                             buf);
-                return FM_ERR_NOT_FOUND;
-            }
-
-            *dualIdx = TRUE;
-        }
-    }
-    else
-    {
-        /**************************************************
-        * pin property may not exist for subLed > 0  
-        **************************************************/
-        if (*dualIdx)
-        {
-            SPRINTF_DUAL_LED(FM_AAK_LIB_HWRES_PORT_SUBLED_PCAIO_PIN);
-            *pin = fmGetIntApiProperty(buf, UNDEF_VAL);
-        }
-        else
-        {
-            *pin = UNDEF_VAL;
-        }
+        len = srcSize;
     }
 
-    if (*pin != UNDEF_VAL)
-    {
-        if (*pin < min || *pin > max)
-        {
-            FM_LOG_FATAL(FM_LOG_CAT_PLATFORM,
-                         "Property value '%s'=%d is "
-                         "out of range (%d,%d)\n",
-                         buf,
-                         *pin,
-                         min,
-                         max);
-            return FM_ERR_INVALID_ARGUMENT;
-        }
-    }
+    FM_MEMCPY_S(dest, destSize, src, len);
+    dest[len] = '\0';
 
-    return (FM_OK);
-}
+} /* CopyTlvStr */
 
 
 
 
 /*****************************************************************************/
-/* LoadPortLedConfig
+/* GetTlvInt
  * \ingroup intPlatform
  *
- * \desc            Load the port LED configuration for the given hardware
- *                  resource ID.
+ * \desc            Get up to 32-bit integer from TLV bytes.
+ *                  Note: All encoding less than 32-bit will be assumed
+ *                  as unsigned integer.
  *
- * \param[in]       hwId is the HW resource index on which to operate.
+ * \param[in]       tlv is an array of bytes.
  *
- * \return          FM_OK if successful.
- * \return          Other ''Status Codes'' as appropriate in case of
- *                  failure.
+ * \param[in]       tlvLen is the size of the TLV value.
+ *
+ * \return          Integer equivalent of the TLV bytes.
  *
  *****************************************************************************/
-static fm_status LoadPortLedConfig(fm_uint hwId)
+static fm_int GetTlvInt(fm_byte *tlv, fm_int tlvLen)
 {
-    fm_hwResId *hwResId;
-    fm_portLed *portLed;
-    fm_status   status;
-    fm_text     inputText;
-    fm_char     buf[LIB_MAX_STR_LEN];
-    fm_char     tmpStr[LIB_MAX_STR_LEN];
-    fm_int      pin;
-    fm_int      maxPin;
-    fm_uint     led;
-    fm_uint     subLed;
-    fm_bool     dualIdx;
+    fm_int j;
+    fm_int value;
 
-#define SPRINTF_LED(name) \
-    FM_SNPRINTF_S(buf, LIB_MAX_STR_LEN, name, hwId, led);
-
-#define SPRINTF_DUAL_LED(name) \
-    FM_SNPRINTF_S(buf, LIB_MAX_STR_LEN, name, hwId, led, subLed);
-
-    hwResId = &hwCfg.hwResId[hwId];
-
-    for (led = 0 ; led < NUM_LED_PER_PORT ; led++)
+    if (tlvLen > 4)
     {
-        portLed = &hwResId->portLed[led];
+        tlvLen = 4;
+    }
 
-        /* Get LED type */
-        SPRINTF_LED(FM_AAK_LIB_HWRES_PORTLED_TYPE);
-        inputText = fmGetTextApiProperty(buf, LedTypeToStr(LED_TYPE_NONE));
-        status = LedTypeStrToValue(inputText, &portLed->type);
-        if (status)
-        {
-            FM_LOG_ERROR(FM_LOG_CAT_PLATFORM,
-                         "Invalid value (%s) for '%s'\n", 
-                         inputText, 
-                         buf);
-            return status;
-        }
+    value = tlv[0];
+    for (j = 1; j < tlvLen; j++)
+    {
+        value <<= 8;
+        value  |= (tlv[j] & 0xFF);
+    }
 
-        if (portLed->type == LED_TYPE_PCA)
-        {
-            /* Get LED associated PCA IO index */
-            SPRINTF_LED(FM_AAK_LIB_HWRES_PORTLED_PCAIO_INDEX);
-            status = GetRequiredConfigInt(buf,
-                                          (fm_int *)&portLed->ioIdx,
-                                          0,
-                                          hwCfg.numPcaIo - 1);
-            FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
+    return value;
 
-            /* Highest pin number */
-            maxPin = hwCfg.pcaIo[portLed->ioIdx].dev.devCap.numBits - 1;
-            dualIdx = FALSE;
+}   /* end GetTlvInt */
 
-            for (subLed = 0 ; subLed < NUM_SUB_LED ; subLed++)
-            {
-                pin = UNDEF_VAL;
-                status = GetLedPinNum(hwId, 
-                                      led, 
-                                      subLed, 
-                                      &dualIdx,
-                                      &pin,
-                                      0,
-                                      maxPin);
-                FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
 
-                if (pin != UNDEF_VAL)
-                {
-                    portLed->subLed[subLed].pin = pin;
 
-                    /* Get pin usage */
-                    if (dualIdx)
-                    {
-                        SPRINTF_DUAL_LED(FM_AAK_LIB_HWRES_PORT_SUBLED_PCAIO_USAGE);
-                    }
-                    else
-                    {
-                        SPRINTF_LED(FM_AAK_LIB_HWRES_PORTLED_PCAIO_USAGE);
-                    }
 
-                    GetConfigStrBitMap(buf,
-                                       (fm_int *)&portLed->subLed[subLed].usage,
-                                       LED_USAGE_DEFAULT,
-                                       ledUsageMap,
-                                       FM_NENTRIES(ledUsageMap));
-                }
-                else
-                {
-                    portLed->subLed[subLed].pin   = UINT_NOT_USED;
-                    portLed->subLed[subLed].usage = UINT_NOT_USED;
-                }
+/*****************************************************************************/
+/* GetTlvBool
+ * \ingroup intPlatform
+ *
+ * \desc            Get boolean from TLV byte.
+ *
+ * \param[in]       tlv is the pointer to a byte.
+ *
+ * \return          Integer equivalent of the TLV bytes.
+ *
+ *****************************************************************************/
+static fm_bool GetTlvBool(fm_byte *tlv)
+{
 
-            }   /* end for (subLed = 0 ; subLed < NUM_SUB_LED ; subLed++) */
+    return  ((*tlv) ? TRUE : FALSE);
 
-        }
-        else
-        {
-            portLed->ioIdx = UINT_NOT_USED;
-            for (subLed = 0 ; subLed < NUM_SUB_LED ; subLed++)
-            {
-                portLed->subLed[subLed].pin   = UINT_NOT_USED;
-                portLed->subLed[subLed].usage = UINT_NOT_USED;
-            }
-        }
-
-    }   /* end for (led = 0 ; led < NUM_LED_PER_PORT ; led++) */
-
-    return (status);
-}
+}   /* end GetTlvBool */
 
 
 
@@ -2382,716 +1838,561 @@ static fm_status LoadPortLedConfig(fm_uint hwId)
  *****************************************************************************/
 static fm_status LoadConfig(void)
 {
-    fm_pcaIo * pcaIo;
-    fm_pcaMux *pcaMux;
-    fm_busSel *xcvrI2cBus;
-    fm_xcvrIo *xcvrIo;
-    fm_status  status;
-    fm_uint    cnt;
-    fm_text    inputText;
-    fm_char    buf[LIB_MAX_STR_LEN];
-    fm_char    tmpStr[LIB_MAX_STR_LEN];
-    fm_int     valInt;
-    fm_phyI2C *phyI2C;
-    fm_vrmI2C *vrmI2c;
+    fm_status   status;
+    fm_int      swIdx;
+	fm_portLed *portLed;
+	fm_phyI2C  *phyI2c;
+	fm_vrmI2C  *vrmI2c;
+	fm_busSel  *xcvrI2cBus;
+	fm_xcvrIo  *xcvrIo;
+	fm_uint     tlvType;
+	fm_uint     tlvLen;
+	fm_uint     bus;
+	fm_uint     idx;
+	fm_uint     led;
+	fm_uint     subLed;
+    fm_byte    *tlvCfg;
+    fm_uint     tlvCfgLen;
+    fm_byte    *tlv;
+    fm_uint     processedLen;
 
-#define SPRINTF_CNT(name) \
-    FM_SNPRINTF_S(buf, LIB_MAX_STR_LEN, name, cnt);
-
-    /**************************************************
-     * Get the Debug options
-     **************************************************/
-    status = GetConfigStrBitMap(FM_AAK_LIB_CONFIG_DEBUG,
-                                &valInt,
-                                0,
-                                debugMap,
-                                FM_NENTRIES(debugMap));
-    FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
-
-    hwCfg.debug = valInt;
-
-    /**************************************************
-     * Determine if the switch is used as I2C master 
-     * or if the CPU i2c/SMBus is used instead. 
-     **************************************************/
-
-    hwCfg.selectedBus = 0;
-
-    for ( cnt = 0 ; cnt < NUM_I2C_BUS ; cnt++ )
-    {
-        SPRINTF_CNT(FM_AAK_LIB_BUS_I2C_DEV_NAME);
-
-        if (cnt == 0)
-        {
-            /* Default bus0 to switchI2C master if not defined. */
-            hwCfg.i2c[cnt].devName = fmGetTextApiProperty(buf, "switchI2C");
-        }
-        else
-        {
-            hwCfg.i2c[cnt].devName = fmGetTextApiProperty(buf, "");
-        }
-
-        /**************************************************
-         * Determine if the switch I2C write-read 
-         * operation is enabled or not.
-         **************************************************/
-
-        SPRINTF_CNT(FM_AAK_LIB_BUS_I2C_WR_RD_ENABLE);
-        hwCfg.i2c[cnt].i2cWrRdEn = fmGetIntApiProperty(buf, 0);
-    }
-
-    /**************************************************
-     * Get the filelock name
-     **************************************************/
-
-    hwCfg.fileLockName = 
-        fmGetTextApiProperty(FM_AAK_API_PLATFORM_FILE_LOCK_NAME, "");
-
-    hwCfg.fileLock = -1;
-    if (strlen(hwCfg.fileLockName) > 0)
-    {
-        hwCfg.fileLock = 
-            open(hwCfg.fileLockName, O_RDWR|O_CREAT, S_IRWXU|S_IRWXG|S_IRWXO);
-
-        if (hwCfg.fileLock < 0)
-        {
-            FM_LOG_ERROR(FM_LOG_CAT_PLATFORM,
-                         "Unable to open filelock name: [%s].\n",
-                         hwCfg.fileLockName);
-        }
-    }
-
-    /**************************************************
-     * Get the PCA mux configuration
-     **************************************************/
-
-    /* Get the number of PCA mux in the system */
-    hwCfg.numPcaMux = fmGetIntApiProperty(FM_AAK_LIB_PCAMUX_COUNT, 0);
-    if (hwCfg.numPcaMux > NUM_PCA_MUX)
-    {
-        FM_LOG_FATAL(FM_LOG_CAT_PLATFORM,
-                     "Number of PCA MUX devices (%d) is more than "
-                     "max supported (%d).\n",
-                     hwCfg.numPcaMux,
-                     NUM_PCA_MUX);
-        return FM_ERR_INVALID_ARGUMENT;
-    }
-
-    for (cnt = 0 ; cnt < hwCfg.numPcaMux; cnt++)
-    {
-        pcaMux = &hwCfg.pcaMux[cnt];
-
-        /* Get the mux model */
-        SPRINTF_CNT(FM_AAK_LIB_PCAMUX_MODEL);
-        inputText = fmGetTextApiProperty(buf, "PCA_MUX_UNKNOWN");
-
-        status = PcaMuxModelStrToValue(inputText, &pcaMux->model);
-        if (status || pcaMux->model == PCA_MUX_UNKNOWN)
-        {
-            FM_LOG_FATAL(FM_LOG_CAT_PLATFORM,
-                         "Invalid PCA model string (%s) for '%s'\n", 
-                         inputText, 
-                         buf);
-            return FM_ERR_INVALID_ARGUMENT;
-        }
-
-        /* Get the bus number the mux is attached to. */
-        SPRINTF_CNT(FM_AAK_LIB_PCAMUX_BUS);
-        status = GetAndValidateBusNumber(buf, &pcaMux->bus);
-        FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
-
-        /* Get the mux address */
-        SPRINTF_CNT(FM_AAK_LIB_PCAMUX_ADDR);
-        status = GetRequiredConfigInt(buf, (fm_int *)&pcaMux->addr, 0, 0x7f);
-        FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
-
-        /* Get parent mux index and value. */
-        SPRINTF_CNT(FM_AAK_LIB_PCAMUX_PARENT_INDEX);
-        pcaMux->parentMuxIdx = fmGetIntApiProperty(buf,UINT_NOT_USED);
-        if (pcaMux->parentMuxIdx != UINT_NOT_USED &&
-            pcaMux->parentMuxIdx >= hwCfg.numPcaMux)
-        {
-            FM_LOG_FATAL(FM_LOG_CAT_PLATFORM,
-                         "Invalid parent mux index (%d) for '%s'\n", 
-                         pcaMux->parentMuxIdx, 
-                         buf);
-            return FM_ERR_INVALID_ARGUMENT;
-        }
-
-        SPRINTF_CNT(FM_AAK_LIB_PCAMUX_PARENT_VALUE);
-        pcaMux->parentMuxValue = fmGetIntApiProperty(buf, 0);
-    }
-
-    /**************************************************
-     * Get PCA IO configuration
-     **************************************************/
-
-    /* Get the number of PCA IO in the system */
-    hwCfg.numPcaIo = fmGetIntApiProperty(FM_AAK_LIB_PCAIO_COUNT, 0);
-    if (hwCfg.numPcaIo > NUM_PCA_IO)
-    {
-        FM_LOG_FATAL(FM_LOG_CAT_PLATFORM,
-                     "Number of PCA IO devices (%d) is more than "
-                     "max supported (%d).\n",
-                     hwCfg.numPcaIo,
-                     NUM_PCA_IO);
-        return FM_ERR_INVALID_ARGUMENT;
-    }
-
-    for (cnt = 0 ; cnt < hwCfg.numPcaIo; cnt++)
-    {
-        pcaIo = &hwCfg.pcaIo[cnt];
-
-        /* Get the PCA IO model */
-        SPRINTF_CNT(FM_AAK_LIB_PCAIO_MODEL);
-        inputText = fmGetTextApiProperty(buf, "PCA_IO_UNKNOWN");
-
-        status = PcaIoModelStrToValue(inputText, &pcaIo->dev.model);
-        if (status || pcaIo->dev.model == PCA_IO_UNKNOWN )
-        {
-            FM_LOG_FATAL(FM_LOG_CAT_PLATFORM,
-                         "Invalid PCA model string (%s) for '%s'\n", 
-                         inputText, 
-                         buf);
-            return FM_ERR_INVALID_ARGUMENT;
-        }
-
-        /* Get the bus number the PCA IO is attached to. */
-        SPRINTF_CNT(FM_AAK_LIB_PCAIO_BUS);
-        status = GetAndValidateBusNumber(buf, &pcaIo->dev.bus);
-        FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
-
-        /* Get the PCA IO address */
-        SPRINTF_CNT(FM_AAK_LIB_PCAIO_ADDR);
-        status = GetRequiredConfigInt(buf, (fm_int *)&pcaIo->dev.addr, 0, 0x7f);
-        FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
-
-        /* Get parent mux index and value. */
-        SPRINTF_CNT(FM_AAK_LIB_PCAIO_PARENT_INDEX);
-        pcaIo->parentMuxIdx = fmGetIntApiProperty(buf, UINT_NOT_USED);
-
-        if (pcaIo->parentMuxIdx != UINT_NOT_USED &&
-            pcaIo->parentMuxIdx >= hwCfg.numPcaMux)
-        {
-            FM_LOG_FATAL(FM_LOG_CAT_PLATFORM,
-                         "Invalid parent mux index (%d) for '%s'\n", 
-                         pcaIo->parentMuxIdx, 
-                         buf);
-            return FM_ERR_INVALID_ARGUMENT;
-        }
-
-        SPRINTF_CNT(FM_AAK_LIB_PCAIO_PARENT_VALUE);
-        pcaIo->parentMuxValue = fmGetIntApiProperty(buf, 0);
-
-        /* Update the device capabilities */
-        status = fmUtilPcaIoGetCap(pcaIo->dev.model, &pcaIo->dev.devCap);
-        if (status)
-        {
-            FM_LOG_FATAL(FM_LOG_CAT_PLATFORM,
-                         "%s: Unable to get device capabilities.\n",
-                         PcaIoModelToStr(pcaIo->dev.model));
-            return status;
-        }
-
-        if (pcaIo->dev.model == PCA_IO_9634 || pcaIo->dev.model == PCA_IO_9635)
-        {
-            /* Get the LED blinking period (default: 5) */
-            SPRINTF_CNT(FM_AAK_LIB_PCAIO_LED_BLINK_PERIOD);
-
-            /* Default blink period to 1/4 sec => (GFRQ + 1)/24 sec */
-            status = GetOptionalConfigInt(buf,
-                                          (fm_int *)&pcaIo->dev.ledBlinkPeriod,
-                                          5,
-                                          0,
-                                          255);
-            FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
-
-            /* Get the global LED brightness (default ffh: max brightness) */
-            SPRINTF_CNT(FM_AAK_LIB_PCAIO_LED_BRIGHTNESS);
-            status = GetOptionalConfigInt(buf,
-                                          (fm_int *)&pcaIo->dev.ledBrightness,
-                                          255,
-                                          0,
-                                          255);
-            FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
-        }
-        else if (pcaIo->dev.model == PCA_IO_9551)
-        {
-            /* Get the LED blinking period (default: 9) */
-            SPRINTF_CNT(FM_AAK_LIB_PCAIO_LED_BLINK_PERIOD);
-
-            /* Default blink period to 1/4 sec => (PSC + 1)/38 sec */
-            status = GetOptionalConfigInt(buf,
-                                          (fm_int *)&pcaIo->dev.ledBlinkPeriod,
-                                          9,
-                                          0,
-                                          255);
-            FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
-        }
-
-    }   /* end for (cnt = 0 ; cnt < hwCfg.numPcaIo; cnt++) */
-
-    /**************************************************
-     * Get the default Transceiver pin pattern
-     **************************************************/
-
-    status = GetOptionalConfigInt(FM_AAK_LIB_XCVRSTATE_DEFAULT_MODABS,
-                                  (fm_int *)&hwCfg.defSfppPat.modPresN,
-                                  UINT_NOT_USED,
-                                  0,
-                                  NUM_PINS_PER_IO_PORT-1);
-    FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
-
-    status = GetOptionalConfigInt(FM_AAK_LIB_XCVRSTATE_DEFAULT_RXLOS,
-                                  (fm_int *)&hwCfg.defSfppPat.rxLos,
-                                  UINT_NOT_USED,
-                                  0,
-                                  NUM_PINS_PER_IO_PORT-1);
-    FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
-
-    status = GetOptionalConfigInt(FM_AAK_LIB_XCVRSTATE_DEFAULT_TXFAULT,
-                                  (fm_int *)&hwCfg.defSfppPat.txFault,
-                                  UINT_NOT_USED,
-                                  0,
-                                  NUM_PINS_PER_IO_PORT-1);
-    FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
-
-    status = GetOptionalConfigInt(FM_AAK_LIB_XCVRSTATE_DEFAULT_TXDISABLE,
-                                  (fm_int *)&hwCfg.defSfppPat.txDisable,
-                                  UINT_NOT_USED,
-                                  0,
-                                  NUM_PINS_PER_IO_PORT-1);
-    FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
-
-    status = GetOptionalConfigInt(FM_AAK_LIB_XCVRSTATE_DEFAULT_MODPRSL,
-                                  (fm_int *)&hwCfg.defQsfpPat.modPresN,
-                                  UINT_NOT_USED,
-                                  0,
-                                  NUM_PINS_PER_IO_PORT-1);
-    FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
-
-    status = GetOptionalConfigInt(FM_AAK_LIB_XCVRSTATE_DEFAULT_INTL,
-                                  (fm_int *)&hwCfg.defQsfpPat.intrN,
-                                  UINT_NOT_USED,
-                                  0,
-                                  NUM_PINS_PER_IO_PORT-1);
-    FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
-
-    status = GetOptionalConfigInt(FM_AAK_LIB_XCVRSTATE_DEFAULT_LPMODE,
-                                  (fm_int *)&hwCfg.defQsfpPat.lpMode,
-                                  UINT_NOT_USED,
-                                  0,
-                                  NUM_PINS_PER_IO_PORT-1);
-    FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
-
-    status = GetOptionalConfigInt(FM_AAK_LIB_XCVRSTATE_DEFAULT_RESETL,
-                                  (fm_int *)&hwCfg.defQsfpPat.resetN,
-                                  UINT_NOT_USED,
-                                  0,
-                                  NUM_PINS_PER_IO_PORT-1);
-    FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
-
-    /**************************************************
-     * Get default bus selection type
-     **************************************************/
-
-    inputText = fmGetTextApiProperty(FM_AAK_LIB_XCVRI2C_DEFAULT_BUSSELTYPE, 
-                                     BusSelTypeToStr(BUS_SEL_TYPE_PCA_MUX));
-
-    status = BusSelTypeStrToValue(inputText, &hwCfg.defBusSelType);
+    swIdx = 0;
+    status = fmPlatformRequestLibTlvCfg(swIdx, &tlvCfg, &tlvCfgLen);
     if (status)
     {
-        FM_LOG_FATAL(FM_LOG_CAT_PLATFORM,
-                     "Invalid value (%s) for '%s'\n", 
-                     inputText, 
-                     FM_AAK_LIB_XCVRI2C_DEFAULT_BUSSELTYPE);
         return status;
     }
 
-    /**************************************************
-     * Get the number of ResourceId supported 
-     * by the library.
-     **************************************************/
-
-    status = GetOptionalConfigInt(FM_AAK_LIB_HWRESOURCE_ID_COUNT,
-                                  (fm_int *)&hwCfg.numResId,
-                                  0,
-                                  0,
-                                  FM_NUM_HW_RES_ID);
-    FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
-
-    /**************************************************
-     * Get the HwResourceID configuration
-     **************************************************/
-
-    for (cnt = 0 ; cnt < hwCfg.numResId; cnt++)
+    processedLen = 0;
+    while (processedLen < tlvCfgLen)
     {
-        SPRINTF_CNT(FM_AAK_LIB_HWRES_TYPE);
-        inputText = fmGetTextApiProperty(buf, 
-                                         HwResourceToStr(HWRESOURCE_TYPE_PORT));
+        tlv = tlvCfg + processedLen;
+        tlvType = (tlv[0] << 8) | tlv[1];
+        tlvLen = tlv[2];
+        processedLen += (tlvLen + 3);
 
-        status = HwResourceStrToValue(inputText, &hwCfg.hwResId[cnt].type);
-        if (status)
-        {
-            FM_LOG_FATAL(FM_LOG_CAT_PLATFORM,
-                         "Invalid value (%s) for '%s'\n", 
-                         inputText, 
-                         buf);
-            return status;
+        switch (tlvType) {
+        case FM_TLV_PLAT_FILE_LOCK_NAME: /* Shared with platform config */
+            CopyTlvStr(hwCfg.fileLockName,
+                    sizeof(hwCfg.fileLockName),
+                    tlv + 3, tlvLen);
+            break;
+        case FM_TLV_PLAT_LIB_I2C_DEVNAME:
+            bus = GetTlvInt(tlv + 3, 1);
+            if (bus >= NUM_I2C_BUS)
+            {
+                return FM_ERR_INVALID_ARGUMENT;
+            }
+            CopyTlvStr(hwCfg.i2c[bus].devName,
+                    sizeof(hwCfg.i2c[bus].devName),
+                    tlv + 4, tlvLen - 1);
+            break;
+        case FM_TLV_PLAT_LIB_MUX_COUNT:
+            hwCfg.numPcaMux = GetTlvInt(tlv + 3, 1);
+            break;
+        case FM_TLV_PLAT_LIB_MUX_MODEL:
+            idx = GetTlvInt(tlv + 3, 1);
+            if (idx >= hwCfg.numPcaMux || idx >= NUM_PCA_MUX)
+            {
+                return FM_ERR_INVALID_ARGUMENT;
+            }
+            hwCfg.pcaMux[idx].model = GetTlvInt(tlv + 4, 1);
+            break;
+        case FM_TLV_PLAT_LIB_MUX_BUS:
+            idx = GetTlvInt(tlv + 3, 1);
+            if (idx >= hwCfg.numPcaMux || idx >= NUM_PCA_MUX)
+            {
+                return FM_ERR_INVALID_ARGUMENT;
+            }
+            hwCfg.pcaMux[idx].bus = GetTlvInt(tlv + 4, 1);
+            break;
+        case FM_TLV_PLAT_LIB_MUX_ADDR:
+            idx = GetTlvInt(tlv + 3, 1);
+            if (idx >= hwCfg.numPcaMux || idx >= NUM_PCA_MUX)
+            {
+                return FM_ERR_INVALID_ARGUMENT;
+            }
+            hwCfg.pcaMux[idx].addr = GetTlvInt(tlv + 4, 2);
+            break;
+        case FM_TLV_PLAT_LIB_MUX_PARENT_IDX:
+            idx = GetTlvInt(tlv + 3, 1);
+            if (idx >= hwCfg.numPcaMux || idx >= NUM_PCA_MUX)
+            {
+                return FM_ERR_INVALID_ARGUMENT;
+            }
+            hwCfg.pcaMux[idx].parentMuxIdx =
+                GetTlvInt(tlv + 4, 1);
+            break;
+        case FM_TLV_PLAT_LIB_MUX_PARENT_VAL:
+            idx = GetTlvInt(tlv + 3, 1);
+            if (idx >= hwCfg.numPcaMux || idx >= NUM_PCA_MUX)
+            {
+                return FM_ERR_INVALID_ARGUMENT;
+            }
+            hwCfg.pcaMux[idx].parentMuxValue =
+                GetTlvInt(tlv + 4, 4);
+            break;
+
+        case FM_TLV_PLAT_LIB_IO_COUNT:
+            hwCfg.numPcaIo = GetTlvInt(tlv + 3, 1);
+            break;
+        case FM_TLV_PLAT_LIB_IO_MODEL:
+            idx = GetTlvInt(tlv + 3, 1);
+            if (idx >= hwCfg.numPcaIo || idx >= NUM_PCA_IO)
+            {
+                return FM_ERR_INVALID_ARGUMENT;
+            }
+            hwCfg.pcaIo[idx].dev.model = GetTlvInt(tlv + 4, 1);
+            switch (hwCfg.pcaIo[idx].dev.model)
+            {
+                case PCA_IO_9634:
+                case PCA_IO_9635:
+                    hwCfg.pcaIo[idx].dev.ledBlinkPeriod = 5;
+                    hwCfg.pcaIo[idx].dev.ledBrightness = 255;
+                    break;
+                case PCA_IO_9551:
+                   hwCfg.pcaIo[idx].dev.ledBlinkPeriod  = 9;
+                    break;
+                default:
+                    break;
+            }
+            break;
+        case FM_TLV_PLAT_LIB_IO_BUS:
+            idx = GetTlvInt(tlv + 3, 1);
+            if (idx >= hwCfg.numPcaIo || idx >= NUM_PCA_IO)
+            {
+                return FM_ERR_INVALID_ARGUMENT;
+            }
+            hwCfg.pcaIo[idx].dev.bus = GetTlvInt(tlv + 4, 1);
+            break;
+        case FM_TLV_PLAT_LIB_IO_ADDR:
+            idx = GetTlvInt(tlv + 3, 1);
+            if (idx >= hwCfg.numPcaIo || idx >= NUM_PCA_IO)
+            {
+                return FM_ERR_INVALID_ARGUMENT;
+            }
+            hwCfg.pcaIo[idx].dev.addr = GetTlvInt(tlv + 4, 2);
+            break;
+        case FM_TLV_PLAT_LIB_IO_PARENT_IDX:
+            idx = GetTlvInt(tlv + 3, 1);
+            if (idx >= hwCfg.numPcaIo || idx >= NUM_PCA_IO)
+            {
+                return FM_ERR_INVALID_ARGUMENT;
+            }
+            hwCfg.pcaIo[idx].parentMuxIdx =
+                GetTlvInt(tlv + 4, 1);
+            break;
+        case FM_TLV_PLAT_LIB_IO_PARENT_VAL:
+            idx = GetTlvInt(tlv + 3, 1);
+            if (idx >= hwCfg.numPcaIo || idx >= NUM_PCA_IO)
+            {
+                return FM_ERR_INVALID_ARGUMENT;
+            }
+            hwCfg.pcaIo[idx].parentMuxValue =
+                GetTlvInt(tlv + 4, 4);
+            break;
+
+        case FM_TLV_PLAT_LIB_IO_LED_BLINK_PER:
+            idx = GetTlvInt(tlv + 3, 1);
+            if (idx >= hwCfg.numPcaIo || idx >= NUM_PCA_IO)
+            {
+                return FM_ERR_INVALID_ARGUMENT;
+            }
+            hwCfg.pcaIo[idx].dev.ledBlinkPeriod =
+                GetTlvInt(tlv + 4, 1);
+            break;
+        case FM_TLV_PLAT_LIB_IO_LED_BRIGHTNESS:
+            idx = GetTlvInt(tlv + 3, 1);
+            if (idx >= hwCfg.numPcaIo || idx >= NUM_PCA_IO)
+            {
+                return FM_ERR_INVALID_ARGUMENT;
+            }
+            hwCfg.pcaIo[idx].dev.ledBrightness =
+                GetTlvInt(tlv + 4, 1);
+            break;
+        case FM_TLV_PLAT_LIB_XCVR_DEF_MODABS_PIN:
+            hwCfg.defSfppPat.modPresN =
+                GetTlvInt(tlv + 3, 1);
+            break;
+        case FM_TLV_PLAT_LIB_XCVR_DEF_RXLOS_PIN:
+            hwCfg.defSfppPat.rxLos =
+                GetTlvInt(tlv + 3, 1);
+            break;
+        case FM_TLV_PLAT_LIB_XCVR_DEF_TXDISABLE_PIN:
+            hwCfg.defSfppPat.txDisable =
+                GetTlvInt(tlv + 3, 1);
+            break;
+        case FM_TLV_PLAT_LIB_XCVR_DEF_TXFAULT_PIN:
+            hwCfg.defSfppPat.txFault =
+                GetTlvInt(tlv + 3, 1);
+            break;
+        case FM_TLV_PLAT_LIB_XCVR_DEF_MODPRESL_PIN:
+            hwCfg.defQsfpPat.modPresN =
+                GetTlvInt(tlv + 3, 1);
+            break;
+        case FM_TLV_PLAT_LIB_XCVR_DEF_INTL_PIN:
+            hwCfg.defQsfpPat.intrN =
+                GetTlvInt(tlv + 3, 1);
+            break;
+        case FM_TLV_PLAT_LIB_XCVR_DEF_LPMODE_PIN:
+            hwCfg.defQsfpPat.lpMode =
+                GetTlvInt(tlv + 3, 1);
+            break;
+        case FM_TLV_PLAT_LIB_XCVR_DEF_RESETL_PIN:
+            hwCfg.defQsfpPat.resetN =
+                GetTlvInt(tlv + 3, 1);
+            break;
+        case FM_TLV_PLAT_LIB_HWRESID_COUNT:
+            hwCfg.numResId =
+                GetTlvInt(tlv + 3, 1);
+            break;
+        case FM_TLV_PLAT_LIB_HWRESID_INTF_TYPE:
+            idx = GetTlvInt(tlv + 3, 1);
+            if (idx >= hwCfg.numResId || idx >= FM_NUM_HW_RES_ID)
+            {
+                return FM_ERR_INVALID_ARGUMENT;
+            }
+            xcvrIo = &hwCfg.hwResId[idx].xcvrStateIo;
+            xcvrIo->intfType = GetTlvInt(tlv + 4, 1);
+            break;
+        case FM_TLV_PLAT_LIB_XCVR_IDX:
+            idx = GetTlvInt(tlv + 3, 1);
+            if (idx >= hwCfg.numResId || idx >= FM_NUM_HW_RES_ID)
+            {
+                return FM_ERR_INVALID_ARGUMENT;
+            }
+            xcvrIo = &hwCfg.hwResId[idx].xcvrStateIo;
+            xcvrIo->ioIdx = GetTlvInt(tlv + 4, 1);
+            break;
+        case FM_TLV_PLAT_LIB_XCVR_BASE_PIN:
+            idx = GetTlvInt(tlv + 3, 1);
+            if (idx >= hwCfg.numResId || idx >= FM_NUM_HW_RES_ID)
+            {
+                return FM_ERR_INVALID_ARGUMENT;
+            }
+            xcvrIo = &hwCfg.hwResId[idx].xcvrStateIo;
+            xcvrIo->basePin = GetTlvInt(tlv + 4, 1);
+
+            /* Now calculate pin offsets */
+            if (xcvrIo->intfType == INTF_TYPE_SFPP) {
+                xcvrIo->u.sfppPin.modPresN = xcvrIo->basePin +
+                    hwCfg.defSfppPat.modPresN;
+                xcvrIo->u.sfppPin.rxLos = xcvrIo->basePin +
+                    hwCfg.defSfppPat.rxLos;
+                xcvrIo->u.sfppPin.txFault = xcvrIo->basePin +
+                    hwCfg.defSfppPat.txFault;
+                xcvrIo->u.sfppPin.txDisable = xcvrIo->basePin +
+                    hwCfg.defSfppPat.txDisable;
+            } else if (xcvrIo->intfType == INTF_TYPE_QSFP) {
+                xcvrIo->u.qsfpPin.modPresN = xcvrIo->basePin +
+                    hwCfg.defQsfpPat.modPresN;
+                xcvrIo->u.qsfpPin.intrN = xcvrIo->basePin +
+                    hwCfg.defQsfpPat.intrN;
+                xcvrIo->u.qsfpPin.lpMode = xcvrIo->basePin +
+                    hwCfg.defQsfpPat.lpMode;
+                xcvrIo->u.qsfpPin.resetN = xcvrIo->basePin +
+                    hwCfg.defQsfpPat.resetN;
+            }
+            break;
+        case FM_TLV_PLAT_LIB_XCVR_MODABS_PIN:
+            idx = GetTlvInt(tlv + 3, 1);
+            if (idx >= hwCfg.numResId || idx >= FM_NUM_HW_RES_ID)
+            {
+                return FM_ERR_INVALID_ARGUMENT;
+            }
+            xcvrIo = &hwCfg.hwResId[idx].xcvrStateIo;
+            xcvrIo->u.sfppPin.modPresN = GetTlvInt(tlv + 4, 1);
+            break;
+        case FM_TLV_PLAT_LIB_XCVR_RXLOS_PIN:
+            idx = GetTlvInt(tlv + 3, 1);
+            if (idx >= hwCfg.numResId || idx >= FM_NUM_HW_RES_ID)
+            {
+                return FM_ERR_INVALID_ARGUMENT;
+            }
+            xcvrIo = &hwCfg.hwResId[idx].xcvrStateIo;
+            xcvrIo->u.sfppPin.rxLos = GetTlvInt(tlv + 4, 1);
+            break;
+        case FM_TLV_PLAT_LIB_XCVR_TXDISABLE_PIN:
+            idx = GetTlvInt(tlv + 3, 1);
+            if (idx >= hwCfg.numResId || idx >= FM_NUM_HW_RES_ID)
+            {
+                return FM_ERR_INVALID_ARGUMENT;
+            }
+            xcvrIo = &hwCfg.hwResId[idx].xcvrStateIo;
+            xcvrIo->u.sfppPin.txDisable = GetTlvInt(tlv + 4, 1);
+            break;
+        case FM_TLV_PLAT_LIB_XCVR_TXFAULT_PIN:
+            idx = GetTlvInt(tlv + 3, 1);
+            if (idx >= hwCfg.numResId || idx >= FM_NUM_HW_RES_ID)
+            {
+                return FM_ERR_INVALID_ARGUMENT;
+            }
+            xcvrIo = &hwCfg.hwResId[idx].xcvrStateIo;
+            xcvrIo->u.sfppPin.txFault = GetTlvInt(tlv + 4, 1);
+            break;
+        case FM_TLV_PLAT_LIB_XCVR_MODPRESL_PIN:
+            idx = GetTlvInt(tlv + 3, 1);
+            if (idx >= hwCfg.numResId || idx >= FM_NUM_HW_RES_ID)
+            {
+                return FM_ERR_INVALID_ARGUMENT;
+            }
+            xcvrIo = &hwCfg.hwResId[idx].xcvrStateIo;
+            xcvrIo->u.qsfpPin.modPresN = GetTlvInt(tlv + 4, 1);
+            break;
+        case FM_TLV_PLAT_LIB_XCVR_INTL_PIN:
+            idx = GetTlvInt(tlv + 3, 1);
+            if (idx >= hwCfg.numResId || idx >= FM_NUM_HW_RES_ID)
+            {
+                return FM_ERR_INVALID_ARGUMENT;
+            }
+            xcvrIo = &hwCfg.hwResId[idx].xcvrStateIo;
+            xcvrIo->u.qsfpPin.intrN = GetTlvInt(tlv + 4, 1);
+            break;
+        case FM_TLV_PLAT_LIB_XCVR_LPMODE_PIN:
+            idx = GetTlvInt(tlv + 3, 1);
+            if (idx >= hwCfg.numResId || idx >= FM_NUM_HW_RES_ID)
+            {
+                return FM_ERR_INVALID_ARGUMENT;
+            }
+            xcvrIo = &hwCfg.hwResId[idx].xcvrStateIo;
+            xcvrIo->u.qsfpPin.lpMode = GetTlvInt(tlv + 4, 1);
+            break;
+        case FM_TLV_PLAT_LIB_XCVR_RESETL_PIN:
+            idx = GetTlvInt(tlv + 3, 1);
+            if (idx >= hwCfg.numResId || idx >= FM_NUM_HW_RES_ID)
+            {
+                return FM_ERR_INVALID_ARGUMENT;
+            }
+            xcvrIo = &hwCfg.hwResId[idx].xcvrStateIo;
+            xcvrIo->u.qsfpPin.resetN = GetTlvInt(tlv + 4, 1);
+            break;
+        case FM_TLV_PLAT_LIB_XCVR_I2C_DEF_BUSSELTYPE:
+            for (idx = 0; idx < hwCfg.numResId; idx++) {
+                xcvrI2cBus = &hwCfg.hwResId[idx].xcvrI2cBusSel;
+                xcvrI2cBus->busSelType =
+                    GetTlvInt(tlv + 3, 1);
+            }
+            break;
+        case FM_TLV_PLAT_LIB_XCVR_I2_BUSSELTYPE:
+            idx = GetTlvInt(tlv + 3, 1);
+            if (idx >= hwCfg.numResId || idx >= FM_NUM_HW_RES_ID)
+            {
+                return FM_ERR_INVALID_ARGUMENT;
+            }
+            xcvrI2cBus = &hwCfg.hwResId[idx].xcvrI2cBusSel;
+            xcvrI2cBus->busSelType = GetTlvInt(tlv + 4, 1);
+            break;
+        case FM_TLV_PLAT_LIB_XCVR_MUX_IDX:
+            idx = GetTlvInt(tlv + 3, 1);
+            if (idx >= hwCfg.numResId || idx >= FM_NUM_HW_RES_ID)
+            {
+                return FM_ERR_INVALID_ARGUMENT;
+            }
+            xcvrI2cBus = &hwCfg.hwResId[idx].xcvrI2cBusSel;
+            xcvrI2cBus->parentMuxIdx = GetTlvInt(tlv + 4, 1);
+            break;
+        case FM_TLV_PLAT_LIB_XCVR_MUX_VAL:
+            idx = GetTlvInt(tlv + 3, 1);
+            if (idx >= hwCfg.numResId || idx >= FM_NUM_HW_RES_ID)
+            {
+                return FM_ERR_INVALID_ARGUMENT;
+            }
+            xcvrI2cBus = &hwCfg.hwResId[idx].xcvrI2cBusSel;
+            xcvrI2cBus->parentMuxValue = GetTlvInt(tlv + 4, 4);
+            break;
+        case FM_TLV_PLAT_LIB_PORTLED_TYPE:
+            idx = GetTlvInt(tlv + 3, 1);
+            if (idx >= hwCfg.numResId || idx >= FM_NUM_HW_RES_ID)
+            {
+                return FM_ERR_INVALID_ARGUMENT;
+            }
+            led = GetTlvInt(tlv + 4, 1);
+            if (led >= NUM_LED_PER_PORT)
+                return FM_ERR_INVALID_ARGUMENT;
+            portLed = &hwCfg.hwResId[idx].portLed[led];
+            portLed->type = GetTlvInt(tlv + 5, 1);
+        break;
+        case FM_TLV_PLAT_LIB_PORTLED_IO_IDX:
+            idx = GetTlvInt(tlv + 3, 1);
+            if (idx >= hwCfg.numResId || idx >= FM_NUM_HW_RES_ID)
+            {
+                return FM_ERR_INVALID_ARGUMENT;
+            }
+            led = GetTlvInt(tlv + 4, 1);
+            if (led >= NUM_LED_PER_PORT)
+                return FM_ERR_INVALID_ARGUMENT;
+            portLed = &hwCfg.hwResId[idx].portLed[led];
+            portLed->ioIdx = GetTlvInt(tlv + 5, 1);
+        break;
+        case FM_TLV_PLAT_LIB_PORTLED_IO_PIN:
+            idx = GetTlvInt(tlv + 3, 1);
+            if (idx >= hwCfg.numResId || idx >= FM_NUM_HW_RES_ID)
+            {
+                return FM_ERR_INVALID_ARGUMENT;
+            }
+            led = GetTlvInt(tlv + 4, 1);
+            if (led >= NUM_LED_PER_PORT)
+                return FM_ERR_INVALID_ARGUMENT;
+            portLed = &hwCfg.hwResId[idx].portLed[led];
+            portLed->subLed[0].pin = GetTlvInt(tlv + 5, 1);
+        break;
+        case FM_TLV_PLAT_LIB_PORTLED_IO_LANE_PIN:
+            idx = GetTlvInt(tlv + 3, 1);
+            if (idx >= hwCfg.numResId || idx >= FM_NUM_HW_RES_ID)
+            {
+                return FM_ERR_INVALID_ARGUMENT;
+            }
+            led = GetTlvInt(tlv + 4, 1);
+            if (led >= NUM_LED_PER_PORT)
+                return FM_ERR_INVALID_ARGUMENT;
+            portLed = &hwCfg.hwResId[idx].portLed[led];
+            subLed = GetTlvInt(tlv + 5, 1);
+            if (subLed >= NUM_SUB_LED)
+                return FM_ERR_INVALID_ARGUMENT;
+            portLed->subLed[subLed].pin = GetTlvInt(tlv + 6, 1);
+        break;
+        case FM_TLV_PLAT_LIB_PORTLED_IO_USAGE:
+            idx = GetTlvInt(tlv + 3, 1);
+            if (idx >= hwCfg.numResId || idx >= FM_NUM_HW_RES_ID)
+            {
+                return FM_ERR_INVALID_ARGUMENT;
+            }
+            led = GetTlvInt(tlv + 4, 1);
+            if (led >= NUM_LED_PER_PORT)
+                return FM_ERR_INVALID_ARGUMENT;
+            portLed = &hwCfg.hwResId[idx].portLed[led];
+            portLed->subLed[0].usage = GetTlvInt(tlv + 5, 4);
+        break;
+        case FM_TLV_PLAT_LIB_PORTLED_IO_LANE_USAGE:
+            idx = GetTlvInt(tlv + 3, 1);
+            if (idx >= hwCfg.numResId || idx >= FM_NUM_HW_RES_ID)
+            {
+                return FM_ERR_INVALID_ARGUMENT;
+            }
+            led = GetTlvInt(tlv + 4, 1);
+            if (led >= NUM_LED_PER_PORT)
+                return FM_ERR_INVALID_ARGUMENT;
+            portLed = &hwCfg.hwResId[idx].portLed[led];
+            subLed = GetTlvInt(tlv + 5, 1);
+            if (subLed >= NUM_SUB_LED)
+                return FM_ERR_INVALID_ARGUMENT;
+            portLed->subLed[subLed].usage = GetTlvInt(tlv + 6, 4);
+        break;
+        case FM_TLV_PLAT_LIB_HWRESID_TYPE:
+            idx = GetTlvInt(tlv + 3, 1);
+            if (idx >= hwCfg.numResId || idx >= FM_NUM_HW_RES_ID)
+            {
+                return FM_ERR_INVALID_ARGUMENT;
+            }
+            hwCfg.hwResId[idx].type = GetTlvInt(tlv + 4, 1);
+            break;
+        case FM_TLV_PLAT_LIB_DEBUG:
+            hwCfg.debug = GetTlvInt(tlv + 3, 4);
+            break;
+        case FM_TLV_PLAT_LIB_PHY_BUSSELTYPE:
+            idx = GetTlvInt(tlv + 3, 1);
+            if (idx >= hwCfg.numResId || idx >= FM_NUM_HW_RES_ID)
+            {
+                return FM_ERR_INVALID_ARGUMENT;
+            }
+            phyI2c = &hwCfg.hwResId[idx].phy;
+            phyI2c->busSelType = GetTlvInt(tlv + 4, 1);
+            break;
+        case FM_TLV_PLAT_LIB_PHY_MUX_IDX:
+            idx = GetTlvInt(tlv + 3, 1);
+            if (idx >= hwCfg.numResId || idx >= FM_NUM_HW_RES_ID)
+            {
+                return FM_ERR_INVALID_ARGUMENT;
+            }
+            phyI2c = &hwCfg.hwResId[idx].phy;
+            phyI2c->parentMuxIdx = GetTlvInt(tlv + 4, 1);
+            break;
+        case FM_TLV_PLAT_LIB_PHY_MUX_VAL:
+            idx = GetTlvInt(tlv + 3, 1);
+            if (idx >= hwCfg.numResId || idx >= FM_NUM_HW_RES_ID)
+            {
+                return FM_ERR_INVALID_ARGUMENT;
+            }
+            phyI2c = &hwCfg.hwResId[idx].phy;
+            phyI2c->parentMuxValue = GetTlvInt(tlv + 4, 4);
+            break;
+        case FM_TLV_PLAT_LIB_PHY_BUS:
+            idx = GetTlvInt(tlv + 3, 1);
+            if (idx >= hwCfg.numResId || idx >= FM_NUM_HW_RES_ID)
+            {
+                return FM_ERR_INVALID_ARGUMENT;
+            }
+            phyI2c = &hwCfg.hwResId[idx].phy;
+            phyI2c->bus = GetTlvInt(tlv + 4, 1);
+            break;
+        case FM_TLV_PLAT_LIB_VRM_BUSSELTYPE:
+            idx = GetTlvInt(tlv + 3, 1);
+            if (idx >= hwCfg.numResId || idx >= FM_NUM_HW_RES_ID)
+            {
+                return FM_ERR_INVALID_ARGUMENT;
+            }
+            vrmI2c = &hwCfg.hwResId[idx].vrm;
+            vrmI2c->busSelType = GetTlvInt(tlv + 4, 1);
+            break;
+        case FM_TLV_PLAT_LIB_VRM_MODEL:
+            idx = GetTlvInt(tlv + 3, 1);
+            if (idx >= hwCfg.numResId || idx >= FM_NUM_HW_RES_ID)
+            {
+                return FM_ERR_INVALID_ARGUMENT;
+            }
+            vrmI2c = &hwCfg.hwResId[idx].vrm;
+            vrmI2c->model = GetTlvInt(tlv + 4, 1);
+            break;
+        case FM_TLV_PLAT_LIB_VRM_MUX_IDX:
+            idx = GetTlvInt(tlv + 3, 1);
+            if (idx >= hwCfg.numResId || idx >= FM_NUM_HW_RES_ID)
+            {
+                return FM_ERR_INVALID_ARGUMENT;
+            }
+            vrmI2c = &hwCfg.hwResId[idx].vrm;
+            vrmI2c->parentMuxIdx = GetTlvInt(tlv + 4, 1);
+            break;
+        case FM_TLV_PLAT_LIB_VRM_MUX_VAL:
+            idx = GetTlvInt(tlv + 3, 1);
+            if (idx >= hwCfg.numResId || idx >= FM_NUM_HW_RES_ID)
+            {
+                return FM_ERR_INVALID_ARGUMENT;
+            }
+            vrmI2c = &hwCfg.hwResId[idx].vrm;
+            vrmI2c->parentMuxValue = GetTlvInt(tlv + 4, 4);
+            break;
+        case FM_TLV_PLAT_LIB_VRM_MUX_ADDR:
+            idx = GetTlvInt(tlv + 3, 1);
+            if (idx >= hwCfg.numResId || idx >= FM_NUM_HW_RES_ID)
+            {
+                return FM_ERR_INVALID_ARGUMENT;
+            }
+            vrmI2c = &hwCfg.hwResId[idx].vrm;
+            vrmI2c->addr = GetTlvInt(tlv + 4, 2);
+            break;
+        case FM_TLV_PLAT_LIB_VRM_MUX_BUS:
+            idx = GetTlvInt(tlv + 3, 1);
+            if (idx >= hwCfg.numResId || idx >= FM_NUM_HW_RES_ID)
+            {
+                return FM_ERR_INVALID_ARGUMENT;
+            }
+            vrmI2c = &hwCfg.hwResId[idx].vrm;
+            vrmI2c->bus = GetTlvInt(tlv + 4, 1);
+            break;
+        case FM_TLV_PLAT_LIB_BUS_I2C_EN_WR_RD:
+            idx = GetTlvInt(tlv + 3, 1);
+            if (idx >= NUM_I2C_BUS)
+                return FM_ERR_INVALID_ARGUMENT;
+            hwCfg.i2c[idx].i2cWrRdEn = GetTlvBool(tlv + 4);
+            break;
         }
+    }
 
-        if (hwCfg.hwResId[cnt].type == HWRESOURCE_TYPE_PORT)
-        {
-            xcvrIo = &hwCfg.hwResId[cnt].xcvrStateIo;
-            xcvrI2cBus = &hwCfg.hwResId[cnt].xcvrI2cBusSel;
+    /* Release lib config to free memory */
+    fmPlatformReleaseLibTlvCfg(swIdx);
 
-            /* Get the port interface type */
-            SPRINTF_CNT(FM_AAK_LIB_HWRES_INTERFACE_TYPE);
-            inputText = fmGetTextApiProperty(buf, "UNKNOWN");
-            status = IntfTypeStrToValue(inputText, &xcvrIo->intfType);
-            if (status)
-            {
-                FM_LOG_FATAL(FM_LOG_CAT_PLATFORM,
-                             "Invalid value (%s) for '%s'\n",
-                             inputText,
-                             buf);
-                return status;
-            }
-
-            if ( xcvrIo->intfType == INTF_TYPE_SFPP ||
-                 xcvrIo->intfType == INTF_TYPE_QSFP )
-            {
-                /**************************************************
-                 * Get the I2C bus select configuration
-                 **************************************************/
-
-                SPRINTF_CNT(FM_AAK_LIB_HWRES_XCVRI2C_BUSSELTYPE);
-                inputText = fmGetTextApiProperty(buf, 
-                                                 BusSelTypeToStr(hwCfg.defBusSelType));
-
-                status = BusSelTypeStrToValue(inputText, &xcvrI2cBus->busSelType);
-                if (status)
-                {
-                    FM_LOG_FATAL(FM_LOG_CAT_PLATFORM,
-                                 "Invalid value (%s) for '%s'\n", 
-                                 inputText, 
-                                 buf);
-                    return status;
-                }
-
-                if (xcvrI2cBus->busSelType == BUS_SEL_TYPE_PCA_MUX)
-                {
-                    /* Get the mux index the port is attached to */
-                    SPRINTF_CNT(FM_AAK_LIB_HWRES_XCVRI2C_PCAMUX_INDEX);
-                    status = GetRequiredConfigInt(buf,
-                                                  (fm_int *)&xcvrI2cBus->parentMuxIdx,
-                                                  0,
-                                                  hwCfg.numPcaMux-1);
-                    FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
-
-                    /* Get the mux value */
-                    SPRINTF_CNT(FM_AAK_LIB_HWRES_XCVRI2C_PCAMUX_VALUE);
-                    status = GetRequiredConfigInt(buf,
-                                                  (fm_int *)&xcvrI2cBus->parentMuxValue,
-                                                  0,
-                                                  0xffff);
-                    FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
-
-                }
-                else if (xcvrI2cBus->busSelType == BUS_SEL_TYPE_PCA_IO)
-                {
-                    /* Get the pca io index the port is attached to */
-                    SPRINTF_CNT(FM_AAK_LIB_HWRES_XCVRI2C_PCAIO_INDEX);
-                    status = GetRequiredConfigInt(buf,
-                                                  (fm_int *)&xcvrI2cBus->ioIdx,
-                                                  0,
-                                                  hwCfg.numPcaIo-1);
-                    FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
-
-                    /* Get the pin number */
-                    SPRINTF_CNT(FM_AAK_LIB_HWRES_XCVRI2C_PCAIO_PIN);
-                    status = GetRequiredConfigInt(buf,
-                                                  (fm_int *)&xcvrI2cBus->ioPin,
-                                                  0,
-                                                  64);
-                    FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
-
-                    /* Get the pin polarity */
-                    SPRINTF_CNT(FM_AAK_LIB_HWRES_XCVRI2C_PCAIO_PIN_POLARITY);
-                    status = GetOptionalConfigInt(buf,
-                                                  (fm_int *)&xcvrI2cBus->ioPinPolarity,
-                                                  0,
-                                                  0,
-                                                  1);
-                    FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
-                }
-
-                /* Get the PCA IO index the port is attached to */
-                SPRINTF_CNT(FM_AAK_LIB_HWRES_XCVRSTATE_PCAIO_INDEX);
-                status = GetRequiredConfigInt(buf,
-                                              (fm_int *)&xcvrIo->ioIdx,
-                                              0,
-                                              hwCfg.numPcaIo - 1);
-                FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
-
-                /* Get base pin number */
-                SPRINTF_CNT(FM_AAK_LIB_HWRES_XCVRSTATE_PCAIO_BASEPIN);
-                valInt = hwCfg.pcaIo[xcvrIo->ioIdx].dev.devCap.numBits;
-                status = GetRequiredConfigInt(buf,
-                                              (fm_int *)&xcvrIo->basePin,
-                                              0,
-                                              valInt - 1);
-                FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
-
-            }
-
-            /**************************************************
-             * Get transceiver status/control configuration
-             **************************************************/
-
-            if (xcvrIo->intfType == INTF_TYPE_SFPP)
-            {
-                SPRINTF_CNT(FM_AAK_LIB_HWRES_XCVRSTATE_PCAIO_MODABS);
-                GetOptionalConfigInt(buf,
-                                     (fm_int *)&valInt,
-                                     hwCfg.defSfppPat.modPresN,
-                                     0,
-                                     NUM_PINS_PER_IO_PORT-1);
-                if (VAL_INT_NOT_USED(valInt))
-                {
-                    xcvrIo->u.sfppPin.modPresN = UINT_NOT_USED;
-                }
-                else
-                {
-                    xcvrIo->u.sfppPin.modPresN = xcvrIo->basePin + valInt;
-                }
-
-                SPRINTF_CNT(FM_AAK_LIB_HWRES_XCVRSTATE_PCAIO_RXLOS);
-                GetOptionalConfigInt(buf,
-                                     (fm_int *)&valInt,
-                                     hwCfg.defSfppPat.rxLos,
-                                     0,
-                                     NUM_PINS_PER_IO_PORT-1);
-                if (VAL_INT_NOT_USED(valInt))
-                {
-                    xcvrIo->u.sfppPin.rxLos = UINT_NOT_USED;
-                }
-                else
-                {
-                    xcvrIo->u.sfppPin.rxLos = xcvrIo->basePin + valInt;
-                }
-
-                SPRINTF_CNT(FM_AAK_LIB_HWRES_XCVRSTATE_PCAIO_TXFAULT);
-                GetOptionalConfigInt(buf,
-                                     (fm_int *)&valInt,
-                                     hwCfg.defSfppPat.txFault,
-                                     0,
-                                     NUM_PINS_PER_IO_PORT-1);
-                if (VAL_INT_NOT_USED(valInt))
-                {
-                    xcvrIo->u.sfppPin.txFault = UINT_NOT_USED;
-                }
-                else
-                {
-                    xcvrIo->u.sfppPin.txFault = xcvrIo->basePin + valInt;
-                }
-
-                SPRINTF_CNT(FM_AAK_LIB_HWRES_XCVRSTATE_PCAIO_TXDISABLE);
-                GetOptionalConfigInt(buf,
-                                     (fm_int *)&valInt,
-                                     hwCfg.defSfppPat.txDisable,
-                                     0,
-                                     NUM_PINS_PER_IO_PORT-1);
-                if (VAL_INT_NOT_USED(valInt))
-                {
-                    xcvrIo->u.sfppPin.txDisable = UINT_NOT_USED;
-                }
-                else
-                {
-                    xcvrIo->u.sfppPin.txDisable = xcvrIo->basePin + valInt;
-                }
-            }
-            else if (xcvrIo->intfType == INTF_TYPE_QSFP)
-            {
-                SPRINTF_CNT(FM_AAK_LIB_HWRES_XCVRSTATE_PCAIO_MODPRSL);
-                GetOptionalConfigInt(buf,
-                                     (fm_int *)&valInt,
-                                     hwCfg.defQsfpPat.modPresN,
-                                     0,
-                                     NUM_PINS_PER_IO_PORT-1);
-                if (VAL_INT_NOT_USED(valInt))
-                {
-                    xcvrIo->u.qsfpPin.modPresN = UINT_NOT_USED;
-                }
-                else
-                {
-                    xcvrIo->u.qsfpPin.modPresN = xcvrIo->basePin + valInt;
-                }
-
-                SPRINTF_CNT(FM_AAK_LIB_HWRES_XCVRSTATE_PCAIO_INTL);
-                GetOptionalConfigInt(buf,
-                                     (fm_int *)&valInt,
-                                     hwCfg.defQsfpPat.intrN,
-                                     0,
-                                     NUM_PINS_PER_IO_PORT-1);
-                if (VAL_INT_NOT_USED(valInt))
-                {
-                    xcvrIo->u.qsfpPin.intrN = UINT_NOT_USED;
-                }
-                else
-                {
-                    xcvrIo->u.qsfpPin.intrN = xcvrIo->basePin + valInt;
-                }
-
-                SPRINTF_CNT(FM_AAK_LIB_HWRES_XCVRSTATE_PCAIO_LPMODE);
-                GetOptionalConfigInt(buf,
-                                     (fm_int *)&valInt,
-                                     hwCfg.defQsfpPat.lpMode,
-                                     0,
-                                     NUM_PINS_PER_IO_PORT-1);
-                if (VAL_INT_NOT_USED(valInt))
-                {
-                    xcvrIo->u.qsfpPin.lpMode = UINT_NOT_USED;
-                }
-                else
-                {
-                    xcvrIo->u.qsfpPin.lpMode = xcvrIo->basePin + valInt;
-                }
-
-                SPRINTF_CNT(FM_AAK_LIB_HWRES_XCVRSTATE_PCAIO_RESETL);
-                GetOptionalConfigInt(buf,
-                                     (fm_int *)&valInt,
-                                     hwCfg.defQsfpPat.resetN,
-                                     0,
-                                     NUM_PINS_PER_IO_PORT-1);
-                if (VAL_INT_NOT_USED(valInt))
-                {
-                    xcvrIo->u.qsfpPin.resetN = UINT_NOT_USED;
-                }
-                else
-                {
-                    xcvrIo->u.qsfpPin.resetN = xcvrIo->basePin + valInt;
-                }
-            }
-            else
-            {
-                xcvrIo->u.sfppPin.modPresN  = UINT_NOT_USED;
-                xcvrIo->u.sfppPin.rxLos     = UINT_NOT_USED;
-                xcvrIo->u.sfppPin.txFault   = UINT_NOT_USED;
-                xcvrIo->u.sfppPin.txDisable = UINT_NOT_USED;
-            }
-
-            /**************************************************
-             * Get the port LED configuration
-             **************************************************/
-
-            status = LoadPortLedConfig(cnt);
-            FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
-        }
-        else if (hwCfg.hwResId[cnt].type == HWRESOURCE_TYPE_PHY)
-        {
-            phyI2C = &hwCfg.hwResId[cnt].phy;
-
-            SPRINTF_CNT(FM_AAK_LIB_HWRES_PHY_BUSSELTYPE);
-            inputText = fmGetTextApiProperty(buf, 
-                                             BusSelTypeToStr(hwCfg.defBusSelType));
-
-            status = BusSelTypeStrToValue(inputText, &phyI2C->busSelType);
-            if (status)
-            {
-                FM_LOG_FATAL(FM_LOG_CAT_PLATFORM,
-                             "Invalid value (%s) for '%s'\n", 
-                             inputText, 
-                             buf);
-                return status;
-            }
-
-            if (phyI2C->busSelType == BUS_SEL_TYPE_PCA_MUX)
-            {
-                /* Get the mux index the port is attached to */
-                SPRINTF_CNT(FM_AAK_LIB_HWRES_PHY_PCAMUX_INDEX);
-                status = GetRequiredConfigInt(buf,
-                                              (fm_int *)&phyI2C->parentMuxIdx,
-                                              0,
-                                              hwCfg.numPcaMux-1);
-                FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
-
-                /* Get the mux value */
-                SPRINTF_CNT(FM_AAK_LIB_HWRES_PHY_PCAMUX_VALUE);
-                status = GetRequiredConfigInt(buf,
-                                              (fm_int *)&phyI2C->parentMuxValue,
-                                              0,
-                                              0xffff);
-                FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
-
-            }
-
-            /* Get the bus number the device is attached to. */
-            SPRINTF_CNT(FM_AAK_LIB_HWRES_PHY_BUS);
-            status = GetAndValidateBusNumber(buf, &phyI2C->bus);
-            FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
-        }
-        else if (hwCfg.hwResId[cnt].type == HWRESOURCE_TYPE_VRM)
-        {
-            vrmI2c = &hwCfg.hwResId[cnt].vrm;
-
-            /* Get the I2C bus select configuration */
-            SPRINTF_CNT(FM_AAK_LIB_HWRES_VRM_BUSSELTYPE);
-            inputText = fmGetTextApiProperty(buf, 
-                                             BusSelTypeToStr(hwCfg.defBusSelType));
-
-            status = BusSelTypeStrToValue(inputText, &vrmI2c->busSelType);
-            if (status)
-            {
-                FM_LOG_FATAL(FM_LOG_CAT_PLATFORM,
-                             "Invalid value (%s) for '%s'\n", 
-                             inputText, 
-                             buf);
-                return status;
-            }
-
-            if (vrmI2c->busSelType == BUS_SEL_TYPE_PCA_MUX)
-            {
-                /* Get the mux index the device is attached to */
-                SPRINTF_CNT(FM_AAK_LIB_HWRES_VRM_PCAMUX_INDEX);
-                status = GetRequiredConfigInt(buf,
-                                              (fm_int *)&vrmI2c->parentMuxIdx,
-                                              0,
-                                              hwCfg.numPcaMux - 1);
-                FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
-
-                /* Get the mux value */
-                SPRINTF_CNT(FM_AAK_LIB_HWRES_VRM_PCAMUX_VALUE);
-                status = GetRequiredConfigInt(buf,
-                                              (fm_int *)&vrmI2c->parentMuxValue,
-                                              0,
-                                              0xffff);
-                FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
-            }
-
-            /* Get the bus number the device is attached to. */
-            SPRINTF_CNT(FM_AAK_LIB_HWRES_VRM_BUS);
-            status = GetAndValidateBusNumber(buf, &vrmI2c->bus);
-            FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
-
-            /* Get the device address */
-            SPRINTF_CNT(FM_AAK_LIB_HWRES_VRM_ADDR);
-            status = GetRequiredConfigInt(buf,
-                                          (fm_int *)&vrmI2c->addr,
-                                          0,
-                                          0x7f);
-            FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
-
-            /* Get the device model */
-            SPRINTF_CNT(FM_AAK_LIB_HWRES_VRM_MODEL);
-            vrmI2c->model = fmGetTextApiProperty(buf, "");
-        }
-
-    }   /* end for (cnt = 0 ; cnt < hwCfg.numResId; cnt++) */
-
-    return FM_OK;
-
-}   /* LoadConfig */
+    return 0;
+}  /* end LoadConfig */
 
 
 
@@ -3206,53 +2507,53 @@ static void DumpConfig(void)
             xcvrI2cBus = &hwResId->xcvrI2cBusSel;
 
             /* Mux select configuration */
-            PRINT_STR("  hwResId.%d.xcvrI2C.busSelType", 
+            PRINT_STR("  hwResId.%d.xcvrI2C.busSelType",
                       BusSelTypeToStr(xcvrI2cBus->busSelType));
 
             if (xcvrI2cBus->busSelType == BUS_SEL_TYPE_PCA_MUX)
             {
-                PRINT_VAL("  hwResId.%d.xcvrI2C.pcaMux.index", 
+                PRINT_VAL("  hwResId.%d.xcvrI2C.pcaMux.index",
                           xcvrI2cBus->parentMuxIdx);
-                PRINT_VAL("  hwResId.%d.xcvrI2C.pcaMux.value", 
+                PRINT_VAL("  hwResId.%d.xcvrI2C.pcaMux.value",
                           xcvrI2cBus->parentMuxValue);
             }
             else if (xcvrI2cBus->busSelType == BUS_SEL_TYPE_PCA_IO)
             {
-                PRINT_VAL("  hwResId.%d.xcvrI2C.pcaIo.index", 
+                PRINT_VAL("  hwResId.%d.xcvrI2C.pcaIo.index",
                           xcvrI2cBus->ioIdx);
-                PRINT_VAL("  hwResId.%d.xcvrI2C.pcaIo.pin", 
+                PRINT_VAL("  hwResId.%d.xcvrI2C.pcaIo.pin",
                           xcvrI2cBus->ioPin);
-                PRINT_VAL("  hwResId.%d.xcvrI2C.pcaIo.pin.polarity", 
+                PRINT_VAL("  hwResId.%d.xcvrI2C.pcaIo.pin.polarity",
                           xcvrI2cBus->ioPinPolarity);
             }
 
             /* Transceiver status/control */
 
-            PRINT_STR("  hwResId.%d.xcvrState.intfType", 
+            PRINT_STR("  hwResId.%d.xcvrState.intfType",
                       IntfTypeToStr(xcvrIo->intfType));
             PRINT_VAL("  hwResId.%d.xcvrState.pcaIo.index", xcvrIo->ioIdx);
             PRINT_VAL("  hwResId.%d.xcvrState.pcaIo.basePin", xcvrIo->basePin);
 
             if (xcvrIo->intfType == INTF_TYPE_SFPP)
             {
-                PRINT_VAL("  hwResId.%d.xcvrState.pcaIo.modPresN.pin", 
+                PRINT_VAL("  hwResId.%d.xcvrState.pcaIo.modPresN.pin",
                           xcvrIo->u.sfppPin.modPresN);
-                PRINT_VAL("  hwResId.%d.xcvrState.pcaIo.rxLos.pin", 
+                PRINT_VAL("  hwResId.%d.xcvrState.pcaIo.rxLos.pin",
                           xcvrIo->u.sfppPin.rxLos);
-                PRINT_VAL("  hwResId.%d.xcvrState.pcaIo.txFault.pin", 
+                PRINT_VAL("  hwResId.%d.xcvrState.pcaIo.txFault.pin",
                           xcvrIo->u.sfppPin.txFault);
-                PRINT_VAL("  hwResId.%d.xcvrState.pcaIo.txDisable.pin", 
+                PRINT_VAL("  hwResId.%d.xcvrState.pcaIo.txDisable.pin",
                           xcvrIo->u.sfppPin.txDisable);
             }
             else if (xcvrIo->intfType == INTF_TYPE_QSFP)
             {
-                PRINT_VAL("  hwResId.%d.xcvrState.pcaIo.modPresN.pin", 
+                PRINT_VAL("  hwResId.%d.xcvrState.pcaIo.modPresN.pin",
                           xcvrIo->u.qsfpPin.modPresN);
-                PRINT_VAL("  hwResId.%d.xcvrState.pcaIo.intrN.pin", 
+                PRINT_VAL("  hwResId.%d.xcvrState.pcaIo.intrN.pin",
                           xcvrIo->u.qsfpPin.intrN);
-                PRINT_VAL("  hwResId.%d.xcvrState.pcaIo.lpMode.pin", 
+                PRINT_VAL("  hwResId.%d.xcvrState.pcaIo.lpMode.pin",
                           xcvrIo->u.qsfpPin.lpMode);
-                PRINT_VAL("  hwResId.%d.xcvrState.pcaIo.resetN.pin", 
+                PRINT_VAL("  hwResId.%d.xcvrState.pcaIo.resetN.pin",
                           xcvrIo->u.qsfpPin.resetN);
             }
 
@@ -3260,19 +2561,19 @@ static void DumpConfig(void)
             {
                 /* Port LED */
                 portLed = &hwResId->portLed[led];
-                PRINT_LED_STR("  hwResId.%d.led.%d.type", 
+                PRINT_LED_STR("  hwResId.%d.led.%d.type",
                               LedTypeToStr(portLed->type));
 
                 if (portLed->type == LED_TYPE_PCA)
                 {
-                    PRINT_LED_VAL("  hwResId.%d.led.%d.pcaio.index", 
+                    PRINT_LED_VAL("  hwResId.%d.led.%d.pcaio.index",
                                   portLed->ioIdx);
                     for (subLed = 0 ; subLed < NUM_SUB_LED ; subLed++)
                     {
-                        PRINT_SUBLED_VAL("  hwResId.%d.led.%d.%d.pcaio.pin", 
+                        PRINT_SUBLED_VAL("  hwResId.%d.led.%d.%d.pcaio.pin",
                                          portLed->subLed[subLed].pin);
                         PRINT_SUBLED_STR(
-                           "  hwResId.%d.led.%d.%d.usage", 
+                           "  hwResId.%d.led.%d.%d.usage",
                            GetStrBitMap( portLed->subLed[subLed].usage,
                                       ledUsageMap,
                                       FM_NENTRIES(ledUsageMap),
@@ -3286,24 +2587,24 @@ static void DumpConfig(void)
         }
         else if (hwCfg.hwResId[cnt].type == HWRESOURCE_TYPE_VRM)
         {
-            PRINT_STR("  hwResId.%d.vrm.busSelType", 
+            PRINT_STR("  hwResId.%d.vrm.busSelType",
                       BusSelTypeToStr(hwCfg.hwResId[cnt].vrm.busSelType));
 
             /* Mux select configuration */
             if (hwCfg.hwResId[cnt].vrm.busSelType == BUS_SEL_TYPE_PCA_MUX)
             {
-                PRINT_VAL("  hwResId.%d.vrm.pcaMux.index", 
+                PRINT_VAL("  hwResId.%d.vrm.pcaMux.index",
                           hwCfg.hwResId[cnt].vrm.parentMuxIdx);
-                PRINT_VAL("  hwResId.%d.vrm.pcaMux.value", 
+                PRINT_VAL("  hwResId.%d.vrm.pcaMux.value",
                           hwCfg.hwResId[cnt].vrm.parentMuxValue);
             }
 
-            PRINT_VAL("  hwResId.%d.vrm.bus", 
+            PRINT_VAL("  hwResId.%d.vrm.bus",
                       hwCfg.hwResId[cnt].vrm.bus);
-            PRINT_VAL("  hwResId.%d.vrm.addr", 
+            PRINT_VAL("  hwResId.%d.vrm.addr",
                       hwCfg.hwResId[cnt].vrm.addr);
-            PRINT_STR("  hwResId.%d.vrm.model", 
-                      hwCfg.hwResId[cnt].vrm.model);
+            PRINT_STR("  hwResId.%d.vrm.model",
+                      VrmModelToStr(hwCfg.hwResId[cnt].vrm.model));
         }
         else if (hwCfg.hwResId[cnt].type == HWRESOURCE_TYPE_PHY)
         {
@@ -3324,7 +2625,7 @@ static void DumpConfig(void)
  * \param[in]       muxIdx is the index to the pca mux structure.
  *
  * \param[in]       muxValue is the value to set for the given mux.
- * 
+ *
  * \param[in]       disable indicates that other muxes sharing the same
  *                  parent mux must be disabled.
  *
@@ -3351,8 +2652,15 @@ static fm_status SetupMuxPathRcrsv(fm_uint muxIdx,
 
     pcaMux = &hwCfg.pcaMux[muxIdx];
 
-    status = SetupMuxPathRcrsv(pcaMux->parentMuxIdx, 
-                               pcaMux->parentMuxValue, 
+    if (pcaMux->parentMuxIdx == muxIdx)
+    {
+        FM_LOG_ERROR(FM_LOG_CAT_PLATFORM,
+                "Parent mux index %d is the same\n", muxIdx);
+        FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_PLATFORM, FM_ERR_INVALID_ARGUMENT);
+    }
+
+    status = SetupMuxPathRcrsv(pcaMux->parentMuxIdx,
+                               pcaMux->parentMuxValue,
                                FALSE);
     FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
 
@@ -3377,6 +2685,7 @@ static fm_status SetupMuxPathRcrsv(fm_uint muxIdx,
 
                 mux = &hwCfg.pcaMux[cnt];
                 if ( mux->parentMuxIdx == pcaMux->parentMuxIdx &&
+                     mux->parentMuxValue == pcaMux->parentMuxValue &&
                      mux->model != PCA_MUX_9541 )
                 {
                     /* Disable that mux */
@@ -3386,9 +2695,9 @@ static fm_status SetupMuxPathRcrsv(fm_uint muxIdx,
                         FM_LOG_PRINT("Clear Mux 0x%x\n", mux->addr);
                     }
                     status = i2c->writeReadFunc(i2c->handle,
-                                                mux->addr, 
-                                                data, 
-                                                1, 
+                                                mux->addr,
+                                                data,
+                                                1,
                                                 0);
                     FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
                 }
@@ -3543,7 +2852,7 @@ static fm_status InitPca(void)
             ioDev->ledRegs.group[0] = 0x7f;
 
             /* GRPFREQ: Set blink period */
-            ioDev->ledRegs.group[1] = ioDev->ledBlinkPeriod; 
+            ioDev->ledRegs.group[1] = ioDev->ledBlinkPeriod;
 
             for (led = 0 ; led < (ioDev->devCap.numBits) ; led++)
             {
@@ -3606,7 +2915,7 @@ static fm_status InitPca(void)
             {
                 bitIdx  = offset % 8;
                 SET_BIT(ioRegs->ioc[byteIdx], bitIdx, IOC_OUTPUT);
-                SET_BIT(ioRegs->output[byteIdx], bitIdx, 
+                SET_BIT(ioRegs->output[byteIdx], bitIdx,
                     !hwResId->xcvrI2cBusSel.ioPinPolarity);
             }
         }
@@ -3707,8 +3016,8 @@ static fm_status InitPca(void)
                             bitIdx  = offset % 8;
                             if (byteIdx < FM_PCA_IO_REG_MAX_SIZE)
                             {
-                                SET_BIT(ioDev->cachedRegs.ioc[byteIdx], 
-                                        bitIdx, 
+                                SET_BIT(ioDev->cachedRegs.ioc[byteIdx],
+                                        bitIdx,
                                         IOC_OUTPUT);
                             }
                         }
@@ -3720,9 +3029,25 @@ static fm_status InitPca(void)
 
     }   /* end for (cnt = 0 ; cnt < hwCfg.numResId; cnt++) */
 
-    /* Init the PCA IO hardware registers */
+
+    /* Init the PCA IO hardware registers for devices connected to I2C bus
+       other than switch i2c bus, for example /dev/i2c-0. The devices connected
+       to a switch i2c bus will be initialize later in InitSwitchPcaDevice */
     for (cnt = 0 ; cnt < hwCfg.numPcaIo; cnt++)
     {
+        i2c = &hwCfg.i2c[hwCfg.pcaIo[cnt].dev.bus];
+
+        if (i2c->isSwitchMaster)
+        {
+            if (hwCfg.debug & DBG_I2C)
+            {
+                FM_LOG_PRINT("skip pcaio=%d bus=%d\n",
+                             cnt,
+                             hwCfg.pcaIo[cnt].dev.bus);
+            }
+            continue;
+        }
+
         status = SetupMuxPath(hwCfg.pcaIo[cnt].parentMuxIdx,
                               hwCfg.pcaIo[cnt].parentMuxValue);
         if (status)
@@ -3744,6 +3069,67 @@ static fm_status InitPca(void)
     FM_LOG_EXIT(FM_LOG_CAT_PLATFORM, status);
 
 }   /* end InitPca */
+
+
+
+/*****************************************************************************/
+/* InitSwitchPcaDevice
+ * \ingroup intPlatform
+ *
+ * \desc            Initialize PCA devices attached the given switch.
+ *
+ * \param[in]       sw is the switch number, as specified by property
+ *                  api.platform.config.switch.n.switchNumber.
+ *
+ * \return          FM_OK if successful.
+ * \return          Other ''Status Codes'' as appropriate in case of
+ *                  failure.
+ *
+ *****************************************************************************/
+static fm_status InitSwitchPcaDevice(fm_int sw)
+{
+    fm_status       status = FM_OK;
+    fm_uint         cnt;
+    fm_int          bus;
+    fm_i2cCfg *     i2c;
+
+    FM_LOG_ENTRY_NOARGS(FM_LOG_CAT_PLATFORM);
+
+    /* Init the PCA IO hardware registers for devices connected to this switch
+       i2c bus. */
+    for (cnt = 0 ; cnt < hwCfg.numPcaIo; cnt++)
+    {
+        bus = hwCfg.pcaIo[cnt].dev.bus;
+        i2c = &hwCfg.i2c[bus];
+
+        if (i2c->isSwitchMaster && bus == sw )
+        {
+            status = SetupMuxPath(hwCfg.pcaIo[cnt].parentMuxIdx,
+                                  hwCfg.pcaIo[cnt].parentMuxValue);
+            if (status)
+            {
+                FM_LOG_ERROR(FM_LOG_CAT_PLATFORM,
+                    "Error to init PCA mux\n");
+                break;
+            }
+
+            status = fmUtilPcaIoInit(&hwCfg.pcaIo[cnt].dev);
+            if (status)
+            {
+                FM_LOG_ERROR(FM_LOG_CAT_PLATFORM,
+                    "Error to init PCA IO (%d) device\n", cnt);
+                break;
+            }
+        }
+        else if (hwCfg.debug & DBG_I2C)
+        {
+            FM_LOG_PRINT("skip pcaio=%d bus=%d\n", cnt, bus);
+        }
+    }
+
+    FM_LOG_EXIT(FM_LOG_CAT_PLATFORM, status);
+
+}   /* end InitSwitchPcaDevice */
 
 
 
@@ -3782,7 +3168,7 @@ static void DumpPca(void)
  * \ingroup platformLib
  *
  * \desc            Get the actual voltage from the voltage regulator.
- * 
+ *
  * \note            Assumes that the caller has taken the file locks.
  *
  * \param[in]       sw is the switch number, as specified by property
@@ -3791,7 +3177,7 @@ static void DumpPca(void)
  * \param[in]       hwResourceId is the hardware resource id associated
  *                  with the VRM.
  *                  api.platform.config.switch.n.vrm.hwResourceId.
- * 
+ *
  *                  The sub-channel number is embedded in the resourceId.
  *
  * \param[in]       mVolt is the caller allocated storage where the
@@ -3839,6 +3225,15 @@ fm_status GetVrmVoltageInt(fm_int     sw,
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
     }
 
+    if ( i2c->isSwitchMaster && i2c->chipVersion == CHIP_VERSION_A0 )
+    {
+        /* Because of the i2c write-read issue with FM10000 A0, voltage
+           scaling is not supported. */
+        FM_LOG_PRINT("Voltage scaling not supported on FM10000 A0 version\n");
+        status = FM_ERR_UNSUPPORTED;
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
+    }
+
     vrmI2c = &hwResId->vrm;
     if (vrmI2c == NULL)
     {
@@ -3858,7 +3253,7 @@ fm_status GetVrmVoltageInt(fm_int     sw,
                           hwResId->vrm.parentMuxValue);
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
 
-    if (hwResId->vrm.model && (strcmp(vrmI2c->model, "TPS40425") == 0))
+    if (hwResId->vrm.model && (vrmI2c->model == VRM_TPS40425))
     {
         if (channel == 0)
         {
@@ -3894,7 +3289,7 @@ fm_status GetVrmVoltageInt(fm_int     sw,
         /* Unit is 1.953 mV (from VOUT_MODE instead of e)*/
         *mVolt = ((s.bits.m) * 1953) / 1000;
     }
-    else if (hwResId->vrm.model && (strcmp(vrmI2c->model, "PX8847") == 0))
+    else if (hwResId->vrm.model && (vrmI2c->model == VRM_PX8847))
     {
         if (channel == 0)
         {
@@ -3951,7 +3346,6 @@ ABORT:
 
 
 
-
 /*****************************************************************************
  * Public Functions
  *****************************************************************************/
@@ -3974,17 +3368,120 @@ fm_status fmPlatformLibInit(void)
     fm_i2cCfg *i2c;
     fm_status  status;
     fm_int     bus;
+    fm_uint    idx;
+    fm_char    tmpStr[32];
+    fm_portLed *portLed;
+    fm_uint     led;
+    fm_uint     subLed;
 
     FM_LOG_ENTRY_NOARGS(FM_LOG_CAT_PLATFORM);
 
     memset(&hwCfg, 0, sizeof(hwCfg));
 
+    hwCfg.fileLock = -1;
+
+    for ( idx = 0 ; idx < NUM_I2C_BUS ; idx++ )
+    {
+        hwCfg.i2c[idx].i2cWrRdEn = TRUE;
+    }
+
+    for (idx = 0 ; idx < NUM_PCA_MUX ; idx++)
+    {
+        hwCfg.pcaMux[idx].parentMuxIdx = UINT_NOT_USED;
+    }
+
+    for (idx = 0 ; idx < NUM_PCA_IO ; idx++)
+    {
+        hwCfg.pcaIo[idx].parentMuxIdx = UINT_NOT_USED;
+    }
+
+    for (idx = 0 ; idx < FM_NUM_HW_RES_ID ; idx++)
+    {
+        hwCfg.hwResId[idx].xcvrI2cBusSel.parentMuxIdx =
+            UINT_NOT_USED;
+        hwCfg.hwResId[idx].phy.parentMuxIdx = UINT_NOT_USED;
+        hwCfg.hwResId[idx].vrm.parentMuxIdx = UINT_NOT_USED;
+        for (led = 0 ; led < NUM_LED_PER_PORT ; led++)
+        {
+            portLed = &hwCfg.hwResId[idx].portLed[led];
+            portLed->ioIdx = UINT_NOT_USED;
+            for (subLed = 0 ; subLed < NUM_SUB_LED ; subLed++)
+            {
+                portLed->subLed[subLed].pin   = UINT_NOT_USED;
+                portLed->subLed[subLed].usage = UINT_NOT_USED;
+            }
+        }
+    }
+
+    hwCfg.defSfppPat.modPresN = UINT_NOT_USED;
+    hwCfg.defSfppPat.rxLos = UINT_NOT_USED;
+    hwCfg.defSfppPat.txDisable = UINT_NOT_USED;
+    hwCfg.defSfppPat.txFault = UINT_NOT_USED;
+    hwCfg.defQsfpPat.modPresN = UINT_NOT_USED;
+    hwCfg.defQsfpPat.intrN = UINT_NOT_USED;
+    hwCfg.defQsfpPat.lpMode = UINT_NOT_USED;
+    hwCfg.defQsfpPat.resetN = UINT_NOT_USED;
+
     status = LoadConfig();
     FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
+
+    if (strlen(hwCfg.i2c[0].devName) == 0)
+    {
+        /* Bus 0 is not defined, do we have another bus number (1..NUM_I2C_BUS)
+           defined. */
+        for ( idx = 1 ; idx < NUM_I2C_BUS ; idx++ )
+        {
+            if ( strlen(hwCfg.i2c[idx].devName) )
+            {
+                /* Found another I2C bus defined. This is the SWAG case,
+                   where the swag switch is sw 0. Set bus 0 devName to "swag"
+                   for fmPlatformLibInit. */
+                FM_STRCPY_S(hwCfg.i2c[0].devName,
+                    sizeof(hwCfg.i2c[0].devName),
+                    "swag");
+                break;
+            }
+        }
+
+        if (idx >= NUM_I2C_BUS)
+        {
+            /* No other I2C bus found, then default bus 0 to "switchI2C" */
+            FM_STRCPY_S(hwCfg.i2c[0].devName,
+                sizeof(hwCfg.i2c[0].devName),
+                "switchI2C");
+        }
+    }
+
+    /* Update the device capabilities */
+    for (idx = 0 ; idx < hwCfg.numPcaIo; idx++)
+    {
+        status = fmUtilPcaIoGetCap(hwCfg.pcaIo[idx].dev.model,
+                                   &hwCfg.pcaIo[idx].dev.devCap);
+        if (status)
+        {
+            FM_LOG_ERROR(FM_LOG_CAT_PLATFORM,
+                "%s: Unable to get device capabilities.\n",
+                PcaIoModelToStr(hwCfg.pcaIo[idx].dev.model));
+            return status;
+        }
+    }
 
     if (hwCfg.debug & DBG_DUMP_CFG)
     {
         DumpConfig();
+    }
+
+    if (strlen(hwCfg.fileLockName) > 0)
+    {
+        hwCfg.fileLock = 
+            open(hwCfg.fileLockName, O_RDWR|O_CREAT, S_IRWXU|S_IRWXG|S_IRWXO);
+
+        if (hwCfg.fileLock < 0)
+        {
+            FM_LOG_ERROR(FM_LOG_CAT_PLATFORM,
+                         "Unable to open filelock name: [%s].\n",
+                         hwCfg.fileLockName);
+        }
     }
 
     for (bus = 0 ; bus < NUM_I2C_BUS ; bus++)
@@ -3992,6 +3489,7 @@ fm_status fmPlatformLibInit(void)
         i2c = &hwCfg.i2c[bus];
         i2c->handle = 0;
         i2c->i2cBlockSupported = 0;
+        i2c->isSwitchMaster = 0;
 
         /* Subsequent bus could be unused */
         if ((bus > 0) && !strlen(i2c->devName))
@@ -4001,25 +3499,25 @@ fm_status fmPlatformLibInit(void)
 
         if (strstr(i2c->devName, "switchI2C") != NULL)
         {
-            i2c->writeReadFunc = i2c->i2cWrRdEn ? SwitchI2cWriteRead1 :
-                                                  SwitchI2cWriteRead2;
+            i2c->writeReadFunc = SwitchI2cWriteRead;
             i2c->setDebugFunc  = NULL;
-            i2c->handle = 0; /* handle is the switch number */
-            i2c->i2cBlockSupported = 0; /* Bob: to test with 1 */
+            i2c->handle = bus; /* bus is the same as switch number */
+            i2c->i2cBlockSupported = 0;
+            i2c->isSwitchMaster = 1;
         }
         else if (strstr(i2c->devName, "/dev/i2c") != NULL)
-        { 
+        {
             status = fmPlatformSMBusI2cInit(i2c->devName, (int *)&i2c->handle);
             FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
 
             i2c->writeReadFunc = fmPlatformSMBusI2cWriteReadHandle;
             i2c->setDebugFunc  = NULL;
 
-            fmPlatformSMBusIsI2cBlockSupported((int )i2c->handle, 
+            fmPlatformSMBusIsI2cBlockSupported((int )i2c->handle,
                                                &i2c->i2cBlockSupported);
         }
         else if (strstr(i2c->devName, "/dev/ipmi") != NULL)
-        { 
+        {
             status = fmPlatformIpmiInit(i2c->devName, (int *)&i2c->handle);
             FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
 
@@ -4028,7 +3526,7 @@ fm_status fmPlatformLibInit(void)
         }
 #ifdef FM_SUPPORT_FTDI_RRC
         else if (strstr(i2c->devName, "ttyUSB") != NULL)
-        { 
+        {
             status = fmUtilFtdiRrcInit(i2c->devName, &i2c->handle);
             FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
 
@@ -4038,6 +3536,12 @@ fm_status fmPlatformLibInit(void)
 #endif
         else
         {
+            if ((bus == 0) && strstr(i2c->devName, "swag") != NULL)
+            {
+               /* In SWAG, there is no bus associated to bus 0 (switch 0). */
+               continue;
+            }
+
             FM_LOG_ERROR(FM_LOG_CAT_PLATFORM,
                          "Unknown device name: [%s]\n",
                          i2c->devName);
@@ -4045,6 +3549,8 @@ fm_status fmPlatformLibInit(void)
             FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
         }
     }
+
+    status = InitPca();
 
 ABORT:
 
@@ -4072,16 +3578,14 @@ ABORT:
  *****************************************************************************/
 fm_status fmPlatformLibInitSwitch(fm_int sw)
 {
-    fm_status status;
+    fm_status   status;
 
     FM_LOG_ENTRY(FM_LOG_CAT_PLATFORM, "sw=%d\n", sw);
-
-    FM_NOT_USED(sw);
 
     status = TakeLock();
     FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
 
-    status = InitPca();
+    status = InitSwitchPcaDevice(sw);
 
     DropLock();
 
@@ -4310,7 +3814,7 @@ fm_status fmPlatformLibSelectBus(fm_int    sw,
         }
         else
         {
-            FM_LOG_ERROR(FM_LOG_CAT_PLATFORM, 
+            FM_LOG_ERROR(FM_LOG_CAT_PLATFORM,
                          "Invalid bus number %d \n",
                          hwResourceId);
         }
@@ -4390,7 +3894,7 @@ fm_status fmPlatformLibSelectBus(fm_int    sw,
                                     bitIdx,
                                     (cnt == hwIdx) ? xcvrI2cBus->ioPinPolarity :
                                         !xcvrI2cBus->ioPinPolarity);
-                            
+
                             id = byteIdx | (ioIdx << 8);
                             /* Only update HW only when change to different byte */
                             if ((lastId != UINT_NOT_USED && (id != lastId)) ||
@@ -4612,8 +4116,8 @@ fm_status fmPlatformLibGetPortXcvrState(fm_int     sw,
         if (hwIdx >= hwCfg.numResId)
         {
             FM_LOG_ERROR(FM_LOG_CAT_PLATFORM,
-                         "hwResourceId %u out of range %u\n", 
-                         hwIdx, 
+                         "hwResourceId %u out of range %u\n",
+                         hwIdx,
                          hwCfg.numResId);
             status = FM_ERR_INVALID_ARGUMENT;
             FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
@@ -4737,13 +4241,16 @@ fm_status fmPlatformLibGetPortXcvrState(fm_int     sw,
                 }
             }
 
+            /* Reading output cached reg for lpMode and enable bits because of
+               input/output mismatch seen with specific cables
+               (Vendor : TE Connectivity : PN 2231368-1).*/
             offset = xcvrIo->u.qsfpPin.lpMode;
             if ((offset != UINT_NOT_USED) && (offset < NUM_PCA_PINS))
             {
                 byteIdx = offset / 8;
                 bitIdx  = offset % 8;
                 xcvrStateValid[cnt] |= FM_PLAT_XCVR_LPMODE;
-                if (GET_BIT(ioDev->cachedRegs.input[byteIdx], bitIdx))
+                if (GET_BIT(ioDev->cachedRegs.output[byteIdx], bitIdx))
                 {
                     xcvrState[cnt] |= FM_PLAT_XCVR_LPMODE;
                 }
@@ -4755,7 +4262,7 @@ fm_status fmPlatformLibGetPortXcvrState(fm_int     sw,
                 byteIdx = offset / 8;
                 bitIdx  = offset % 8;
                 xcvrStateValid[cnt] |= FM_PLAT_XCVR_ENABLE;
-                if (GET_BIT(ioDev->cachedRegs.input[byteIdx], bitIdx))
+                if (GET_BIT(ioDev->cachedRegs.output[byteIdx], bitIdx))
                 {
                     xcvrState[cnt] |= FM_PLAT_XCVR_ENABLE;
                 }
@@ -4821,8 +4328,8 @@ fm_status fmPlatformLibSetPortXcvrState(fm_int    sw,
     if (hwIdx >= hwCfg.numResId)
     {
         FM_LOG_ERROR(FM_LOG_CAT_PLATFORM,
-                     "hwResourceId %u out of range %u\n", 
-                     hwIdx, 
+                     "hwResourceId %u out of range %u\n",
+                     hwIdx,
                      hwCfg.numResId);
         FM_LOG_EXIT(FM_LOG_CAT_PLATFORM, FM_ERR_INVALID_ARGUMENT);
     }
@@ -4938,7 +4445,7 @@ ABORT:
  * \param[in]       hwResourceIdList is the hardware resource id associated
  *                  with list of ports, as specified by property
  *                  api.platform.config.switch.n.portIndex.port.hwResourceId.
- * 
+ *
  *                  The LED number is embedded in the resourceId.
  *
  * \param[in]       numHwId is the number of elements in the hwResourceIdList.
@@ -5011,8 +4518,8 @@ fm_status fmPlatformLibSetPortLed(fm_int     sw,
 
         if (hwCfg.debug & DBG_PORT_LED)
         {
-            FM_LOG_PRINT("SetLed: hwId=%d ledNum=%d ledState=0x%x \n", 
-                         hwIdx, 
+            FM_LOG_PRINT("SetLed: hwId=%d ledNum=%d ledState=0x%x \n",
+                         hwIdx,
                          led,
                          ledStateList[cnt]);
         }
@@ -5083,8 +4590,8 @@ fm_status fmPlatformLibSetPortLed(fm_int     sw,
                         if (hwCfg.debug & DBG_PORT_LED)
                         {
                             FM_LOG_PRINT("ledout: 0x%x pin=%d "
-                                         "byteIdx=%d ledPcaState %d\n", 
-                                         ledout, 
+                                         "byteIdx=%d ledPcaState %d\n",
+                                         ledout,
                                          pin,
                                          byteIdx,
                                          ledPcaState);
@@ -5101,7 +4608,7 @@ fm_status fmPlatformLibSetPortLed(fm_int     sw,
                     }
                     else
                     {
-                        if ( ledState == LED_STATE_ON || 
+                        if ( ledState == LED_STATE_ON ||
                              ledState == LED_STATE_BLINK_ON )
                         {
                             /* Turn ON the LED */
@@ -5124,7 +4631,7 @@ fm_status fmPlatformLibSetPortLed(fm_int     sw,
                             if (hwCfg.debug & DBG_PORT_LED)
                             {
                                 FM_LOG_PRINT("pin=%d byteIdx %d bitIdx %d "
-                                             "ledPcaState %d\n", 
+                                             "ledPcaState %d\n",
                                              pin,
                                              byteIdx,
                                              bitIdx,
@@ -5284,7 +4791,7 @@ fm_status fmPlatformLibGetPortIntrPending(fm_int     sw,
  * \param[in]       hwResourceId is the hardware resource id associated
  *                  with the VRM.
  *                  api.platform.config.switch.n.vrm.hwResourceId.
- * 
+ *
  *                  The sub-channel number is embedded in the resourceId.
  *
  * \param[in]       mVolt is the voltage to set in milli-volt.
@@ -5346,6 +4853,15 @@ fm_status fmPlatformLibSetVrmVoltage(fm_int     sw,
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
     }
 
+    if ( i2c->isSwitchMaster && i2c->chipVersion == CHIP_VERSION_A0 )
+    {
+        /* Because of the i2c write-read issue with FM10000 A0, voltage
+           scaling is not supported. */
+        FM_LOG_PRINT("Voltage scaling not supported on FM10000 A0 version\n");
+        status = FM_ERR_UNSUPPORTED;
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
+    }
+
     vrmI2c = &hwResId->vrm;
     if (vrmI2c == NULL)
     {
@@ -5365,15 +4881,8 @@ fm_status fmPlatformLibSetVrmVoltage(fm_int     sw,
                           hwResId->vrm.parentMuxValue);
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
 
-    if (hwResId->vrm.model && (strcmp(vrmI2c->model, "TPS40425") == 0))
+    if (hwResId->vrm.model && (vrmI2c->model == VRM_TPS40425))
     {
-        data[0] = 0xd0;
-        data[1] = 0x55;
-        data[2] = 0xaa;
-
-        status = i2c->writeReadFunc(i2c->handle, vrmI2c->addr, data, 3, 0);
-        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
-
         if (channel == 0)
         {
             page = 0;
@@ -5426,7 +4935,7 @@ fm_status fmPlatformLibSetVrmVoltage(fm_int     sw,
 
         /* Get the new trim voltage delta */
         newTrimVoltDelta = newRefVolt - actualRefVolt;
-          
+
         /* Get the required trim adjustement and convert to 2mv increment */
         newTrimVal = (actualTrimVolt + newTrimVoltDelta) >> 1;
 
@@ -5448,7 +4957,7 @@ fm_status fmPlatformLibSetVrmVoltage(fm_int     sw,
         status = i2c->writeReadFunc(i2c->handle, vrmI2c->addr, data, 3, 0);
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
     }
-    else if (hwResId->vrm.model && (strcmp(hwResId->vrm.model, "PX8847") == 0))
+    else if (hwResId->vrm.model && (hwResId->vrm.model == VRM_PX8847))
     {
         page = 0x20;
 
@@ -5574,7 +5083,7 @@ ABORT:
  * \param[in]       hwResourceId is the hardware resource id associated
  *                  with the VRM.
  *                  api.platform.config.switch.n.vrm.hwResourceId.
- * 
+ *
  *                  The sub-channel number is embedded in the resourceId.
  *
  * \param[in]       mVolt is the caller allocated storage where the

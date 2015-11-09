@@ -323,9 +323,9 @@ extern fm_platformProcessState *fmPlatformProcessState;
     fmReleaseLock( &fmRootPlatform->platformState[(sw)].accessLocks[(type)]);
 
 /* access lock to I2C bus muxes */
-#define TAKE_PLAT_I2C_BUS_LOCK(sw) TAKE_PLAT_LOCK(0, FM_PLAT_I2C_BUS);
+#define TAKE_PLAT_I2C_BUS_LOCK(sw) TAKE_PLAT_LOCK(sw, FM_PLAT_I2C_BUS);
 
-#define DROP_PLAT_I2C_BUS_LOCK(sw) DROP_PLAT_LOCK(0, FM_PLAT_I2C_BUS);
+#define DROP_PLAT_I2C_BUS_LOCK(sw) DROP_PLAT_LOCK(sw, FM_PLAT_I2C_BUS);
 
 #define BYPASS_ADDR_CHECK(addr)  TRUE
 

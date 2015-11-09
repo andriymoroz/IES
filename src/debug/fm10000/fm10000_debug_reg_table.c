@@ -119,6 +119,7 @@ const fm10000DbgFulcrumRegister fm10000RegisterTable[] =
     { "FM10000_SGMII_AN_RX_CONFIG",                 MWDBLIDX, 0x0E0008, 0x08, 0x0,  1,    0,     0,     0,     8,     3,     0,     0x000400, 0x000080, 0x000000 },
     { "FM10000_AN_73_BASE_PAGE_RX",                 DBLINDEX, 0x0E000A, 0x08, 0x0,  2,    0,     0,     0,     8,     3,     0,     0x000400, 0x000080, 0x000000 },
     { "FM10000_AN_73_NEXT_PAGE_RX",                 DBLINDEX, 0x0E000A, 0x08, 0x0,  2,    0,     0,     0,     8,     3,     0,     0x000400, 0x000080, 0x000000 },
+    { "FM10000_LINK_RULES",                         MWDBLIDX, 0x0E000C, 0x08, 0x0,  1,    0,     0,     0,     8,     3,     0,     0x000400, 0x000080, 0x000000 },
     { "FM10000_MAC_CFG",                            DBLINDEX, 0x0E0010, 0x08, 0x0,  7,    0,     0,     0,     8,     3,     0,     0x000400, 0x000080, 0x000000 },
     { "FM10000_MAC_1588_STATUS",                    DBLINDEX, 0x0E001E, 0x08, 0x0,  2,    0,     0,     0,     8,     3,     0,     0x000400, 0x000080, 0x000000 },
     { "FM10000_MAC_OVERSIZE_COUNTER",               MWDBLIDX, 0x0E0021, 0x08, 0x0,  1,    0,     0,     0,     8,     3,     0,     0x000400, 0x000080, 0x000000 },

@@ -98,6 +98,9 @@ typedef struct _fm_vnTunnel
     /* Encapsulation TTL Value. */
     fm_uint           encapTTL;
 
+    /* NSH headers */
+    fm_vnNshCfg       nsh;
+
     /* Pointer to the route that services this tunnel */
     fm_intRouteEntry *route;
 

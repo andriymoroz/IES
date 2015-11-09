@@ -604,12 +604,14 @@ typedef struct _fm_eventPktRecv
     fm_int    trapAction;
 
     /** Indicates the internal switch priority associated with this packet.
-     *  
+     *  On FM10000, this field will always be zero.
+     *
      *  \chips  FM2000, FM4000, FM6000, FM10000 */
     fm_int    priority;
 
     /** The ISL tag, which is an array of ''FM_MAX_ISL_TAG_SIZE'' 32-bit 
-     *  words.
+     *  words. On FM10000, only the SGLORT, DGLORT and VLAN/VPRI fields will be
+     * set in the ISL tag.
      *  
      *  \chips  FM4000, FM6000, FM10000  */
     fm_uint32 ISLTag[FM_MAX_ISL_TAG_SIZE];
@@ -972,6 +974,10 @@ typedef enum
     /** Tunneling Engine memory error.
      *  \chips  FM10000 */
     FM_PARITY_AREA_TUNNEL_ENGINE,
+
+    /** Stats memory error.
+     *  \chips  FM10000 */
+    FM_PARITY_AREA_STATS,
 
     /** UNPUBLISHED: For internal use only. */
     FM_PARITY_AREA_MAX

@@ -1571,6 +1571,8 @@ fm_status fmUtilPcaIoInit(fm_pcaIoDevice *dev)
 
         case PCA_IO_9554:
         case PCA_IO_9555:
+        case PCA_IO_9538:
+        case PCA_IO_9539:
             status = InitPca9555(dev);
             break;
 
@@ -1622,6 +1624,8 @@ fm_status fmUtilPcaIoDump(fm_pcaIoDevice *dev)
 
         case PCA_IO_9554:
         case PCA_IO_9555:
+        case PCA_IO_9538:
+        case PCA_IO_9539:
             status = DumpPca9555(dev);
             break;
 
@@ -1667,6 +1671,8 @@ fm_status fmUtilPcaIoUpdateInputRegs(fm_pcaIoDevice *dev)
 
         case PCA_IO_9554:
         case PCA_IO_9555:
+        case PCA_IO_9538:
+        case PCA_IO_9539:
             status = ReadPca9555Registers(dev, 
                                           PCA_IO_REG_TYPE_INPUT, 
                                           0, 
@@ -1721,6 +1727,8 @@ fm_status fmUtilPcaIoWriteRegs(fm_pcaIoDevice *dev,
 
         case PCA_IO_9554:
         case PCA_IO_9555:
+        case PCA_IO_9538:
+        case PCA_IO_9539:
             status = WritePca9555Registers(dev, regType, startReg, numBytes);
             break;
 
@@ -1781,6 +1789,8 @@ fm_status fmUtilPcaIoReadRegs(fm_pcaIoDevice  *dev,
 
         case PCA_IO_9554:
         case PCA_IO_9555:
+        case PCA_IO_9538:
+        case PCA_IO_9539:
             status = ReadPca9555Registers(dev, regType, startReg, numBytes);
             break;
 

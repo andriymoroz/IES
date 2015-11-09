@@ -5,7 +5,7 @@
  * Creation Date:   Aug 13, 2007
  * Description:     Structures and functions for dealing with link aggregation
  *
- * Copyright (c) 2007 - 2014, Intel Corporation
+ * Copyright (c) 2007 - 2015, Intel Corporation
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -29,7 +29,7 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
+ *****************************************************************************/
 
 #include <fm_sdk_fm10000_int.h>
 
@@ -1760,12 +1760,13 @@ ABORT:
  *****************************************************************************/
 fm_status fm10000DeleteLagFromSwitch(fm_int sw, fm_int lagIndex)
 {
-    fm10000_lag *     lagExt;
-    fm_switch *       switchPtr;
-    fm_lag *          lagPtr;
-    fm_int            port;
-    fm_status         err;
-    fm_int            i;
+    fm10000_lag *       lagExt;
+    fm_switch *         switchPtr;
+    fm_logicalPortInfo *lportInfo;
+    fm_lag *            lagPtr;
+    fm_int              port;
+    fm_status           err;
+    fm_int              i;
     
     FM_LOG_ENTRY(FM_LOG_CAT_LAG,
                  "sw=%d lagIndex=%d\n",
@@ -1773,6 +1774,7 @@ fm_status fm10000DeleteLagFromSwitch(fm_int sw, fm_int lagIndex)
                  lagIndex);
 
     switchPtr = GET_SWITCH_PTR(sw);
+    lportInfo = &switchPtr->logicalPortInfo;
     lagPtr    = GET_SWITCH_LAG_PTR(switchPtr, lagIndex);
 
     if (lagPtr == NULL)
@@ -1800,16 +1802,17 @@ fm_status fm10000DeleteLagFromSwitch(fm_int sw, fm_int lagIndex)
 
     if (err == FM_OK)
     {
-        fm_logicalPortInfo* lportInfo;
-
         /* Since another thread is freeing the port and glort
          * we have to mark the port and glort delete pending
          * in order for caller to free the allocated LAGs if needed */
-        lportInfo = &switchPtr->logicalPortInfo;
+        fmReleaseGlortRangeInt(sw,
+                               lagExt->lagGlort,
+                               FM10000_GLORTS_PER_LAG,
+                               FM_GLORT_TYPE_LAG,
+                               TRUE);
 
         for (i = 0 ; i < FM10000_GLORTS_PER_LAG ; i++)
         {
-            FM_SET_GLORT_FREE_PEND(lportInfo, lagExt->lagGlort + i);
             FM_SET_LPORT_FREE_PEND(lportInfo, lagPtr->logicalPort + i);
         }
     }
@@ -1981,8 +1984,7 @@ fm_status fm10000AddPortToLag(fm_int sw, fm_int lagIndex, fm_int port)
      * Flush any dynamic address that were associated
      * with the new port.
      **************************************************/
-    if (fmGetBoolApiProperty(FM_AAK_API_MA_FLUSH_ON_LAG_CHANGE,
-                             FM_AAD_API_MA_FLUSH_ON_LAG_CHANGE))
+    if (GET_PROPERTY()->maFlushOnLagChange)
     {
         err = fmFlushPortAddresses(sw, port);
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_LAG, err);

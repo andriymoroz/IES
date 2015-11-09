@@ -30,7 +30,7 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
+ *****************************************************************************/
 
 #ifndef __FM_FM_API_PORT_INT_H
 #define __FM_FM_API_PORT_INT_H
@@ -261,10 +261,18 @@ typedef struct _fm_laneAttr
     fm_bool        txLaneEnableConfigKrInit;
     fm_int         preCursorDecOnPreset;
     fm_int         postCursorDecOnPreset;
+    fm_int         kr_xconfig1;
+    fm_int         kr_xconfig2;
     fm_uint32      rxPolarity;
     fm_uint32      txPolarity;
     fm_rxTermination rxTermination;
     fm_dfeMode     dfeMode;
+    fm_int         transitionThreshold;
+    fm_int         linkOptimParamA10G;
+    fm_int         linkOptimParamA25G;
+    fm_int         linkOptimParamB10G;
+    fm_int         linkOptimParamB25G;
+
     /* This field make mapping of pep to serdes more efficient */
     fm_int         pepOffset;
 
@@ -499,6 +507,9 @@ struct _fm_port
     /* link state change pending flag */
     fm_bool                linkStateChangePending;
 
+    /* wait for free event notification buffer flag */
+    fm_bool                waitForFreeEventBuffer;
+
     /* pending link state value */
     fm_uint32              pendingLinkStateValue;
 
@@ -634,11 +645,11 @@ struct _fm_port
                                               fm_bool strict);
 
 
-    fm_status              (*isPciePort)( fm_int   sw, 
+    fm_status              (*IsPciePort)( fm_int   sw, 
                                           fm_int   port, 
                                           fm_bool *isPcie );
 
-    fm_status              (*isSpecialPort)( fm_int   sw, 
+    fm_status              (*IsSpecialPort)( fm_int   sw, 
                                              fm_int   port, 
                                              fm_bool *isSpecialPort );
 

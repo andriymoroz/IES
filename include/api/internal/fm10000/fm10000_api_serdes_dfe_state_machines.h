@@ -74,6 +74,7 @@ typedef enum
     FM10000_SERDES_DFE_EVENT_START_PCAL_REQ,
     FM10000_SERDES_DFE_EVENT_TUNING_STOPPED_IND,
     FM10000_SERDES_DFE_EVENT_TIMEOUT_IND,
+    FM10000_SERDES_DFE_EVENT_RESET_MACHINE_REQ,
     FM10000_SERDES_DFE_EVENT_MAX
 
 } fm10000_serdesDfeSmEvents;
@@ -87,7 +88,6 @@ fm_status fm10000SerDesDfeStartTuning( fm_smEventInfo *eventInfo, void *userInfo
 fm_status fm10000SerDesDfePauseTuning( fm_smEventInfo *eventInfo, void *userInfo );
 fm_status fm10000SerDesDfeResumeTuning( fm_smEventInfo *eventInfo, void *userInfo );
 fm_status fm10000SerDesDfeStartKrPCalTuning( fm_smEventInfo *eventInfo, void *userInfo );
-fm_status fm10000SerDesDfePushAutoStartTuning( fm_smEventInfo *eventInfo, void *userInfo );
 fm_status fm10000SerDesDfeStartTimeoutTimerShrt( fm_smEventInfo *eventInfo, void *userInfo );
 fm_status fm10000SerDesDfeStartTimeoutTimerStopTuning( fm_smEventInfo *eventInfo, void *userInfo );
 fm_status fm10000SerDesDfeStartTimeoutTimerDebounce( fm_smEventInfo *eventInfo, void *userInfo );
@@ -112,6 +112,7 @@ fm_status fm10000SerDesDfeDontSaveRecord( fm_smEventInfo *eventInfo, void *userI
 
 /* declaration of external counterparts of condition callbacks */
 fm_status fm10000SerDesDfeProcessPCalTimeout( fm_smEventInfo *eventInfo, void *userInfo, fm_int *nextState );
+fm_status fm10000SerDesDfeProcessPushAutoStartTuning( fm_smEventInfo *eventInfo, void *userInfo, fm_int *nextState );
 fm_status fm10000SerDesDfeProcessICalTimeout( fm_smEventInfo *eventInfo, void *userInfo, fm_int *nextState );
 fm_status fm10000SerDesDfeProcessStopTuningTimeout( fm_smEventInfo *eventInfo, void *userInfo, fm_int *nextState );
 

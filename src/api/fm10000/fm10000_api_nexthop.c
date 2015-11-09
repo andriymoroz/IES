@@ -188,7 +188,7 @@ static fm_status UpdateNextHopData(fm_int           sw,
                                    fm_intNextHop *  pNextHop);
 static fm_status SetEcmpGroupType(fm_int             sw,
                                   fm10000_EcmpGroup *pEcmpGroupExt);
-static fm_status AllocateEcmpGroupSpecRessources(fm_int             sw,
+static fm_status AllocateEcmpGroupSpecResources(fm_int             sw,
                                                  fm10000_EcmpGroup *pEcmpGroupExt);
 static fm_status CheckRequiredNextHopExtensions(fm_int           sw,
                                                 fm_intEcmpGroup *pParentEcmpGroup,
@@ -206,7 +206,7 @@ static fm_status SetNextHopArpIndexes(fm_int           sw,
                                       fm_uint16        arpBlkHndl);
 static fm_status AllocateArpForEcmpGroup(fm_int sw, fm_intEcmpGroup *group);
 static 
-fm_status AllocateFixedSizeEcmpGroupRessources(fm_int             sw,
+fm_status AllocateFixedSizeEcmpGroupResources(fm_int             sw,
                                                fm10000_EcmpGroup *pEcmpGroupExt);
 static fm_status SetupEcmpGroupArpEntries(fm_int           sw,
                                           fm_intEcmpGroup *pEcmpGroup,
@@ -1562,7 +1562,7 @@ static fm_status ArpFreeBlockDirectLookup(fm_int     sw,
         {
             pArpHndlTabUpperBound = &(*pSwitchExt->pNextHopSysCtrl->pArpHndlArray)[upperBound - blkLength];
         }
-        
+
         pArpHndlTabStart      = &(*pSwitchExt->pNextHopSysCtrl->pArpHndlArray)[0];
         
         while (pArpHndlTabEntry < pArpHndlTabUpperBound)
@@ -2450,7 +2450,7 @@ static fm_status MoveArpBlockIntoFreeEntries(fm_int  sw,
              * saturates at FM10000_ARP_MAINTENANCE_MAX_MOVABLE_BLOCK_LENGTH */
             freeEntries = 0;
             pScanArpHndlTab = &(*pSwitchExt->pNextHopSysCtrl->pArpHndlArray)[startIndex];
-       
+
             index = startIndex;
             while (*pScanArpHndlTab++ == FM10000_ARP_BLOCK_INVALID_HANDLE)
             {
@@ -3640,10 +3640,10 @@ static fm_status SetEcmpGroupType(fm_int             sw,
 
 
 /*****************************************************************************/
-/** AllocateEcmpGroupSpecRessources
+/** AllocateEcmpGroupSpecResources
  * \ingroup intNextHop
  *
- * \desc            Allocs specific ressources required by ECMP groups
+ * \desc            Allocs specific resources required by ECMP groups
  *                  supporting multicast groups.
  * 
  * \param[in]       sw is the switch number.
@@ -3655,7 +3655,7 @@ static fm_status SetEcmpGroupType(fm_int             sw,
  * \return          FM_ERR_INVALID_ARGUMENT if an argument is invalid.
  *                  
  *****************************************************************************/
-static fm_status AllocateEcmpGroupSpecRessources(fm_int             sw,
+static fm_status AllocateEcmpGroupSpecResources(fm_int             sw,
                                           fm10000_EcmpGroup *pEcmpGroupExt)
 {
     fm_intEcmpGroup *group;
@@ -3690,7 +3690,7 @@ static fm_status AllocateEcmpGroupSpecRessources(fm_int             sw,
 ABORT:
     FM_LOG_EXIT(FM_LOG_CAT_ROUTING, status);
 
-}   /* end AllocateEcmpGroupSpecRessources */
+}   /* end AllocateEcmpGroupSpecResources */
 
 
 
@@ -4140,10 +4140,10 @@ ABORT:
 
 
 /*****************************************************************************/
-/** AllocateFixedSizeEcmpGroupRessources
+/** AllocateFixedSizeEcmpGroupResources
  * \ingroup intNextHop
  *
- * \desc            Allocs ressources for "fixed size" ECMP groups. The size
+ * \desc            Allocs resources for "fixed size" ECMP groups. The size
  *                  of the block is validated and it must be one of these:
  *                  [1..16, 32, 64, 128, 256, 512, 1024, 2048, 4096]
  * 
@@ -4162,7 +4162,7 @@ ABORT:
  *
  *****************************************************************************/
 static 
-fm_status AllocateFixedSizeEcmpGroupRessources(fm_int             sw,
+fm_status AllocateFixedSizeEcmpGroupResources(fm_int             sw,
                                                fm10000_EcmpGroup *pEcmpGroupExt)
 { 
     fm_status        err;
@@ -4245,7 +4245,7 @@ fm_status AllocateFixedSizeEcmpGroupRessources(fm_int             sw,
                 }
             }
 
-            /* if there was an error release the allocated ressources */
+            /* if there was an error release the allocated resources */
             if (err != FM_OK)
             {
                 /* release the structures */
@@ -4275,7 +4275,7 @@ fm_status AllocateFixedSizeEcmpGroupRessources(fm_int             sw,
 
     FM_LOG_EXIT(FM_LOG_CAT_ROUTING, err);
 
-}   /* end AllocateFixedSizeEcmpGroupRessources */
+}   /* end AllocateFixedSizeEcmpGroupResources */
 
 
 
@@ -5281,7 +5281,7 @@ fm_status fm10000GetArpTablePathCountParameters(fm_int  arpBlkSize,
 /** fm10000NextHopAlloc
  * \ingroup intNextHop
  *
- * \desc            Allocates ressources for nextHop subsystem, called at
+ * \desc            Allocates resources for nextHop subsystem, called at
  *                  switch insertion time. No initialization is performed
  *                  by this function
  *
@@ -5289,7 +5289,7 @@ fm_status fm10000GetArpTablePathCountParameters(fm_int  arpBlkSize,
  *
  * \return          FM_OK if successful.
  * 
- * \return          FM_ERR_NO_MEM if the required ressources cannot be
+ * \return          FM_ERR_NO_MEM if the required resources cannot be
  *                  allocated.
  *
  *****************************************************************************/
@@ -5315,7 +5315,7 @@ fm_status fm10000NextHopAlloc(fm_int sw)
 
     pSwitchExt->pNextHopSysCtrl = NULL;
 
-    /* Alloc ressources for NextHop */
+    /* Alloc resources for NextHop */
     tsize = sizeof(fm10000_NextHopSysCtrl);
     pNextHopCtrlTmp  = (fm10000_NextHopSysCtrl*) fmAlloc(tsize);
 
@@ -5340,7 +5340,7 @@ fm_status fm10000NextHopAlloc(fm_int sw)
         err = FM_OK;
     }
 
-    /* in case of error: free all the allocated ressources */
+    /* in case of error: free all the allocated resources */
     if (err != FM_OK)
     {
         if (pArpHndlArrayTmp != NULL)
@@ -5371,7 +5371,7 @@ fm_status fm10000NextHopAlloc(fm_int sw)
 /** fm10000NextHopFree
  * \ingroup intNextHop
  *
- * \desc            Releases ressources used by nextHop subsystem, called at
+ * \desc            Releases resources used by nextHop subsystem, called at
  *                  switch removal time.
  *
  * \param[in]       sw is the switch number.
@@ -6348,6 +6348,56 @@ fm_status fm10000ResetAllArpEntryUsedStatusFlags(fm_int  sw)
 
 
 /*****************************************************************************/
+/** fm10000RepairArpUsed
+ * \ingroup intParity
+ *
+ * \desc            Repairs FM10000_ARP_USED_ENTRIES.
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \return          FM_OK if successful.
+ *
+ *****************************************************************************/
+fm_status fm10000RepairArpUsed(fm_int sw)
+{
+    fm_switch *switchPtr;
+    fm_status  err;
+    fm_int     index;
+
+    FM_LOG_ENTRY(FM_LOG_CAT_PARITY,
+                 "sw=%d\n",
+                 sw);
+
+    err = FM_OK;
+    switchPtr = GET_SWITCH_PTR(sw);
+
+    fmCaptureWriteLock(&switchPtr->routingLock, FM_WAIT_FOREVER);
+    TAKE_REG_LOCK(sw);
+
+    for (index = 0; index < FM10000_ARP_USED_ENTRIES; index++)
+    {
+        err = switchPtr->WriteUINT32( sw,
+                                      FM10000_ARP_USED(index),
+                                      0xFFFFFFFF);
+        if (err != FM_OK)
+        {
+            FM_LOG_ERROR(FM_LOG_CAT_PARITY,
+                         "Cannot clear ARP used flag table\n");
+            break;
+        }
+    }
+
+    DROP_REG_LOCK(sw);
+    err = fmReleaseWriteLock(&switchPtr->routingLock);
+
+    FM_LOG_EXIT(FM_LOG_CAT_PARITY, err);
+
+}   /* end fm10000RepairArpUsed */
+
+
+
+
+/*****************************************************************************/
 /** fm10000GetArpBlockInfo
  * \ingroup intNextHop
  *
@@ -6626,7 +6676,9 @@ fm_status fm10000DefragArpTable(fm_int sw)
 
     pSwitchExt = GET_SWITCH_EXT(sw);
 
-    requiredBlockSize = pSwitchExt->pNextHopSysCtrl->arpTabFreeEntryCount - 1;
+    requiredBlockSize = 
+        pSwitchExt->pNextHopSysCtrl->arpTabFreeEntryCount
+        - FM10000_ARP_MAINTENANCE_NOF_RESERVED_ENTRIES;
 
     err = PackArpTable(sw, requiredBlockSize, -1);
 
@@ -7852,7 +7904,7 @@ fm_status fm10000CreateECMPGroup(fm_int           sw,
     }
     else
     {
-        /* allocate basic ressources for the low level extension of the ECMP group */
+        /* allocate basic resources for the low level extension of the ECMP group */
         err = AllocateEcmpGroup(sw, &pEcmpGroupExtTmp);
 
         if (err == FM_OK)
@@ -7865,8 +7917,8 @@ fm_status fm10000CreateECMPGroup(fm_int           sw,
             
             if (err == FM_OK)
             {
-                /* allocate specific ressources according to the ecmp group type */
-                err = AllocateEcmpGroupSpecRessources(sw, pEcmpGroupExtTmp);
+                /* allocate specific resources according to the ecmp group type */
+                err = AllocateEcmpGroupSpecResources(sw, pEcmpGroupExtTmp);
             }
 
             if (err == FM_OK && pEcmpGroup->fixedSize == TRUE)
@@ -7874,12 +7926,12 @@ fm_status fm10000CreateECMPGroup(fm_int           sw,
                 /* in the case of a "fixed size" ECMP group, reserve a block of
                 *  ARP entries and create the associated low level nextHop
                 *  structures                                                   */
-                err = AllocateFixedSizeEcmpGroupRessources(sw, pEcmpGroupExtTmp);
+                err = AllocateFixedSizeEcmpGroupResources(sw, pEcmpGroupExtTmp);
             }
 
             if (err != FM_OK)
             {
-                /* error case: release all allocated ressources */
+                /* error case: release all allocated resources */
 
                 /* Note that fm10000FreeECMPGroup uses the pointer to the parent ECMP group */
                 local_err = fm10000FreeECMPGroup(sw, pEcmpGroup);
@@ -7961,7 +8013,7 @@ fm_status fm10000DeleteECMPGroup(fm_int           sw,
         }
         else
         {
-            /* release all hardware ressources */
+            /* release all hardware resources */
             err = GetEcmpGroupArpBlockHandle(sw, pEcmpGroup, &arpBlkHndl);
             if (err == FM_OK && arpBlkHndl != FM10000_ARP_BLOCK_INVALID_HANDLE)
             {
@@ -8004,7 +8056,7 @@ fm_status fm10000DeleteECMPGroup(fm_int           sw,
 /** fm10000FreeECMPGroup
  * \ingroup intRoute
  *
- * \desc            Frees the ressources allocated by a chip level extension
+ * \desc            Frees the resources allocated by a chip level extension
  *                  of an ECMP group. No notifications are send when an ECMP
  *                  group is being deleted.
  *

@@ -1,7 +1,7 @@
 /* vim:ts=4:sw=4:expandtab
  * (No tabs, indent level is 4 spaces)  */
 /*****************************************************************************
- * File:            platform_xcvr_mgmt.c
+ * File:            platform_mgmt.c
  * Creation Date:   June 2, 2014
  * Description:     Platform transceiver management functions.
  *
@@ -29,9 +29,10 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
+ *****************************************************************************/
 
 #include <fm_sdk_fm10000_int.h>
+
 
 /*****************************************************************************
  * Macros, Constants & Types
@@ -42,6 +43,7 @@
 
 /* Avoid calling fmAlloc for temporary variable */
 #define MAX_TEMP_PORTS         96
+
 
 /*****************************************************************************
  * Global Variables
@@ -319,7 +321,6 @@ void SetPortConfig(fm_int sw, fm_int portIndex)
  * \return          None.
  *
  *****************************************************************************/
-
 static fm_status ConfigureSfppXcvr(fm_int sw,
                                    fm_int port,
                                    fm_platXcvrInfo *xcvrInfo)
@@ -816,7 +817,8 @@ static void XcvrUpdateState(fm_int sw, fm_bool force, fm_bool interrupting)
         {
             portCfg = FM_PLAT_GET_PORT_CFG(sw, portIdx);
 
-            if ( !(portCfg->intfType == FM_PLAT_INTF_TYPE_SFPP ||
+            if ( portCfg->hwResourceId == FM_DEFAULT_HW_RES_ID || 
+                !(portCfg->intfType == FM_PLAT_INTF_TYPE_SFPP ||
                    portCfg->intfType == FM_PLAT_INTF_TYPE_QSFP_LANE0) )
             {
                 continue;
@@ -1184,6 +1186,7 @@ static void XcvrRetryEepromRead(fm_int sw)
 
 
 
+
 /*****************************************************************************/
 /* XcvrRetryConfig
  * \ingroup intPlatformMgmt
@@ -1247,6 +1250,7 @@ static void XcvrRetryConfig(fm_int sw)
     }
 
 }   /* end XcvrRetryConfig */
+
 
 
 
@@ -1390,6 +1394,7 @@ static fm_status SetPortXcvrState(fm_int sw, fm_int port, fm_bool enable)
 
     status = fmPlatformMapLogicalPortToPlatform(sw,
                                                 port,
+                                                &sw,
                                                 &swNum,
                                                 &hwResId,
                                                 NULL);
@@ -1530,7 +1535,7 @@ static void *fmPlatformMgmtThread(void *args)
 
     return NULL;
 
-}       /* end fmPlatformMgmtThread */
+}   /* end fmPlatformMgmtThread */
 
 
 
@@ -1567,6 +1572,7 @@ fm_status fmPlatformMgmtTakeSwitchLock(fm_int sw)
 
 
 
+
 /*****************************************************************************/
 /* fmPlatformMgmtDropSwitchLock
  * \ingroup intPlatformMgmt
@@ -1580,11 +1586,14 @@ fm_status fmPlatformMgmtTakeSwitchLock(fm_int sw)
  *****************************************************************************/
 fm_status fmPlatformMgmtDropSwitchLock(fm_int sw)
 {
+    VALIDATE_SWITCH_INDEX(sw);
+
     UNPROTECT_SWITCH(sw);
 
-    FM_LOG_EXIT(FM_LOG_CAT_PLATFORM, FM_OK);
+    return FM_OK;
 
 }   /* end fmPlatformMgmtDropSwitchLock */
+
 
 
 
@@ -1699,6 +1708,7 @@ fm_status fmPlatformMgmtXcvrInitialize(fm_int sw)
                     sizeof(xcvrInfo->eeprom));
 
         if ( !libFunc->GetPortXcvrState ||
+             portCfg->hwResourceId == FM_DEFAULT_HW_RES_ID ||
              ( !(portCfg->intfType == FM_PLAT_INTF_TYPE_SFPP ||
                  portCfg->intfType == FM_PLAT_INTF_TYPE_QSFP_LANE0) ) )
         {
@@ -2241,6 +2251,7 @@ fm_status fmPlatformMgmtDumpPort(fm_int sw, fm_int port)
     return FM_OK;
 
 }   /* end fmPlatformMgmtDumpPort */
+
 
 
 

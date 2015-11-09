@@ -173,11 +173,19 @@ void fmUtilGN2412DumpAppMode(fm_uintptr                  handle,
 void fmUtilGN2412DumpAppStatus(fm_uintptr                  handle,
                                fm_utilI2cWriteReadHdnlFunc func,
                                fm_uint                     dev);
+void fmUtilGN2412DumpAppStatusV2(fm_uintptr                  handle,
+                                 fm_utilI2cWriteReadHdnlFunc func,
+                                 fm_uint                     dev);
+void fmUtilGN2412DumpMissionCount(fm_uintptr                  handle,
+                                  fm_utilI2cWriteReadHdnlFunc func,
+                                  fm_uint                     dev);
 
 void fmUtilGN2412DumpAppRestartDiagCnt(fm_uintptr                  handle,
                                        fm_utilI2cWriteReadHdnlFunc func,
                                        fm_uint                     dev);
-
+void fmUtilGN2412DumpAppRestartDiagCntV2(fm_uintptr                  handle,
+                                         fm_utilI2cWriteReadHdnlFunc func,
+                                         fm_uint                     dev);
 fm_status fmUtilGN2412GetLaneTxEq(fm_uintptr                  handle,
                                   fm_utilI2cWriteReadHdnlFunc func,
                                   fm_uint                     dev,

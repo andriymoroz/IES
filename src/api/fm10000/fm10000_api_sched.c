@@ -283,8 +283,7 @@ static fm_status ComputeScheduleLength(fm_int sw)
     err = fm10000ComputeFHClockFreq(sw, &fhMhz);
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_TRIGGER, err);
 
-    overspeed = fmGetIntApiProperty(FM_AAK_API_FM10000_SCHED_OVERSPEED,
-                                    FM_AAD_API_FM10000_SCHED_OVERSPEED);
+    overspeed = GET_FM10000_PROPERTY()->schedOverspeed;
 
     freq                = fhMhz * 1e6;
     segRate             = (10e9 + overspeed) / BITS_PER_64B_PKT;
@@ -752,6 +751,8 @@ static fm_status DbgDumpSchedulerConfig(fm_int sw, fm_int active, fm_bool dumpQP
     fm_int                 reservedTotal;
     fm_int                 reserved;
     fm_text                quadStr;
+    fm_int                 preReservedTotal;
+    fm_int                 preReserved;
     
     const fm_text scheduleFormat     = "%-5d  %-4d  %-4d  %-4s  %-4s  %6d\n";
     const fm_text scheduleFormatIdle = "%-5d  %-4s  %-4s  %-4s  %-4s  %6s\n";
@@ -931,10 +932,11 @@ static fm_status DbgDumpSchedulerConfig(fm_int sw, fm_int active, fm_bool dumpQP
     if ( fmTreeIsInitialized(&sInfo->qpcState[0]) )
     {
         reservedTotal = 0;
+        preReservedTotal = 0;
         FM_LOG_PRINT("\n");
         FM_LOG_PRINT("Dumping scheduler BW per logical port:\n");
-        FM_LOG_PRINT("Port  Assigned   Avail(sl/ml)   Reserved   Quad\n");
-        FM_LOG_PRINT("----  ---------  -------------  ---------  ----\n");
+        FM_LOG_PRINT("Port  Assigned   Avail(sl/ml)   Reserved  PreReserved Quad\n");
+        FM_LOG_PRINT("----  ---------  -------------  --------- ----------- ----\n");
         for (cpi = 0 ; cpi < switchPtr->numCardinalPorts ; cpi++)
         {
             err = fmMapCardinalPortInternal(switchPtr, cpi, &logPort, &physPort);
@@ -963,36 +965,40 @@ static fm_status DbgDumpSchedulerConfig(fm_int sw, fm_int active, fm_bool dumpQP
 
             if (sInfo->attr.mode == FM10000_SCHED_MODE_STATIC)
             {
-                reserved = -1;
+                reserved    = -1;
+                preReserved = -1;
             }
             else if (sInfo->attr.mode == FM10000_SCHED_MODE_DYNAMIC)
             {
-                reserved = sInfo->reservedSpeed[physPort];
+                reserved    = sInfo->reservedSpeed[physPort];
+                preReserved = sInfo->preReservedSpeed[physPort];
             }
             else
             {
-                reserved = -1;
-                
+                reserved    = -1;
+                preReserved = -1;
                 FM_LOG_ERROR(FM_LOG_CAT_SWITCH, 
                              "Unexpected scheduler mode %d\n", 
                              sInfo->attr.mode); 
             }
 
-            FM_LOG_PRINT("%02d    %-6d     %6d/%-6d  %-6d     %s\n", 
+            FM_LOG_PRINT("%02d    %-6d     %6d/%-6d  %-6d    %-6d     %s\n", 
                          logPort, 
                          speed.assignedSpeed, 
                          speed.singleLaneSpeed,
                          speed.multiLaneSpeed,
                          reserved,
+                         preReserved,
                          quadStr);
 
-            reservedTotal += sInfo->reservedSpeed[physPort];
+            reservedTotal    += sInfo->reservedSpeed[physPort];
+            preReservedTotal += sInfo->preReservedSpeed[physPort];
         }
 
         if (sInfo->attr.mode == FM10000_SCHED_MODE_DYNAMIC)
         {
-            FM_LOG_PRINT("                                --------\n");
-            FM_LOG_PRINT("                        Total:  %06d\n", reservedTotal);
+            FM_LOG_PRINT("                                -------- --------\n");
+            FM_LOG_PRINT("                        Total:  %06d   %06d\n", reservedTotal, preReservedTotal);
         }
         
     }
@@ -3277,6 +3283,287 @@ ABORT:
 
 
 
+/*****************************************************************************/
+/** ReserveSchedBw
+ * \ingroup intSwitch
+ *
+ * \desc            PreReserves or Reserves BW for a given port. Use a 
+ *                  speed of 0 to free the BW for a given port. At any given 
+ *                  time, the sum of pre-reserved or reserved BW must be equal 
+ *                  or below the maximum BW the system supports. If the BW 
+ *                  request would cause the reserved BW to go over the maximum 
+ *                  BW, this function will return an error. 
+ * 
+ * \param[in]       sw is the switch on which to operate.
+ * 
+ * \param[in]       physPort is the physical port.
+ * 
+ * \param[in]       speed is the speed to reserve of physical port. A value
+ *                  of FM10000_SCHED_SPEED_DEFAULT may be used to default
+ *                  the speed to what was assigned at initialization (from LT
+ *                  config file). 
+ * 
+ * \param[in]       mode is the quad channel mode of physical port.
+ * 
+ * \param[in]       isPreReserve is determines whether preReserved or reserved
+ *                  BW to be updated.
+ * 
+ * \return          FM_OK if successful.
+ * \return          FM_ERR_INVALID_ARGUMENT if port or speed are out of range.
+ * \return          FM_ERR_SCHED_OVERSUBSCRIBED if there is not enough BW
+ *                  available and can't reserve the requested BW. 
+ *
+ *****************************************************************************/
+fm_status ReserveSchedBw(fm_int               sw,
+                         fm_int               physPort,
+                         fm_int               speed,
+                         fm_schedulerPortMode mode,
+                         fm_bool              isPreReserve)
+{
+    fm_status           err = FM_OK;
+    fm10000_switch *    switchExt;
+    fm10000_schedInfo  *sInfo;
+    fm_int              fabricPort;
+    fm_int              lastSpeed;
+    fm_int              lastQuad;
+    fm_int              i;
+    fm_int              slots;
+    fm_int              opPorts[NUM_PORTS_PER_QPC];
+    fm_int              basePort;
+    fm_int              totalBW;
+    fm_int              nbMultiLane;
+    fm10000_schedSpeed *speedTable;
+    fm_bool            *quadTable;   
+    
+    FM_LOG_ENTRY(FM_LOG_CAT_SWITCH, 
+                 "sw = %d, physPort = %d, speed = %d, mode = %d, "
+                 "isPreReserve = %d\n",
+                 sw, physPort, speed, mode, isPreReserve);
+
+    switchExt = GET_SWITCH_EXT(sw);
+    sInfo     = &switchExt->schedInfo;
+
+    if (isPreReserve)
+    {
+        speedTable = sInfo->preReservedSpeed;
+        quadTable  = sInfo->preReservedQuad;
+    }
+    else
+    {
+        speedTable = sInfo->reservedSpeed;
+        quadTable  = sInfo->reservedQuad;
+    }
+
+    lastSpeed = -1;
+    
+    if (speed == FM10000_SCHED_SPEED_DEFAULT)
+    {
+        /* Grab the speed set during init (which is the LT config file defined
+         * speed */
+        for (i = 0; i < sInfo->active.nbPorts; i++)
+        {
+            if (physPort == sInfo->active.portList[i].physPort)
+            {
+                speed = sInfo->active.portList[i].speed;
+            }
+        }
+    }
+
+    /* Validate / Round up the speed to the closest upper speed */
+    if (speed < 0)
+    {
+        err = FM_ERR_INVALID_ARGUMENT;
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
+    }
+    else if (speed == 0)
+    {
+        /* Do nothing */
+    }
+    else if (speed <= 2500)
+    {
+        speed = 2500;
+    }
+    else if (speed <= 10000)
+    {
+        speed = 10000;
+    }
+    else if (speed <= 25000)
+    {
+        speed = 25000;
+    }
+    else if (speed <= 40000)
+    {
+        speed = 40000;
+    }
+    else if (speed == 50000)
+    {
+        /* Special case for PCIE, round down to 40G */
+        speed = 40000;
+    }
+    else if (speed == 60000)
+    {
+        speed = 60000;
+    }
+    else if (speed <= 100000)
+    {
+        speed = 100000;
+    }
+    else
+    {
+        err = FM_ERR_INVALID_ARGUMENT;
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
+    }
+
+    /* Convert the physPort into fabricPort */
+    err = fm10000MapPhysicalPortToFabricPort(sw, physPort, &fabricPort);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
+
+    basePort = fabricPort - (fabricPort % 4);
+    for (i = 0; i < NUM_PORTS_PER_QPC; i++)
+    {
+        /* Populate other physical ports list (if they exist) */
+        err = fm10000MapFabricPortToPhysicalPort(sw, basePort + i, &opPorts[i]);
+
+        if (err == FM_ERR_INVALID_PORT)
+        {
+            err = FM_OK;
+            opPorts[i] = -1;
+        }
+
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
+    }
+
+    /* Cache old values (in case of error) and update */
+    lastSpeed = speedTable[physPort];
+    lastQuad  = quadTable[physPort];
+    speedTable[physPort] = speed;
+    quadTable[physPort]  = (mode == FM_SCHED_PORT_MODE_QUAD);
+
+    /******************************************* 
+     * 1. Need to make sure the QPC's total 
+     *    BW is not exceeded.
+     *******************************************/ 
+    totalBW = 0;
+    nbMultiLane = 0;
+    for (i = 0; i < NUM_PORTS_PER_QPC; i++)
+    {
+        if (opPorts[i] == -1)
+        {
+            /* No port */
+            continue;
+        }
+
+        totalBW += speedTable[opPorts[i]];
+
+        if ( (speedTable[opPorts[i]] > FM10000_SCHED_SPEED_25G) ||
+             (quadTable[opPorts[i]] ) )
+        {
+            nbMultiLane++;
+        }
+    }
+
+    if ( totalBW > FM10000_SCHED_SPEED_100G )
+    {
+        err = FM_ERR_SCHED_OVERSUBSCRIBED;
+        FM_LOG_DEBUG(FM_LOG_CAT_SWITCH, 
+                     "Cannot have QPC with BW > 100G (QPC Total BW = %d)\n", 
+                     totalBW);
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
+    }
+
+     if (nbMultiLane > 1)
+     {
+         err = FM_ERR_SCHED_OVERSUBSCRIBED;
+         FM_LOG_DEBUG(FM_LOG_CAT_SWITCH, 
+                      "Cannot have more than one multi-lane port on the same "
+                      "QPC (nbMultiLane = %d)\n", 
+                      nbMultiLane);
+         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
+     }
+
+     /* It is assumed that the only multilane port that can exist is the one
+      * being reserved, hence the comparison (totalBW != speed) */
+     if ( (nbMultiLane == 1) && (totalBW != speed) )
+     {
+         err = FM_ERR_SCHED_OVERSUBSCRIBED;
+         FM_LOG_DEBUG(FM_LOG_CAT_SWITCH, 
+                      "Cannot have a multi-lane port simultaniously with single"
+                      "lane ports on the same QPC\n");
+         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
+     }
+
+    /******************************************* 
+     * 2. Validate there is enough BW in the 
+     *    system with the change. 
+     *******************************************/ 
+    
+    /* Take into account the idle Slot */
+    slots = 1;
+
+    for (i = 0; i < FM10000_SCHED_NUM_PORTS; i++)
+    {
+        switch (speedTable[i])
+        {
+            case FM10000_SCHED_SPEED_IDLE:
+                break;
+
+            case FM10000_SCHED_SPEED_2500M:
+                slots += SLOTS_PER_2500M;
+                break;
+
+            case FM10000_SCHED_SPEED_10G:
+                slots += SLOTS_PER_10G;
+                break;
+
+            case FM10000_SCHED_SPEED_25G:
+                slots += SLOTS_PER_25G;
+                break;
+
+            case FM10000_SCHED_SPEED_40G:
+                slots += SLOTS_PER_40G;
+                break;
+
+            case FM10000_SCHED_SPEED_60G:
+                slots += SLOTS_PER_60G;
+                break;
+
+            case FM10000_SCHED_SPEED_100G:
+                slots += SLOTS_PER_100G;
+                break;
+
+            default:
+                /* We should never get here */
+                err = FM_FAIL;
+                FM_LOG_FATAL(FM_LOG_CAT_SWITCH, "Unexpected failure\n");
+                FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
+                break;
+        }
+    }
+
+    if (slots > sInfo->active.schedLen)
+    {
+        err = FM_ERR_SCHED_OVERSUBSCRIBED;
+        FM_LOG_DEBUG(FM_LOG_CAT_SWITCH, 
+                     "slots=%d > schedLen=%d\n", 
+                     slots, 
+                     sInfo->active.schedLen);
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
+    }
+
+ABORT:
+    if ( (err != FM_OK) && (lastSpeed != -1) )
+    {
+        speedTable[physPort] = lastSpeed;
+        quadTable[physPort]  = lastQuad;
+    }
+
+    FM_LOG_EXIT(FM_LOG_CAT_SWITCH, err);
+
+}   /* end ReserveSchedBw */
+
+
+
+
 /*****************************************************************************
  * Public Functions
  *****************************************************************************/
@@ -3315,12 +3602,9 @@ fm_status fm10000InitScheduler(fm_int sw)
     err = InitializeFreeLists(sw);
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
 
-    schedModeStr = fmGetTextApiProperty(FM_AAK_API_FM10000_SCHED_MODE, 
-                                        FM_AAD_API_FM10000_SCHED_MODE);
+    schedModeStr = GET_FM10000_PROPERTY()->schedMode;
 
-    sInfo->attr.updateLnkChange = fmGetBoolApiProperty(
-         FM_AAK_API_FM10000_UPD_SCHED_ON_LNK_CHANGE, 
-         FM_AAD_API_FM10000_UPD_SCHED_ON_LNK_CHANGE);
+    sInfo->attr.updateLnkChange = GET_FM10000_PROPERTY()->updateSchedOnLinkChange;
 
     if (strcmp(schedModeStr, "static") == 0)
     {
@@ -3420,8 +3704,11 @@ fm_status fm10000InitScheduler(fm_int sw)
                     continue;
                 }
 
-                sInfo->reservedSpeed[i] = sInfo->tmp.physPortSpeed[i];
-                sInfo->reservedQuad[i] = sInfo->tmp.isQuad[i];
+                sInfo->preReservedSpeed[i] = sInfo->tmp.physPortSpeed[i];
+                sInfo->preReservedQuad[i]  = sInfo->tmp.isQuad[i];
+
+                sInfo->reservedSpeed[i]    = sInfo->preReservedSpeed[i];
+                sInfo->reservedQuad[i]     = sInfo->preReservedQuad[i];
             }
 
             err = fm10000SetSchedRing(sw, 
@@ -3458,7 +3745,7 @@ ABORT:
 /** fm10000FreeSchedulerResources
  * \ingroup intSwitch
  *
- * \desc            Free's ressources allocated during init/generation
+ * \desc            Free's resources allocated during init/generation
  * 
  * \param[in]       sw is the switch on which to operate.
  * 
@@ -4174,26 +4461,25 @@ fm_status fm10000UpdateSchedPort(fm_int               sw,
              * port speed capability. The port speed capability is used at
              * init to determine the total BW to allocate. */
 
-            if (fmGetBoolApiProperty(FM_AAK_API_SCH_IGNORE_BW_VIOLATION_NO_WARNING,
-                                     FM_AAD_API_SCH_IGNORE_BW_VIOLATION_NO_WARNING))
+            if (GET_PROPERTY()->ignoreBwViolation >= 2)
             {
                 err = FM_OK;
                 goto ABORT;
             }
             
+            err = fmPlatformMapPhysicalPortToLogical(sw, physPort, &mappedSw, &port);
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
+
             FM_LOG_ERROR(FM_LOG_CAT_SWITCH, 
-                         "The change requires %d slots (%.1fG), only got %d slots (%.1fG).\n",
+                         "For port %d, %d slots (%.1fG) are needed, only got %d slots (%.1fG).\n",
+                         port,
                          nbRequiredSlots,
                          (nbRequiredSlots * (fm_float)(SLOT_SPEED)),
                          nbFreeSlots + nbOwnedSlots,
                          ((nbFreeSlots + nbOwnedSlots) * (fm_float)(SLOT_SPEED)));
 
-            if (fmGetBoolApiProperty(FM_AAK_API_SCH_IGNORE_BW_VIOLATION,
-                                     FM_AAD_API_SCH_IGNORE_BW_VIOLATION))
+            if (GET_PROPERTY()->ignoreBwViolation >= 1)
             {
-                err = fmPlatformMapPhysicalPortToLogical(sw, physPort, &mappedSw, &port);
-                FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
-
                 FM_LOG_WARNING(FM_LOG_CAT_SWITCH, 
                                "Ignoring above violation. Sending/Receiving traffic on port %d "
                                "will cause undefined behavior.\n",
@@ -4423,6 +4709,12 @@ fm_status fm10000UpdateSchedPort(fm_int               sw,
                               sInfo->tmp.schedList,
                               sInfo->tmp.schedLen);
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
+
+    if (sInfo->attr.mode == FM10000_SCHED_MODE_DYNAMIC)
+    {
+        sInfo->reservedSpeed[physPort]    = speed;
+        sInfo->preReservedSpeed[physPort] = speed;
+    }
 
     /* If previously no bandwidth was allocated, but now 
      * bandwidth is allocated then enable this port in the
@@ -5119,7 +5411,8 @@ fm_status fm10000GetSchedPortSpeed(fm_int  sw,
         speed->multiLaneSpeed = 0;
     }
 
-    speed->reservedSpeed = sInfo->reservedSpeed[physPort];
+    speed->reservedSpeed    = sInfo->reservedSpeed[physPort];
+    speed->preReservedSpeed = sInfo->preReservedSpeed[physPort]; 
 
     if (sInfo->attr.mode == FM10000_SCHED_MODE_STATIC)
     {
@@ -5200,6 +5493,60 @@ ABORT:
 
 
 /*****************************************************************************/
+/** fm10000PreReserveSchedBw
+ * \ingroup intSwitch
+ *
+ * \desc            PreReserves BW for a given port. Use a speed of 0 to free 
+ *                  the BW for a given port. At any given time, the sum of
+ *                  the pre-reserved BW must be equal or below the maximum BW
+ *                  the system supports. If the BW request would cause the
+ *                  reserved BW to go over the maximum BW, this function will
+ *                  return an error. 
+ * 
+ * \param[in]       sw is the switch on which to operate.
+ * 
+ * \param[in]       physPort is the physical port.
+ * 
+ * \param[in]       speed is the speed to reserve of physical port. A value
+ *                  of FM10000_SCHED_SPEED_DEFAULT may be used to default
+ *                  the speed to what was assigned at initialization (from LT
+ *                  config file). 
+ * 
+ * \param[in]       mode is the quad channel mode of physical port.
+ * 
+ * \return          FM_OK if successful.
+ * \return          FM_ERR_INVALID_ARGUMENT if port or speed are out of range.
+ * \return          FM_ERR_SCHED_OVERSUBSCRIBED if there is not enough BW
+ *                  available and can't reserve the requested BW. 
+ *
+ *****************************************************************************/
+fm_status fm10000PreReserveSchedBw(fm_int               sw,
+                                   fm_int               physPort,
+                                   fm_int               speed,
+                                   fm_schedulerPortMode mode)
+{
+    fm_status           err = FM_OK;
+    
+    FM_LOG_ENTRY(FM_LOG_CAT_SWITCH, 
+                 "sw = %d, physPort = %d, speed = %d, mode = %d\n", 
+                 sw, physPort, speed, mode);
+
+    TAKE_SCHEDULER_LOCK(sw);
+
+    err = ReserveSchedBw(sw, physPort, speed, mode, TRUE);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
+
+ABORT:
+    DROP_SCHEDULER_LOCK(sw);
+
+    FM_LOG_EXIT(FM_LOG_CAT_SWITCH, err);
+
+}   /* end fm10000PreReserveSchedBw */
+
+
+
+
+/*****************************************************************************/
 /** fm10000ReserveSchedBw
  * \ingroup intSwitch
  *
@@ -5209,6 +5556,8 @@ ABORT:
  *                  the system supports. If the BW request would cause the
  *                  reserved BW to go over the maximum BW, this function will
  *                  return an error. 
+ *                  This should be used by Non-AN73 ports to update both
+ *                  pre-reserved and reserved BW.
  * 
  * \param[in]       sw is the switch on which to operate.
  * 
@@ -5232,236 +5581,85 @@ fm_status fm10000ReserveSchedBw(fm_int               sw,
                                 fm_int               speed,
                                 fm_schedulerPortMode mode)
 {
-    fm_status           err = FM_OK;
-    fm10000_switch *    switchExt;
-    fm10000_schedInfo  *sInfo;
-    fm_int              fabricPort;
-    fm_int              lastSpeed;
-    fm_int              lastQuad;
-    fm_int              i;
-    fm_int              slots;
-    fm_int              opPorts[NUM_PORTS_PER_QPC];
-    fm_int              basePort;
-    fm_int              totalBW;
-    fm_int              nbMultiLane;
-    
-    FM_LOG_ENTRY(FM_LOG_CAT_SWITCH, 
-                 "sw = %d, physPort = %d, speed = %d, mode = %d\n", 
+
+    fm_status           err ;
+
+    FM_LOG_ENTRY(FM_LOG_CAT_SWITCH,
+                 "sw = %d, physPort = %d, speed = %d, mode = %d\n",
                  sw, physPort, speed, mode);
 
     TAKE_SCHEDULER_LOCK(sw);
 
-    switchExt = GET_SWITCH_EXT(sw);
-    sInfo     = &switchExt->schedInfo;
-
-    lastSpeed = -1;
-    
-    if (speed == FM10000_SCHED_SPEED_DEFAULT)
-    {
-        /* Grab the speed set during init (which is the LT config file defined
-         * speed */
-        for (i = 0; i < sInfo->active.nbPorts; i++)
-        {
-            if (physPort == sInfo->active.portList[i].physPort)
-            {
-                speed = sInfo->active.portList[i].speed;
-            }
-        }
-    }
-
-    /* Validate / Round up the speed to the closest upper speed */
-    if (speed < 0)
-    {
-        err = FM_ERR_INVALID_ARGUMENT;
-        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
-    }
-    else if (speed == 0)
-    {
-        /* Do nothing */
-    }
-    else if (speed <= 2500)
-    {
-        speed = 2500;
-    }
-    else if (speed <= 10000)
-    {
-        speed = 10000;
-    }
-    else if (speed <= 25000)
-    {
-        speed = 25000;
-    }
-    else if (speed <= 40000)
-    {
-        speed = 40000;
-    }
-    else if (speed == 50000)
-    {
-        /* Special case for PCIE, round down to 40G */
-        speed = 40000;
-    }
-    else if (speed == 60000)
-    {
-        speed = 60000;
-    }
-    else if (speed <= 100000)
-    {
-        speed = 100000;
-    }
-    else
-    {
-        err = FM_ERR_INVALID_ARGUMENT;
-        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
-    }
-
-    /* Convert the physPort into fabricPort */
-    err = fm10000MapPhysicalPortToFabricPort(sw, physPort, &fabricPort);
+    /* Update pre-reserved speed and validate the change */
+    err = ReserveSchedBw(sw, physPort, speed, mode, TRUE);
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
 
-    basePort = fabricPort - (fabricPort % 4);
-    for (i = 0; i < NUM_PORTS_PER_QPC; i++)
-    {
-        /* Populate other physical ports list (if they exist) */
-        err = fm10000MapFabricPortToPhysicalPort(sw, basePort + i, &opPorts[i]);
-
-        if (err == FM_ERR_INVALID_PORT)
-        {
-            err = FM_OK;
-            opPorts[i] = -1;
-        }
-
-        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
-    }
-
-    /* Cache old values (in case of error) and update */
-    lastSpeed = sInfo->reservedSpeed[physPort];
-    lastQuad  = sInfo->reservedQuad[physPort];
-    sInfo->reservedSpeed[physPort] = speed;
-    sInfo->reservedQuad[physPort] = (mode == FM_SCHED_PORT_MODE_QUAD);
-
-    /******************************************* 
-     * 1. Need to make sure the QPC's total 
-     *    BW is not exceeded.
-     *******************************************/ 
-    totalBW = 0;
-    nbMultiLane = 0;
-    for (i = 0; i < NUM_PORTS_PER_QPC; i++)
-    {
-        if (opPorts[i] == -1)
-        {
-            /* No port */
-            continue;
-        }
-
-        totalBW += sInfo->reservedSpeed[opPorts[i]];
-
-        if ( (sInfo->reservedSpeed[opPorts[i]] > FM10000_SCHED_SPEED_25G) ||
-             (sInfo->reservedQuad[opPorts[i]] ) )
-        {
-            nbMultiLane++;
-        }
-    }
-
-    if ( totalBW > FM10000_SCHED_SPEED_100G )
-    {
-        err = FM_ERR_SCHED_OVERSUBSCRIBED;
-        FM_LOG_DEBUG(FM_LOG_CAT_SWITCH, 
-                     "Cannot have QPC with BW > 100G (QPC Total BW = %d)\n", 
-                     totalBW);
-        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
-    }
-
-     if (nbMultiLane > 1)
-     {
-         err = FM_ERR_SCHED_OVERSUBSCRIBED;
-         FM_LOG_DEBUG(FM_LOG_CAT_SWITCH, 
-                      "Cannot have more than one multi-lane port on the same "
-                      "QPC (nbMultiLane = %d)\n", 
-                      nbMultiLane);
-         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
-     }
-
-     /* It is assumed that the only multilane port that can exist is the one
-      * being reserved, hence the comparison (totalBW != speed) */
-     if ( (nbMultiLane == 1) && (totalBW != speed) )
-     {
-         err = FM_ERR_SCHED_OVERSUBSCRIBED;
-         FM_LOG_DEBUG(FM_LOG_CAT_SWITCH, 
-                      "Cannot have a multi-lane port simultaniously with single"
-                      "lane ports on the same QPC\n");
-         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
-     }
-
-    /******************************************* 
-     * 2. Validate there is enough BW in the 
-     *    system with the change. 
-     *******************************************/ 
-    
-    /* Take into account the idle Slot */
-    slots = 1;
-
-    for (i = 0; i < FM10000_SCHED_NUM_PORTS; i++)
-    {
-        switch (sInfo->reservedSpeed[i])
-        {
-            case FM10000_SCHED_SPEED_IDLE:
-                break;
-
-            case FM10000_SCHED_SPEED_2500M:
-                slots += SLOTS_PER_2500M;
-                break;
-
-            case FM10000_SCHED_SPEED_10G:
-                slots += SLOTS_PER_10G;
-                break;
-
-            case FM10000_SCHED_SPEED_25G:
-                slots += SLOTS_PER_25G;
-                break;
-
-            case FM10000_SCHED_SPEED_40G:
-                slots += SLOTS_PER_40G;
-                break;
-
-            case FM10000_SCHED_SPEED_60G:
-                slots += SLOTS_PER_60G;
-                break;
-
-            case FM10000_SCHED_SPEED_100G:
-                slots += SLOTS_PER_100G;
-                break;
-
-            default:
-                /* We should never get here */
-                err = FM_FAIL;
-                FM_LOG_FATAL(FM_LOG_CAT_SWITCH, "Unexpected failure\n");
-                FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
-                break;
-        }
-    }
-
-    if (slots > sInfo->active.schedLen)
-    {
-        err = FM_ERR_SCHED_OVERSUBSCRIBED;
-        FM_LOG_DEBUG(FM_LOG_CAT_SWITCH, 
-                     "slots=%d > schedLen=%d\n", 
-                     slots, 
-                     sInfo->active.schedLen);
-        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
-    }
+    /* Update reserved speed and validate the change */
+    err = ReserveSchedBw(sw, physPort, speed, mode, FALSE);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
 
 ABORT:
-    if ( (err != FM_OK) && (lastSpeed != -1) )
-    {
-        sInfo->reservedSpeed[physPort] = lastSpeed;
-        sInfo->reservedQuad[physPort] = lastQuad;
-    }
-
     DROP_SCHEDULER_LOCK(sw);
 
     FM_LOG_EXIT(FM_LOG_CAT_SWITCH, err);
 
-}   /* end fm10000ReserveSchedBw */
+}    /* end fm10000ReserveSchedBw */
+
+
+
+/*****************************************************************************/
+/** fm10000ReserveSchedBwForAnPort
+ * \ingroup intSwitch
+ *
+ * \desc            Reserves BW for a given port. Use a speed of 0 to free 
+ *                  the BW for a given port. At any given time, the sum of
+ *                  the reserved BW must be equal or below the maximum BW
+ *                  the system supports. If the BW request would cause the
+ *                  reserved BW to go over the maximum BW, this function will
+ *                  return an error. 
+ *                  This should be used by AN73 ports to update only reserved 
+ *                  BW which will be used to generate Scheduler ring.
+ * 
+ * \param[in]       sw is the switch on which to operate.
+ * 
+ * \param[in]       physPort is the physical port.
+ * 
+ * \param[in]       speed is the speed to reserve of physical port. A value
+ *                  of FM10000_SCHED_SPEED_DEFAULT may be used to default
+ *                  the speed to what was assigned at initialization (from LT
+ *                  config file). 
+ * 
+ * \param[in]       mode is the quad channel mode of physical port.
+ * 
+ * \return          FM_OK if successful.
+ * \return          FM_ERR_INVALID_ARGUMENT if port or speed are out of range.
+ * \return          FM_ERR_SCHED_OVERSUBSCRIBED if there is not enough BW
+ *                  available and can't reserve the requested BW. 
+ *
+ *****************************************************************************/
+fm_status fm10000ReserveSchedBwForAnPort(fm_int               sw,
+                                         fm_int               physPort,
+                                         fm_int               speed,
+                                         fm_schedulerPortMode mode)
+{
+
+    fm_status           err ;
+
+    FM_LOG_ENTRY(FM_LOG_CAT_SWITCH,
+                 "sw = %d, physPort = %d, speed = %d, mode = %d\n",
+                 sw, physPort, speed, mode);
+
+    TAKE_SCHEDULER_LOCK(sw);
+
+    err = ReserveSchedBw(sw, physPort, speed, mode, FALSE);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
+
+ABORT:
+    DROP_SCHEDULER_LOCK(sw);
+
+    FM_LOG_EXIT(FM_LOG_CAT_SWITCH, err);
+
+}   /* end fm10000ReserveSchedBwForAnPort */
 
 
 

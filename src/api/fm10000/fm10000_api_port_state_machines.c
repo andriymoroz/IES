@@ -123,6 +123,8 @@ static fm_status StopDeferredLpiTimer( fm_smEventInfo *eventInfo, void *userInfo
 static fm_status DeferredLpiMode( fm_smEventInfo *eventInfo, void *userInfo );
 static fm_status StartPortStatusPollingTimer( fm_smEventInfo *eventInfo, void *userInfo );
 static fm_status StopPortStatusPollingTimer( fm_smEventInfo *eventInfo, void *userInfo );
+static fm_status CheckAndPreReserveSchedBw( fm_smEventInfo *eventInfo, void *userInfo );
+static fm_status RequestSchedBwAdmUpAn( fm_smEventInfo *eventInfo, void *userInfo );
 
 
 
@@ -312,8 +314,6 @@ static fm_status PcieStateMachineS0E20Callback( fm_smEventInfo *eventInfo, void 
 static fm_status PcieStateMachineS0E19Callback( fm_smEventInfo *eventInfo, void *userInfo );
 static fm_status PcieStateMachineS0E2Callback( fm_smEventInfo *eventInfo, void *userInfo );
 static fm_status PcieStateMachineS0E3Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status PcieStateMachineS0E4Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status PcieStateMachineS0E5Callback( fm_smEventInfo *eventInfo, void *userInfo );
 static fm_status PcieStateMachineS0E6Callback( fm_smEventInfo *eventInfo, void *userInfo );
 static fm_status PcieStateMachineS0E7Callback( fm_smEventInfo *eventInfo, void *userInfo );
 static fm_status PcieStateMachineS0E8Callback( fm_smEventInfo *eventInfo, void *userInfo );
@@ -2891,6 +2891,74 @@ static fm_status StopPortStatusPollingTimer( fm_smEventInfo *eventInfo, void *us
 
 
 /*****************************************************************************/
+/** CheckAndPreReserveSchedBw
+ * \ingroup intPortStateMachine 
+ *
+ * \desc            One of the action callbacks for this state machine
+ *                  category.
+ *
+ * \param[in]       eventInfo is a pointer to a caller-allocated area
+ *                  containing the generic event descriptor.
+ * 
+ * \param[in]       userInfo is a pointer to a caller-allocated area containing
+ *                  purpose-specific event info.
+ * 
+ * \return          Caller-provided return codes.
+ * 
+ *****************************************************************************/
+static fm_status CheckAndPreReserveSchedBw( fm_smEventInfo *eventInfo, void *userInfo )
+{
+    fm_status status;
+    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
+
+    FM_LOG_DEBUG_V2( FM_LOG_CAT_PORT,
+                     port,
+                     "Event %s occurred on port %d, executing CheckAndPreReserveSchedBw\n", 
+                     fm10000PortEventsMap[eventInfo->eventId],
+                     port );
+
+    status = fm10000CheckAndPreReserveSchedBw( eventInfo, userInfo );
+
+    return status;
+
+}   /* end CheckAndPreReserveSchedBw */
+
+
+/*****************************************************************************/
+/** RequestSchedBwAdmUpAn
+ * \ingroup intPortStateMachine 
+ *
+ * \desc            One of the action callbacks for this state machine
+ *                  category.
+ *
+ * \param[in]       eventInfo is a pointer to a caller-allocated area
+ *                  containing the generic event descriptor.
+ * 
+ * \param[in]       userInfo is a pointer to a caller-allocated area containing
+ *                  purpose-specific event info.
+ * 
+ * \return          Caller-provided return codes.
+ * 
+ *****************************************************************************/
+static fm_status RequestSchedBwAdmUpAn( fm_smEventInfo *eventInfo, void *userInfo )
+{
+    fm_status status;
+    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
+
+    FM_LOG_DEBUG_V2( FM_LOG_CAT_PORT,
+                     port,
+                     "Event %s occurred on port %d, executing RequestSchedBwAdmUpAn\n", 
+                     fm10000PortEventsMap[eventInfo->eventId],
+                     port );
+
+    status = fm10000RequestSchedBwAdmUpAn( eventInfo, userInfo );
+
+    return status;
+
+}   /* end RequestSchedBwAdmUpAn */
+
+
+/*****************************************************************************/
 /** CheckLanesReady
  * \ingroup intPortStateMachine 
  *
@@ -3429,7 +3497,7 @@ static fm_status AnStateMachineS0E0Callback( fm_smEventInfo *eventInfo, void *us
     status = ResetPortModuleState( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
             
-    status = ReconfigureScheduler( eventInfo, userInfo );
+    status = CheckAndPreReserveSchedBw( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
             
     status = LinkPortToLanes( eventInfo, userInfo );
@@ -3484,7 +3552,7 @@ static fm_status AnStateMachineS1E0Callback( fm_smEventInfo *eventInfo, void *us
     status = ResetPortModuleState( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
             
-    status = ReconfigureScheduler( eventInfo, userInfo );
+    status = CheckAndPreReserveSchedBw( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
             
     status = LinkPortToLanes( eventInfo, userInfo );
@@ -3563,7 +3631,7 @@ static fm_status AnStateMachineS2E0Callback( fm_smEventInfo *eventInfo, void *us
     status = ResetPortModuleState( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
             
-    status = ReconfigureScheduler( eventInfo, userInfo );
+    status = CheckAndPreReserveSchedBw( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
             
     status = LinkPortToLanes( eventInfo, userInfo );
@@ -3685,7 +3753,7 @@ static fm_status AnStateMachineS2E4Callback( fm_smEventInfo *eventInfo, void *us
     status = ConfigureLoopback( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
             
-    status = RequestSchedBwAdmUp( eventInfo, userInfo );
+    status = RequestSchedBwAdmUpAn( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
             
     status = PowerUpLane( eventInfo, userInfo );
@@ -3740,7 +3808,7 @@ static fm_status AnStateMachineS2E5Callback( fm_smEventInfo *eventInfo, void *us
     status = ConfigureLoopback( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
             
-    status = RequestSchedBwAdmUp( eventInfo, userInfo );
+    status = RequestSchedBwAdmUpAn( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
             
     status = PowerUpLane( eventInfo, userInfo );
@@ -3795,7 +3863,7 @@ static fm_status AnStateMachineS2E7Callback( fm_smEventInfo *eventInfo, void *us
     status = ConfigureLoopback( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
             
-    status = RequestSchedBwAdmUp( eventInfo, userInfo );
+    status = RequestSchedBwAdmUpAn( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
             
     status = PowerUpLane( eventInfo, userInfo );
@@ -3850,7 +3918,7 @@ static fm_status AnStateMachineS2E8Callback( fm_smEventInfo *eventInfo, void *us
     status = ConfigureLoopback( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
             
-    status = RequestSchedBwAdmUp( eventInfo, userInfo );
+    status = RequestSchedBwAdmUpAn( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
             
     status = PowerUpLane( eventInfo, userInfo );
@@ -3905,7 +3973,7 @@ static fm_status AnStateMachineS2E9Callback( fm_smEventInfo *eventInfo, void *us
     status = ConfigureLoopback( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
             
-    status = RequestSchedBwAdmUp( eventInfo, userInfo );
+    status = RequestSchedBwAdmUpAn( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
             
     status = PowerUpLane( eventInfo, userInfo );
@@ -3957,7 +4025,7 @@ static fm_status AnStateMachineS3E0Callback( fm_smEventInfo *eventInfo, void *us
     status = ResetPortModuleState( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
             
-    status = ReconfigureScheduler( eventInfo, userInfo );
+    status = CheckAndPreReserveSchedBw( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
             
     status = LinkPortToLanes( eventInfo, userInfo );
@@ -4183,7 +4251,7 @@ static fm_status AnStateMachineS4E0Callback( fm_smEventInfo *eventInfo, void *us
     status = ResetPortModuleState( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
             
-    status = ReconfigureScheduler( eventInfo, userInfo );
+    status = CheckAndPreReserveSchedBw( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
             
     status = LinkPortToLanes( eventInfo, userInfo );
@@ -4384,7 +4452,7 @@ static fm_status AnStateMachineS5E0Callback( fm_smEventInfo *eventInfo, void *us
     status = ResetPortModuleState( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
             
-    status = ReconfigureScheduler( eventInfo, userInfo );
+    status = CheckAndPreReserveSchedBw( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
             
     status = LinkPortToLanes( eventInfo, userInfo );
@@ -4647,7 +4715,7 @@ static fm_status AnStateMachineS5E23Callback( fm_smEventInfo *eventInfo, void *u
     fm_status status = FM_OK;
     fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
         
-    status = ReconfigureScheduler( eventInfo, userInfo );
+    status = CheckAndPreReserveSchedBw( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
             
     status = AnStop( eventInfo, userInfo );
@@ -4736,7 +4804,7 @@ static fm_status AnStateMachineS6E0Callback( fm_smEventInfo *eventInfo, void *us
     status = ResetPortModuleState( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
             
-    status = ReconfigureScheduler( eventInfo, userInfo );
+    status = CheckAndPreReserveSchedBw( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
             
     status = LinkPortToLanes( eventInfo, userInfo );
@@ -5095,7 +5163,7 @@ static fm_status AnStateMachineS7E0Callback( fm_smEventInfo *eventInfo, void *us
     status = ResetPortModuleState( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
             
-    status = ReconfigureScheduler( eventInfo, userInfo );
+    status = CheckAndPreReserveSchedBw( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
             
     status = LinkPortToLanes( eventInfo, userInfo );
@@ -5497,7 +5565,7 @@ static fm_status AnStateMachineS8E0Callback( fm_smEventInfo *eventInfo, void *us
     status = ResetPortModuleState( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
             
-    status = ReconfigureScheduler( eventInfo, userInfo );
+    status = CheckAndPreReserveSchedBw( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
             
     status = LinkPortToLanes( eventInfo, userInfo );
@@ -5902,7 +5970,7 @@ static fm_status AnStateMachineS9E0Callback( fm_smEventInfo *eventInfo, void *us
     status = ResetPortModuleState( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
             
-    status = ReconfigureScheduler( eventInfo, userInfo );
+    status = CheckAndPreReserveSchedBw( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
             
     status = LinkPortToLanes( eventInfo, userInfo );
@@ -6276,7 +6344,7 @@ static fm_status AnStateMachineS11E0Callback( fm_smEventInfo *eventInfo, void *u
     status = ResetPortModuleState( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
             
-    status = ReconfigureScheduler( eventInfo, userInfo );
+    status = CheckAndPreReserveSchedBw( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
             
     status = LinkPortToLanes( eventInfo, userInfo );
@@ -10840,68 +10908,6 @@ ABORT:
 }   /* end PcieStateMachineS0E3Callback */
 
 /*****************************************************************************/
-/** PcieStateMachineS0E4Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_PCIE_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_ADMIN_UP_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_DISABLED''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status PcieStateMachineS0E4Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = FlagError( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end PcieStateMachineS0E4Callback */
-
-/*****************************************************************************/
-/** PcieStateMachineS0E5Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_PCIE_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_ADMIN_DOWN_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_DISABLED''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status PcieStateMachineS0E5Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = FlagError( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end PcieStateMachineS0E5Callback */
-
-/*****************************************************************************/
 /** PcieStateMachineS0E6Callback
  * \ingroup intPortStateMachine
  *
@@ -11552,7 +11558,10 @@ static fm_status PcieStateMachineS10E4Callback( fm_smEventInfo *eventInfo, void 
     fm_status status = FM_OK;
     fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
         
-    status = FlagError( eventInfo, userInfo );
+    status = DisableDrainMode( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+            
+    status = NotifyApiPortUp( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
             
 ABORT:
@@ -11583,7 +11592,10 @@ static fm_status PcieStateMachineS10E5Callback( fm_smEventInfo *eventInfo, void 
     fm_status status = FM_OK;
     fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
         
-    status = FlagError( eventInfo, userInfo );
+    status = EnableDrainMode( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+            
+    status = NotifyApiPortDown( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
             
 ABORT:
@@ -12313,7 +12325,10 @@ static fm_status PcieStateMachineS11E4Callback( fm_smEventInfo *eventInfo, void 
     fm_status status = FM_OK;
     fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
         
-    status = FlagError( eventInfo, userInfo );
+    status = DisableDrainMode( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+            
+    status = NotifyApiPortUp( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
             
 ABORT:
@@ -12344,7 +12359,10 @@ static fm_status PcieStateMachineS11E5Callback( fm_smEventInfo *eventInfo, void 
     fm_status status = FM_OK;
     fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
         
-    status = FlagError( eventInfo, userInfo );
+    status = EnableDrainMode( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+            
+    status = NotifyApiPortDown( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
             
 ABORT:
@@ -15209,7 +15227,7 @@ fm_status fm10000RegisterPciePortStateMachine( void )
     stt[FM10000_PORT_STATE_DISABLED]
        [FM10000_PORT_EVENT_ADMIN_UP_REQ].conditionCallback = NULL;
     stt[FM10000_PORT_STATE_DISABLED]
-       [FM10000_PORT_EVENT_ADMIN_UP_REQ].transitionCallback = PcieStateMachineS0E4Callback;
+       [FM10000_PORT_EVENT_ADMIN_UP_REQ].transitionCallback = NULL;
 
     /* transition for state=PORT_STATE_DISABLED(0), event=PORT_EVENT_ADMIN_DOWN_REQ(5) */
     stt[FM10000_PORT_STATE_DISABLED]
@@ -15219,7 +15237,7 @@ fm_status fm10000RegisterPciePortStateMachine( void )
     stt[FM10000_PORT_STATE_DISABLED]
        [FM10000_PORT_EVENT_ADMIN_DOWN_REQ].conditionCallback = NULL;
     stt[FM10000_PORT_STATE_DISABLED]
-       [FM10000_PORT_EVENT_ADMIN_DOWN_REQ].transitionCallback = PcieStateMachineS0E5Callback;
+       [FM10000_PORT_EVENT_ADMIN_DOWN_REQ].transitionCallback = NULL;
 
     /* transition for state=PORT_STATE_DISABLED(0), event=PORT_EVENT_ADMIN_PWRDOWN_REQ(6) */
     stt[FM10000_PORT_STATE_DISABLED]

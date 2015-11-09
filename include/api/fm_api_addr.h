@@ -6,7 +6,7 @@
  * Description:     Structures and functions for dealing with MA table
  *                  configuration
  *
- * Copyright (c) 2005 - 2014, Intel Corporation
+ * Copyright (c) 2005 - 2015, Intel Corporation
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -30,7 +30,7 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
+ *****************************************************************************/
 
 #ifndef __FM_FM_API_ADDR_H
 #define __FM_FM_API_ADDR_H
@@ -172,7 +172,7 @@ enum _fm_addressTypes
     /**
      *  Secure static MA Table entry. Frames received with an SMAC matching
      *  this entry, but on a different port (FM10000) or on an unsecure port
-     *  (FM3000, FM4000), will be treated as a security violation. This
+     *  (FM3000/FM4000), will be treated as a security violation. This
      *  entry will not be subject to aging.
      *                                                                  \lb\lb
      *  On FM10000 devices, security violations will be subject to the
@@ -184,7 +184,7 @@ enum _fm_addressTypes
     /**
      *  Secure dynamic MA Table entry. Frames received with an SMAC matching
      *  this entry, but on a different port (FM10000) or on an unsecure port
-     *  (FM3000, FM4000), will be treated as a security violation. This
+     *  (FM3000/FM4000), will be treated as a security violation. This
      *  entry will be subject to aging.
      *                                                                  \lb\lb
      *  On FM10000 devices, security violations will be subject to the
@@ -236,8 +236,8 @@ typedef struct _fm_macAddressEntry
      *  specified mask is used. This field is deprecated in favor of the
      *  port field, and may not be used for switch aggregates.
      *                                                                  \lb\lb
-     *  On FM3000 and FM4000 devices, when adding a dynamic MA Table entry 
-     *  for more than one destination port, destMask must be set to 
+     *  On FM3000/FM4000 devices, when adding a dynamic MA Table entry for
+     *  more than one destination port, destMask must be set to
      *  ''FM_DESTMASK_UNUSED'' and port used to specify a multicast group.
      *                                                                  \lb\lb
      *  This field is not supported on FM6000 devices and should always be
@@ -249,9 +249,9 @@ typedef struct _fm_macAddressEntry
      *  \chips  FM2000, FM3000, FM4000 */
     fm_uint32  destMask;
 
-    /** Destination logical port. On FM2000, FM3000, and FM4000 devices,
-     *  this field is only used when destMask is ''FM_DESTMASK_UNUSED''.
-     *  On FM6000 and FM10000 devices, this field is used unconditionally.
+    /** Destination logical port. On FM2000 and FM3000/FM4000 devices, this
+     *  field is only used when destMask is ''FM_DESTMASK_UNUSED''. On
+     *  FM6000 and FM10000 devices, this field is used unconditionally.
      *
      *  \chips  FM2000, FM3000, FM4000, FM6000, FM10000 */
     fm_int     port;

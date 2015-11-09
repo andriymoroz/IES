@@ -92,8 +92,6 @@ fm_status fmDbgSwitchSelfTest(fm_int sw, fm_bool ctrlState)
     fm_status               testResult = FM_FAIL;
     fm_switch               *switchPtr;
     fm_bool                 switchLocked = FALSE;
-    fm_paritySweeperConfig  currentParitySweeper;
-    fm_paritySweeperConfig  paritySweeper;
     
     FM_LOG_ENTRY_API(FM_LOG_CAT_SWITCH, "sw=%d\n", sw);
     VALIDATE_SWITCH_LOCK(sw);
@@ -151,12 +149,6 @@ fm_status fmDbgSwitchSelfTest(fm_int sw, fm_bool ctrlState)
         
     }
     
-    /**************************************************
-     * Make Sure Parity Sweeper is disabled
-     **************************************************/
-    paritySweeper.enabled = FALSE;
-    fmGetSwitchAttribute(sw, FM_PARITY_SWEEPER_CONFIG, &currentParitySweeper);
-    fmSetSwitchAttribute(sw, FM_PARITY_SWEEPER_CONFIG, &paritySweeper);
 
     UNLOCK_SWITCH(sw);
     switchLocked = FALSE;
@@ -178,8 +170,6 @@ fm_status fmDbgSwitchSelfTest(fm_int sw, fm_bool ctrlState)
         fmSetSwitchState(sw, FALSE);
     }
 
-    fmSetSwitchAttribute(sw, FM_PARITY_SWEEPER_CONFIG, &currentParitySweeper);
-    
 ABORT:
 
     if (switchLocked)
@@ -256,8 +246,6 @@ fm_status fmDbgPolicerTest(fm_int  sw,
     fm_status               testResult = FM_FAIL;
     fm_switch               *switchPtr;
     fm_bool                 switchLocked = FALSE;
-    fm_paritySweeperConfig  currentParitySweeper;
-    fm_paritySweeperConfig  paritySweeper;
     fm_int                  i;
 
     FM_LOG_ENTRY_API(FM_LOG_CAT_SWITCH, "sw=%d\n", sw);
@@ -315,13 +303,6 @@ fm_status fmDbgPolicerTest(fm_int  sw,
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
         
     }
-    
-    /**************************************************
-     * Make Sure Parity Sweeper is disabled
-     **************************************************/
-    paritySweeper.enabled = FALSE;
-    fmGetSwitchAttribute(sw, FM_PARITY_SWEEPER_CONFIG, &currentParitySweeper);
-    fmSetSwitchAttribute(sw, FM_PARITY_SWEEPER_CONFIG, &paritySweeper);
 
     UNLOCK_SWITCH(sw);
     switchLocked = FALSE;
@@ -363,8 +344,6 @@ fm_status fmDbgPolicerTest(fm_int  sw,
         fmSetSwitchState(sw, FALSE);
     }
 
-    fmSetSwitchAttribute(sw, FM_PARITY_SWEEPER_CONFIG, &currentParitySweeper);
-    
 ABORT:
 
     if (switchLocked)

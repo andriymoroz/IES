@@ -501,6 +501,12 @@ static void ConvertTunnelTypeToString(fm_vnTunnelType tunnelType,
         case FM_VN_TUNNEL_TYPE_GENEVE:
             FM_STRCPY_S(textOut, textBufSize, "GENEVE");
             break;
+        case FM_VN_TUNNEL_TYPE_GPE:
+            FM_STRCPY_S(textOut, textBufSize, "GPE");
+            break;
+        case FM_VN_TUNNEL_TYPE_GPE_NSH:
+            FM_STRCPY_S(textOut, textBufSize, "GPE_NSH");
+            break;
         default:
             FM_STRCPY_S(textOut, textBufSize, "unknown");
     }
@@ -1018,18 +1024,22 @@ static fm_status GetTunnelGroupParams(fm_int          sw,
  *****************************************************************************/
 static fm_status InitializeVNSubsystem(fm_int sw)
 {
-    fm_status       status;
-    fm_switch *     switchPtr;
-    fm10000_switch *switchExt;
-    fm_int          i;
-    fm_bool         routable;
-    fm_aclArguments aclArgs;
-    fm_bool         useDefaultVlan;
+    fm_status         status;
+    fm_switch *       switchPtr;
+    fm10000_switch   *switchExt;
+    fm_property      *prop;
+    fm10000_property *fm10kProp;
+    fm_int            i;
+    fm_bool           routable;
+    fm_aclArguments   aclArgs;
+    fm_bool           useDefaultVlan;
 
     FM_LOG_ENTRY(FM_LOG_CAT_VN, "sw = %d\n", sw);
 
     switchPtr = GET_SWITCH_PTR(sw);
     switchExt = GET_SWITCH_EXT(sw);
+    prop = GET_PROPERTY();
+    fm10kProp = GET_FM10000_PROPERTY();
     routable  = FM_ENABLED;
 
     if ( (switchExt->numVirtualNetworks != 0)
@@ -1097,22 +1107,14 @@ static fm_status InitializeVNSubsystem(fm_int sw)
     /************************************************************************
      * Retrieve new API attribute values.
      ************************************************************************/
-    switchExt->useSharedEncapFlows  = fmGetBoolApiProperty(FM_AAK_API_FM10000_VN_USE_SHARED_ENCAP_FLOWS,
-                                                           FM_AAD_API_FM10000_VN_USE_SHARED_ENCAP_FLOWS);
-    switchExt->maxVNRemoteAddresses = fmGetIntApiProperty(FM_AAK_API_FM10000_VN_MAX_TUNNEL_RULES,
-                                                          FM_AAD_API_FM10000_VN_MAX_TUNNEL_RULES);
-    switchExt->vnTunnelGroupHashSize = fmGetIntApiProperty(FM_AAK_API_FM10000_VN_TUNNEL_GROUP_HASH_SIZE,
-                                                           FM_AAD_API_FM10000_VN_TUNNEL_GROUP_HASH_SIZE);
-    switchExt->vnTeVid               = fmGetIntApiProperty(FM_AAK_API_FM10000_VN_TE_VID,
-                                                           FM_AAD_API_FM10000_VN_TE_VID);
-    switchExt->vnEncapProtocol       = fmGetIntApiProperty(FM_AAK_API_VN_ENCAP_PROTOCOL,
-                                                           FM_AAD_API_VN_ENCAP_PROTOCOL);
-    switchExt->vnEncapVersion        = fmGetIntApiProperty(FM_AAK_API_VN_ENCAP_VERSION,
-                                                           FM_AAD_API_VN_ENCAP_VERSION);
-    switchExt->vnEncapAcl            = fmGetIntApiProperty(FM_AAK_API_FM10000_VN_ENCAP_ACL_NUM,
-                                                           FM_AAD_API_FM10000_VN_ENCAP_ACL_NUM);
-    switchExt->vnDecapAcl            = fmGetIntApiProperty(FM_AAK_API_FM10000_VN_DECAP_ACL_NUM,
-                                                           FM_AAD_API_FM10000_VN_DECAP_ACL_NUM);
+    switchExt->useSharedEncapFlows  = fm10kProp->vnUseSharedEncapFlows;
+    switchExt->maxVNRemoteAddresses = fm10kProp->vnMaxRemoteAddress;
+    switchExt->vnTunnelGroupHashSize = fm10kProp->vnTunnelGroupHashSize;
+    switchExt->vnTeVid               = fm10kProp->vnTeVid;
+    switchExt->vnEncapProtocol       = prop->vnEncapProtocol;
+    switchExt->vnEncapVersion        = prop->vnEncapVersion;
+    switchExt->vnEncapAcl            = fm10kProp->vnEncapAclNumber;
+    switchExt->vnDecapAcl            = fm10kProp->vnDecapAclNumber;
 
     /************************************************************************
      * Initialize new state.
@@ -1368,6 +1370,19 @@ static fm_status BuildTunnelRule(fm_int                   sw,
                                             | FM_TUNNEL_SET_VNI;
             ruleActionParam->encapFlow = encapFlowId;
             ruleActionParam->vni       = vn->vsId;
+
+            if (tunnel == NULL)
+            {
+                FM_LOG_EXIT(FM_LOG_CAT_VN, FM_FAIL);
+            }
+
+            if ( (tunnel->tunnelType == FM_VN_TUNNEL_TYPE_GPE_NSH)
+                 || (tunnel->tunnelType == FM_VN_TUNNEL_TYPE_GPE) )
+            {
+                ruleActionParam->gpeVni = vn->vsId;
+                *ruleAction |= FM_TUNNEL_SET_GPE_VNI;
+            }
+
             break;
 
         case FM_VN_DECAP_GROUP_DMAC_VID:
@@ -1522,6 +1537,40 @@ static fm_status BuildDecapAclRule(fm_int                  sw,
             aclCondData->L4DeepInspectionExtMask[6] = 0xFF;
             break;
 
+        case FM_VN_TUNNEL_TYPE_GPE:
+            *aclCond |= FM_ACL_MATCH_L4_DEEP_INSPECTION_EXT
+                | FM_ACL_MATCH_L4_DST_PORT_WITH_MASK;
+            aclCondData->L4DstStart                 = switchExt->vnGpeUdpPort;
+            aclCondData->L4DstMask                  = 0xFFFF;
+            aclCondData->L4DeepInspectionExt[0]     = 0x4; /* Next Protocol bit */
+            aclCondData->L4DeepInspectionExt[3]     = 3;   /* Next Protocol: Ethernet */
+            aclCondData->L4DeepInspectionExt[4]     = (vn->vsId & 0xFF0000) >> 16;
+            aclCondData->L4DeepInspectionExt[5]     = (vn->vsId & 0x00FF00) >> 8;
+            aclCondData->L4DeepInspectionExt[6]     = vn->vsId & 0x0000FF;
+            aclCondData->L4DeepInspectionExtMask[0] = 0x4;
+            aclCondData->L4DeepInspectionExtMask[3] = 0xFF;
+            aclCondData->L4DeepInspectionExtMask[4] = 0xFF;
+            aclCondData->L4DeepInspectionExtMask[5] = 0xFF;
+            aclCondData->L4DeepInspectionExtMask[6] = 0xFF;
+            break;
+
+        case FM_VN_TUNNEL_TYPE_GPE_NSH:
+            *aclCond |= FM_ACL_MATCH_L4_DEEP_INSPECTION_EXT
+                | FM_ACL_MATCH_L4_DST_PORT_WITH_MASK;
+            aclCondData->L4DstStart                 = switchExt->vnGpeUdpPort;
+            aclCondData->L4DstMask                  = 0xFFFF;
+            aclCondData->L4DeepInspectionExt[0]     = 0x4; /* Next Protocol bit */
+            aclCondData->L4DeepInspectionExt[3]     = 4;   /* Next Protocol: NSH */
+            aclCondData->L4DeepInspectionExt[4]     = (vn->vsId & 0xFF0000) >> 16;
+            aclCondData->L4DeepInspectionExt[5]     = (vn->vsId & 0x00FF00) >> 8;
+            aclCondData->L4DeepInspectionExt[6]     = vn->vsId & 0x0000FF;
+            aclCondData->L4DeepInspectionExtMask[0] = 0x4;
+            aclCondData->L4DeepInspectionExtMask[3] = 0xFF;
+            aclCondData->L4DeepInspectionExtMask[4] = 0xFF;
+            aclCondData->L4DeepInspectionExtMask[5] = 0xFF;
+            aclCondData->L4DeepInspectionExtMask[6] = 0xFF;
+            break;
+
         default:
             status = FM_ERR_UNSUPPORTED;
             FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_VN, status);
@@ -1649,7 +1698,7 @@ static fm_status WriteEncapFlow(fm_int             sw,
 
         switch (tunnel->tunnelType)
         {
-            case  FM_VN_TUNNEL_TYPE_VXLAN_IPV4:
+            case FM_VN_TUNNEL_TYPE_VXLAN_IPV4:
             case FM_VN_TUNNEL_TYPE_VXLAN_IPV6:
                 encapParams.type = FM_TUNNEL_TYPE_VXLAN;
 
@@ -1672,6 +1721,55 @@ static fm_status WriteEncapFlow(fm_int             sw,
                 {
                     encapParams.ttl  = tunnel->encapTTL;
                     flowFields      |= FM_TUNNEL_ENCAP_FLOW_TTL;
+                }
+
+                break;
+
+            case FM_VN_TUNNEL_TYPE_GPE:
+                encapParams.type = FM_TUNNEL_TYPE_GPE;
+
+                if (tunnel->encapTTL != (fm_uint) ~0)
+                {
+                    encapParams.ttl = tunnel->encapTTL;
+                    flowFields |= FM_TUNNEL_ENCAP_FLOW_TTL;
+                }
+
+                break;
+
+            case FM_VN_TUNNEL_TYPE_GPE_NSH:
+                encapParams.type = FM_TUNNEL_TYPE_GPE_NSH;
+
+                if (tunnel->encapTTL != (fm_uint) ~0)
+                {
+                    encapParams.ttl = tunnel->encapTTL;
+                    flowFields |= FM_TUNNEL_ENCAP_FLOW_TTL;
+                }
+
+                if (tunnelExt->haveNshBaseHdr)
+                {
+                    encapParams.nshLength   = tunnel->nsh.baseHdr.length;
+                    encapParams.nshCritical = tunnel->nsh.baseHdr.critical;
+                    encapParams.nshMdType   = tunnel->nsh.baseHdr.mdType;
+                    flowFields |= FM_TUNNEL_ENCAP_FLOW_NSH_BASE_HDR;
+                }
+
+                if (tunnelExt->haveNshServiceHdr)
+                {
+                    encapParams.nshSvcPathId = tunnel->nsh.serviceHdr.svcPathId;
+                    encapParams.nshSvcIndex  = tunnel->nsh.serviceHdr.svcIndex;
+                    flowFields |= FM_TUNNEL_ENCAP_FLOW_NSH_SERVICE_HDR;
+                }
+
+                if (tunnelExt->haveNshData)
+                {
+                    encapParams.nshDataMask = tunnel->nsh.context.mask;
+
+                    FM_MEMCPY_S(encapParams.nshData,
+                                sizeof(encapParams.nshData),
+                                tunnel->nsh.context.data,
+                                sizeof(tunnel->nsh.context.data));
+
+                    flowFields |= FM_TUNNEL_ENCAP_FLOW_NSH_DATA;
                 }
 
                 break;
@@ -4250,6 +4348,9 @@ fm_status fm10000CreateVNTunnel(fm_int       sw,
     fm_status         status;
     fm10000_switch *  switchExt;
     fm10000_vnTunnel *tunnelExt;
+    fm_tunnelModeAttr modeAttr;
+    fm_teMode         encapTeMode;
+    fm_teMode         decapTeMode;
 
     FM_LOG_ENTRY( FM_LOG_CAT_VN,
                   "sw = %d, tunnel = %p, tunnelId=%d, tunnelType=%d\n",
@@ -4262,6 +4363,37 @@ fm_status fm10000CreateVNTunnel(fm_int       sw,
     FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_VN, status);
 
     switchExt = GET_SWITCH_EXT(sw);
+
+    FM_CLEAR(modeAttr);
+
+    modeAttr.te = ENCAP_TUNNEL;
+    status = fm10000GetTunnelApiAttribute(sw, FM_TUNNEL_API_MODE, &modeAttr);
+    FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_VN, status);
+    encapTeMode = modeAttr.mode;
+
+    modeAttr.te = DECAP_TUNNEL;
+    status = fm10000GetTunnelApiAttribute(sw, FM_TUNNEL_API_MODE, &modeAttr);
+    FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_VN, status);
+    decapTeMode = modeAttr.mode;
+
+    if ( (tunnel->tunnelType == FM_VN_TUNNEL_TYPE_GPE_NSH)
+         || (tunnel->tunnelType == FM_VN_TUNNEL_TYPE_GPE) )
+    {
+        if ( (encapTeMode != FM_TUNNEL_API_MODE_VXLAN_GPE_NSH)
+             || (decapTeMode != FM_TUNNEL_API_MODE_VXLAN_GPE_NSH) )
+        {
+            FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_VN, FM_ERR_TUNNEL_TYPE);
+        }
+    }
+    else if ( (tunnel->tunnelType == FM_VN_TUNNEL_TYPE_NVGRE)
+              || (tunnel->tunnelType == FM_VN_TUNNEL_TYPE_GENEVE) )
+    {
+        if ( (encapTeMode != FM_TUNNEL_API_MODE_VXLAN_NVGRE_NGE)
+             || (decapTeMode != FM_TUNNEL_API_MODE_VXLAN_NVGRE_NGE) )
+        {
+            FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_VN, FM_ERR_TUNNEL_TYPE);
+        }
+    }
 
     tunnelExt = fmAlloc( sizeof(fm10000_vnTunnel) );
     if (tunnelExt == NULL)
@@ -4377,7 +4509,6 @@ fm_status fm10000SetVNTunnelAttribute(fm_int              sw,
     fm_status        status;
     fm10000_vnTunnel *tunnelExt;
     fm_int           trafficIdentifier;
-    fm_bool          updateNextHops;
 
     FM_LOG_ENTRY( FM_LOG_CAT_VN,
                   "sw = %d, tunnel = %p, tunnelId = %d, attr = %d, value=%p\n",
@@ -4389,8 +4520,8 @@ fm_status fm10000SetVNTunnelAttribute(fm_int              sw,
 
     FM_NOT_USED(value);
 
-    updateNextHops = FALSE;
-    tunnelExt      = tunnel->extension;
+    status    = FM_OK;
+    tunnelExt = tunnel->extension;
 
     switch (attr)
     {
@@ -4398,42 +4529,47 @@ fm_status fm10000SetVNTunnelAttribute(fm_int              sw,
             tunnelExt->haveLocalIp = TRUE;
             status = UpdateVNTunnel(sw, tunnel);
             FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_VN, status);
-
-            updateNextHops = TRUE;
             break;
 
         case FM_VNTUNNEL_ATTR_REMOTE_IP:
             tunnelExt->haveRemoteIp = TRUE;
             status = UpdateVNTunnel(sw, tunnel);
             FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_VN, status);
-
-            updateNextHops = TRUE;
             break;
 
         case FM_VNTUNNEL_ATTR_VRID:
             /* Nothing to do until remote IP attribute is set. */
-            status = FM_OK;
-            break;
-
-        case FM_VNTUNNEL_ATTR_MCAST_GROUP:
-            updateNextHops = TRUE;
-            status = FM_OK;
-            break;
-
-        case FM_VNTUNNEL_ATTR_MCAST_DMAC:
-            updateNextHops = TRUE;
-            status = FM_OK;
             break;
 
         case FM_VNTUNNEL_ATTR_TRAFFIC_IDENTIFIER:
             trafficIdentifier = *( (fm_int *) value );
             tunnel->trafficIdentifier = trafficIdentifier;
-            updateNextHops = TRUE;
-            status = FM_OK;
             break;
 
         case FM_VNTUNNEL_ATTR_ENCAP_TTL:
             status = UpdateVNTunnel(sw, tunnel);
+            break;
+
+        case FM_VNTUNNEL_ATTR_MCAST_GROUP:
+        case FM_VNTUNNEL_ATTR_MCAST_DMAC:
+            break;
+
+        case FM_VNTUNNEL_ATTR_NSH_BASE_HDR:
+            tunnelExt->haveNshBaseHdr = TRUE;
+            status = UpdateVNTunnel(sw, tunnel);
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_VN, status);
+            break;
+
+        case FM_VNTUNNEL_ATTR_NSH_SERVICE_HDR:
+            tunnelExt->haveNshServiceHdr = TRUE;
+            status = UpdateVNTunnel(sw, tunnel);
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_VN, status);
+            break;
+
+        case FM_VNTUNNEL_ATTR_NSH_DATA:
+            tunnelExt->haveNshData = TRUE;
+            status = UpdateVNTunnel(sw, tunnel);
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_VN, status);
             break;
 
         default:
@@ -6449,6 +6585,125 @@ ABORT:
 
 
 /*****************************************************************************/
+/** fm10000ConfigureVNDefaultGpe
+ * \ingroup intVN
+ *
+ * \desc            Configures the Virtual Networking API default values
+ *                  of the VXLAN-GPE fields. Supported only when encapsulation
+ *                  tunnel engine is operating in
+ *                  ''FM_TUNNEL_API_MODE_VXLAN_GPE_NSH'' mode.
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \param[in]       defaultGpe points to the VXLAN-GPE configuration record
+ *                  to be used.
+ *
+ * \return          FM_OK if successful.
+ *
+ *****************************************************************************/
+fm_status fm10000ConfigureVNDefaultGpe(fm_int sw, fm_vnGpeCfg *defaultGpe)
+{
+    fm_status             status;
+    fm_fm10000TeTunnelCfg tunnelCfg;
+    fm_tunnelModeAttr     teModeAttr;
+    fm_uint32             teDefaultSelectMask;
+
+    FM_LOG_ENTRY(FM_LOG_CAT_VN, "sw = %d, defaultGpe = %p\n", sw,
+                 (void *) defaultGpe);
+
+    FM_CLEAR(tunnelCfg);
+    FM_CLEAR(teModeAttr);
+
+    teModeAttr.te = ENCAP_TUNNEL;
+    status = fm10000GetTunnelApiAttribute(sw, FM_TUNNEL_API_MODE, &teModeAttr);
+    FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_VN, status);
+
+    if (teModeAttr.mode != FM_TUNNEL_API_MODE_VXLAN_GPE_NSH)
+    {
+        FM_LOG_EXIT(FM_LOG_CAT_VN, FM_ERR_TE_MODE);
+    }
+
+    tunnelCfg.gpeNextProt = defaultGpe->nextProt;
+    tunnelCfg.gpeVni      = defaultGpe->vni;
+
+    teDefaultSelectMask = (FM10000_TE_DEFAULT_GPE_NEXT_PROT |
+                           FM10000_TE_DEFAULT_GPE_VNI);
+
+    status = fm10000SetTeDefaultTunnel(sw,
+                                       ENCAP_TUNNEL,
+                                       &tunnelCfg,
+                                       teDefaultSelectMask,
+                                       TRUE);
+    FM_LOG_EXIT(FM_LOG_CAT_VN, status);
+
+}   /* end fm10000ConfigureVNDefaultGpe */
+
+
+
+
+/*****************************************************************************/
+/** fm10000ConfigureVNDefaultNsh
+ * \ingroup intVN
+ *
+ * \desc            Configures the Virtual Networking API default values
+ *                  of the NSH fields. Supported only when encapsulation
+ *                  tunnel engine is operating in
+ *                  ''FM_TUNNEL_API_MODE_VXLAN_GPE_NSH'' mode.
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \param[in]       defaultNsh points to the NSH configuration record to be
+ *                  used.
+ *
+ * \return          FM_OK if successful.
+ *
+ *****************************************************************************/
+fm_status fm10000ConfigureVNDefaultNsh(fm_int sw, fm_vnNshCfg *defaultNsh)
+{
+    fm_status             status;
+    fm_fm10000TeTunnelCfg tunnelCfg;
+    fm_tunnelModeAttr     teModeAttr;
+
+    FM_LOG_ENTRY(FM_LOG_CAT_VN, "sw = %d, defaultNsh = %p\n",
+                 sw, (void *) defaultNsh);
+
+    FM_CLEAR(tunnelCfg);
+    FM_CLEAR(teModeAttr);
+
+    teModeAttr.te = ENCAP_TUNNEL;
+    status = fm10000GetTunnelApiAttribute(sw, FM_TUNNEL_API_MODE, &teModeAttr);
+    FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_VN, status);
+
+    if (teModeAttr.mode != FM_TUNNEL_API_MODE_VXLAN_GPE_NSH)
+    {
+        FM_LOG_EXIT(FM_LOG_CAT_VN, FM_ERR_TE_MODE);
+    }
+
+    tunnelCfg.nshLength    = defaultNsh->baseHdr.length;
+    tunnelCfg.nshCritical  = defaultNsh->baseHdr.critical;
+    tunnelCfg.nshMdType    = defaultNsh->baseHdr.mdType;
+    tunnelCfg.nshSvcPathId = defaultNsh->serviceHdr.svcPathId;
+    tunnelCfg.nshSvcIndex  = defaultNsh->serviceHdr.svcIndex;
+    tunnelCfg.nshDataMask  = defaultNsh->context.mask;
+
+    FM_MEMCPY_S(tunnelCfg.nshData,
+                sizeof(tunnelCfg.nshData),
+                defaultNsh->context.data,
+                sizeof(defaultNsh->context.data));
+
+    status = fm10000SetTeDefaultTunnel(sw,
+                                       ENCAP_TUNNEL,
+                                       &tunnelCfg,
+                                       FM10000_TE_DEFAULT_TUNNEL_NSH_ALL,
+                                       TRUE);
+    FM_LOG_EXIT(FM_LOG_CAT_VN, status);
+
+}   /* end fm10000ConfigureVNDefaultNsh */
+
+
+
+
+/*****************************************************************************/
 /** fm10000GetVNConfiguration
  * \ingroup intVN
  *
@@ -6488,6 +6743,121 @@ fm_status fm10000GetVNConfiguration(fm_int sw, fm_vnConfiguration *config)
     FM_LOG_EXIT(FM_LOG_CAT_VN, status);
 
 }   /* end fm10000GetVNConfiguration */
+
+
+
+
+/*****************************************************************************/
+/** fm10000GetVNDefaultGpe
+ * \ingroup intVN
+ *
+ * \desc            Retrieves the Virtual Networking API default values
+ *                  of the VXLAN-GPE fields. Supported only when encapsulation
+ *                  tunnel engine is operating in
+ *                  ''FM_TUNNEL_API_MODE_VXLAN_GPE_NSH'' mode.
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \param[out]      defaultGpe points to caller-provided storage into which
+ *                  VXLAN-GPE configuration will be written.
+ *
+ * \return          FM_OK if successful.
+ *
+ *****************************************************************************/
+fm_status fm10000GetVNDefaultGpe(fm_int sw, fm_vnGpeCfg *defaultGpe)
+{
+    fm_status             status;
+    fm_fm10000TeTunnelCfg tunnelCfg;
+    fm_tunnelModeAttr     teModeAttr;
+
+    FM_LOG_ENTRY(FM_LOG_CAT_VN, "sw = %d, defaultGpe = %p\n",
+                 sw, (void *) defaultGpe);
+
+    FM_CLEAR(teModeAttr);
+
+    teModeAttr.te = ENCAP_TUNNEL;
+    status = fm10000GetTunnelApiAttribute(sw, FM_TUNNEL_API_MODE, &teModeAttr);
+    FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_VN, status);
+
+    if (teModeAttr.mode != FM_TUNNEL_API_MODE_VXLAN_GPE_NSH)
+    {
+        FM_LOG_EXIT(FM_LOG_CAT_VN, FM_ERR_TE_MODE);
+    }
+
+    status = fm10000GetTeDefaultTunnel(sw,
+                                       ENCAP_TUNNEL,
+                                       &tunnelCfg,
+                                       TRUE);
+    FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_VN, status);
+
+    defaultGpe->nextProt = tunnelCfg.gpeNextProt;
+    defaultGpe->vni      = tunnelCfg.gpeVni;
+
+    FM_LOG_EXIT(FM_LOG_CAT_VN, status);
+
+}   /* end fm10000GetVNDefaultGpe */
+
+
+
+
+/*****************************************************************************/
+/** fm10000GetVNDefaultNsh
+ * \ingroup intVN
+ *
+ * \desc            Retrieves the Virtual Networking API default values
+ *                  of the NSH fields. Supported only when encapsulation
+ *                  tunnel engine is operating in
+ *                  ''FM_TUNNEL_API_MODE_VXLAN_GPE_NSH'' mode.
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \param[out]      defaultNsh points to caller-provided storage into which
+ *                  NSH configuration will be written.
+ *
+ * \return          FM_OK if successful.
+ *
+ *****************************************************************************/
+fm_status fm10000GetVNDefaultNsh(fm_int sw, fm_vnNshCfg *defaultNsh)
+{
+    fm_status             status;
+    fm_fm10000TeTunnelCfg tunnelCfg;
+    fm_tunnelModeAttr     teModeAttr;
+
+    FM_LOG_ENTRY(FM_LOG_CAT_VN, "sw = %d, defaultNsh = %p\n",
+                 sw, (void *) defaultNsh);
+
+    FM_CLEAR(teModeAttr);
+
+    teModeAttr.te = ENCAP_TUNNEL;
+    status = fm10000GetTunnelApiAttribute(sw, FM_TUNNEL_API_MODE, &teModeAttr);
+    FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_VN, status);
+
+    if (teModeAttr.mode != FM_TUNNEL_API_MODE_VXLAN_GPE_NSH)
+    {
+        FM_LOG_EXIT(FM_LOG_CAT_VN, FM_ERR_TE_MODE);
+    }
+
+    status = fm10000GetTeDefaultTunnel(sw,
+                                       ENCAP_TUNNEL,
+                                       &tunnelCfg,
+                                       TRUE);
+    FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_VN, status);
+
+    defaultNsh->baseHdr.length       = tunnelCfg.nshLength;
+    defaultNsh->baseHdr.critical     = tunnelCfg.nshCritical;
+    defaultNsh->baseHdr.mdType       = tunnelCfg.nshMdType;
+    defaultNsh->serviceHdr.svcPathId = tunnelCfg.nshSvcPathId;
+    defaultNsh->serviceHdr.svcIndex  = tunnelCfg.nshSvcIndex;
+    defaultNsh->context.mask         = tunnelCfg.nshDataMask;
+
+    FM_MEMCPY_S(defaultNsh->context.data,
+                sizeof(defaultNsh->context.data),
+                tunnelCfg.nshData,
+                sizeof(tunnelCfg.nshData));
+
+    FM_LOG_EXIT(FM_LOG_CAT_VN, status);
+
+}   /* end fm10000GetVNDefaultNsh */
 
 
 
@@ -7650,6 +8020,7 @@ fm_status fm10000DbgDumpVN(fm_int sw)
     switchExt = GET_SWITCH_EXT(sw);
 
     FM_LOG_PRINT("vnVxlanUdpPort:        %u\n", switchExt->vnVxlanUdpPort);
+    FM_LOG_PRINT("vnGpeUdpPort:          %u\n", switchExt->vnGpeUdpPort);
     FM_LOG_PRINT("vnGeneveUdpPort:       %u\n", switchExt->vnGeneveUdpPort);
     FM_LOG_PRINT("useSharedEncapFlows:   %s\n",
                  (switchExt->useSharedEncapFlows == TRUE) ? "TRUE" : "FALSE");
@@ -8115,6 +8486,19 @@ fm_status fm10000DbgDumpVNTunnel(fm_int sw, fm_int tunnelId)
 
     FM_LOG_PRINT("Encapsulation TTL Value:     %d\n", tunnel->encapTTL);
 
+    FM_LOG_PRINT("NSH:\n");
+    FM_LOG_PRINT("    Length:          %d\n", tunnel->nsh.baseHdr.length);
+    FM_LOG_PRINT("    Critical:        %d\n", tunnel->nsh.baseHdr.critical);
+    FM_LOG_PRINT("    MdType:          %d\n", tunnel->nsh.baseHdr.mdType);
+    FM_LOG_PRINT("    Service Path Id: %d\n", tunnel->nsh.serviceHdr.svcPathId);
+    FM_LOG_PRINT("    Service Index:   %d\n", tunnel->nsh.serviceHdr.svcIndex);
+    FM_LOG_PRINT("    Data Mask:       0x%x\n", tunnel->nsh.context.mask);
+    FM_LOG_PRINT("    Data:\n");
+    for (i = 0; i < FM_TUNNEL_NSH_DATA_SIZE; i++)
+    {
+        FM_LOG_PRINT("        0x%x\n", tunnel->nsh.context.data[i]);
+    }
+
     FM_LOG_PRINT("route: %p\n", (void *) tunnel->route);
     if (tunnel->route != NULL)
     {
@@ -8126,11 +8510,17 @@ fm_status fm10000DbgDumpVNTunnel(fm_int sw, fm_int tunnelId)
 
     FM_LOG_PRINT("\n*** FM10000-specific data: ***\n\n");
 
-    FM_LOG_PRINT("haveLocalIp:  %s\n",
+    FM_LOG_PRINT("haveLocalIp:       %s\n",
                  (tunnelExt->haveLocalIp == TRUE) ? "TRUE" : "FALSE");
-    FM_LOG_PRINT("haveRemoteIp: %s\n",
+    FM_LOG_PRINT("haveRemoteIp:      %s\n",
                  (tunnelExt->haveRemoteIp == TRUE) ? "TRUE" : "FALSE");
-    FM_LOG_PRINT("decapAclRule: %d\n", tunnelExt->decapAclRule);
+    FM_LOG_PRINT("haveNshBaseHdr:    %s\n",
+                 (tunnelExt->haveNshBaseHdr == TRUE) ? "TRUE" : "FALSE");
+    FM_LOG_PRINT("haveNshServiceHdr: %s\n",
+                 (tunnelExt->haveNshServiceHdr == TRUE) ? "TRUE" : "FALSE");
+    FM_LOG_PRINT("haveNshData:       %s\n",
+                 (tunnelExt->haveNshData == TRUE) ? "TRUE" : "FALSE");
+    FM_LOG_PRINT("decapAclRule:      %d\n", tunnelExt->decapAclRule);
 
     FM_LOG_PRINT("encapFlowIds:\n");
     for (i = 0; i < FM_VN_NUM_TUNNEL_GROUPS; i++)

@@ -13,8 +13,10 @@ AM_CFLAGS = -std=c99                                                            
             -Wno-override-init                                                                    \
             -DFM_SUPPORT_FM10000                                                                  \
             -DINSTRUMENT_LOG_LEVEL=0                                                              \
+            -DPLATFORM_FIRST_FOCALPOINT=0                                                         \
+            -DPLATFORM_NUM_FOCALPOINTS=1                                                          \
             -D_GNU_SOURCE                                                                         \
-            -Lsrc/.libs/ -lFocalpointSDK -lLTStdPlatform -lm -ldl -lrt                            \
+            -Lsrc/.libs/ -lFocalpointSDK -lm -lpthread -ldl -lrt                                  \
             -I$(top_srcdir)/include                                                               \
             -I$(top_srcdir)/include/alos/linux                                                    \
             -I$(top_srcdir)/include/std/intel                                                     \

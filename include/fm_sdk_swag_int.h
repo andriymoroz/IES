@@ -7,7 +7,7 @@
  *                  internal files. 
  *                  For switch-aggregate-specific SDK internal use only.
  *
- * Copyright (c) 2007 - 2014, Intel Corporation
+ * Copyright (c) 2007 - 2015, Intel Corporation
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -57,6 +57,7 @@
 #include <api/internal/swag/fmSWAG_api_lbg_int.h>
 #include <api/internal/swag/fmSWAG_api_vn_int.h>
 #include <api/internal/swag/fmSWAG_api_mailbox_int.h>
+#include <api/internal/swag/fmSWAG_api_parity_int.h>
 
 
 /* fake variable to remove precompiled header warning that file doesn't

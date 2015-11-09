@@ -39,6 +39,13 @@
  * Macros, Constants & Types
  *****************************************************************************/
 
+/* FM10000_SERDES_DEFAULT_SPICO_FW allows to define which FW is used as
+ * default FW.
+ * valid values are 
+ * 0: use fm10000_serdes_spico_code_prd1 as default
+ * 1: use fm10000_serdes_spico_code_prd2 as default */
+#define FM10000_SERDES_DEFAULT_SPICO_FW     0
+
 typedef enum
 {
     FM_RES_MAC_INDEX_MIN        = 0x00,     /* Minimum reserved MAC index */

@@ -287,6 +287,9 @@ typedef struct _fm10000_switch
     /* VXLAN UDP Port Number. */
     fm_uint                     vnVxlanUdpPort;
 
+    /* VXLAN-GPE UDP Port Number. */
+    fm_uint                     vnGpeUdpPort;
+
     /* Geneve (NGE) UDP Port Number. */
     fm_uint                     vnGeneveUdpPort;
 
@@ -485,7 +488,12 @@ fm_status fm10000SendLinkUpDownEvent( fm_int           sw,
                                       fm_int           mac,
                                       fm_bool          linkUp,
                                       fm_eventPriority priority );
-
+fm_status fm10000SendLinkUpDownEventV2(fm_int           sw,
+                                       fm_int           physPort,
+                                       fm_int           mac,
+                                       fm_bool          linkUp,
+                                       fm_eventPriority priority,
+                                       fm_bool *        pAddedFreeEvent);
 fm_status fm10000I2cWriteRead(fm_int     sw,
                               fm_uint    device,
                               fm_byte   *data,

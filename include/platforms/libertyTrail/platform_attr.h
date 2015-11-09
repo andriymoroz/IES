@@ -1166,6 +1166,17 @@
 #define FM_AAK_API_PLATFORM_VRM_HW_RESOURCE_ID             "api.platform.config.switch.%d.%s.hwResourceId"
 #define FM_AAT_API_PLATFORM_VRM_HW_RESOURCE_ID             FM_API_ATTR_INT
 
+/**
+ * (Optional) Indicates to program the VRM with the default 
+ * voltage values (defined in the EAS) when the fuse box is not 
+ * programmed with the voltage scaling values (set to 0). 
+ *                                                                      \lb\lb
+ * Default value is 0. So if the fuse box is not programmed then
+ * the VRM are not set and use the default settings set by HW. 
+ */
+#define FM_AAK_API_PLATFORM_VRM_USE_DEF_VOLTAGE            "api.platform.config.switch.%d.useDefVoltageScaling"
+#define FM_AAT_API_PLATFORM_VRM_USE_DEF_VOLTAGE            FM_API_ATTR_INT
+
 
 /** @} (end of Doxygen group) */
 
@@ -1183,6 +1194,22 @@
  * User Guide as they are intended for Intel Internal Use
  * only.
  ************************************************************/
+
+/* Indicates whether the interrupt will be received from PCIe MSI or not */
+#define FM_AAK_API_PLATFORM_MSI_ENABLED  	"api.platform.config.switch.%d.msiEnabled"
+#define FM_AAT_API_PLATFORM_MSI_ENABLED     FM_API_ATTR_BOOL
+#define FM_AAD_API_PLATFORM_MSI_ENABLED     FALSE
+
+/* Specifies the Frame Handler Clock in Hz
+ * 
+ * Setting this property to -1 (default) indicates that the frame
+ * handler clock will be default to the part's default value.
+ *
+ * This parameters has no impact on certain parts (Frame Handler Clock 
+ * is locked in certain SKUs) */
+#define FM_AAK_API_PLATFORM_FH_CLOCK        "api.platform.config.switch.%d.fhClock"
+#define FM_AAT_API_PLATFORM_FH_CLOCK        FM_API_ATTR_INT
+#define FM_AAD_API_PLATFORM_FH_CLOCK        -1
 
 /*
  * (Optional) Device name used by EBI through FTDI. Value is a text 
@@ -1621,6 +1648,16 @@
  */ 
 #define FM_AAK_API_PLATFORM_SCHED_TOKEN               "api.platform.config.switch.%d.schedList.%d.slot.%d"
 #define FM_AAT_API_PLATFORM_SCHED_TOKEN               FM_API_ATTR_TEXT
+
+
+/**
+ * Specifies the FM10000 I2C bus clock divider
+ * Control.
+ * By default (10) the bus speed is set to 400kHz
+ */
+#define FM_AAK_API_LIB_I2C_CLKDIVIDER                  "api.platform.lib.config.switch.%d.i2cClkDivider"
+#define FM_AAT_API_LIB_I2C_CLKDIVIDER                  FM_API_ATTR_INT
+#define FM_AAD_API_LIB_I2C_CLKDIVIDER                  0x10
 
 
 #ifdef FM_LT_WHITE_MODEL_SUPPORT

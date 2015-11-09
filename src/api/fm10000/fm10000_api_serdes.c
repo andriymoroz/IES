@@ -1059,8 +1059,19 @@ fm_status fm10000LoadSpicoCode(fm_int sw)
     useProductionSpicoCodeVersions = (serdesOpMode == FM_SERDES_OPMODE_TEST_BOARD) ? 1 : 0;
 
 
+    imageOption = FM10000_SERDES_DEFAULT_SPICO_FW;
 
-    imageOption = 0;
+    if (imageOption < 0 || imageOption > 1)
+    {
+        imageOption = 0;
+    }
+
+
+    if (GET_FM10000_PROPERTY()->useAlternateSpicoFw)
+    {
+
+        imageOption ^= 1;
+    }
 
     serdesImageSelector = (useProductionSpicoCodeVersions << 1) | imageOption;
 
@@ -1145,8 +1156,7 @@ fm_status fm10000LoadSpicoCode(fm_int sw)
 
         switchExt->serdesSupportsKR = (serdesCodeVersionBuildId & 0x04) ? TRUE : FALSE;
 
-        if (fmGetIntApiProperty(FM_AAK_API_FM10000_SERDES_DBG_LVL,
-                                FM_AAD_API_FM10000_SERDES_DBG_LVL) > 0)
+        if (GET_FM10000_PROPERTY()->serdesDbgLevel > 0)
         {
             FM_LOG_PRINT("Support for KR: %s\n", switchExt->serdesSupportsKR? "YES" : "NO");
         }
@@ -1217,7 +1227,9 @@ fm_status fm10000LoadSpicoCode(fm_int sw)
                                                      lastSerdes,
                                                      serdesCodeVersionBuildId);
 
-            fm10000SerdesSpicoSaveImageParam(pSerdesCodeImage,serdesCodeSize);
+            fm10000SerdesSpicoSaveImageParamV2(pSerdesCodeImage,
+                                               serdesCodeSize,
+                                               serdesCodeVersionBuildId);
         }
     }
 
@@ -1748,6 +1760,7 @@ fm_status fm10000SerdesInitLaneControlStructures(fm_int sw,
         pLaneAttr->preCursorDecOnPreset = 0;
         pLaneAttr->postCursorDecOnPreset= 0;
         pLaneAttr->txLaneEnableConfigKrInit = FM_DISABLED;
+        pLaneAttr->transitionThreshold  = FM10000_SERDES_SIGNAL_TRANSITION_THRESHOLD_DFV;
 
 
 
@@ -1896,11 +1909,9 @@ fm_status fm10000SerdesInitOpMode(fm_int sw)
 
 
 
-    boardIp = fmGetTextApiProperty(FM_AAK_API_PLATFORM_MODEL_DEV_BOARD_IP,
-                                   FM_AAD_API_PLATFORM_MODEL_DEV_BOARD_IP);
+    boardIp = GET_PROPERTY()->modelDevBoardIp;
 
-    boardPort = fmGetIntApiProperty(FM_AAK_API_PLATFORM_MODEL_DEV_BOARD_PORT,
-                                    FM_AAD_API_PLATFORM_MODEL_DEV_BOARD_PORT);
+    boardPort = GET_PROPERTY()->modelDevBoardPort;
 
     if (strlen(boardIp) != 0 && boardPort != 0)
     {
@@ -1916,11 +1927,9 @@ fm_status fm10000SerdesInitOpMode(fm_int sw)
         switchExt->serdesIntAccssCtrlEna = FALSE;
 
 
-        serdesOpModeTmp = fmGetIntApiProperty(FM_AAK_API_FM10000_SERDES_OP_MODE,
-                                              FM_AAD_API_FM10000_SERDES_OP_MODE);
+        serdesOpModeTmp = GET_FM10000_PROPERTY()->serdesOpMode;
 
-        serdesDbgLvl = fmGetIntApiProperty(FM_AAK_API_FM10000_SERDES_DBG_LVL,
-                                           FM_AAD_API_FM10000_SERDES_DBG_LVL);
+        serdesDbgLvl = GET_FM10000_PROPERTY()->serdesDbgLevel;
 
         if (serdesDbgLvl > 0)
         {
@@ -1929,8 +1938,7 @@ fm_status fm10000SerdesInitOpMode(fm_int sw)
 
 
 
-        if (fmGetBoolApiProperty(FM_AAK_API_PLATFORM_IS_WHITE_MODEL,
-                                 FM_AAD_API_PLATFORM_IS_WHITE_MODEL) )
+        if (GET_PROPERTY()->isWhiteModel)
         {
             if (serdesOpModeTmp == FM_SERDES_OPMODE_CHIP_VIA_SAI  ||
                 serdesOpModeTmp == FM_SERDES_OPMODE_CHIP_VIA_SBUS)

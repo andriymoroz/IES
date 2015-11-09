@@ -37,7 +37,7 @@
 
 #ifndef __FM_PLATFORM_API_H
 #define __FM_PLATFORM_API_H
-
+#include <platforms/common/packet/generic-packet/fm_generic_packet.h>
 
 /*****************************************************************************
  * Macros & Constants

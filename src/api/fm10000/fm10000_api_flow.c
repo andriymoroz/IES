@@ -29,7 +29,7 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
+ *****************************************************************************/
 
 #include <fm_sdk_fm10000_int.h>
 
@@ -130,7 +130,7 @@ ABORT:
 
     FM_LOG_EXIT(FM_LOG_CAT_FLOW, err);
 
-} /* end AddDefaultRule */
+}   /* end AddDefaultRule */
 
 
 
@@ -221,7 +221,7 @@ static fm_status InitFlowApiCommon(fm_int sw)
 
     FM_LOG_EXIT(FM_LOG_CAT_FLOW, FM_OK);
 
-} /* end InitFlowApiCommon */
+}   /* end InitFlowApiCommon */
 
 
 
@@ -319,7 +319,7 @@ static fm_status InitFlowApi(fm_int sw)
 ABORT:
     FM_LOG_EXIT(FM_LOG_CAT_FLOW, err);
 
-} /* end InitFlowApi */
+}   /* end InitFlowApi */
 
 
 
@@ -356,9 +356,11 @@ static fm_status TranslateFlowToACLAction(fm_int           sw,
     fm_int          arpBaseIndex;
     fm_int          pathCount;
     fm_int          pathCountType;
+    fm_bool         aclMirror;
 
     switchExt = GET_SWITCH_EXT(sw);
     *aclAction = 0;
+    aclMirror = FALSE;
 
     /* Special case: a Forward to cpu is done using a
        special logical port */
@@ -521,9 +523,22 @@ static fm_status TranslateFlowToACLAction(fm_int           sw,
         }
     }
 
+    if ( *action & FM_FLOW_ACTION_MIRROR_GRP )
+    {
+        *aclAction |= FM_ACL_ACTIONEXT_MIRROR_GRP;
+        err = fmGetMirrorAttribute(sw, param->mirrorGrp, FM_MIRROR_ACL, &aclMirror);
+        if (err == FM_OK)
+        {
+             if (!aclMirror)
+             {
+                 err = FM_ERR_INVALID_ARGUMENT;
+             }
+        }
+    }
+
     return err;
 
-} /* end TranslateFlowToACLAction */
+}   /* end TranslateFlowToACLAction */
 
 
 
@@ -666,10 +681,14 @@ static fm_status TranslateACLToFlowAction(fm_int           sw,
     {
         *action |= FM_FLOW_ACTION_SET_FLOOD_DEST;
     }
+    if ( *aclAction & FM_ACL_ACTIONEXT_MIRROR_GRP )
+    {
+        *action |= FM_FLOW_ACTION_MIRROR_GRP;
+    }
 
     return err;
 
-} /* end TranslateACLToFlowAction */
+}   /* end TranslateACLToFlowAction */
 
 
 
@@ -717,7 +736,7 @@ static fm_status ConfigureDeepInspectionProfile(fm_int sw)
 
     return err;
 
-} /* end ConfigureDeepInspectionProfile */
+}   /* end ConfigureDeepInspectionProfile */
 
 
 
@@ -868,7 +887,7 @@ static fm_status TranslateFlowToACLCondition(fm_int            sw,
 
     return err;
 
-} /* end TranslateFlowToACLCondition */
+}   /* end TranslateFlowToACLCondition */
 
 
 
@@ -1018,7 +1037,7 @@ static fm_status TranslateACLToFlowCondition(fm_int            sw,
 
     return err;
 
-} /* end TranslateACLToFlowCondition */
+}   /* end TranslateACLToFlowCondition */
 
 
 
@@ -1070,7 +1089,8 @@ static fm_status TranslateConditionMask(fm_int            sw,
 
 ABORT:
     return err;
-} /* end TranslateConditionMask */
+
+}   /* end TranslateConditionMask */
 
 
 
@@ -1119,7 +1139,7 @@ static fm_status TranslateL4Port(fm_int            sw,
 
     return err;
 
-} /* end TranslateL4Port */
+}   /* end TranslateL4Port */
 
 
 
@@ -1315,7 +1335,7 @@ ABORT:
 
     return err;
 
-} /* end TranslatePortSet */
+}   /* end TranslatePortSet */
 
 
 
@@ -1430,7 +1450,7 @@ static fm_status RemoveMappedEntry(fm_int           sw,
 
     return err;
 
-} /* end RemoveMappedEntry */
+}   /* end RemoveMappedEntry */
 
 
 
@@ -1628,7 +1648,8 @@ static fm_status VerifyFlowConditionsMasks(fm_int           sw,
 ABORT:
 
     FM_LOG_EXIT(FM_LOG_CAT_FLOW, err);
-} /* end VerifyFlowConditionsMasks */
+
+}   /* end VerifyFlowConditionsMasks */
 
 
 
@@ -1645,13 +1666,17 @@ ABORT:
  * \param[out]      tunnelAction refers to the tunnel action that stores result.
  *
  * \param[out]      encapAction refers to the encap action that stores result.
+ * 
+ * \param[in]       tunnelEncapFlowParam points to the encapsulation flow
+ *                  parameters.
  *
  * \return          FM_OK if successful.
  *
  *****************************************************************************/
 static fm_status TranslateFlowToTEAction(fm_flowAction      *action,
                                          fm_tunnelAction    *tunnelAction,
-                                         fm_tunnelEncapFlow *encapAction)
+                                         fm_tunnelEncapFlow *encapAction,
+                                         fm_tunnelEncapFlowParam const *tunnelEncapFlowParam)
 {
     fm_status err = FM_OK;
 
@@ -1715,6 +1740,11 @@ static fm_status TranslateFlowToTEAction(fm_flowAction      *action,
     }
 
     /* Translate flow action to a encap action */
+    if (tunnelEncapFlowParam->type == FM_TUNNEL_TYPE_GPE_NSH)
+    {
+        *encapAction |= FM_TUNNEL_ENCAP_FLOW_GPE_NSH_ALL;
+    }
+
     if ( *action & FM_FLOW_ACTION_ENCAP_SIP )
     {
         *encapAction |= FM_TUNNEL_ENCAP_FLOW_SIP;
@@ -1742,7 +1772,7 @@ static fm_status TranslateFlowToTEAction(fm_flowAction      *action,
 
     return err;
 
-} /* end TranslateTEAction */
+}   /* end TranslateTEAction */
 
 
 
@@ -1857,7 +1887,7 @@ static fm_status TranslateTEToFlowAction(fm_tunnelAction    *tunnelAction,
 
     return err;
 
-} /* end TranslateFlowAction */
+}   /* end TranslateFlowAction */
 
 
 
@@ -1936,7 +1966,7 @@ static fm_status TranslateFlowToTECondition(fm_flowCondition   *condition,
 
     return err;
 
-} /* end TranslateTECondition */
+}   /* end TranslateTECondition */
 
 
 
@@ -2016,7 +2046,7 @@ static fm_status TranslateTEToFlowCondition(fm_tunnelCondition *tunnelCondition,
 
     return err;
 
-} /* end TranslateTECondition */
+}   /* end TranslateTECondition */
 
 
 
@@ -2051,8 +2081,7 @@ static fm_status TranslateTEToFlowCondition(fm_tunnelCondition *tunnelCondition,
  * \param[in]       maxEntries is the size of the flow table and must be
  *                  no larger than ''FM10000_MAX_RULE_PER_FLOW_TABLE''.
  *
- * \param[in]       maxAction is the maximum number of actions supported by
- *                  rules in this table (must be at least 1).
+ * \param[in]       maxAction is not used.
  *
  * \return          FM_OK if successful.
  * \return          FM_ERR_INVALID_SWITCH if sw is invalid.
@@ -2328,7 +2357,7 @@ ABORT:
 
     FM_LOG_EXIT(FM_LOG_CAT_FLOW, err);
 
-} /* end fm10000CreateFlowTCAMTable */
+}   /* end fm10000CreateFlowTCAMTable */
 
 
 
@@ -2467,7 +2496,7 @@ ABORT:
 
     FM_LOG_EXIT(FM_LOG_CAT_FLOW, err);
 
-} /* end fm10000DeleteFlowTCAMTable */
+}   /* end fm10000DeleteFlowTCAMTable */
 
 
 
@@ -2500,8 +2529,7 @@ ABORT:
  * \param[in]       maxEntries is the size of the flow table and must be
  *                  no larger than ''FM10000_MAX_RULE_PER_FLOW_TE_TABLE''.
  *
- * \param[in]       maxAction is the maximum number of actions supported by
- *                  rules in this table (must be at least 1).
+ * \param[in]       maxAction is not used.
  *
  * \return          FM_OK if successful.
  * \return          FM_ERR_INVALID_SWITCH if sw is invalid.
@@ -2672,7 +2700,7 @@ ABORT:
 
     FM_LOG_EXIT(FM_LOG_CAT_FLOW, err);
 
-} /* end fm10000CreateFlowTETable */
+}   /* end fm10000CreateFlowTETable */
 
 
 
@@ -2778,7 +2806,7 @@ ABORT:
 
     FM_LOG_EXIT(FM_LOG_CAT_FLOW, err);
 
-} /* end fm10000DeleteFlowTETable */
+}   /* end fm10000DeleteFlowTETable */
 
 
 
@@ -2922,7 +2950,8 @@ fm_status fm10000AddFlow(fm_int           sw,
                         FM_FLOW_ACTION_SET_SWITCH_PRIORITY |
                         FM_FLOW_ACTION_SET_DSCP |
                         FM_FLOW_ACTION_LOAD_BALANCE |
-                        FM_FLOW_ACTION_SET_FLOOD_DEST)) != 0)
+                        FM_FLOW_ACTION_SET_FLOOD_DEST |
+                        FM_FLOW_ACTION_MIRROR_GRP)) != 0)
         {
             /* Only the above listed actions are supported */
             err = FM_ERR_UNSUPPORTED;
@@ -3222,6 +3251,14 @@ fm_status fm10000AddFlow(fm_int           sw,
             FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_FLOW, err);
         }
 
+        if ( ( (action & FM_FLOW_ACTION_ENCAP_VNI) == 0) &&
+             (param->tunnelType == FM_TUNNEL_TYPE_GPE_NSH) )
+        {
+            /* VNI must be provided for NSH as it cannot be defaulted. */
+            err = FM_ERR_INVALID_ARGUMENT;
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_FLOW, err);
+        }
+
         err = fmConvertFlowToTEParams(param,
                                       &tunnelActionParam,
                                       &tunnelEncapFlowParam);
@@ -3230,7 +3267,10 @@ fm_status fm10000AddFlow(fm_int           sw,
         err = fmConvertFlowToTEValue(condVal, &tunnelConditionParam);
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_FLOW, err);
 
-        err = TranslateFlowToTEAction(&action, &tunnelAction, &tunnelEncapFlow);
+        err = TranslateFlowToTEAction(&action, 
+                                      &tunnelAction, 
+                                      &tunnelEncapFlow, 
+                                      &tunnelEncapFlowParam);
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_FLOW, err);
 
         err = TranslateFlowToTECondition(&condition, &tunnelCondition);
@@ -3316,7 +3356,7 @@ ABORT:
 
     FM_LOG_EXIT(FM_LOG_CAT_FLOW, err);
 
-} /* end fm10000AddFlow */
+}   /* end fm10000AddFlow */
 
 
 
@@ -3492,6 +3532,9 @@ fm_status fm10000GetFlow(fm_int             sw,
         err = TranslateACLToFlowAction(sw, &aclAction, &aclParam, action);
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_FLOW, err);
 
+        err = fmConvertACLToFlowParam(&aclParam, param);
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_FLOW, err);
+
         if (*action & FM_FLOW_ACTION_REDIRECT_TUNNEL)
         {
             for (TEIndex = 0 ; TEIndex < FM_FLOW_MAX_TABLE_TYPE ; TEIndex++)
@@ -3513,9 +3556,6 @@ fm_status fm10000GetFlow(fm_int             sw,
         {
             param->ecmpGroup = aclParam.groupId;
         }
-
-        err = fmConvertACLToFlowParam(&aclParam, param);
-        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_FLOW, err);
     }
     else if ( tableType == FM_FLOW_TE_TABLE )
     {
@@ -4305,6 +4345,14 @@ fm_status fm10000ModifyFlow(fm_int           sw,
             FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_FLOW, err);
         }
 
+        if ( ( (action & FM_FLOW_ACTION_ENCAP_VNI) == 0) &&
+             (param->tunnelType == FM_TUNNEL_TYPE_GPE_NSH) )
+        {
+            /* VNI must be provided for NSH as it cannot be defaulted. */
+            err = FM_ERR_INVALID_ARGUMENT;
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_FLOW, err);
+        }
+
         err = fmConvertFlowToTEParams(param,
                                       &tunnelActionParam,
                                       &tunnelEncapFlowParam);
@@ -4313,7 +4361,10 @@ fm_status fm10000ModifyFlow(fm_int           sw,
         err = fmConvertFlowToTEValue(condVal, &tunnelConditionParam);
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_FLOW, err);
 
-        err = TranslateFlowToTEAction(&action, &tunnelAction, &tunnelEncapFlow);
+        err = TranslateFlowToTEAction(&action, 
+                                      &tunnelAction, 
+                                      &tunnelEncapFlow, 
+                                      &tunnelEncapFlowParam);
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_FLOW, err);
 
         err = TranslateFlowToTECondition(&condition, &tunnelCondition);
@@ -4405,7 +4456,7 @@ ABORT:
 
     FM_LOG_EXIT(FM_LOG_CAT_FLOW, err);
 
-} /* end fm10000ModifyFlow */
+}   /* end fm10000ModifyFlow */
 
 
 
@@ -4595,7 +4646,7 @@ ABORT:
 
     FM_LOG_EXIT(FM_LOG_CAT_FLOW, err);
 
-} /* end fm10000DeleteFlow */
+}   /* end fm10000DeleteFlow */
 
 
 
@@ -4673,7 +4724,7 @@ ABORT:
 
     FM_LOG_EXIT(FM_LOG_CAT_FLOW, err);
 
-} /* end fm10000SetFlowState */
+}   /* end fm10000SetFlowState */
 
 
 
@@ -4769,7 +4820,7 @@ ABORT:
 
     FM_LOG_EXIT(FM_LOG_CAT_FLOW, err);
 
-} /* end fm10000GetFlowCount */
+}   /* end fm10000GetFlowCount */
 
 
 
@@ -4846,7 +4897,7 @@ ABORT:
 
     FM_LOG_EXIT(FM_LOG_CAT_FLOW, err);
 
-} /* end fm10000ResetFlowCount */
+}   /* end fm10000ResetFlowCount */
 
 
 
@@ -4965,7 +5016,7 @@ ABORT:
 
     FM_LOG_EXIT(FM_LOG_CAT_FLOW, err);
 
-} /* end fm10000GetFlowUsed */
+}   /* end fm10000GetFlowUsed */
 
 
 
@@ -5174,7 +5225,7 @@ ABORT:
 
     FM_LOG_EXIT(FM_LOG_CAT_FLOW, err);
 
-} /* end fm10000SetFlowAttribute */
+}   /* end fm10000SetFlowAttribute */
 
 
 
@@ -5300,7 +5351,7 @@ ABORT:
 
     FM_LOG_EXIT(FM_LOG_CAT_FLOW, err);
 
-} /* end fm10000GetFlowAttribute */
+}   /* end fm10000GetFlowAttribute */
 
 
 
@@ -5361,7 +5412,7 @@ ABORT:
     fmDeleteECMPGroup(sw, *groupId);
     FM_LOG_EXIT(FM_LOG_CAT_FLOW, err);
 
-} /* end fm10000CreateFlowBalanceGrp */
+}   /* end fm10000CreateFlowBalanceGrp */
 
 
 
@@ -5419,7 +5470,7 @@ fm_status fm10000DeleteFlowBalanceGrp(fm_int sw,
                            FALSE);
     FM_LOG_EXIT(FM_LOG_CAT_FLOW, err);
 
-} /* end fm10000DeleteFlowBalanceGrp */
+}   /* end fm10000DeleteFlowBalanceGrp */
 
 
 
@@ -5535,7 +5586,7 @@ fm_status fm10000AddFlowBalanceGrpEntry(fm_int sw,
 
     FM_LOG_EXIT(FM_LOG_CAT_FLOW, err);
 
-} /* end fm10000AddFlowBalanceGrpEntry */
+}   /* end fm10000AddFlowBalanceGrpEntry */
 
 
 
@@ -5631,7 +5682,7 @@ fm_status fm10000DeleteFlowBalanceGrpEntry(fm_int sw,
 
     FM_LOG_EXIT(FM_LOG_CAT_FLOW, err);
 
-} /* end fm10000DeleteFlowBalanceGrpEntry */
+}   /* end fm10000DeleteFlowBalanceGrpEntry */
 
 
 
@@ -5674,7 +5725,7 @@ fm_status fm10000FreeFlowResource(fm_int sw)
 
     FM_LOG_EXIT(FM_LOG_CAT_FLOW, err);
 
-} /* end fm10000FreeFlowResource */
+}   /* end fm10000FreeFlowResource */
 
 
 
@@ -5728,7 +5779,7 @@ fm_status fm10000InitFlowApiForSWAG(fm_int sw,
 
     FM_LOG_EXIT(FM_LOG_CAT_FLOW, err);
 
-} /* end fm10000InitFlowApiForSWAG */
+}   /* end fm10000InitFlowApiForSWAG */
 
 
 
@@ -5784,7 +5835,7 @@ fm_status fm10000AddFlowUser(fm_int sw,
 
     FM_LOG_EXIT(FM_LOG_CAT_FLOW, err);
 
-} /* end fm10000AddFlowUser */
+}   /* end fm10000AddFlowUser */
 
 
 
@@ -5840,4 +5891,4 @@ fm_status fm10000DelFlowUser(fm_int sw,
 
     FM_LOG_EXIT(FM_LOG_CAT_FLOW, err);
 
-} /* end fm10000DelFlowUser */
+}   /* end fm10000DelFlowUser */

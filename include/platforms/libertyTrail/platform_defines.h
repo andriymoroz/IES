@@ -277,7 +277,7 @@ typedef enum _fm_platformSwitchType
 /** The number of event buffers to allocate.
  *  \ingroup constSystem
  */
-#define FM_MAX_EVENTS                       4096
+#define FM_MAX_EVENTS                       8192
 
 
 /** The event queue size for API threads that require a large event queue.
@@ -592,13 +592,6 @@ typedef enum _fm_platformSwitchType
 /*****************************************************************************
  * Platform-Specific Constants
  *****************************************************************************/
-
-/** Default EBI (External Bus Interface) clock speed in MHZ. The EBI is the bus
- *  between the CPU and the switch device. This parameter can be overridden
- *  by the ''api.system.ebi.clock'' API property.
- *  \ingroup constSystem
- *  \chips  FM2000, FM4000 */ 
-#define FM_EBI_MHZ                          0
 
 /* Max number of hw ports supported */
 #define FM_NUM_HW_RES_ID                    72

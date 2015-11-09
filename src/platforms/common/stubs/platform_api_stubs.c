@@ -1697,8 +1697,7 @@ fm_status fmPlatformSWAGInitialize(fm_int sw)
  *                  accessing the hardware device registers.
  *                                                                      \lb\lb
  *                  If desired, this function can override device model
- *                  detection, if for example, an FM2224 should be treated as
- *                  as an FM2112.
+ *                  detection.
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -2204,7 +2203,7 @@ fm_status fmPlatformGetHardwareMaxMailboxGlort(fm_uint32 *glort)
                  "glort=%p\n",
                  (void *) glort);
 
-    if ( glort == NULL)
+    if (glort == NULL)
     {
         FM_LOG_EXIT(FM_LOG_CAT_MAILBOX, FM_ERR_INVALID_ARGUMENT);
     }

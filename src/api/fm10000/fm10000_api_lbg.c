@@ -120,6 +120,7 @@ static fm_status FillArpDataFromLBGMember(fm_int        sw,
     fm_bool    isL2SwitchOnly;
     fm_int     mcastLogicalPort;
     fm_int     lbgLogicalPort;
+    fm_tunnelGlortUser glortUser;
     
 
     FM_LOG_ENTRY_VERBOSE(FM_LOG_CAT_LBG,
@@ -214,6 +215,30 @@ static fm_status FillArpDataFromLBGMember(fm_int        sw,
             FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_LBG, err);
 
             FM_SET_FIELD64(*arpData, FM10000_ARP_ENTRY_GLORT, DGLORT, dglort);
+            break;
+
+        case FM_LBG_MEMBER_TYPE_TUNNEL:
+            err = fm10000GetTunnelAttribute(sw,
+                                            lbgMember->tunnelGrp,
+                                            lbgMember->tunnelRule,
+                                            FM_TUNNEL_GLORT_USER,
+                                            &glortUser);
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_LBG, err);
+
+            /* Only accept rule redirection that don't make uses of the user
+             * field. */
+            if ( (glortUser.userMask != 0) ||
+                 (glortUser.glortMask != 0xFFFF) )
+            {
+                err = FM_ERR_UNSUPPORTED;
+                FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_LBG, err);
+            }
+
+            FM_SET_FIELD64(*arpData, FM10000_ARP_ENTRY_GLORT, DGLORT,
+                           glortUser.glort);
+            FM_SET_FIELD64(*arpData, FM10000_ARP_ENTRY_GLORT, RouterIdGlort,
+                           FM10000_ROUTER_ID_NO_REPLACEMENT);
+            FM_SET_BIT64(*arpData, FM10000_ARP_ENTRY_GLORT, markRouted, 0);
             break;
 
         default:
@@ -736,8 +761,12 @@ static fm_status ValidateDistributionMapRangeV2(
 
     fm_status        err = FM_OK;
     fm_int           bin;
-    fm_LBGMember *   lbgMember;
+    fm_LBGMember   * lbgMember;
     fm_LBGMode       lbgMode; 
+    fm_tunnelCondition       tunnelCondition;
+    fm_tunnelConditionParam  tunnelConditionParam;
+    fm_tunnelAction          tunnelAction = 0;
+    fm_tunnelActionParam     tunnelActionParam;
 
     FM_LOG_ENTRY(FM_LOG_CAT_LBG, 
                  "sw=%d lbgGroup=%p, rangeV2=%p\n",
@@ -814,6 +843,17 @@ static fm_status ValidateDistributionMapRangeV2(
                 err = FM_ERR_INVALID_ARGUMENT;
                 FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_LBG, err);
             }
+        }
+        else if (lbgMember->lbgMemberType == FM_LBG_MEMBER_TYPE_TUNNEL)
+        {
+            err = fm10000GetTunnelRule(sw,
+                                       lbgMember->tunnelGrp,
+                                       lbgMember->tunnelRule,
+                                       &tunnelCondition,
+                                       &tunnelConditionParam,
+                                       &tunnelAction,
+                                       &tunnelActionParam);
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_LBG, err);
         }
         else
         {
@@ -2585,7 +2625,7 @@ fm_status fm10000AssignLBGPortResources(fm_int sw, void *params)
     fm_glortDestEntry **destEntry;
     fm_status           err;
     fm_int              j;
-    fm_int              firstGlort;
+    fm_uint32           firstGlort;
     fm_int              firstDestEntry;
     fm_int              firstLogicalPort;
     fm_portParms *      parmPtr;
@@ -2616,24 +2656,15 @@ fm_status fm10000AssignLBGPortResources(fm_int sw, void *params)
     {
         /* We might be able to find one in the unreserved space.
          * In this case the firstLogicalPort would have been previously saved
-         * in basePort by SelectLogicalPorts().
-         */
-        firstGlort = fmFindUnusedGlorts(sw,
-                                        1,
-                                        switchPtr->glortRange.lbgBaseGlort,
-                                        NULL);
-        if (firstGlort == -1)
+         * in basePort by SelectLogicalPorts(). */
+        err = fmFindFreeGlortRange(sw,
+                                   1,
+                                   FM_GLORT_TYPE_LBG,
+                                   &firstGlort);
+
+        if ( err != FM_OK )
         {
             err = FM_ERR_LOG_PORT_UNAVAILABLE;
-        }
-        /* Glorts not available within lbgGlorts range */
-        else if ( ( (fm_uint32)firstGlort ) >= ( switchPtr->glortRange.lbgBaseGlort + switchPtr->glortRange.lbgCount ) )
-        {
-            err = FM_ERR_LOG_PORT_UNAVAILABLE;
-        }
-        else
-        {
-            err = FM_OK;
         }
     }
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_LBG, err);

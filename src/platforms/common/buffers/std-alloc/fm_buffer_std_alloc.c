@@ -13,7 +13,7 @@
  *                  - the platform must define the following constants:
  *                      FM_BUFFER_SIZE_WORDS
  *
- * Copyright (c) 2005 - 2014, Intel Corporation
+ * Copyright (c) 2005 - 2015, Intel Corporation
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -122,19 +122,12 @@ fm_status fmPlatformInitBuffersV2(fm_uint32 *bufferMemoryPool,
 
     info->pool             = bufferMemoryPool;
 
-    info->enableSeparatePool =
-        fmGetBoolApiProperty(FM_AAK_API_PLATFORM_SEPARATE_BUFFER_POOL_ENABLE,
-                             FM_AAD_API_PLATFORM_SEPARATE_BUFFER_POOL_ENABLE);   
+    info->enableSeparatePool = GET_PROPERTY()->separateBufPoolEnable;
 
     if (info->enableSeparatePool)
     {
-        numRxBuffers =
-            fmGetIntApiProperty(FM_AAK_API_PLATFORM_NUM_BUFFERS_RX,
-                                FM_AAD_API_PLATFORM_NUM_BUFFERS_RX);
-
-        numTxBuffers =
-            fmGetIntApiProperty(FM_AAK_API_PLATFORM_NUM_BUFFERS_TX,
-                                FM_AAD_API_PLATFORM_NUM_BUFFERS_TX); 
+        numRxBuffers = GET_PROPERTY()->numBuffersRx;
+        numTxBuffers = GET_PROPERTY()->numBuffersTx;
 
         if (numRxBuffers < 0 || numTxBuffers < 0)
         {

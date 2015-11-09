@@ -1,9 +1,9 @@
 /* vim:ts=4:sw=4:expandtab
  * (No tabs, indent level is 4 spaces)  */
 /*****************************************************************************
- * File:            platform_config_tlv.h
- * Creation Date:   May 29, 2015
- * Description:     Platform functions to handle loading TLV configurations.
+ * File:            fmSWAG_api_parity_int.h
+ * Creation Date:   August 28, 2015
+ * Description:     Contains functions dealing with switch-aggregate parity API.
  *
  * Copyright (c) 2015, Intel Corporation
  *
@@ -29,16 +29,20 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+*****************************************************************************/
+
+#ifndef __FM_FMSWAG_API_PARITY_INT_H
+#define __FM_FMSWAG_API_PARITY_INT_H
+
+/*****************************************************************************
+ * Function prototypes.
  *****************************************************************************/
 
-#ifndef __FM_PLATFORM_CONFIG_TLV_H
-#define __FM_PLATFORM_CONFIG_TLV_H
+fm_status fmSWAGSetParityAttribute(fm_int sw,
+                                   fm_int attr,
+                                   void  *value);
 
-fm_status fmPlatformLoadTlvFile(fm_text fileName);
-fm_status fmPlatformLoadTlv(fm_byte *tlv);
-fm_status fmPlatformLoadApiPropertyTlv(fm_byte *tlv);
-fm_status fmPlatformLoadLTCfgTlv(fm_byte *tlv);
-fm_status fmPlatformLoadLibCfgTlv(fm_byte *tlv);
-fm_status fmPlatformCfgVerifyAndUpdate(void);
+fm_status fmSWAGResetParityErrorCounters(fm_int sw);
 
-#endif /* __FM_PLATFORM_CONFIG_TLV_H */
+
+#endif /* __FM_FMSWAG_API_PARITY_INT_H */

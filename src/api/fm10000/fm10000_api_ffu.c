@@ -134,7 +134,7 @@ static fm_status SuspendTcamMonitor(fm_int sw, const fm_ffuSliceInfo *slice)
     for (i = slice->keyStart ; i <= slice->keyEnd ; ++i)
     {
         crmId =  FM10000_FFU_SLICE_CRM_ID(i);
-        err = NotifyCRMEvent(sw, crmId, FM10000_CRM_EVENT_SUSPEND_REQ);
+        err = fm10000NotifyCRMEvent(sw, crmId, FM10000_CRM_EVENT_SUSPEND_REQ);
         FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_CRM, err);
     }
 
@@ -172,7 +172,7 @@ static fm_status ResumeTcamMonitor(fm_int sw, const fm_ffuSliceInfo *slice)
     for (i = slice->keyStart ; i <= slice->keyEnd ; ++i)
     {
         crmId = FM10000_FFU_SLICE_CRM_ID(i);
-        err = NotifyCRMEvent(sw, crmId, FM10000_CRM_EVENT_RESUME_REQ);
+        err = fm10000NotifyCRMEvent(sw, crmId, FM10000_CRM_EVENT_RESUME_REQ);
         FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_CRM, err);
     }
 

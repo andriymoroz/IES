@@ -466,6 +466,7 @@ fm_status fmPlatformXcvrIsPresent(fm_int   sw,
 
     status = fmPlatformMapLogicalPortToPlatform(sw,
                                                 port,
+                                                &sw,
                                                 &swNum,
                                                 &hwResId,
                                                 &portCfg);
@@ -600,6 +601,7 @@ fm_status fmPlatformXcvrEnableLpMode(fm_int  sw,
 
     status = fmPlatformMapLogicalPortToPlatform(sw,
                                                 port,
+                                                &sw,
                                                 &swNum,
                                                 &hwResId,
                                                 NULL);
@@ -696,6 +698,7 @@ fm_status fmPlatformXcvrMemWrite(fm_int   sw,
 
     status = fmPlatformMapLogicalPortToPlatform(sw,
                                                 port,
+                                                &sw,
                                                 &swNum,
                                                 &hwResId,
                                                 &portCfg);
@@ -845,6 +848,7 @@ fm_status fmPlatformXcvrMemRead(fm_int   sw,
 
     status = fmPlatformMapLogicalPortToPlatform(sw,
                                                 port,
+                                                &sw,
                                                 &swNum,
                                                 &hwResId,
                                                 &portCfg);
@@ -977,6 +981,7 @@ fm_status fmPlatformXcvrEepromRead(fm_int   sw,
 {
     fm_status           status;
     fm_int              swNum;
+    fm_int              phySw;
     fm_uint32           hwResId;
     fm_platformCfgPort *portCfg;
 
@@ -990,6 +995,7 @@ fm_status fmPlatformXcvrEepromRead(fm_int   sw,
 
     status = fmPlatformMapLogicalPortToPlatform(sw,
                                                 port,
+                                                &phySw,
                                                 &swNum,
                                                 &hwResId,
                                                 &portCfg);
@@ -1174,6 +1180,12 @@ ABORT:
  * \param[out]      vddf is the caller allocated storage where the
  *                  function will place the VDDF voltage in milli-volt.
  *
+ * \param[out]      defVoltages is the caller allocated storage where the
+ *                  function will indicate whether the returned vdds and vddf
+ *                  contain the default values defined in the EAS or not.
+ *                  Default values are returned whenever the fuse box is not
+ *                  programmed (contains 0).
+ *
  * \return          FM_OK if successful.
  * \return          Other ''Status Codes'' as appropriate in case of
  *                  failure.
@@ -1181,7 +1193,8 @@ ABORT:
  *****************************************************************************/
 fm_status fmPlatformGetNominalSwitchVoltages(fm_int     sw,
                                              fm_uint32 *vdds,
-                                             fm_uint32 *vddf)
+                                             fm_uint32 *vddf,
+                                             fm_bool   *defVoltages)
 {
     fm_fm10000NominalVoltages voltage;
     fm_switch *               switchPtr;
@@ -1205,6 +1218,11 @@ fm_status fmPlatformGetNominalSwitchVoltages(fm_int     sw,
         if (vddf)
         {
             *vddf = voltage.VDDF;
+        }
+
+        if (defVoltages) 
+        {
+            *defVoltages = voltage.defValUsed;
         }
     }
 

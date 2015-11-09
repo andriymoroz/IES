@@ -123,4 +123,8 @@ typedef enum
 #define HW_RESOURCE_ID_SET_LEDNUM(x)    ((x & 0xF) << 8)
 #define HW_RESOURCE_ID_TO_VRMSUBCHAN(x) ((x & 0xF00) >> 8)
 
+/* For shared lib to get its config */
+fm_status fmPlatformRequestLibTlvCfg(fm_int sw, fm_byte **tlv, fm_uint *tlvLen);
+fm_status fmPlatformReleaseLibTlvCfg(fm_int sw);
+
 #endif /* __FM_PLATFORM_LIB_API_H */

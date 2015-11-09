@@ -4945,6 +4945,9 @@ static fm_status BasicStateMachineS2E3Callback( fm_smEventInfo *eventInfo, void 
     status = SerDesDisableEeeOpMode( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_SERDES, serDes, status );
             
+    status = SerDesStopTimeoutTimer( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_SERDES, serDes, status );
+            
 ABORT:
     return status;
 
@@ -5382,6 +5385,9 @@ static fm_status BasicStateMachineS4E3Callback( fm_smEventInfo *eventInfo, void 
     status = SerDesDisableTxRx( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_SERDES, serDes, status );
             
+    status = SerDesStopTimeoutTimer( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_SERDES, serDes, status );
+            
 ABORT:
     return status;
 
@@ -5769,6 +5775,9 @@ static fm_status BasicStateMachineS3E3Callback( fm_smEventInfo *eventInfo, void 
     status = SerDesDisableInterrupts( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_SERDES, serDes, status );
             
+    status = SerDesStopTimeoutTimer( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_SERDES, serDes, status );
+            
 ABORT:
     return status;
 
@@ -6101,6 +6110,9 @@ static fm_status BasicStateMachineS5E3Callback( fm_smEventInfo *eventInfo, void 
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_SERDES, serDes, status );
             
     status = SerDesDisableEeeOpMode( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_SERDES, serDes, status );
+            
+    status = SerDesStopTimeoutTimer( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_SERDES, serDes, status );
             
 ABORT:
@@ -6527,6 +6539,9 @@ static fm_status BasicStateMachineS6E3Callback( fm_smEventInfo *eventInfo, void 
     status = SerDesDisableEeeOpMode( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_SERDES, serDes, status );
             
+    status = SerDesStopTimeoutTimer( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_SERDES, serDes, status );
+            
 ABORT:
     return status;
 
@@ -6827,6 +6842,9 @@ static fm_status BasicStateMachineS7E3Callback( fm_smEventInfo *eventInfo, void 
     status = SerDesDisableEeeOpMode( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_SERDES, serDes, status );
             
+    status = SerDesStopTimeoutTimer( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_SERDES, serDes, status );
+            
 ABORT:
     return status;
 
@@ -7119,6 +7137,9 @@ static fm_status BasicStateMachineS8E3Callback( fm_smEventInfo *eventInfo, void 
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_SERDES, serDes, status );
             
     status = SerDesDisableEeeOpMode( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_SERDES, serDes, status );
+            
+    status = SerDesStopTimeoutTimer( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_SERDES, serDes, status );
             
 ABORT:
@@ -7566,6 +7587,9 @@ static fm_status BasicStateMachineS9E3Callback( fm_smEventInfo *eventInfo, void 
     status = SerDesDisableEeeOpMode( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_SERDES, serDes, status );
             
+    status = SerDesStopTimeoutTimer( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_SERDES, serDes, status );
+            
 ABORT:
     return status;
 
@@ -7863,6 +7887,9 @@ static fm_status BasicStateMachineS10E3Callback( fm_smEventInfo *eventInfo, void
     status = SerDesDisableEeeOpMode( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_SERDES, serDes, status );
             
+    status = SerDesStopTimeoutTimer( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_SERDES, serDes, status );
+            
 ABORT:
     return status;
 
@@ -8130,6 +8157,9 @@ static fm_status BasicStateMachineS11E3Callback( fm_smEventInfo *eventInfo, void
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_SERDES, serDes, status );
             
     status = SerDesDisableEeeOpMode( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_SERDES, serDes, status );
+            
+    status = SerDesStopTimeoutTimer( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_SERDES, serDes, status );
             
 ABORT:
@@ -8540,6 +8570,9 @@ static fm_status BasicStateMachineS12E3Callback( fm_smEventInfo *eventInfo, void
     status = SerDesDisableInterrupts( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_SERDES, serDes, status );
             
+    status = SerDesStopTimeoutTimer( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_SERDES, serDes, status );
+            
 ABORT:
     return status;
 
@@ -8868,6 +8901,9 @@ static fm_status BasicStateMachineS13E3Callback( fm_smEventInfo *eventInfo, void
     status = SerDesDisableInterrupts( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_SERDES, serDes, status );
             
+    status = SerDesStopTimeoutTimer( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_SERDES, serDes, status );
+            
 ABORT:
     return status;
 
@@ -9141,6 +9177,9 @@ static fm_status BasicStateMachineS14E3Callback( fm_smEventInfo *eventInfo, void
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_SERDES, serDes, status );
             
     status = SerDesSetSignalDtctForcedBadC( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_SERDES, serDes, status );
+            
+    status = SerDesStopTimeoutTimer( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_SERDES, serDes, status );
             
 ABORT:
@@ -9453,6 +9492,9 @@ static fm_status BasicStateMachineS15E3Callback( fm_smEventInfo *eventInfo, void
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_SERDES, serDes, status );
             
     status = SerDesDisableInterrupts( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_SERDES, serDes, status );
+            
+    status = SerDesStopTimeoutTimer( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_SERDES, serDes, status );
             
 ABORT:

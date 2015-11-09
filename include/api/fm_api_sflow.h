@@ -82,9 +82,9 @@ enum _fm_sFlowAttr
      *  by the hardware, so the value read back may not exactly match the
      *  value that was set. 
      *                                                              \lb\lb
-     *  For FM3000, FM4000, and FM10000 devices, the value ranges from 1
-     *  (the default) to 16,777,215. The value set applies only to the
-     *  specified sFlow.
+     *  For FM3000/FM4000 and FM10000 devices, the value ranges from 1 (the
+     *  default) to 16,777,215. The value set applies only to the specified
+     *  sFlow.
      *                                                              \lb\lb
      *  For FM6000 devices, the value ranges from 1 to 65535 with 
      *  a default of 1. Only one sample rate can be set for the entire 
@@ -97,7 +97,7 @@ enum _fm_sFlowAttr
     /** Type fm_int: The sFlow sample frame truncation length in bytes. Set to
      *  FM_SFLOW_NO_TRUNC (the default) to disable truncation. 
      *                                                                  \lb\lb
-     *  For FM3000 and FM4000 devices, the specified value will be rounded 
+     *  For FM3000/FM4000 devices, the specified value will be rounded 
      *  down to the nearest multiple of 4. 
      *                                                                  \lb\lb
      *  For FM6000 devices, any value other than FM_SFLOW_NO_TRUNC 
@@ -109,7 +109,7 @@ enum _fm_sFlowAttr
     /** Type fm_int: A read-only attribute used to get an identifier for a
      *  specific sFlow. 
      *                                                                  \lb\lb
-     *  For FM3000 and FM4000 devices, the identifier is the trigger Number 
+     *  For FM3000/FM4000 devices, the identifier is the trigger Number 
      *  used for sampling. 
      *                                                                  \lb\lb
      *  For FM6000 devices, the identifier is the frame destination GLORT.

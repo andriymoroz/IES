@@ -29,7 +29,7 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
+ *****************************************************************************/
 
 #include <fm_sdk_fm10000_int.h>
 
@@ -187,7 +187,7 @@ ABORT:
 
     return err;
 
-}  /* end fmPlatformGpioSetValue */
+}   /* end fmPlatformGpioSetValue */
 
 
 
@@ -237,7 +237,7 @@ fm_status fmPlatformGpioGetValue(fm_int sw, fm_int gpio, fm_int *value)
 ABORT:
     return err;
 
-}  /* end fmPlatformGpioGetValue */
+}   /* end fmPlatformGpioGetValue */
 
 
 
@@ -321,7 +321,7 @@ ABORT:
 
     return err;
 
-}  /* end fmPlatformGpioSetDirection */
+}   /* end fmPlatformGpioSetDirection */
 
 
 
@@ -387,7 +387,7 @@ ABORT:
 
     return err;
 
-}  /* end fmPlatformGpioGetDirection */
+}   /* end fmPlatformGpioGetDirection */
 
 
 
@@ -533,6 +533,7 @@ ABORT:
     return err;
 
 }   /* end fmPlatformGpioUnmaskIntr */
+
 
 
 

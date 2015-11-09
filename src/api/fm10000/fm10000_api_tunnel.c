@@ -2514,7 +2514,6 @@ fm_status fm10000TunnelInit(fm_int sw)
 
     FM_CLEAR(tunnelCfg);
     tunnelCfg.l4DstVxLan     = switchExt->vnVxlanUdpPort;
-    tunnelCfg.l4DstNge       = switchExt->vnGeneveUdpPort;
     tunnelCfg.ttl            = switchExt->vnOuterTTL;
     tunnelCfg.tos            = 0;
     tunnelCfg.deriveOuterTOS = TRUE;
@@ -2522,21 +2521,29 @@ fm_status fm10000TunnelInit(fm_int sw)
     tunnelCfg.ngeTime        = FALSE;
     tunnelCfg.dmac           = 0;
     tunnelCfg.smac           = 0;
-    tunnelCfg.encapProtocol  = fmGetIntApiProperty(FM_AAK_API_VN_ENCAP_PROTOCOL,
-                                                   FM_AAD_API_VN_ENCAP_PROTOCOL);
-    tunnelCfg.encapVersion   = fmGetIntApiProperty(FM_AAK_API_VN_ENCAP_VERSION,
-                                                   FM_AAD_API_VN_ENCAP_VERSION);
+    tunnelCfg.encapProtocol  = GET_PROPERTY()->vnEncapProtocol;
+    tunnelCfg.encapVersion   = GET_PROPERTY()->vnEncapVersion;
 
     teChecksumCfg.notIp = FM_FM10000_TE_CHECKSUM_COMPUTE;
     teChecksumCfg.notTcpOrUdp = FM_FM10000_TE_CHECKSUM_COMPUTE;
     teChecksumCfg.tcpOrUdp = FM_FM10000_TE_CHECKSUM_HEADER;
 
     parserCfg.vxLanPort      = switchExt->vnVxlanUdpPort;
-    parserCfg.ngePort        = switchExt->vnGeneveUdpPort;
 
     for (i = 0 ; i < FM10000_TE_DGLORT_MAP_ENTRIES_1 ; i++)
     {
         destEntry[i]->owner = &lportInfo->camEntries[camIndex];
+
+        if (switchExt->tunnelCfg->tunnelMode[i] == FM_TUNNEL_API_MODE_VXLAN_NVGRE_NGE)
+        {
+            tunnelCfg.l4DstNge = switchExt->vnGeneveUdpPort;
+            parserCfg.ngePort  = switchExt->vnGeneveUdpPort;
+        }
+        else
+        {
+            tunnelCfg.l4DstNge = switchExt->vnGpeUdpPort;
+            parserCfg.ngePort  = switchExt->vnGpeUdpPort;
+        }
 
         /* Entry 0 is always match by default */
         err = fm10000SetTeSGlort(sw, i, 0, &teSGlort, FALSE);
@@ -3459,7 +3466,8 @@ fm_status fm10000AddTunnelEncapFlow(fm_int                   sw,
             FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_TE, err);
         }
     }
-    else if (param->type == FM_TUNNEL_TYPE_GPE_NSH)
+    else if (param->type == FM_TUNNEL_TYPE_GPE_NSH ||
+             param->type == FM_TUNNEL_TYPE_GPE)
     {
         if (switchExt->tunnelCfg->tunnelMode[group >> 3] !=
             FM_TUNNEL_API_MODE_VXLAN_GPE_NSH)
@@ -7802,6 +7810,9 @@ fm_status fm10000SetTunnelApiAttribute(fm_int sw,
     fm_int                i;
     fm_tunnelModeAttr *   modeAttr;
     fm_fm10000TeTunnelCfg tunDefCfg;
+    fm_fm10000TeParserCfg parserCfg;
+    fm_uint32             defSelectMask;
+    fm_uint32             parserSelectMask;
 
     FM_LOG_ENTRY(FM_LOG_CAT_TE,
                  "sw = %d, attr = %d\n",
@@ -7842,17 +7853,51 @@ fm_status fm10000SetTunnelApiAttribute(fm_int sw,
                 }
             }
 
+            defSelectMask    = FM10000_TE_DEFAULT_TUNNEL_MODE;
+            parserSelectMask = 0;
+
             tunDefCfg.mode = modeAttr->mode;
+
+            /* Also initialize some of the TE defaults to match the mode */
+            if (modeAttr->mode == FM_TUNNEL_API_MODE_VXLAN_GPE_NSH)
+            {
+                defSelectMask |= FM10000_TE_DEFAULT_TUNNEL_PROTOCOL |
+                                 FM10000_TE_DEFAULT_GPE_NSH_CLEAR |
+                                 FM10000_TE_DEFAULT_TUNNEL_L4DST_NGE;
+                tunDefCfg.encapProtocol = 0x0403;
+                tunDefCfg.l4DstNge = switchExt->vnGpeUdpPort;
+
+                parserSelectMask  = FM10000_TE_PARSER_NGE_PORT;
+                parserCfg.ngePort = switchExt->vnGpeUdpPort;
+            }
+            else if (modeAttr->mode == FM_TUNNEL_API_MODE_VXLAN_NVGRE_NGE)
+            {
+                defSelectMask |= FM10000_TE_DEFAULT_TUNNEL_PROTOCOL |
+                                 FM10000_TE_DEFAULT_GPE_NSH_CLEAR |
+                                 FM10000_TE_DEFAULT_TUNNEL_L4DST_NGE;
+                tunDefCfg.encapProtocol = GET_PROPERTY()->vnEncapProtocol;
+                tunDefCfg.l4DstNge = switchExt->vnGeneveUdpPort;
+
+                parserSelectMask  = FM10000_TE_PARSER_NGE_PORT;
+                parserCfg.ngePort = switchExt->vnGeneveUdpPort;
+            }
 
             err = fm10000SetTeDefaultTunnel(sw,
                                             modeAttr->te,
                                             &tunDefCfg,
-                                            FM10000_TE_DEFAULT_TUNNEL_MODE,
+                                            defSelectMask,
                                             TRUE);
             FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_TE, err);
 
+            err = fm10000SetTeParser(sw,
+                                     modeAttr->te,
+                                     &parserCfg,
+                                     parserSelectMask,
+                                     TRUE);
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_TE, err);
+
             switchExt->tunnelCfg->tunnelMode[modeAttr->te] = modeAttr->mode;
-            break;
+            break; 
 
         default:
             err = FM_ERR_UNSUPPORTED;

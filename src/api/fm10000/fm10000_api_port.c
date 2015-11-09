@@ -1069,6 +1069,17 @@ static fm10000_portAttrEntryTable portAttributeTable =
         .excludedPhyPortTypes = ( EXCLUDE_PCIE | EXCLUDE_TE | EXCLUDE_LPBK ),
     },
 
+    .linkOptimizationMode  =
+    {
+        .attr                 = FM_PORT_LINK_OPTIMIZATION_MODE,
+        .str                  = "FM_PORT_LINK_OPTIMIZATION_MODE",
+        .type                 = FM_TYPE_INT,
+        .perLag               = FALSE,
+        .attrType             = FM_PORT_ATTR_EXTENSION,
+        .offset               = offsetof(fm10000_portAttr, linkOptimizationMode),
+        .excludedPhyPortTypes = ( EXCLUDE_PCIE | EXCLUDE_TE | EXCLUDE_LPBK ),
+    },
+
     .rxTermination  =
     {
         .attr                 = FM_PORT_RX_TERMINATION,
@@ -1216,6 +1227,39 @@ static fm10000_portAttrEntryTable portAttributeTable =
         .offset               = 0,
         .excludedPhyPortTypes = ( EXCLUDE_PCIE | EXCLUDE_TE | EXCLUDE_LPBK ),
         .defValue             = 0,
+    },
+
+    .krXconfig1 =
+    {
+        .attr                 = FM_PORT_TX_LANE_KR_XCONFIG1,
+        .str                  = "FM_PORT_TX_LANE_KR_XCONFIG1",
+        .type                 = FM_TYPE_INT,
+        .perLag               = FALSE,
+        .attrType             = FM_PORT_ATTR_EXTENSION,
+        .offset               = 0,
+        .excludedPhyPortTypes = ( EXCLUDE_PCIE | EXCLUDE_TE | EXCLUDE_LPBK ),
+    },
+
+    .krXconfig2 =
+    {
+        .attr                 = FM_PORT_TX_LANE_KR_XCONFIG2,
+        .str                  = "FM_PORT_TX_LANE_KR_XCONFIG2",
+        .type                 = FM_TYPE_INT,
+        .perLag               = FALSE,
+        .attrType             = FM_PORT_ATTR_EXTENSION,
+        .offset               = 0,
+        .excludedPhyPortTypes = ( EXCLUDE_PCIE | EXCLUDE_TE | EXCLUDE_LPBK ),
+    },
+
+    .signalTransitionThreshold =
+    {
+        .attr                 = FM_PORT_SERDES_SIGNAL_TRANSITION_THRESHOLD,
+        .str                  = "FM_PORT_SERDES_SIGNAL_TRANSITION_THRESHOLD",
+        .type                 = FM_TYPE_INT,
+        .perLag               = FALSE,
+        .attrType             = FM_PORT_ATTR_EXTENSION,
+        .offset               = 0,
+        .excludedPhyPortTypes = ( EXCLUDE_PCIE | EXCLUDE_TE | EXCLUDE_LPBK ),
     },
 
     .generateTimestamps  =
@@ -2194,8 +2238,7 @@ static fm_status SetLAGPortAttribute(fm_int sw,
      * encapsulated or decapsulated. */
     else if ( (attribute == FM_PORT_MASK_WIDE) &&
               lagPtr->isInternalPort &&
-              fmGetBoolApiAttribute(FM_AAK_API_FM10000_VN_TUNNEL_ONLY_IN_INGRESS,
-                                    FM_AAD_API_FM10000_VN_TUNNEL_ONLY_IN_INGRESS) )
+              GET_FM10000_PROPERTY()->vnTunnelOnlyOnIngress )
     {
         tmpMaskBitArray = *( (fm_bitArray *) value );
 
@@ -5929,6 +5972,9 @@ fm_status fm10000SetPortAttribute(fm_int sw,
             case FM_PORT_TX_LANE_KR_INIT_POSTCURSOR:
             case FM_PORT_TX_LANE_KR_INITIAL_PRE_DEC:
             case FM_PORT_TX_LANE_KR_INITIAL_POST_DEC:
+            case FM_PORT_TX_LANE_KR_XCONFIG1:
+            case FM_PORT_TX_LANE_KR_XCONFIG2:
+            case FM_PORT_SERDES_SIGNAL_TRANSITION_THRESHOLD:
             case FM_PORT_TX_LANE_ENA_KR_INIT_CFG:
             case FM_PORT_SIGNAL_THRESHOLD:
             case FM_PORT_DFE_MODE:
@@ -6140,8 +6186,7 @@ fm_status fm10000SetPortAttributeInt(fm_int sw,
      * masks in order for encapsulated and decapsulated frames to route/switch
      * onto internal ports. */
     if ( (attr == FM_PORT_INTERNAL)
-         && fmGetBoolApiAttribute(FM_AAK_API_FM10000_VN_TUNNEL_ONLY_IN_INGRESS,
-                                  FM_AAD_API_FM10000_VN_TUNNEL_ONLY_IN_INGRESS)
+         && GET_FM10000_PROPERTY()->vnTunnelOnlyOnIngress
          && (port != switchExt->tunnelCfg->tunnelPort[0])
          && (port != switchExt->tunnelCfg->tunnelPort[1]) )
     {
@@ -7042,6 +7087,37 @@ fm_status fm10000SetPortAttributeInt(fm_int sw,
             err = FM_OK;
         }
     }
+    else if (attr == FM_PORT_LINK_OPTIMIZATION_MODE)
+    {
+        VALIDATE_ATTRIBUTE_WRITE_ACCESS(&portAttributeTable.linkOptimizationMode);
+
+        if (isLagAttr)
+        {
+            err = SetLAGPortAttribute(sw, port, lane, attr, value);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+        }
+        else
+        {
+            
+            if ( lane != FM_PORT_LANE_NA)
+            {
+                err = FM_ERR_INVALID_PORT_LANE;
+                FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
+            }
+            else
+            {
+                if (*(fm_linkOptMode *)value < FM_PORT_LINK_OPTIMIZATION_MAX)
+                {
+                    portAttrExt->linkOptimizationMode = *(fm_linkOptMode *)value;
+                    err = fm10000ConfigurePortOptimizationMode(sw,port);
+                }
+                else
+                {
+                    err = FM_ERR_INVALID_ARGUMENT;
+                }
+            }   
+        }
+    }
     else if (attr == FM_PORT_RX_TERMINATION)
     {
         /* add code to filter out PCIE ports */
@@ -7104,7 +7180,7 @@ fm_status fm10000SetPortAttributeInt(fm_int sw,
         }
         else
         {
-            err = ConfigureLoopbackMode(sw, port, *(fm_bool *)value );
+            err = ConfigureLoopbackMode(sw, port, *(fm_int *)value );
 
             FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, err );
         }
@@ -7121,7 +7197,7 @@ fm_status fm10000SetPortAttributeInt(fm_int sw,
         }
         else
         {
-            err = ConfigureFabricLoopback(sw, port, *(fm_bool *)value);
+            err = ConfigureFabricLoopback(sw, port, *(fm_int *)value);
             FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, err );
         }
     }
@@ -7822,6 +7898,8 @@ fm_status fm10000SetPortAttributeInt(fm_int sw,
                                              (fm_uint64  *)value );
             FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
 
+            portExt->pendingBasePage = *( (fm_uint64 *) value );
+
             /* if there is already an AN state machine notify of the config
                 change */
             if ( portExt->smType == FM10000_AN_PORT_STATE_MACHINE )
@@ -7905,6 +7983,31 @@ fm_status fm10000SetPortAttributeInt(fm_int sw,
                 }
             }            
             
+            if (portExt->pendingNextPages.numPages < nextPages->numPages)
+            {
+                if (portExt->pendingNextPages.nextPages)
+                {
+                    fmFree(portExt->pendingNextPages.nextPages);
+                    portExt->pendingNextPages.nextPages = NULL;
+                }
+                portExt->pendingNextPages.nextPages = fmAlloc( sizeof(fm_uint64) *
+                                                               nextPages->numPages );
+                if (!portExt->pendingNextPages.nextPages)
+                {
+                    err = FM_ERR_NO_MEM;
+                    FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+                }
+            }
+
+            portExt->pendingNextPages.numPages = nextPages->numPages;
+            if (nextPages->numPages)
+            {
+                FM_MEMCPY_S( portExt->pendingNextPages.nextPages,
+                             sizeof(fm_uint64) * nextPages->numPages,
+                             nextPages->nextPages,
+                             sizeof(fm_uint64) * nextPages->numPages );
+            }
+
             if ( portExt->smType == FM10000_AN_PORT_STATE_MACHINE )
             {
                 err = fm10000AnSendConfigEvent( sw,
@@ -8079,8 +8182,7 @@ fm_status fm10000SetPortAttributeInt(fm_int sw,
             }
 
             /* Untag port for all VLAN Membership */
-            if (!fmGetBoolApiProperty(FM_AAK_API_PORT_ALLOW_FTAG_VLAN_TAGGING,
-                                      FM_AAD_API_PORT_ALLOW_FTAG_VLAN_TAGGING))
+            if (!GET_PROPERTY()->allowFtagVlanTagging)
             {
                 err = fmGetVlanFirst(sw, &currentVlan);
                 FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
@@ -8898,6 +9000,80 @@ fm_status fm10000SetPortAttributeInt(fm_int sw,
             laneAttr->postCursorDecOnPreset = *( (fm_int *) value);
         }
     }
+    else if (attr == FM_PORT_TX_LANE_KR_XCONFIG1)
+    {
+        VALIDATE_ATTRIBUTE_WRITE_ACCESS(&portAttributeTable.krXconfig1);
+        VALIDATE_PORT_ATTRIBUTE(&portAttributeTable.krXconfig1);
+
+        if (isLagAttr)
+        {
+            err = SetLAGPortAttribute(sw, port, lane, attr, value);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+        }
+        else
+        {
+            if ( lane == FM_PORT_LANE_NA || laneAttr == NULL )
+            {
+                err = FM_ERR_INVALID_PORT_LANE;
+                FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
+            }
+
+            laneAttr->kr_xconfig1 = *( (fm_int *) value);
+        }
+    }
+    else if (attr == FM_PORT_TX_LANE_KR_XCONFIG2)
+    {
+        VALIDATE_ATTRIBUTE_WRITE_ACCESS(&portAttributeTable.krXconfig2);
+        VALIDATE_PORT_ATTRIBUTE(&portAttributeTable.krXconfig2);
+
+        if (isLagAttr)
+        {
+            err = SetLAGPortAttribute(sw, port, lane, attr, value);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+        }
+        else
+        {
+            if ( lane == FM_PORT_LANE_NA || laneAttr == NULL )
+            {
+                err = FM_ERR_INVALID_PORT_LANE;
+                FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
+            }
+
+            laneAttr->kr_xconfig2 = *( (fm_int *) value);
+        }
+    }
+    else if (attr == FM_PORT_SERDES_SIGNAL_TRANSITION_THRESHOLD)
+    {
+        VALIDATE_ATTRIBUTE_WRITE_ACCESS(&portAttributeTable.signalTransitionThreshold);
+        VALIDATE_PORT_ATTRIBUTE(&portAttributeTable.signalTransitionThreshold);
+
+        if (isLagAttr)
+        {
+            err = SetLAGPortAttribute(sw, port, lane, attr, value);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+        }
+        else
+        {
+            if ( lane == FM_PORT_LANE_NA || laneAttr == NULL )
+            {
+                err = FM_ERR_INVALID_PORT_LANE;
+                FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
+            }
+            else
+            {
+                tmpInt = *((fm_int *) value);
+
+                if (tmpInt >= 0 && tmpInt <= 70)
+                {
+                    laneAttr->transitionThreshold = tmpInt;
+                }
+                else
+                {
+                    err = FM_ERR_INVALID_VALUE;
+                }
+            }
+        }
+    }
     else if (attr == FM_PORT_TX_LANE_ENA_KR_INIT_CFG)
     {
         VALIDATE_ATTRIBUTE_WRITE_ACCESS(&portAttributeTable.txLaneEnableConfigKrInit);
@@ -9495,7 +9671,9 @@ fm_status fm10000SetPortAttributeInt(fm_int sw,
                 {
                     /* EEE is disabled; clear the related NextPage context */
                     FM_SET_BIT64(portAttr->autoNegBasePage,
-                                 FM10000_AN_73_BASE_PAGE_TX, NP, 0);
+                                 FM10000_AN_73_BASE_PAGE_TX,
+                                 NP,
+                                 0);
                     portAttrExt->eeeNextPageAdded = FALSE;
                     portAttrExt->negotiatedEeeModeEnabled = FALSE;
                     portAttr->autoNegNextPages.numPages = 0;
@@ -10567,6 +10745,45 @@ fm_status fm10000GetPortAttribute(fm_int sw,
 
             break;
 
+        case FM_PORT_TX_LANE_KR_XCONFIG1:
+            VALIDATE_ATTRIBUTE_READ_ACCESS(&portAttributeTable.krXconfig1);
+            if ( laneAttr )
+            {
+                *( (fm_int *) value ) = laneAttr->kr_xconfig1;
+            }
+            else
+            {
+                err = FM_ERR_INVALID_PORT_LANE;
+            }
+
+            break;
+
+        case FM_PORT_TX_LANE_KR_XCONFIG2:
+            VALIDATE_ATTRIBUTE_READ_ACCESS(&portAttributeTable.krXconfig2);
+            if ( laneAttr )
+            {
+                *( (fm_int *) value ) = laneAttr->kr_xconfig2;
+            }
+            else
+            {
+                err = FM_ERR_INVALID_PORT_LANE;
+            }
+
+            break;
+
+        case FM_PORT_SERDES_SIGNAL_TRANSITION_THRESHOLD:
+            VALIDATE_ATTRIBUTE_READ_ACCESS(&portAttributeTable.krXconfig2);
+            if ( laneAttr )
+            {
+                *( (fm_int *) value ) = laneAttr->transitionThreshold;
+            }
+            else
+            {
+                err = FM_ERR_INVALID_PORT_LANE;
+            }
+
+            break;
+
         case FM_PORT_TX_LANE_ENA_KR_INIT_CFG:
             VALIDATE_ATTRIBUTE_READ_ACCESS(&portAttributeTable.txLaneEnableConfigKrInit);
             if ( laneAttr )
@@ -10659,6 +10876,19 @@ fm_status fm10000GetPortAttribute(fm_int sw,
                                                 &speedInfo);
 
                 *( (fm_int *) value) = speedInfo.assignedSpeed;
+            }
+            break;
+
+        case FM_PORT_LINK_OPTIMIZATION_MODE:
+            VALIDATE_ATTRIBUTE_READ_ACCESS(&portAttributeTable.linkOptimizationMode);
+            if ( (portPtr->portType == FM_PORT_TYPE_PHYSICAL) && !isPciePort )
+            {
+                *( (fm_uint32 *) value ) = portAttrExt->linkOptimizationMode;
+                err = FM_OK;
+            }
+            else
+            {
+                err = FM_ERR_INVALID_PORT;
             }
             break;
 
@@ -11271,6 +11501,8 @@ fm_status fm10000SetPortState( fm_int sw,
     fm_int           serDes;
     fm_serdesRing    ring;
     fm_bool          sendUpdate;
+    fm_int           pepId;
+    fm_bool          pepState;
 
     FM_LOG_ENTRY_V2( FM_LOG_CAT_PORT,
                      port,
@@ -11283,7 +11515,6 @@ fm_status fm10000SetPortState( fm_int sw,
     FM_NOT_USED(mac);
 
     portPtr = GET_PORT_PTR( sw, port );
-
 
     /* Update LAGs depending on if port is going UP or not. */
     if (mode != FM_PORT_STATE_UP)
@@ -11388,28 +11619,68 @@ fm_status fm10000SetPortState( fm_int sw,
             else
             {
                 /*********************************************************
-                 * Dynamic management of PCIE ports isn't supported 
+                 * Dynamic management of PCIE ports is limited. Only 
+                 * process PEPs that are out of reset. Moreover, only the 
+                 * following mode are supported : 
                  *  
-                 * physical ports to send a link up event as soon as there
-                 * is a change in admin mode. To be removed once we have 
-                 * fully functional port/serdes state machines  
+                 *   FM_PORT_MODE_UP
+                 *   FM_PORT_MODE_ADMIN_DOWN
+                 *   FM_PORT_MODE_ADMIN_PWRDOWN
+                 *  
+                 * Moreover, as we don't want to change the state of the 
+                 * serdes and PCIE, the FM_PORT_MODE_ADMIN_PWRDOWN mode is 
+                 * treated as FM_PORT_MODE_ADMIN_DOWN.  
                  *********************************************************/
 
-                if ( mode == FM_PORT_MODE_UP )
+                pepId = portExt->endpoint.pep;
+                err = fm10000GetPepResetState(sw, pepId, &pepState);
+
+                if ( err != FM_OK || pepState == 0 )
                 {
-                    portPtr->mode = mode;
-                    portPtr->submode = submode;
-                    err = FM_OK;
-                }
-                else
-                {
-                    FM_LOG_ERROR_V2( FM_LOG_CAT_PORT,
-                                     port,
-                                     "Mode %d isn't supported for PCIE ports\n",
-                                     mode );
-                    err = FM_ERR_UNSUPPORTED;
+                    FM_LOG_EXIT_V2(FM_LOG_CAT_PORT, port, err);
                 }
 
+                portExt->eventInfo.info.admin.mode    = mode;
+                portExt->eventInfo.info.admin.submode = submode;
+
+                eventInfo.smType = portExt->smType;
+
+                /* map the desired mode to the port-level state machine event ID */
+                switch ( mode )
+                {
+                    case FM_PORT_MODE_ADMIN_DOWN:
+                    case FM_PORT_MODE_ADMIN_PWRDOWN:
+                        /* Force Admin down */
+                        mode = FM_PORT_MODE_ADMIN_DOWN;
+                        eventInfo.eventId = FM10000_PORT_EVENT_ADMIN_DOWN_REQ;
+                        break;
+
+                    case FM_PORT_MODE_UP:
+                        eventInfo.eventId = FM10000_PORT_EVENT_ADMIN_UP_REQ;
+                        break;
+
+                    default:
+                        FM_LOG_ERROR_V2( FM_LOG_CAT_PORT,
+                                         port,
+                                         "Mode %d isn't supported for PCIE ports\n",
+                                         mode );
+                        err = FM_ERR_UNSUPPORTED;
+                        goto ABORT;
+
+                }       /* end switch ( mode ) */
+
+                /* notify the admin mode change event */
+                eventInfo.lock = FM_GET_STATE_LOCK( sw );
+                eventInfo.dontSaveRecord = FALSE;
+                portExt->eventInfo.regLockTaken = FALSE;
+                err = fmNotifyStateMachineEvent( portExt->smHandle,
+                                                 &eventInfo,
+                                                 &portExt->eventInfo,
+                                                 &port );
+                FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, err );
+
+                portPtr->mode = mode;
+                portPtr->submode = submode;
             }
 
         }
@@ -16936,3 +17207,164 @@ ABORT:
     FM_LOG_EXIT_V2( FM_LOG_CAT_PORT, port, status);
 
 }   /* end fm10000GetMultiLaneCapabilities */
+
+
+
+
+/*****************************************************************************/
+/** fm10000GetPortOptModeDfeParam
+ * \ingroup intPort
+ *
+ * \desc            Get the port link optimization parameter specified by
+ *                  selector. 
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \param[in]       serDes is the serdes on which to operate.
+ * 
+ * \param[in]       selector specifies the type of parameter.
+ * 
+ * \param[out]      parameter is a pointer to a caller allocated variable where
+ *                  this function will return the parameter value.
+ *
+ * \return          FM_OK if successful.
+ *
+ *****************************************************************************/
+fm_status fm10000GetPortOptModeDfeParam(fm_int   sw,
+                                        fm_int   serDes,
+                                        fm_int   selector,
+                                        fm_int * parameter)
+{
+    fm_status       err;
+    fm_laneAttr *   pLaneAttr;
+    fm10000_lane *  pLaneExt;
+
+
+    pLaneExt  = GET_LANE_EXT(sw, serDes);
+    pLaneAttr = GET_LANE_ATTR(sw, serDes);
+
+    *parameter = 0;
+    err = FM_OK;
+
+    if (pLaneExt && pLaneAttr)
+    {
+        switch (selector)
+        {
+            case 0:
+                if (pLaneExt->bitRate == FM10000_LANE_BITRATE_25GBPS)
+                {
+                    /* 25G case */
+                    *parameter = pLaneAttr->linkOptimParamA25G;
+                }
+                else
+                {
+                    /* 10G case */
+                    *parameter = pLaneAttr->linkOptimParamA10G;
+                }
+                break;
+            case 1:
+                if (pLaneExt->bitRate == FM10000_LANE_BITRATE_25GBPS)
+                {
+                    /* 25G case */
+                    *parameter = pLaneAttr->linkOptimParamB25G;
+                }
+                else
+                {
+                    /* 10G case */
+                    *parameter = pLaneAttr->linkOptimParamB10G;
+                }
+                break;
+            default:
+                err = FM_ERR_INVALID_ARGUMENT;
+        }
+        
+    }
+    else
+    {
+        err = FM_ERR_INVALID_ARGUMENT;
+    }
+
+    return err;
+
+}   /* end fm10000GetPortOptModeDfeParam */
+
+
+
+
+/*****************************************************************************/
+/** fm10000ConfigurePortOptimizationMode
+ * \ingroup intPort
+ *
+ * \desc            Configure the parameters associated to the link optimazation
+ *                  mode for all lanes associated to a given port.
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \param[in]       port is the port on which to operate.
+ *
+ *
+ * \return          FM_OK if successful.
+ *
+ *****************************************************************************/
+fm_status fm10000ConfigurePortOptimizationMode(fm_int   sw,
+                                               fm_int   port)
+{
+    fm_status           err;
+    fm10000_port *      portExt;
+    fm10000_portAttr *  portAttrExt;
+    fm_laneAttr *       laneAttr;      
+    fm10000_lane *      laneExt;
+
+    portExt = GET_PORT_EXT( sw, port );
+    portAttrExt = GET_FM10000_PORT_ATTR(sw, port);
+    err = FM_OK;
+
+
+    /* scan the list of lanes associated to this port */
+    laneExt  = FM_DLL_GET_FIRST( portExt, firstLane );
+
+    while ( laneExt != NULL )
+    {
+        laneAttr = GET_LANE_ATTR(sw, laneExt->serDes);
+
+        switch (portAttrExt->linkOptimizationMode)
+        {
+            case FM_PORT_LINK_OPTIMIZATION_SPEED:
+                laneAttr->linkOptimParamA10G = FM10000_LINK_OPTIM_PARAM_SPEED_A10G;
+                laneAttr->linkOptimParamB10G = FM10000_LINK_OPTIM_PARAM_SPEED_B10G;
+                laneAttr->linkOptimParamA25G = FM10000_LINK_OPTIM_PARAM_SPEED_A25G;
+                laneAttr->linkOptimParamB25G = FM10000_LINK_OPTIM_PARAM_SPEED_B25G;;
+                break;
+            case FM_PORT_LINK_OPTIMIZATION_QUALITY:
+                laneAttr->linkOptimParamA10G = FM10000_LINK_OPTIM_PARAM_DEFAULT;
+                laneAttr->linkOptimParamB10G = FM10000_LINK_OPTIM_PARAM_DEFAULT;
+                laneAttr->linkOptimParamA25G = FM10000_LINK_OPTIM_PARAM_DEFAULT;
+                laneAttr->linkOptimParamB25G = FM10000_LINK_OPTIM_PARAM_DEFAULT;
+                break;
+            case FM_PORT_LINK_OPTIMIZATION_BALANCE:
+                laneAttr->linkOptimParamA10G = FM10000_LINK_OPTIM_PARAM_BALAN_A10G;
+                laneAttr->linkOptimParamB10G = FM10000_LINK_OPTIM_PARAM_BALAN_B10G;
+                laneAttr->linkOptimParamA25G = FM10000_LINK_OPTIM_PARAM_BALAN_A25G;
+                laneAttr->linkOptimParamB25G = FM10000_LINK_OPTIM_PARAM_BALAN_B25G;
+                break;
+            case FM_PORT_LINK_OPTIMIZATION_NONE:
+                /* optimization config is not updated, only for debug */
+                break;
+            default:
+                laneAttr->linkOptimParamA10G = 0;
+                laneAttr->linkOptimParamB10G = 0;
+                laneAttr->linkOptimParamA25G = 0;
+                laneAttr->linkOptimParamB25G = 0;
+                err = FM_FAIL;
+        }
+
+        /* next lane, if any */
+        laneExt = FM_DLL_GET_NEXT( laneExt, nextLane );
+
+    }   /* while ( laneExt != NULL) */
+
+    return err;
+
+}   /* end fm10000ConfigurePortOptimizationMode */
+
+

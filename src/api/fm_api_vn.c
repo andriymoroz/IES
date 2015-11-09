@@ -1381,10 +1381,10 @@ fm_status fmSetVNTunnelAttribute(fm_int              sw,
             /* Set by the family-specific function */
             break;
 
-       case FM_VNTUNNEL_ATTR_TUNNEL_TYPE:
-           /* This is a read-only attribute */
-           status = FM_ERR_INVALID_ATTRIB;
-           break;
+        case FM_VNTUNNEL_ATTR_TUNNEL_TYPE:
+            /* This is a read-only attribute */
+            status = FM_ERR_INVALID_ATTRIB;
+            break;
 
         case FM_VNTUNNEL_ATTR_ENCAP_TTL:
             encapTTL = *( (fm_uint *) value );
@@ -1395,6 +1395,36 @@ fm_status fmSetVNTunnelAttribute(fm_int              sw,
             }
 
             tunnel->encapTTL = encapTTL;
+            break;
+
+        case FM_VNTUNNEL_ATTR_NSH_BASE_HDR:
+            if (tunnel->tunnelType != FM_VN_TUNNEL_TYPE_GPE_NSH)
+            {
+                status = FM_ERR_INVALID_ATTRIB;
+                FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_VN, status);
+            }
+
+            tunnel->nsh.baseHdr = *( (fm_vnNshBaseHdr *) value );
+            break;
+
+        case FM_VNTUNNEL_ATTR_NSH_SERVICE_HDR:
+            if (tunnel->tunnelType != FM_VN_TUNNEL_TYPE_GPE_NSH)
+            {
+                status = FM_ERR_INVALID_ATTRIB;
+                FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_VN, status);
+            }
+
+            tunnel->nsh.serviceHdr = *( (fm_vnNshServiceHdr *) value );
+            break;
+
+        case FM_VNTUNNEL_ATTR_NSH_DATA:
+            if (tunnel->tunnelType != FM_VN_TUNNEL_TYPE_GPE_NSH)
+            {
+                status = FM_ERR_INVALID_ATTRIB;
+                FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_VN, status);
+            }
+
+            tunnel->nsh.context = *( (fm_vnNshData *) value );
             break;
 
         default:
@@ -1543,12 +1573,42 @@ fm_status fmGetVNTunnelAttribute(fm_int              sw,
             *( (fm_int *) value ) = tunnel->trafficIdentifier;
             break;
 
-       case FM_VNTUNNEL_ATTR_TUNNEL_TYPE:
-           *( (fm_vnTunnelType *) value ) = tunnel->tunnelType;
-           break;
+        case FM_VNTUNNEL_ATTR_TUNNEL_TYPE:
+            *( (fm_vnTunnelType *) value ) = tunnel->tunnelType;
+            break;
 
         case FM_VNTUNNEL_ATTR_ENCAP_TTL:
             *( (fm_uint *) value ) = tunnel->encapTTL;
+            break;
+
+        case FM_VNTUNNEL_ATTR_NSH_BASE_HDR:
+            if (tunnel->tunnelType != FM_VN_TUNNEL_TYPE_GPE_NSH)
+            {
+                status = FM_ERR_INVALID_ATTRIB;
+                FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_VN, status);
+            }
+
+            *( (fm_vnNshBaseHdr *) value ) = tunnel->nsh.baseHdr;
+            break;
+
+        case FM_VNTUNNEL_ATTR_NSH_SERVICE_HDR:
+            if (tunnel->tunnelType != FM_VN_TUNNEL_TYPE_GPE_NSH)
+            {
+                status = FM_ERR_INVALID_ATTRIB;
+                FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_VN, status);
+            }
+
+            *( (fm_vnNshServiceHdr *) value ) = tunnel->nsh.serviceHdr;
+            break;
+
+        case FM_VNTUNNEL_ATTR_NSH_DATA:
+            if (tunnel->tunnelType != FM_VN_TUNNEL_TYPE_GPE_NSH)
+            {
+                status = FM_ERR_INVALID_ATTRIB;
+                FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_VN, status);
+            }
+
+            *( (fm_vnNshData *) value ) = tunnel->nsh.context;
             break;
 
         default:
@@ -2160,7 +2220,6 @@ fm_status fmVNAlloc(fm_int sw)
 {
     fm_switch *switchPtr;
     fm_status status;
-    fm_bool   supportLookups;
 
     FM_LOG_ENTRY(FM_LOG_CAT_VN, "sw = %d\n", sw);
 
@@ -2173,10 +2232,7 @@ fm_status fmVNAlloc(fm_int sw)
         * Virtual Networking requires that the routing
         * subsystem support the route lookup feature.
         **************************************************/
-        supportLookups = TRUE;
-        status = fmSetApiProperty( FM_AAK_API_SUPPORT_ROUTE_LOOKUPS,
-                                   FM_AAT_API_SUPPORT_ROUTE_LOOKUPS,
-                                   (void *) &supportLookups );
+        GET_PROPERTY()->supportRouteLookups = TRUE; 
     }
 
     FM_LOG_EXIT(FM_LOG_CAT_VN, status);
@@ -4020,6 +4076,178 @@ ABORT:
 
 
 /*****************************************************************************/
+/** fmConfigureVNDefaultGpe
+ * \ingroup virtualNetwork
+ *
+ * \chips           FM10000
+ *
+ * \desc            Configures the Virtual Networking API default values
+ *                  of the VXLAN-GPE fields. Supported only when encapsulation
+ *                  tunnel engine is operating in
+ *                  ''FM_TUNNEL_API_MODE_VXLAN_GPE_NSH'' mode.
+ *
+ * \note            This function should be called prior to any
+ *                  attempt to create any virtual networks or tunnels. If
+ *                  there is a need to call it after tunnels and/or networks
+ *                  have been created, all tunnels and networks should be
+ *                  deleted before this function is called, since some settings
+ *                  may only take effect when the first network or tunnel is
+ *                  created.
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \param[in]       defaultGpe points to the VXLAN-GPE configuration record
+ *                  to be used.
+ *
+ * \return          FM_OK if successful.
+ * \return          FM_ERR_INVALID_SWITCH if sw is invalid.
+ * \return          FM_ERR_UNSUPPORTED if virtual networks are not supported.
+ * \return          FM_ERR_INVALID_ARGUMENT if vni is not a valid virtual
+ *                  network ID, if tunnelId is not a valid tunnel
+ *                  ID, or if addr is NULL.
+ * \return          FM_ERR_TE_MODE if encapsulation tunnel engine is not
+ *                  configured for ''FM_TUNNEL_API_MODE_VXLAN_GPE_NSH'' mode.
+ *
+ *****************************************************************************/
+fm_status fmConfigureVNDefaultGpe(fm_int sw, fm_vnGpeCfg *defaultGpe)
+{
+    fm_status  status;
+    fm_switch *switchPtr;
+    fm_bool    routingLockTaken;
+
+    FM_LOG_ENTRY_API(FM_LOG_CAT_VN,
+                     "sw = %d, defaultGpe = %p\n",
+                     sw,
+                     (void *) defaultGpe);
+
+    VALIDATE_AND_PROTECT_SWITCH(sw);
+
+    routingLockTaken = FALSE;
+    switchPtr        = GET_SWITCH_PTR(sw);
+
+    if (switchPtr->maxVNTunnels <= 0)
+    {
+        status = FM_ERR_UNSUPPORTED;
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_VN, status);
+    }
+
+    if (defaultGpe == NULL)
+    {
+        status = FM_ERR_INVALID_ARGUMENT;
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_VN, status);
+    }
+
+    status = fmCaptureWriteLock(&switchPtr->routingLock, FM_WAIT_FOREVER);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_VN, status);
+
+    routingLockTaken = TRUE;
+
+    FM_API_CALL_FAMILY(status, switchPtr->ConfigureVNDefaultGpe, sw, defaultGpe);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_VN, status);
+
+ABORT:
+
+    if (routingLockTaken)
+    {
+        fmReleaseWriteLock(&switchPtr->routingLock);
+    }
+
+    UNPROTECT_SWITCH(sw);
+
+    FM_LOG_EXIT_API(FM_LOG_CAT_VN, status);
+
+}   /* end fmConfigureVNDefaultGpe */
+
+
+
+
+/*****************************************************************************/
+/** fmConfigureVNDefaultNsh
+ * \ingroup virtualNetwork
+ *
+ * \chips           FM10000
+ *
+ * \desc            Configures the Virtual Networking API default values
+ *                  of the NSH fields. Supported only when encapsulation
+ *                  tunnel engine is operating in
+ *                  ''FM_TUNNEL_API_MODE_VXLAN_GPE_NSH'' mode.
+ *
+ * \note            This function should be called prior to any
+ *                  attempt to create any virtual networks or tunnels. If
+ *                  there is a need to call it after tunnels and/or networks
+ *                  have been created, all tunnels and networks should be
+ *                  deleted before this function is called, since some settings
+ *                  may only take effect when the first network or tunnel is
+ *                  created.
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \param[in]       defaultNsh points to the NSH configuration record to be
+ *                  used.
+ *
+ * \return          FM_OK if successful.
+ * \return          FM_ERR_INVALID_SWITCH if sw is invalid.
+ * \return          FM_ERR_UNSUPPORTED if virtual networks are not supported.
+ * \return          FM_ERR_INVALID_ARGUMENT if vni is not a valid virtual
+ *                  network ID, if tunnelId is not a valid tunnel
+ *                  ID, or if addr is NULL.
+ * \return          FM_ERR_TE_MODE if encapsulation tunnel engine is not
+ *                  configured for ''FM_TUNNEL_API_MODE_VXLAN_GPE_NSH'' mode.
+ *
+ *****************************************************************************/
+fm_status fmConfigureVNDefaultNsh(fm_int sw, fm_vnNshCfg *defaultNsh)
+{
+    fm_status  status;
+    fm_switch *switchPtr;
+    fm_bool    routingLockTaken;
+
+    FM_LOG_ENTRY_API(FM_LOG_CAT_VN,
+                     "sw = %d, defaultNsh = %p\n",
+                     sw,
+                     (void *) defaultNsh);
+
+    VALIDATE_AND_PROTECT_SWITCH(sw);
+
+    routingLockTaken = FALSE;
+    switchPtr        = GET_SWITCH_PTR(sw);
+
+    if (switchPtr->maxVNTunnels <= 0)
+    {
+        status = FM_ERR_UNSUPPORTED;
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_VN, status);
+    }
+
+    if (defaultNsh == NULL)
+    {
+        status = FM_ERR_INVALID_ARGUMENT;
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_VN, status);
+    }
+
+    status = fmCaptureWriteLock(&switchPtr->routingLock, FM_WAIT_FOREVER);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_VN, status);
+
+    routingLockTaken = TRUE;
+
+    FM_API_CALL_FAMILY(status, switchPtr->ConfigureVNDefaultNsh, sw, defaultNsh);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_VN, status);
+
+ABORT:
+
+    if (routingLockTaken)
+    {
+        fmReleaseWriteLock(&switchPtr->routingLock);
+    }
+
+    UNPROTECT_SWITCH(sw);
+
+    FM_LOG_EXIT_API(FM_LOG_CAT_VN, status);
+
+}   /* end fmConfigureVNDefaultNsh */
+
+
+
+
+/*****************************************************************************/
 /** fmGetVNConfiguration
  * \ingroup virtualNetwork
  *
@@ -4085,6 +4313,156 @@ ABORT:
     FM_LOG_EXIT_API(FM_LOG_CAT_VN, status);
 
 }   /* end fmGetVNConfiguration */
+
+
+
+
+/*****************************************************************************/
+/** fmGetVNDefaultGpe
+ * \ingroup virtualNetwork
+ *
+ * \chips           FM10000
+ *
+ * \desc            Retrieves the Virtual Networking API default values
+ *                  of the VXLAN-GPE fields. Supported only when encapsulation
+ *                  tunnel engine is operating in
+ *                  ''FM_TUNNEL_API_MODE_VXLAN_GPE_NSH'' mode.
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \param[out]      defaultGpe points to caller-provided storage into which
+ *                  VXLAN-GPE configuration will be written.
+ *
+ * \return          FM_OK if successful.
+ * \return          FM_ERR_INVALID_SWITCH if sw is invalid.
+ * \return          FM_ERR_UNSUPPORTED if virtual networks are not supported.
+ * \return          FM_ERR_INVALID_ARGUMENT if config is NULL.
+ * \return          FM_ERR_TE_MODE if encapsulation tunnel engine is not
+ *                  configured for ''FM_TUNNEL_API_MODE_VXLAN_GPE_NSH'' mode.
+ *
+ *****************************************************************************/
+fm_status fmGetVNDefaultGpe(fm_int sw, fm_vnGpeCfg *defaultGpe)
+{
+    fm_status  status;
+    fm_switch *switchPtr;
+    fm_bool    lockTaken;
+
+    FM_LOG_ENTRY_API(FM_LOG_CAT_VN,
+                     "sw = %d, defaultGpe = %p\n",
+                     sw,
+                     (void *) defaultGpe);
+
+    VALIDATE_AND_PROTECT_SWITCH(sw);
+
+    lockTaken = FALSE;
+    switchPtr = GET_SWITCH_PTR(sw);
+
+    if (switchPtr->maxVNTunnels <= 0)
+    {
+        status = FM_ERR_UNSUPPORTED;
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_VN, status);
+    }
+
+    if (defaultGpe == NULL)
+    {
+        status = FM_ERR_INVALID_ARGUMENT;
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_VN, status);
+    }
+
+    status = fmCaptureReadLock(&switchPtr->routingLock, FM_WAIT_FOREVER);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_VN, status);
+
+    lockTaken = TRUE;
+
+    FM_API_CALL_FAMILY(status, switchPtr->GetVNDefaultGpe, sw, defaultGpe);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_VN, status);
+
+ABORT:
+
+    if (lockTaken)
+    {
+        fmReleaseReadLock(&switchPtr->routingLock);
+    }
+
+    UNPROTECT_SWITCH(sw);
+    FM_LOG_EXIT_API(FM_LOG_CAT_VN, status);
+
+}   /* end fmGetVNDefaultGpe */
+
+
+
+
+/*****************************************************************************/
+/** fmGetVNDefaultNsh
+ * \ingroup virtualNetwork
+ *
+ * \chips           FM10000
+ *
+ * \desc            Retrieves the Virtual Networking API default values
+ *                  of the NSH fields. Supported only when encapsulation
+ *                  tunnel engine is operating in
+ *                  ''FM_TUNNEL_API_MODE_VXLAN_GPE_NSH'' mode.
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \param[out]      defaultNsh points to caller-provided storage into which
+ *                  NSH configuration will be written.
+ *
+ * \return          FM_OK if successful.
+ * \return          FM_ERR_INVALID_SWITCH if sw is invalid.
+ * \return          FM_ERR_UNSUPPORTED if virtual networks are not supported.
+ * \return          FM_ERR_INVALID_ARGUMENT if config is NULL.
+ * \return          FM_ERR_TE_MODE if encapsulation tunnel engine is not
+ *                  configured for ''FM_TUNNEL_API_MODE_VXLAN_GPE_NSH'' mode.
+ *
+ *****************************************************************************/
+fm_status fmGetVNDefaultNsh(fm_int sw, fm_vnNshCfg *defaultNsh)
+{
+    fm_status  status;
+    fm_switch *switchPtr;
+    fm_bool    lockTaken;
+
+    FM_LOG_ENTRY_API(FM_LOG_CAT_VN,
+                     "sw = %d, defaultNsh = %p\n",
+                     sw,
+                     (void *) defaultNsh);
+
+    VALIDATE_AND_PROTECT_SWITCH(sw);
+
+    lockTaken = FALSE;
+    switchPtr = GET_SWITCH_PTR(sw);
+
+    if (switchPtr->maxVNTunnels <= 0)
+    {
+        status = FM_ERR_UNSUPPORTED;
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_VN, status);
+    }
+
+    if (defaultNsh == NULL)
+    {
+        status = FM_ERR_INVALID_ARGUMENT;
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_VN, status);
+    }
+
+    status = fmCaptureReadLock(&switchPtr->routingLock, FM_WAIT_FOREVER);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_VN, status);
+
+    lockTaken = TRUE;
+
+    FM_API_CALL_FAMILY(status, switchPtr->GetVNDefaultNsh, sw, defaultNsh);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_VN, status);
+
+ABORT:
+
+    if (lockTaken)
+    {
+        fmReleaseReadLock(&switchPtr->routingLock);
+    }
+
+    UNPROTECT_SWITCH(sw);
+    FM_LOG_EXIT_API(FM_LOG_CAT_VN, status);
+
+}   /* end fmGetVNDefaultNsh */
 
 
 

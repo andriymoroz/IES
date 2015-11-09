@@ -29,7 +29,7 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
+ *****************************************************************************/
 
 #ifndef __FM_FM_DEBUG_H
 #define __FM_FM_DEBUG_H
@@ -578,6 +578,22 @@ typedef enum
      *  \chips  FM6000 */
     FM_CTR_PARITY_AREA_POLICER,
 
+    /** Incremented when an uncorrectable POLICER memory error is detected.
+     *  \chips  FM10000 */
+    FM_CTR_PARITY_AREA_POLICER_U_ERR,
+
+    /** Incremented when a correctable POLICER memory error is detected.
+     *  \chips  FM10000 */
+    FM_CTR_PARITY_AREA_POLICER_C_ERR,
+
+    /** Incremented when an uncorrectable STATS memory error is detected.
+     *  \chips  FM10000 */
+    FM_CTR_PARITY_AREA_STATS_U_ERR,
+
+    /** Incremented when a correctable STATS memory error is detected.
+     *  \chips  FM10000 */
+    FM_CTR_PARITY_AREA_STATS_C_ERR,
+
     /** Incremented when an uncorrectable memory error is detected in the
      *  modify REFCOUNT.
      *  \chips  FM10000 */
@@ -1069,15 +1085,25 @@ fm_status fmDbgSetSerDesPolarity(fm_int  sw,
 fm_status fmDbgSetSerDesLoopback(fm_int  sw, 
                                 fm_int  serDes,
                                 fm_text loopbackStr);
+fm_status fmDbgSetSerDesDfeParameter(fm_int     sw,
+                                     fm_int     serDes,
+                                     fm_uint32  paramSelector,
+                                     fm_uint32  paramValue);
+fm_status fmDbgGetSerDesDfeParameter(fm_int     sw,
+                                     fm_int     serDes,
+                                     fm_uint32  paramSelector,
+                                     fm_uint32 *pParamValue);
 
-
+fm_status fmDbgDumpSerDesDfeParameter(fm_int     sw,
+                                      fm_int     serDes,
+                                      fm_uint32  paramSelector);
 void fmDbgDumpL2LSweepers(fm_int sw, fm_bool regs);
 void fmDbgDumpSAFTable(fm_int sw);
 
 void fmDbgInitSwitchRegisterTable(fm_int sw);
 
 void fmDbgDumpVersion(void);
-char *fmDbgGetVersion(void);
+const char *fmDbgGetVersion(void);
 
 fm_status fmDbgDumpTriggers(fm_int sw);
 

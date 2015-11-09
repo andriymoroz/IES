@@ -2269,7 +2269,7 @@ fm_status fm10000SetTeDefaultTunnel(fm_int                 sw,
             FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_TE, err);
         }
 
-        if (fieldSelectMask & FM10000_TE_DEFAULT_TUNNEL_PROTOCOL)
+        if ( (fieldSelectMask & FM10000_TE_DEFAULT_TUNNEL_PROTOCOL) == 0)
         {
             FM_LOG_WARNING(FM_LOG_CAT_TE, 
                            "Tunnel Protocol should be specified along with "
@@ -2627,25 +2627,25 @@ fm_status fm10000GetTeDefaultTunnel(fm_int                 sw,
     {
         if (teTunnelCfg->ngeMask & FM10000_NGE_MASK_GPE_FLAGS_NEXT_PROT)
         {
-            teTunnelCfg->gpeNextProt = teTunnelCfg->ngeData[FM10000_NGE_POS_GPE_FLAGS_NEXT_PROT] >> 24;
+            teTunnelCfg->gpeNextProt = teTunnelCfg->ngeData[FM10000_NGE_POS_GPE_FLAGS_NEXT_PROT] & 0xFF;
         }
         
         if (teTunnelCfg->ngeMask & FM10000_NGE_MASK_GPE_VNI)
         {
-            teTunnelCfg->gpeVni = teTunnelCfg->ngeData[FM10000_NGE_POS_GPE_VNI] & 0xFFFFFF;
+            teTunnelCfg->gpeVni = (teTunnelCfg->ngeData[FM10000_NGE_POS_GPE_VNI] >> 8) & 0xFFFFFF;
         }
 
         if (teTunnelCfg->ngeMask & FM10000_NGE_MASK_NSH_BASE_HDR)
         {
-            teTunnelCfg->nshLength   = (teTunnelCfg->ngeData[FM10000_NGE_POS_NSH_BASE_HDR] >> 10) & 0x3F;
-            teTunnelCfg->nshCritical = (teTunnelCfg->ngeData[FM10000_NGE_POS_NSH_BASE_HDR] >> 3) & 0x1;
-            teTunnelCfg->nshMdType   = (teTunnelCfg->ngeData[FM10000_NGE_POS_NSH_BASE_HDR] >> 16) & 0xFF;
+            teTunnelCfg->nshLength   = (teTunnelCfg->ngeData[FM10000_NGE_POS_NSH_BASE_HDR] >> 16) & 0x3F;
+            teTunnelCfg->nshCritical = (teTunnelCfg->ngeData[FM10000_NGE_POS_NSH_BASE_HDR] >> 28) & 0x1;
+            teTunnelCfg->nshMdType   = (teTunnelCfg->ngeData[FM10000_NGE_POS_NSH_BASE_HDR] >> 8) & 0xFF;
         }
 
         if (teTunnelCfg->ngeMask & FM10000_NGE_MASK_NSH_SERVICE_HDR)
         {
-            teTunnelCfg->nshSvcPathId = teTunnelCfg->ngeData[FM10000_NGE_POS_NSH_SERVICE_HDR] & 0xFFFFFF;
-            teTunnelCfg->nshSvcIndex = (teTunnelCfg->ngeData[FM10000_NGE_POS_NSH_SERVICE_HDR] >> 24) & 0xFF;
+            teTunnelCfg->nshSvcPathId = (teTunnelCfg->ngeData[FM10000_NGE_POS_NSH_SERVICE_HDR] >> 8) & 0xFFFFFF;
+            teTunnelCfg->nshSvcIndex = teTunnelCfg->ngeData[FM10000_NGE_POS_NSH_SERVICE_HDR] & 0xFF;
         }
 
         teTunnelCfg->nshDataMask = teTunnelCfg->ngeMask >> FM10000_NGE_POS_NSH_DATA;
@@ -6722,6 +6722,27 @@ void fm10000DbgDumpTe(fm_int sw, fm_int te)
     for (i = 0 ; i < FM10000_TE_NGE_DATA_SIZE ; i++)
     {
         FM_LOG_PRINT(" [%d]=0x%08x", i, teTunnelCfg.ngeData[i]);
+
+        if ((i % 5) == 0)
+        {
+            FM_LOG_PRINT("\n");
+        }
+    }
+
+    FM_LOG_PRINT("NSH Length: %d  NSH MD Type: %d\n", 
+                 teTunnelCfg.nshLength, teTunnelCfg.nshMdType);
+
+    FM_LOG_PRINT("NSH Service Index: %d  NSH Service Path ID: %d\n",
+                 teTunnelCfg.nshSvcIndex, teTunnelCfg.nshSvcPathId);
+
+    FM_LOG_PRINT("NSH Critical TLVs?: %d (%s)\n",
+                 teTunnelCfg.nshCritical, teTunnelCfg.nshCritical ? "True" : "False");
+
+    FM_LOG_PRINT("NSH Data:");
+
+    for (i = 0 ; i < FM10000_TE_NSH_DATA_SIZE ; i++)
+    {
+        FM_LOG_PRINT(" [%d]=0x%08x", i, teTunnelCfg.nshData[i]);
 
         if ((i % 5) == 0)
         {

@@ -130,6 +130,7 @@ fm_status fm10000GetNominalSwitchVoltages(fm_int                    sw,
     if (vid == 0)
     {
         nominalVoltages->VDDS = 850;
+        nominalVoltages->defValUsed = TRUE;
     }
     else
     {
@@ -140,6 +141,7 @@ fm_status fm10000GetNominalSwitchVoltages(fm_int                    sw,
     if (vid == 0)
     {
         nominalVoltages->VDDF = 950;
+        nominalVoltages->defValUsed = TRUE;
     }
     else
     {

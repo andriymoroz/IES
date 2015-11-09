@@ -541,7 +541,7 @@ typedef struct _fm_portCounters
     /** An array, indexed by frame priority, the entry being the number of
      *  octets received in frames at that priority.
      *                                                                  \lb\lb
-     *  FM2000, FM3000 and FM4000 devices support only the first 8 priorities 
+     *  FM2000 and FM3000/FM4000 devices support only the first 8 priorities
      *  (0..7) while FM6000 devices support all 16 priorities (0..15).
      *  
      *  \counterGroups FM2000:Group5, FM4000:Group5,
@@ -1537,7 +1537,7 @@ typedef struct _fm_portCounters
     fm_uint64 cntRxOversizedPkts;
 
     /** Number of transmitted packets with CRC error, but proper size.
-     *  For FM2000, FM3000 and FM4000, this counter is 32 bits.
+     *  For FM2000 and FM3000/FM4000, this counter is 32 bits.
      *  
      *  \counterGroups FM2000:GroupEPL, FM4000:GroupEPL, FM6000:Group7 */
     fm_uint64 cntTxFCSErroredPkts;
@@ -1683,13 +1683,13 @@ typedef struct _fm_switchCounters
 
     /** Number of counter updates to counter groups 1 through 6 (RX counters)
      *  that were missed due to insufficient counter bandwidth.
-     *  This a global count. FM3000 and FM4000 devices only support a per port 
+     *  This a global count. FM3000/FM4000 devices only support a per-port
      *  stat drop counter. */
     fm_uint64 cntStatsDropCountTx;
 
     /** Number of counter updates to counter groups 7 through 9 (TX counters)
      *  that were missed due to insufficient counter bandwidth.
-     *  This a global count. FM3000 and FM4000 devices only support a per port 
+     *  This a global count. FM3000/FM4000 devices only support a per-port
      *  stat drop counter. */
     fm_uint64 cntStatsDropCountRx;
 

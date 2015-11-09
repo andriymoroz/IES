@@ -545,7 +545,7 @@ fm_status fm10000SerDesDfeResumeTuning(fm_smEventInfo *eventInfo,
 
 
 /*****************************************************************************/
-/** fm10000SerDesDfePushAutoStartTuning
+/** fm10000SerDesDfeProcessPushAutoStartTuning
  * \ingroup intSerDesDfe
  *
  * \desc            Conditional transition callback processing autostart
@@ -556,12 +556,17 @@ fm_status fm10000SerDesDfeResumeTuning(fm_smEventInfo *eventInfo,
  * \param[in]       userInfo is pointer a purpose specific event descriptor
  *                  (must be casted to ''fm10000_dfeSmEventInfo'')
  *
+ * \param[out]      nextState is a pointer to a caller-allocated area where
+ *                  this function will return the state the state machine
+ *                  will transition to
+ *
  * \return          FM_OK if successful
  * \return          Other ''Status Codes'' as appropriate in case of failure.
  *
  *****************************************************************************/
-fm_status fm10000SerDesDfePushAutoStartTuning(fm_smEventInfo *eventInfo,
-                                              void           *userInfo)
+fm_status fm10000SerDesDfeProcessPushAutoStartTuning(fm_smEventInfo *eventInfo,
+                                                     void           *userInfo,
+                                                     fm_int         *nextState)
 {
     fm_status        err;
     fm_int           sw;
@@ -578,8 +583,6 @@ fm_status fm10000SerDesDfePushAutoStartTuning(fm_smEventInfo *eventInfo,
 
     if (--pLaneDfe->retryCntr > 0)
     {
-
-
         dfeEventInfo.smType  = pLaneDfe->smType;
         dfeEventInfo.eventId = FM10000_SERDES_DFE_EVENT_START_TUNING_REQ;
         dfeEventInfo.lock    = FM_GET_STATE_LOCK( sw );
@@ -588,7 +591,11 @@ fm_status fm10000SerDesDfePushAutoStartTuning(fm_smEventInfo *eventInfo,
                                         &dfeEventInfo,
                                         &pLaneDfe->eventInfo,
                                         &pLaneDfe->pLaneExt->serDes);
-        if (err != FM_OK)
+        if (err == FM_OK)
+        {
+            *nextState = FM10000_SERDES_DFE_STATE_WAIT_ICAL;
+        }
+        else
         {
 
             err = fm10000SerDesDfeStartTimeoutTimerShrt(eventInfo,userInfo);
@@ -1342,8 +1349,18 @@ fm_status fm10000SerDesDfeProcessICalTimeout(fm_smEventInfo *eventInfo,
     iCalInProgress = FALSE;
     iCalSuccessful = FALSE;
 
+    if (pLaneDfe->cycleCntr == 0)
+    {
 
-    err = fm10000SerdesDfeTuningGetICalStatus(sw,serDes,&iCalInProgress);
+
+        err = fm10000SerDesDfeSendTuningStartedInd (eventInfo,userInfo);
+    }
+
+    if (err == FM_OK)
+    {
+
+        err = fm10000SerdesDfeTuningGetICalStatus(sw,serDes,&iCalInProgress);
+    }
 
 
     if ( err == FM_OK && !iCalInProgress)
@@ -1439,12 +1456,7 @@ fm_status fm10000SerDesDfeProcessICalTimeout(fm_smEventInfo *eventInfo,
         eventInfo->dontSaveRecord = TRUE;
     }
 
-    if (pLaneDfe->cycleCntr == 1)
-    {
 
-
-        err = fm10000SerDesDfeSendTuningStartedInd (eventInfo,userInfo);
-    }
 
     err = (err != FM_OK) ? err : err2;
 

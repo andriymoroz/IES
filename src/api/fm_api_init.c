@@ -30,9 +30,10 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
+ *****************************************************************************/
 
 #include <fm_sdk_int.h>
+#include <common/fm_version.h>
 
 /*****************************************************************************
  * Macros, Constants & Types
@@ -229,6 +230,21 @@ static const fm_switchModelEntry fmSwitchModelList[] =
     {
         FM_SWITCH_FAMILY_FM10000,
         FM_SWITCH_MODEL_FM10440,
+        &FM10000SwitchDefaultTable,
+    },
+    {
+        FM_SWITCH_FAMILY_FM10000,
+        FM_SWITCH_MODEL_FM10840,
+        &FM10000SwitchDefaultTable,
+    },
+    {
+        FM_SWITCH_FAMILY_FM10000,
+        FM_SWITCH_MODEL_FM10420,
+        &FM10000SwitchDefaultTable,
+    },
+    {
+        FM_SWITCH_FAMILY_FM10000,
+        FM_SWITCH_MODEL_FM10064,
         &FM10000SwitchDefaultTable,
     },
 #endif
@@ -954,13 +970,13 @@ static fm_status fmAllocateSwitchDataStructures(fm_int sw)
     /**************************************************
      * Initialize additional glort information
      **************************************************/
-    swstate->glortInfo.cpuBase        = FM_GLORT_CPU_BASE;
-    swstate->glortInfo.cpuMask        = FM_GLORT_CPU_MASK;
+    swstate->glortInfo.cpuBase        = ~0;
+    swstate->glortInfo.cpuMask        = ~0;
 
-    swstate->glortInfo.specialBase    = FM_GLORT_SPECIAL_BASE;
-    swstate->glortInfo.specialMask    = FM_GLORT_SPECIAL_MASK;
-    swstate->glortInfo.specialSize    = FM_GLORT_SPECIAL_SIZE;
-    swstate->glortInfo.specialALength = FM_GLORT_SPECIAL_A_LENGTH;
+    swstate->glortInfo.specialBase    = ~0;
+    swstate->glortInfo.specialMask    = ~0;
+    swstate->glortInfo.specialSize    = -1;
+    swstate->glortInfo.specialALength = -1;
 
     /**************************************************
      * Switch-Type-Specific Initializations
@@ -968,29 +984,6 @@ static fm_status fmAllocateSwitchDataStructures(fm_int sw)
     if ( ( err = swstate->InitSwitch(swstate) ) != FM_OK )
     {
         FM_LOG_EXIT(FM_LOG_CAT_SWITCH, err);
-    }
-
-    /**************************************************
-     * Parity Sweeper Initialization. 
-     **************************************************/
-    swstate->paritySweeperCfg.enabled = 
-                fmGetBoolApiProperty(FM_AAK_API_PARITY_SWEEPER_ENABLE, 
-                                     FM_AAD_API_PARITY_SWEEPER_ENABLE);
-
-    swstate->paritySweeperCfg.readBurstSize = 
-                fmGetIntApiProperty(FM_AAK_API_PARITY_SWEEPER_READ_BURST_SIZE,
-                                    FM_AAD_API_PARITY_SWEEPER_READ_BURST_SIZE);
-
-    swstate->paritySweeperCfg.sleepPeriod = 
-                fmGetIntApiProperty(FM_AAK_API_PARITY_SWEEPER_SLEEP_PERIOD,
-                                    FM_AAD_API_PARITY_SWEEPER_SLEEP_PERIOD);
-
-    /* By default, the parity sweeper does not run for FIBM */ 
-    if ( fmRootApi->isSwitchFibmSlave[sw] &&
-         !fmGetBoolApiProperty(FM_AAK_API_PARITY_SWEEPER_FIBM_ENABLE, 
-                               FM_AAD_API_PARITY_SWEEPER_FIBM_ENABLE) )
-    {
-        swstate->paritySweeperCfg.enabled = FALSE;
     }
 
     /* make sure the access locks get initialized */
@@ -1079,7 +1072,7 @@ static fm_status fmAllocateSwitchDataStructures(fm_int sw)
     FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_SWITCH, err);
 
     /**************************************************
-     * Router ressources allocation.
+     * Router resources allocation.
      *
      * If this switch does not support routing, this
      * function is expected to just return FM_OK.
@@ -1091,7 +1084,7 @@ static fm_status fmAllocateSwitchDataStructures(fm_int sw)
     }
 
     /************************************************** 
-     *  NextHop ressources allocation
+     *  NextHop resources allocation
      **************************************************/
     err = fmNextHopAlloc(sw);
     if (err != FM_OK)
@@ -1244,7 +1237,7 @@ static fm_status fmFreeSwitchDataStructures(fm_int sw)
     err = fmNextHopFree(sw);
     if (err != FM_OK)
     {
-        FM_LOG_ERROR(FM_LOG_CAT_SWITCH, "Fail to free nextHop ressources: %s\n",
+        FM_LOG_ERROR(FM_LOG_CAT_SWITCH, "Fail to free nextHop resources: %s\n",
                      fmErrorMsg(err));
         retErr = err;
         /* Don't return, just continue on */
@@ -1259,7 +1252,7 @@ static fm_status fmFreeSwitchDataStructures(fm_int sw)
     err = fmRouterFree(sw);
     if (err != FM_OK)
     {
-        FM_LOG_ERROR(FM_LOG_CAT_SWITCH, "Fail to free router ressources: %s\n",
+        FM_LOG_ERROR(FM_LOG_CAT_SWITCH, "Fail to free router resources: %s\n",
                      fmErrorMsg(err));
         retErr = err;
         /* Don't return, just continue on */
@@ -1900,8 +1893,8 @@ ABORT:
  *****************************************************************************/
 static fm_status fmApiThreadInit(void)
 {
-    fm_status err;
-         
+    fm_status    err;
+    fm_property *prop;
 
     /* Create the timer task (event-driven) */
     err = fmCreateTimerTask( "TimerTask", 
@@ -1925,8 +1918,9 @@ static fm_status fmApiThreadInit(void)
         FM_LOG_EXIT(FM_LOG_CAT_SWITCH, err);
     }
 
-    if ( !fmGetBoolApiProperty(FM_AAK_DEBUG_BOOT_INTERRUPT_HANDLER,
-                               FM_AAD_DEBUG_BOOT_INTERRUPT_HANDLER) )
+    prop = GET_PROPERTY();
+
+    if (!prop->interruptHandlerDisable)
     {
         /* Create the interrupt handler task */
         err = fmCreateThread("InterruptHandlerTask",
@@ -1941,8 +1935,7 @@ static fm_status fmApiThreadInit(void)
         }
     }
 
-    if (fmGetBoolApiProperty(FM_AAK_API_MA_TABLE_MAINTENENANCE_ENABLE,
-                             FM_AAD_API_MA_TABLE_MAINTENENANCE_ENABLE))
+    if (prop->maTableMaintenanceEnable)
     {
         /* Create the table maintenance task */
         err = fmCreateThread("MacTableMaintenanceTask",
@@ -1961,8 +1954,7 @@ static fm_status fmApiThreadInit(void)
      * This needs to be done after fmPlatformInitialize so API attribute
      * can be controlled by the platform
      */
-    if ( fmGetBoolApiProperty(FM_AAK_API_FAST_MAINTENANCE_ENABLE,
-                              FM_AAD_API_FAST_MAINTENANCE_ENABLE) )
+    if (prop->fastMaintenanceEnable)
     {
         err = fmCreateThread("FastMaintenanceTask",
                              FM_EVENT_QUEUE_SIZE_NONE,
@@ -1976,8 +1968,7 @@ static fm_status fmApiThreadInit(void)
         }
     }
 
-    if ( fmGetBoolApiProperty(FM_AAK_API_PACKET_RECEIVE_ENABLE,
-                              FM_AAD_API_PACKET_RECEIVE_ENABLE) )
+    if (prop->packetReceiveEnable)
     {
         /* Create the packet receive thread */
         err = fmCreateThread("PacketReceiveTask",
@@ -1992,25 +1983,8 @@ static fm_status fmApiThreadInit(void)
         FM_LOG_EXIT(FM_LOG_CAT_SWITCH, err);
     }
 
-    /* Create parity sweeper thread */
-    if ( fmGetBoolApiProperty(FM_AAK_API_PARITY_SWEEPER_ENABLE, 
-                              FM_AAD_API_PARITY_SWEEPER_ENABLE) )
-    {
-        err = fmCreateThread("ParitySweeperTask",
-                             FM_EVENT_QUEUE_SIZE_NONE,
-                             fmParitySweeperTask,
-                             &fmRootApi->eventThread,
-                             &fmRootApi->paritySweeperTask);
-
-        if ( err != FM_OK )
-        {
-            FM_LOG_EXIT(FM_LOG_CAT_SWITCH, err);
-        }
-    }
-
     /* Create parity repair thread. */
-    if ( fmGetBoolApiProperty(FM_AAK_API_PARITY_REPAIR_ENABLE, 
-                              FM_AAD_API_PARITY_REPAIR_ENABLE) )
+    if (prop->parityRepairEnable)
     {
         err = fmCreateThread("ParityRepairTask",
                              FM_EVENT_QUEUE_SIZE_NONE,
@@ -2022,8 +1996,7 @@ static fm_status fmApiThreadInit(void)
     }
 
     /* Create routing maintenance thread. */
-    if ( fmGetBoolApiProperty(FM_AAK_API_ROUTING_MAINTENANCE_ENABLE, 
-                              FM_AAD_API_ROUTING_MAINTENANCE_ENABLE) )
+    if (prop->routeMaintenanceEnable)
     {
         err = fmCreateThread("RoutingMaintenanceTask",
                              FM_EVENT_QUEUE_SIZE_NONE,
@@ -2115,11 +2088,11 @@ fm_status fmSetPreInitializationFlags(fm_int sw, fm_uint32 flags)
  *****************************************************************************/
 fm_status fmInitialize(fm_eventHandler eventHandlerFunc)
 {
+    fm_property       *prop;
     fm_int             switchCount;
     fm_status          err;
     fm_bool            firstProcess;
     fm_uint64          dbgLoggingCat;
-    fm_text            dbgLoggingCatStr;
     fm_int             tsMode;
     
     FM_LOG_ENTRY_API(FM_LOG_CAT_API,
@@ -2164,8 +2137,8 @@ fm_status fmInitialize(fm_eventHandler eventHandlerFunc)
         FM_LOG_EXIT_API(FM_LOG_CAT_API, err);
     }
 
-    tsMode = fmGetIntApiProperty( FM_AAK_API_GSME_TIMESTAMP_MODE,
-                                  FM_AAD_API_GSME_TIMESTAMP_MODE );
+    prop = GET_PROPERTY();
+    tsMode = prop->gsmeTimestampMode;
     if ( tsMode < 0 || tsMode >= FM_GSME_TIMESTAMP_MODE_MAX )
     {
         FM_LOG_WARNING( FM_LOG_CAT_API, 
@@ -2183,13 +2156,8 @@ fm_status fmInitialize(fm_eventHandler eventHandlerFunc)
         FM_LOG_EXIT_API(FM_LOG_CAT_API, err);
     }
 
-    
-    /* Get logging categories for debugging */
-    dbgLoggingCatStr = fmGetTextApiProperty(FM_AAK_API_DEBUG_INIT_LOGGING_CAT, 
-                                            FM_AAD_API_DEBUG_INIT_LOGGING_CAT);
-
     /* Extract categories and transform into mask */
-    err = LogStrToMask(dbgLoggingCatStr, &dbgLoggingCat);
+    err = LogStrToMask(prop->initLoggingCat, &dbgLoggingCat);
 
     if (err != FM_OK)
     {
@@ -2767,6 +2735,7 @@ fm_status fmSetSwitchState(fm_int sw, fm_bool state)
 {
     fm_status      err;
     fm_switch *    switchPtr;
+    fm_property *  prop;
     fm_bool        switchLocked = FALSE;
 #if FM_SUPPORT_SWAG
     fm_bool        pass1 = TRUE;
@@ -2809,6 +2778,8 @@ RESTART:
         err = FM_ERR_INVALID_SWITCH;
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
     }
+
+    prop = GET_PROPERTY();
 
     if (state)
     {
@@ -2956,13 +2927,9 @@ RESTART:
         /**************************************************
          * Switch is coming up.
          **************************************************/
-        switchPtr->generateEventOnStaticAddr = 
-                    fmGetBoolApiProperty(FM_AAK_API_MA_EVENT_ON_STATIC_ADDR, 
-                                         FM_AAD_API_MA_EVENT_ON_STATIC_ADDR);
-
-        switchPtr->generateEventOnDynamicAddr = 
-                    fmGetBoolApiProperty(FM_AAK_API_MA_EVENT_ON_DYNAMIC_ADDR, 
-                                         FM_AAD_API_MA_EVENT_ON_DYNAMIC_ADDR);
+        switchPtr->generateEventOnStaticAddr = prop->maEventOnStaticAddr;
+        switchPtr->generateEventOnDynamicAddr = prop->maEventOnDynAddr;
+        switchPtr->generateEventOnAddrChange = prop->maEventOnAddrChange;
 
         FM_API_CALL_FAMILY(err, switchPtr->SetSwitchState, sw, state);
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
@@ -3034,8 +3001,7 @@ RESTART:
 #if FM_SUPPORT_SWAG
     if ( ( (err == FM_OK) || !state )
         && (switchPtr->switchFamily == FM_SWITCH_FAMILY_SWAG)
-        && fmGetBoolApiProperty(FM_AAK_API_SWAG_AUTO_SUB_SWITCHES, 
-                                FM_AAD_API_SWAG_AUTO_SUB_SWITCHES) )
+        && prop->swagAutoSubSwitches ) 
     {
         /* Automatic sub-switch maintenance is enabled, change the state
          * of all switches within the SWAG. */
@@ -4061,8 +4027,7 @@ fm_status fmHandleSwitchInserted(fm_int sw, fm_eventSwitchInserted *insertEvent)
     version = FM_SWITCH_VERSION_UNKNOWN;
     i       = 0;
 
-    if ( !fmGetBoolApiProperty(FM_AAK_DEBUG_BOOT_IDENTIFYSWITCH,
-                               FM_AAD_DEBUG_BOOT_IDENTIFYSWITCH) )
+    if (!GET_PROPERTY()->bootIdentifySw)
     {
         UNLOCK_SWITCH(sw);
 
@@ -4083,8 +4048,7 @@ fm_status fmHandleSwitchInserted(fm_int sw, fm_eventSwitchInserted *insertEvent)
      **************************************************/
     fmPlatformReset(sw);
 
-    fmDelay( 0, fmGetIntApiProperty(FM_AAK_API_BOOT_RESET_TIME,
-                                    FM_AAD_API_BOOT_RESET_TIME) );
+    fmDelay(0, GET_PROPERTY()->deviceResetTime);
 
     fmPlatformRelease(sw);
 
@@ -4239,8 +4203,7 @@ ALREADY_IDENTIFIED:
     if (swptr->switchFamily != FM_SWITCH_FAMILY_SWAG)
     {
 #endif
-        if ( fmGetBoolApiProperty(FM_AAK_DEBUG_BOOT_RESET,
-                                  FM_AAD_DEBUG_BOOT_RESET) )
+        if (GET_PROPERTY()->bootReset)
         {
             if (swptr->ResetSwitch != NULL)
             {
@@ -4404,4 +4367,31 @@ fm_status fmHandleSwitchRemoved(fm_int sw, fm_eventSwitchRemoved *removeEvent)
 
 }   /* end fmHandleSwitchRemoved */
 
+
+
+
+/*****************************************************************************/
+/** fmGetApiVersion
+ * \ingroup api
+ *
+ * \desc            Returns the API version string.
+ *
+ * \param[out]      buf points to a caller-supplied buffer to receive the
+ *                  version string. A 64-byte buffer should be large enough
+ *                  to hold the return value.
+ *
+ * \param[in]       len is the size of the buffer.
+ *
+ * \return          FM_OK if successful.
+ *
+ *****************************************************************************/
+fm_status fmGetApiVersion(char * buf, int len)
+{
+    errno_t rv;
+
+    rv = FM_STRCPY_S(buf, len, FM_BUILD_IDENTIFIER);
+
+    return (rv == 0) ? FM_OK : FM_FAIL;
+
+}   /* end fmGetApiVersion */
 

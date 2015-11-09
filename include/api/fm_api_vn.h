@@ -53,6 +53,11 @@
  *  attribute. */
 #define FM_VN_VXLAN_UDP_DEST_PORT           4789
 
+/** The default UDP Destination port value for VXLAN-GPE protocol. May be
+ *  overridden by setting the ''FM_SWITCH_GPE_TUNNEL_DEST_UDP_PORT'' switch
+ *  attribute. */
+#define FM_VN_GPE_UDP_DEST_PORT             4790
+
 /** The default UDP Destination port value for Geneve protocol. May be
  *  overridden by setting the ''FM_SWITCH_GENEVE_TUNNEL_DEST_UDP_PORT''
  *  switch attribute. */
@@ -86,6 +91,14 @@ typedef enum
     /** Geneve (NGE) Virtual Network.
      *  \chips  FM10000 */
     FM_VN_TUNNEL_TYPE_GENEVE,
+
+    /** VXLAN-GPE Virtual Network tunnel.
+     *  \chips  FM10000 */
+    FM_VN_TUNNEL_TYPE_GPE,
+
+    /** VXLAN-GPE/NSH Virtual Network tunnel.
+     *  \chips  FM10000 */
+    FM_VN_TUNNEL_TYPE_GPE_NSH,
 
     /** UNPUBLISHED: For internal use only. */
     FM_VN_TUNNEL_TYPE_MAX       /* Must be last */
@@ -258,6 +271,27 @@ typedef enum
      *  \chips FM10000 */
     FM_VNTUNNEL_ATTR_ENCAP_TTL,
 
+    /** Type fm_vnNshBaseHdr: The NSH Base Header fields (Critical Flag, Length
+     *  and MD Type) for this tunnel. This attribute is applicable only if
+     *  the tunnel type is ''FM_VN_TUNNEL_TYPE_GPE_NSH''.
+     *
+     *  \chips FM10000 */
+    FM_VNTUNNEL_ATTR_NSH_BASE_HDR,
+
+    /** Type fm_vnNshServiceHdr: The NSH Service Header fields for this tunnel.
+     *  This attribute is applicable only if the tunnel type is
+     *  ''FM_VN_TUNNEL_TYPE_GPE_NSH''.
+     *
+     *  \chips FM10000 */
+    FM_VNTUNNEL_ATTR_NSH_SERVICE_HDR,
+
+    /** Type fm_vnNshData: Specifies the NSH header's data bytes field for this
+     *  tunnel. This attribute is applicable only if the tunnel type is
+     *  ''FM_VN_TUNNEL_TYPE_GPE_NSH''.
+     *
+     *  \chips FM10000 */
+    FM_VNTUNNEL_ATTR_NSH_DATA,
+
     /** UNPUBLISHED: For internal use only. */
     FM_VNTUNNEL_ATTR_MAX       /* Must be last */
 
@@ -292,6 +326,110 @@ typedef enum
     FM_VN_CHECKSUM_MAX
 
 } fm_vnChecksumAction;
+
+
+/**************************************************/
+/** \ingroup typeStruct
+ *  Describes NSH Base Header fields (Critical Flag, Length and MD Type).
+ *  Used as the argument type for the ''FM_VNTUNNEL_ATTR_NSH_BASE_HDR''
+ *  virtual network tunnel attribute.
+ *
+ * \chips FM10000
+ *
+ **************************************************/
+typedef struct _fm_vnNshBaseHdr
+{
+    /** Length of the NSH header in 4-byte words including the Base Header,
+     *  Service Path Header and Context Data. */
+    fm_byte length;
+
+    /** This bit should be set if there are critical TLV that are included in
+     *  the NSH data. */
+    fm_bool critical;
+
+    /** NSH MD Type. */
+    fm_byte mdType;
+
+} fm_vnNshBaseHdr;
+
+
+/**************************************************/
+/** \ingroup typeStruct
+ *  Describes NSH Service Header fields. Used as the argument type for the
+ *  ''FM_VNTUNNEL_ATTR_NSH_SERVICE_HDR'' virtual network tunnel attribute.
+ *
+ * \chips FM10000
+ *
+ **************************************************/
+typedef struct _fm_vnNshServiceHdr
+{
+    /** NSH Service Path ID. */
+    fm_uint32 svcPathId;
+
+    /** NSH Service Index. */
+    fm_byte   svcIndex;
+
+} fm_vnNshServiceHdr;
+
+
+/**************************************************/
+/** \ingroup typeStruct
+ *  Describes NSH header's context data. Used as the argument type for the
+ *  ''FM_VNTUNNEL_ATTR_NSH_DATA'' virtual network tunnel attribute.
+ *
+ * \chips FM10000
+ *
+ **************************************************/
+typedef struct _fm_vnNshData
+{
+    /** NSH context data that follows the service header. */
+    fm_uint32 data[FM_TUNNEL_NSH_DATA_SIZE];
+
+    /** A bitmask of the valid 32-bit words in the NSH data. */
+    fm_uint16 mask;
+
+} fm_vnNshData;
+
+
+/**************************************************/
+/** \ingroup typeStruct
+ *  Describes fields of NSH header.
+ *  Referenced by ''fmConfigureVNDefaultNsh'' and ''fmGetVNDefaultNsh''.
+ *
+ * \chips FM10000
+ *
+ **************************************************/
+typedef struct _fm_vnNshCfg
+{
+    /** NSH Base Header fields. */
+    fm_vnNshBaseHdr    baseHdr;
+
+    /** NSH Service Header fields. */
+    fm_vnNshServiceHdr serviceHdr;
+
+    /** NSH header's context data. */
+    fm_vnNshData       context;
+
+} fm_vnNshCfg;
+
+
+/**************************************************/
+/** \ingroup typeStruct
+ *  Describes fields of VXLAN-GPE header.
+ *  Referenced by ''fmConfigureVNDefaultGpe'' and ''fmGetVNDefaultGpe''.
+ *
+ * \chips FM10000
+ *
+ **************************************************/
+typedef struct _fm_vnGpeCfg
+{
+    /** VXLAN-GPE header's Next Protocol field. */
+    fm_uint32 nextProt;
+
+    /** VXLAN-GPE header's VNI field. */
+    fm_uint32 vni;
+
+} fm_vnGpeCfg;
 
 
 /**************************************************/
@@ -346,6 +484,10 @@ typedef struct _fm_vnConfiguration
 
 fm_status fmConfigureVN(fm_int sw, fm_vnConfiguration *config);
 
+fm_status fmConfigureVNDefaultGpe(fm_int sw, fm_vnGpeCfg *defaultGpe);
+
+fm_status fmConfigureVNDefaultNsh(fm_int sw, fm_vnNshCfg *defaultNsh);
+
 fm_status fmCreateVN(fm_int           sw,
                      fm_uint32        vsId,
                      fm_vnDescriptor *descriptor);
@@ -373,6 +515,10 @@ fm_status fmGetVNTunnelAttribute(fm_int              sw,
                                  void *              value);
 
 fm_status fmGetVNConfiguration(fm_int sw, fm_vnConfiguration *config);
+
+fm_status fmGetVNDefaultGpe(fm_int sw, fm_vnGpeCfg *defaultGpe);
+
+fm_status fmGetVNDefaultNsh(fm_int sw, fm_vnNshCfg *defaultNsh);
 
 fm_status fmGetVNList(fm_int           sw,
                       fm_int           maxVNs,

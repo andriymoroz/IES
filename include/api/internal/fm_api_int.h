@@ -41,6 +41,7 @@
 #include <api/internal/fm_api_portmask.h>
 #include <api/internal/fm_api_portset_int.h>
 #include <api/internal/fm_api_lag_int.h>
+#include <api/internal/fm_api_glort_int.h>
 #include <api/internal/fm_api_lport_int.h>
 
 /* Internal definitions required by fm_api_switch_int.h */

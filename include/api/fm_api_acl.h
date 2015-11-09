@@ -1458,7 +1458,7 @@ typedef fm_uint64    fm_aclActionExt;
  *  bytes within the payload of an IP frame for data patterns that are
  *  not covered by the other ACL conditions.
  *                                                                      \lb\lb
- *  For FM3000, FM4000 and FM10000 devices this implementation supports
+ *  For FM3000/FM4000 and FM10000 devices this implementation supports
  *  up to 32 bytes of L2 deep inspection.
  *                                                                      \lb\lb
  *  For FM6000 devices this implementation supports up to 52 bytes
@@ -1552,7 +1552,7 @@ typedef fm_uint64    fm_aclActionExt;
 
 /** Match on the L4 deep inspection bit field (extended version).
  *                                                                      \lb\lb
- *  For FM3000, FM4000 and FM10000 devices this implementation supports
+ *  For FM3000/FM4000 and FM10000 devices, this implementation supports
  *  up to 32 bytes of L4 deep inspection.
  *                                                                      \lb\lb
  *  For FM6000 devices this implementation supports up to 40 bytes
@@ -2796,7 +2796,7 @@ typedef struct _fm_aclRuleSliceUsage
  *  The following set of bit masks may be ORed
  *  together to produce a value for the "scenarios"
  *  argument to ''fmCreateACLExt''.
- *
+ *                                              \lb\lb
  *  A valid mask must have at least one of the
  *  frame type bits set (NONIP, IPv4, IPv6) and
  *  at least one of the routing type bits set

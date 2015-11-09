@@ -5,7 +5,7 @@
  * Creation Date:   May 4, 2007
  * Description:     Functions to manage event handling.
  *
- * Copyright (c) 2005 - 2014, Intel Corporation
+ * Copyright (c) 2005 - 2015, Intel Corporation
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -74,10 +74,11 @@ static fm_int       unblockThreshold;
  *****************************************************************************/
 fm_status fmEventHandlingInitialize(void)
 {
-    fm_event *ptr;
-    fm_status err;
-    int       i;
-    fm_int    timeout;
+    fm_property *prop;
+    fm_event    *ptr;
+    fm_status    err;
+    int          i;
+    fm_int       timeout;
 
     FM_LOG_ENTRY_NOARGS(FM_LOG_CAT_EVENT);
 
@@ -111,16 +112,15 @@ fm_status fmEventHandlingInitialize(void)
         FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_EVENT, err);
     }
 
+    prop = GET_PROPERTY();
+
     /* Initialize variables */
-    timeout           = fmGetIntApiProperty(FM_AAK_API_EVENT_SEM_TIMEOUT,
-                                            FM_AAD_API_EVENT_SEM_TIMEOUT);
+    timeout           = prop->eventSemTimeout;
     eventTimeout.sec  = timeout/1000;
     eventTimeout.usec = (timeout%1000)*1000;
      
-    blockThreshold    = fmGetIntApiProperty(FM_AAK_API_FREE_EVENT_BLOCK_THRESHOLD,
-                                            FM_AAD_API_FREE_EVENT_BLOCK_THRESHOLD);
-    unblockThreshold  = fmGetIntApiProperty(FM_AAK_API_FREE_EVENT_UNBLOCK_THRESHOLD,
-                                            FM_AAD_API_FREE_EVENT_UNBLOCK_THRESHOLD);
+    blockThreshold    = prop->eventBlockThreshold;
+    unblockThreshold  = prop->eventUnblockThreshold;
 
     if (blockThreshold > unblockThreshold || 
         blockThreshold >= FM_MAX_EVENTS ||

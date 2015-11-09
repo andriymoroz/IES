@@ -119,6 +119,7 @@ api/internal/fm_api_event_mac_maint_int.h                                   \
 api/internal/fm_api_events_int.h                                            \
 api/internal/fm_api_fibm_int.h                                              \
 api/internal/fm_api_flow_int.h                                              \
+api/internal/fm_api_glort_int.h                                             \
 api/internal/fm_api_init_int.h                                              \
 api/internal/fm_api_int.h                                                   \
 api/internal/fm_api_lag_int.h                                               \
@@ -153,6 +154,7 @@ api/internal/swag/fmSWAG_api_mirror_int.h                                   \
 api/internal/swag/fmSWAG_api_multicast_int.h                                \
 api/internal/swag/fmSWAG_api_nat_int.h                                      \
 api/internal/swag/fmSWAG_api_nexthop_int.h                                  \
+api/internal/swag/fmSWAG_api_parity_int.h                                   \
 api/internal/swag/fmSWAG_api_port_int.h                                     \
 api/internal/swag/fmSWAG_api_portset_int.h                                  \
 api/internal/swag/fmSWAG_api_qos_int.h                                      \
@@ -165,6 +167,7 @@ api/internal/swag/fmSWAG_api_triggers_int.h                                 \
 api/internal/swag/fmSWAG_api_tunnel_int.h                                   \
 api/internal/swag/fmSWAG_api_vn_int.h                                       \
 common/fm10000_property.h                                                   \
+common/fm10000_property_int.h                                               \
 common/fm_array.h                                                           \
 common/fm_bitarray.h                                                        \
 common/fm_bitfield.h                                                        \
@@ -177,6 +180,7 @@ common/fm_graycode.h                                                        \
 common/fm_lock_prec.h                                                       \
 common/fm_md5.h                                                             \
 common/fm_property.h                                                        \
+common/fm_property_int.h                                                    \
 common/fm_state_machine.h                                                   \
 common/fm_string.h                                                          \
 common/fm_tree.h                                                            \

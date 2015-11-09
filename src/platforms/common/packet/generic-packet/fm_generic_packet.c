@@ -29,7 +29,7 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
+ *****************************************************************************/
 
 #include <fm_sdk_int.h>
 
@@ -137,7 +137,8 @@ static fm_status ValidatePortList(fm_int sw, fm_int* portList, fm_int numPorts)
     }
 
     return err;
-} /* end ValidatePortList */
+
+}   /* end ValidatePortList */
 
 
 
@@ -147,7 +148,7 @@ static fm_status ValidatePortList(fm_int sw, fm_int* portList, fm_int numPorts)
  * \ingroup intPlatformCommon
  *
  * \desc            Validates that the frame length is valid for the CPU
- *                  port and returns the packet lengh.
+ *                  port and returns the packet length.
  *
  * \param[in]       sw is the switch on which to send the packet.
  * 
@@ -160,11 +161,12 @@ static fm_status ValidatePortList(fm_int sw, fm_int* portList, fm_int numPorts)
  *                  the packet length should be stored.
  * 
  * \return          FM_OK if successful.
- * \return          FM_ERR_FRAME_TOO_LARGE if the packet is too long
+ * \return          FM_ERR_FRAME_TOO_LARGE if the packet exceeds the maximum
+ *                  frame size for the CPU port.
  * \return          FM_ERR_INVALID_ARGUMENT if buffer is not valid
  *
  *****************************************************************************/
-static fm_status ValidateFrameLength(fm_int    sw, 
+static fm_status ValidateFrameLength(fm_int     sw, 
                                      fm_int     cpuPort, 
                                      fm_buffer *packet, 
                                      fm_int *   packetLength)
@@ -173,7 +175,6 @@ static fm_status ValidateFrameLength(fm_int    sw,
     fm_int    cpuMaxFrameSize;
     
     *packetLength = fmComputeTotalPacketLength(packet);
-
     if (*packetLength <= 0)
     {
         /* The buffer was malformed */
@@ -195,7 +196,7 @@ static fm_status ValidateFrameLength(fm_int    sw,
 ABORT:
     return err;
 
-} /* end ValidateFrameLength */
+}   /* end ValidateFrameLength */
 
 
 
@@ -248,7 +249,7 @@ static fm_status IsValidLagPort(fm_int   sw,
 ABORT:
     return err;
 
-} /* end IsValidLagPort */
+}   /* end IsValidLagPort */
 
 
 
@@ -341,9 +342,7 @@ static fm_status FilterPortList(fm_int     sw,
             if (port == cpuPort)
             {
                 /* Special handling of sending to the CPU port in the directed mode */
-                allowDirectSendToCpu =
-                    fmGetBoolApiProperty(FM_AAK_API_DIRECT_SEND_TO_CPU,
-                                         FM_AAD_API_DIRECT_SEND_TO_CPU);
+                allowDirectSendToCpu = GET_PROPERTY()->directSendToCpu;
 
                 if (!allowDirectSendToCpu)
                 {
@@ -373,7 +372,7 @@ static fm_status FilterPortList(fm_int     sw,
 ABORT:
     FM_LOG_EXIT(FM_LOG_CAT_EVENT_PKT_TX, err);
 
-} /* end FilterPortList */
+}   /* end FilterPortList */
 
 
 /*****************************************************************************
@@ -1232,10 +1231,7 @@ fm_status fmGenericPacketHandlingInitializeV2(fm_int sw, fm_bool hasFcs)
     ps->currentWordsReceived = 0;
     ps->cachedEndianness     = -1; /* -1 indicates unspecified endianness */
     ps->sendUserFcs          = hasFcs;
-
-    ps->rxDirectEnqueueing   =
-        fmGetBoolApiProperty(FM_AAK_API_PACKET_RX_DIRECT_ENQUEUEING,
-                             FALSE);
+    ps->rxDirectEnqueueing   = GET_PROPERTY()->rxDirectEnqueueing;
 
     /* initialize the signal sem for event availability */
     err = fmCreateSemaphore("netdevEventsAvailable",
@@ -1271,6 +1267,10 @@ fm_status fmGenericPacketHandlingInitializeV2(fm_int sw, fm_bool hasFcs)
  * \return          FM_OK if successful.
  * \return          FM_ERR_TX_PACKET_QUEUE_FULL if transmit packet queue is full.
  * \return          FM_FAIL if network device is not operational.
+ * \return          FM_ERR_FRAME_TOO_LARGE if the packet exceeds the maximum
+ *                  frame size for the CPU port.
+ * \return          FM_ERR_FRAME_SIZE_EXCEEDS_MTU if the frame size exceeds
+ *                  the MTU of the network interface.
  * \return          Other ''Status Codes'' as appropriate in case of
  *                  failure.
  *
@@ -1281,14 +1281,16 @@ fm_status fmGenericSendPacketISL(fm_int          sw,
                                  fm_int          numPorts,
                                  fm_buffer *     packet)
 {
-    fm_packetQueue         *txQueue;
-    fm_int                  packetLength;
-    fm_int                  port;
-    fm_int                  cpuMaxFrameSize;
-    fm_int                  oldPushIndex;
-    fm_int                  cpuPort;
-    fm_int                  masterSw; /* For support FIBM slave switch */
-    fm_status               err = FM_OK;
+    fm_packetQueue *txQueue;
+    fm_int          packetLength;
+    fm_int          port;
+    fm_int          cpuMaxFrameSize;
+    fm_int          oldPushIndex;
+    fm_int          cpuPort;
+    fm_int          masterSw; /* For support FIBM slave switch */
+    fm_status       err = FM_OK;
+    fm_bool         isRawSocket;
+    fm_int          mtu;
 
     FM_LOG_ENTRY(FM_LOG_CAT_EVENT_PKT_TX,
                  "sw = %d, "
@@ -1300,7 +1302,7 @@ fm_status fmGenericSendPacketISL(fm_int          sw,
                  numPorts,
                  packet->index);
 
-    masterSw  = fmFibmSlaveGetMasterSwitch(sw);
+    masterSw = fmFibmSlaveGetMasterSwitch(sw);
 
     if (masterSw >= 0)
     {
@@ -1328,22 +1330,27 @@ fm_status fmGenericSendPacketISL(fm_int          sw,
         masterSw = sw;
     }
 
-    if (!fmIsRawPacketSocketDeviceOperational(masterSw))
-    {
-        FM_LOG_EXIT(FM_LOG_CAT_EVENT_PKT_TX, FM_FAIL);
-
-    }
-
     packetLength = fmComputeTotalPacketLength(packet);
-
     if (packetLength <= 0)
     {
         FM_LOG_EXIT(FM_LOG_CAT_EVENT_PKT_TX, FM_ERR_INVALID_ARGUMENT);
     }
 
+    /* Verify that the packet respects the CPU maximum frame size. */
     if (packetLength > cpuMaxFrameSize - 4)
     {
         FM_LOG_EXIT(FM_LOG_CAT_EVENT_PKT_TX, FM_ERR_FRAME_TOO_LARGE);
+    }
+
+    /* Verify that the packet respects the MTU of the network device. */
+    if (!fmIsRawPacketSocketDeviceOperational(masterSw, &isRawSocket, &mtu))
+    {
+        FM_LOG_EXIT(FM_LOG_CAT_EVENT_PKT_TX, FM_FAIL);
+    }
+
+    if (isRawSocket && (packetLength > mtu - 4))
+    {
+        FM_LOG_EXIT(FM_LOG_CAT_EVENT_PKT_TX, FM_ERR_FRAME_SIZE_EXCEEDS_MTU);
     }
 
     txQueue = &GET_PLAT_PKT_STATE(masterSw)->txQueue;
@@ -1460,6 +1467,10 @@ ABORT:
  * \return          FM_OK if successful.
  * \return          FM_ERR_TX_PACKET_QUEUE_FULL if transmit packet queue is full.
  * \return          FM_FAIL if network device is not operational.
+ * \return          FM_ERR_FRAME_TOO_LARGE if the packet exceeds the maximum
+ *                  frame size for the CPU port.
+ * \return          FM_ERR_FRAME_SIZE_EXCEEDS_MTU if the frame size exceeds
+ *                  the MTU of the network interface.
  * \return          Other ''Status Codes'' as appropriate in case of
  *                  failure.
  *
@@ -1472,19 +1483,21 @@ fm_status fmGenericSendPacketDirected(fm_int     sw,
                                       fm_int     cpuPort,
                                       fm_uint32  switchPriority)
 {
-    fm_status               err = FM_OK;
-    fm_switch *             switchPtr;
-    fm_packetQueue         *txQueue;
-    fm_packetEntry *        entry;
-    fm_int                  packetLength;
-    fm_int                  listIndex;
-    fm_int                  port;
-    fm_packetInfo           tempInfo;
-    fm_int                  oldPushIndex;
-    fm_int                  masterSw; /* For support FIBM slave switch */
-    fm_int                  newPortList[numPorts];
-    fm_bool                 packetQueueLockFlag;
-    
+    fm_status       err = FM_OK;
+    fm_switch      *switchPtr;
+    fm_packetQueue *txQueue;
+    fm_packetEntry *entry;
+    fm_int          packetLength;
+    fm_int          listIndex;
+    fm_int          port;
+    fm_packetInfo   tempInfo;
+    fm_int          oldPushIndex;
+    fm_int          masterSw; /* For support FIBM slave switch */
+    fm_int          newPortList[numPorts];
+    fm_bool         packetQueueLockFlag;
+    fm_bool         isRawSocket;
+    fm_int          mtu;
+
     FM_LOG_ENTRY(FM_LOG_CAT_EVENT_PKT_TX,
                  "sw = %d, "
                  "portList = %p, "
@@ -1537,10 +1550,15 @@ fm_status fmGenericSendPacketDirected(fm_int     sw,
         masterSw = sw;
     }
 
-    if (!fmIsRawPacketSocketDeviceOperational(masterSw))
+    /* Verify that the packet respects the MTU of the network device. */
+    if (!fmIsRawPacketSocketDeviceOperational(masterSw, &isRawSocket, &mtu))
     {
         FM_LOG_EXIT(FM_LOG_CAT_EVENT_PKT_TX, FM_FAIL);
+    }
 
+    if ( isRawSocket && (packetLength > mtu - 4) )
+    {
+        FM_LOG_EXIT(FM_LOG_CAT_EVENT_PKT_TX, FM_ERR_FRAME_SIZE_EXCEEDS_MTU);
     }
 
     fmPacketQueueLock(txQueue);
@@ -1718,7 +1736,10 @@ ABORT:
  * \return          FM_ERR_INVALID_PORT if port is not valid
  * \return          FM_ERR_INVALID_SWITCH if sw is not valid
  * \return          FM_ERR_TX_PACKET_QUEUE_FULL if the transmit packet queue is full.
- * \return          FM_ERR_FRAME_TOO_LARGE if the packet is too long.
+ * \return          FM_ERR_FRAME_TOO_LARGE if the packet exceeds the maximum
+ *                  frame size for the CPU port.
+ * \return          FM_ERR_FRAME_SIZE_EXCEEDS_MTU if the frame size exceeds
+ *                  the MTU of the network interface.
  * \return          FM_FAIL if network device is not operational.
  * \return          Other ''Status Codes'' as appropriate in case of
  *                  failure.
@@ -1729,13 +1750,15 @@ fm_status fmGenericSendPacketSwitched(fm_int     sw,
                                       fm_int     cpuPort,
                                       fm_uint32  switchPriority)
 {
-    fm_switch *             switchPtr = GET_SWITCH_PTR(sw);
-    fm_packetQueue         *txQueue;
-    fm_packetEntry *        entry;
-    fm_int                  packetLength;
-    fm_status               err = FM_OK;
-    fm_packetInfo           tempInfo;
-    fm_int                  masterSw;
+    fm_switch      *switchPtr = GET_SWITCH_PTR(sw);
+    fm_packetQueue *txQueue;
+    fm_packetEntry *entry;
+    fm_int          packetLength;
+    fm_status       err = FM_OK;
+    fm_packetInfo   tempInfo;
+    fm_int          masterSw;
+    fm_bool         isRawSocket;
+    fm_int          mtu;
 
     FM_LOG_ENTRY(FM_LOG_CAT_EVENT_PKT_TX,
                  "sw = %d, "
@@ -1773,10 +1796,15 @@ fm_status fmGenericSendPacketSwitched(fm_int     sw,
         masterSw = sw;
     }
 
-    if (!fmIsRawPacketSocketDeviceOperational(masterSw))
+    /* Verify that the packet respects the MTU of the network device. */
+    if (!fmIsRawPacketSocketDeviceOperational(masterSw, &isRawSocket, &mtu))
     {
         FM_LOG_EXIT(FM_LOG_CAT_EVENT_PKT_TX, FM_FAIL);
+    }
 
+    if ( isRawSocket && (packetLength > mtu - 4) )
+    {
+        FM_LOG_EXIT(FM_LOG_CAT_EVENT_PKT_TX, FM_ERR_FRAME_SIZE_EXCEEDS_MTU);
     }
 
     fmPacketQueueLock(txQueue); 
@@ -1899,6 +1927,10 @@ ABORT:
  *
  * \return          FM_OK if successful.
  * \return          FM_ERR_TX_PACKET_QUEUE_FULL if transmit packet queue is full.
+ * \return          FM_ERR_FRAME_SIZE_EXCEEDS_MTU if the frame size exceeds
+ *                  the MTU of the network interface.
+ * \return          FM_ERR_FRAME_TOO_LARGE if the packet exceeds the maximum
+ *                  frame size for the CPU port.
  * \return          FM_FAIL if network device is not operational.
  * \return          Other ''Status Codes'' as appropriate in case of
  *                  failure.
@@ -1914,22 +1946,24 @@ fm_status fmGenericSendPacket(fm_int         sw,
                               fm_uint32      trapGlort,
                               fm_bool        suppressVlanTagAllowed)
 {
-    fm_switch *             switchPtr;
-    fm_packetQueue *        txQueue;
-    fm_int                  masterSw;
-    fm_packetEntry *        entry;
-    fm_int                  firstPort;
-    fm_int                  nextPort;
-    fm_int                  state;
-    fm_bool                 packetSent = FALSE;
-    fm_port *               dPort;
-    fm_int                  firstLAGPort;
-    fm_bool                 allowDirectSendToCpu = TRUE;
-    fm_int                  oldPushIndex;
-    fm_packetInfo           tempInfo;
-    fm_int                  packetLength;
-    fm_int                  cpuMaxFrameSize;
-    fm_status               err;
+    fm_switch      *switchPtr;
+    fm_packetQueue *txQueue;
+    fm_int          masterSw;
+    fm_packetEntry *entry;
+    fm_int          firstPort;
+    fm_int          nextPort;
+    fm_int          state;
+    fm_bool         packetSent = FALSE;
+    fm_port        *dPort;
+    fm_int          firstLAGPort;
+    fm_bool         allowDirectSendToCpu = TRUE;
+    fm_int          oldPushIndex;
+    fm_packetInfo   tempInfo;
+    fm_int          packetLength;
+    fm_int          cpuMaxFrameSize;
+    fm_status       err;
+    fm_bool         isRawSocket;
+    fm_int          mtu;
 
     FM_LOG_ENTRY(FM_LOG_CAT_EVENT_PKT_TX,
                  "sw = %d, "
@@ -1951,23 +1985,20 @@ fm_status fmGenericSendPacket(fm_int         sw,
                  FM_BOOLSTRING(info->useEgressRules),
                  packet->index);
 
-    err          = FM_OK;
-    packetLength = fmComputeTotalPacketLength(packet);
     switchPtr    = GET_SWITCH_PTR(sw);
+    err          = FM_OK;
 
+    packetLength = fmComputeTotalPacketLength(packet);
     if (packetLength <= 0)
     {
         FM_LOG_EXIT(FM_LOG_CAT_EVENT_PKT_TX, FM_ERR_INVALID_ARGUMENT);
     }
 
+    /* Verify that the packet respects the CPU maximum frame size. */
     err = fmGetPortMaxFrameSizeInt(sw,
                                    cpuPort,
                                    &cpuMaxFrameSize);
-
-    if (err != FM_OK)
-    {
-        FM_LOG_EXIT(FM_LOG_CAT_EVENT_PKT_TX, err);
-    }
+    FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_EVENT_PKT_TX, err);
 
     if (packetLength > cpuMaxFrameSize - 4)
     {
@@ -1990,10 +2021,15 @@ fm_status fmGenericSendPacket(fm_int         sw,
         masterSw = sw;
     }
 
-    if (!fmIsRawPacketSocketDeviceOperational(masterSw))
+    /* Verify that the packet respects the MTU of the network device. */
+    if (!fmIsRawPacketSocketDeviceOperational(masterSw, &isRawSocket, &mtu))
     {
         FM_LOG_EXIT(FM_LOG_CAT_EVENT_PKT_TX, FM_FAIL);
+    }
 
+    if ( isRawSocket && (packetLength > mtu - 4) )
+    {
+        FM_LOG_EXIT(FM_LOG_CAT_EVENT_PKT_TX, FM_ERR_FRAME_SIZE_EXCEEDS_MTU);
     }
 
     txQueue = &GET_PLAT_PKT_STATE(masterSw)->txQueue;
@@ -2066,9 +2102,7 @@ fm_status fmGenericSendPacket(fm_int         sw,
                 else
                 {
                     /* direct send to the CPU */
-                    allowDirectSendToCpu =
-                        fmGetBoolApiProperty(FM_AAK_API_DIRECT_SEND_TO_CPU,
-                                             FM_AAD_API_DIRECT_SEND_TO_CPU);
+                    allowDirectSendToCpu = GET_PROPERTY()->directSendToCpu;
 
                     if (!allowDirectSendToCpu)
                     {
@@ -2173,9 +2207,7 @@ fm_status fmGenericSendPacket(fm_int         sw,
             else
             {
                 /* Special handling of the CPU port as the member of the vlan. */
-                allowDirectSendToCpu =
-                    fmGetBoolApiProperty(FM_AAK_API_DIRECT_SEND_TO_CPU,
-                                         FM_AAD_API_DIRECT_SEND_TO_CPU);
+                allowDirectSendToCpu = GET_PROPERTY()->directSendToCpu;
 
                 if (allowDirectSendToCpu)
                 {

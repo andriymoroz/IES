@@ -59,8 +59,7 @@
 #define FM10000_SERDES_TIMESTAMPMS_MAX          1000000
 
 
-
-#define FM10000_SERDES_SIGNALOK_DEBOUNCE_DELAY  10000
+#define FM10000_SERDES_SIGNALOK_DEBOUNCE_DELAY  5000
 
 
 
@@ -82,6 +81,9 @@
 #define FM10000_SERDES_RESET_DELAY             22000
 
 
+#define FM10000_SERDES_CONFIG_DELAY            20000
+
+
 #define FM10000_SERDES_PLL_CAL_CNT_THRESHOLD    200
 
 
@@ -96,7 +98,7 @@
 #define FM10000_SBM_INTERRUPT_TIMEOUT_MSEC      5000
 #define FM10000_SERDES_INTERRUPT_TIMEOUT_MSEC   3000
 #define FM10000_SERDES_BIST_TIMEOUT_MSEC        5000
-#define FM10000_SERDES_INT02_TIMEOUT_MSEC       5000
+#define FM10000_SERDES_INT02_TIMEOUT_MSEC       500
 
 
 #define FM10000_SERDES_INT_FAST_TIMEOUT_CYCLES  100
@@ -109,8 +111,9 @@
 
 
 
-#define FM10000_SERDES_SIGNALOK_DEBOUNCE_THRESHOLD      3
+#define FM10000_SERDES_SIGNALOK_DEBOUNCE_THRESHOLD      2
 #define FM10000_SERDES_SIGNALOK_OFF_DEBOUNCE_THRESHOLD  1
+#define FM10000_SERDES_SIGNAL_TRANSITION_THRESHOLD_DFV  20
 
 
 #define FM10000_EYE_DIAGRAM_SAMPLE_ARRAY_NUM    8
@@ -178,6 +181,12 @@
 
 
 #define FM10000_SERDES_KR_WAIT_SIGNAL_OK_MAX_CYCLES     500
+
+
+#define MF10000_SERDES_INTR_THROTLE_MAX_INC         4
+#define MF10000_SERDES_INTR_THROTLE_COUNT_MAX       32
+#define MF10000_SERDES_INTR_THROTLE_THRESH_HI       20
+#define MF10000_SERDES_INTR_THROTLE_THRESH_LO       10
 
 
 
@@ -581,6 +590,10 @@ struct _fm10000_serdes
 
     fm_status                       (*dbgRunDfeTuning)(fm_int sw, fm_int serdes, fm_dfeMode dfeMode, fm_int dfeHf, fm_int  dfeLf, fm_int dfeDc, fm_int dfeBw);
 
+    fm_status                       (*dbgSetDfeParameter)(fm_int sw, fm_int serdes, fm_uint32 paramSelector, fm_uint32 paramValue);
+
+    fm_status                       (*dbgGetDfeParameter)(fm_int sw, fm_int serdes, fm_uint32 paramSelector, fm_uint32 *pParamValue);
+
     fm_text                         (*dbgGetRegName)(fm_uint regOff);
 
     const void                     *(*dbgGetRegFields)(fm_uint regOff);
@@ -801,6 +814,9 @@ struct  _fm10000_laneKr
     fm_bool                     resetParameters;
 
 
+    fm_bool                     pCalEnable;
+
+
     fm10000SerdesKrPcalMode     pCalMode;
 
 
@@ -960,6 +976,9 @@ struct  _fm10000_lane
 
 
     fm_int                      signalOkDebounce;
+
+
+    fm_int                      interruptCounter;
 
 
     fm_bool                     krTrainingEn;
@@ -1142,6 +1161,9 @@ fm_status fm10000SerdesSpicoSetup(fm_int sw,
                                   fm_int serDes);
 fm_status fm10000SerdesSpicoSaveImageParam(const fm_uint16 *pRomImg,
                                            fm_int           numWords);
+fm_status fm10000SerdesSpicoSaveImageParamV2(const fm_uint16 *pRomImg,
+                                             fm_int           numWords,
+                                             fm_uint32        serdesFwVersionBuildId);
 fm_status fm10000SerdesCheckId(fm_int   sw,
                                fm_int   serDes,
                                fm_bool *pValidId);
@@ -1373,6 +1395,14 @@ fm_status fm10000DbgInterruptSpico(fm_int      sw,
                                    fm_int      param,
                                    fm_int      timeout,
                                    fm_uint32  *result);
+fm_status fm10000DbgSerDesSetDfeParameter(fm_int      sw,
+                                          fm_int      serDes,
+                                          fm_uint32   paramSelector,
+                                          fm_uint32   paramValue);
+fm_status fm10000DbgSerDesGetDfeParameter(fm_int      sw,
+                                          fm_int      serDes,
+                                          fm_uint32   paramSelector,
+                                          fm_uint32 * pParamValue);
 fm_status fm10000SetSerdesTxPattern(fm_int    sw,
                                     fm_int    serdes,
                                     fm_int    submode,
@@ -1548,6 +1578,18 @@ fm_int    fm10000SerdesGetPepFromMap(fm_int serDes);
 fm_int    fm10000EnableSerDesTransitionDebugMode(fm_int debugMode);
 fm_status fm10000SerDesStartTimeoutTimerDebounce(fm_smEventInfo *eventInfo,
                                                  void           *userInfo );
+fm_status fm10000SerdesGetCapturedData(fm_int       sw,
+                                       fm_int       serDes,
+                                       fm_uint32   *pData10Bit,
+                                       fm_uint32   *pNumTransitions);
+
+fm_status fm10000SerdesValidateSignal(fm_int    sw,
+                                      fm_int    serDes,
+                                      fm_bool  *validSignal);
+fm_status fm10000SerdesConfigDfeParam(fm_int    sw,
+                                      fm_int    serDes,
+                                      fm_int    paramSelector,
+                                      fm_int    paramValue);
 
 
 

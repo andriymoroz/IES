@@ -553,6 +553,7 @@ fm_status fmPlatformPhyEnable1000BaseTAutoNeg(fm_int   sw,
 
     status = fmPlatformMapLogicalPortToPlatform(sw,
                                                 port,
+                                                &sw,
                                                 &swNum,
                                                 &hwResId,
                                                 NULL);
@@ -687,6 +688,7 @@ fm_status fmPlatformPhyDump1000BaseT(fm_int   sw,
 
     status = fmPlatformMapLogicalPortToPlatform(sw,
                                                 port,
+                                                &sw,
                                                 &swNum,
                                                 &hwResId,
                                                 NULL);

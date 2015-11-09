@@ -30,7 +30,7 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
+ *****************************************************************************/
 
 #ifndef __FM_FM_API_FFU_H
 #define __FM_FM_API_FFU_H
@@ -2006,7 +2006,7 @@ typedef enum
  *  together to create larger keys or to execute
  *  multiple actions.
  *                                              \lb\lb
- *  For FM3000 and FM4000 devices each minslice has
+ *  For FM3000/FM4000 devices each minslice has
  *  36 bits of ternary CAM.  The key fed into each
  *  minslice has five separately configurable parts
  *  (four 8-bit and one 4-bit).
@@ -2030,9 +2030,9 @@ typedef struct _fm_ffuSliceInfo
      *  non-overlapping.  Case has no meaning, other than to
      *  disambiguate multiple slices occupying the same space.
      *                                                      \lb\lb
-     *  For FM3000 and FM4000 devices this is a 1-bit field
+     *  For FM3000/FM4000 devices this is a 1-bit field.
      *                                                      \lb\lb
-     *  For FM10000 devices this is a 4-bit field
+     *  For FM10000 devices this is a 4-bit field.
      *  
      *  \chips  FM3000, FM4000, FM10000 */
     fm_byte            kase;

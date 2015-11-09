@@ -83,11 +83,11 @@ fm_status fmInitPort(fm_int sw, fm_port *portPtr)
 {
     fm_status err = FM_OK;
 
-    FM_LOG_ENTRY_V2( FM_LOG_CAT_PORT, 
+    FM_LOG_ENTRY_V2( FM_LOG_CAT_PORT,
                      portPtr ? portPtr->portNumber : -1,
                      "sw=%d portPtr=%p (port %d)\n",
-                     sw, 
-                     (void *) portPtr, 
+                     sw,
+                     (void *) portPtr,
                      portPtr ? portPtr->portNumber : -1 );
 
     if (!portPtr)
@@ -101,6 +101,7 @@ fm_status fmInitPort(fm_int sw, fm_port *portPtr)
     portPtr->lagIndex                       = -1;
     portPtr->memberIndex                    = -1;
     portPtr->linkStateChangePending         = FALSE;
+    portPtr->waitForFreeEventBuffer         = FALSE;
     portPtr->pendingLinkStateValue          = 0;
     portPtr->linkStateChangeExpiration.sec  = 0;
     portPtr->linkStateChangeExpiration.usec = 0;
@@ -145,7 +146,7 @@ fm_status fmInitPort(fm_int sw, fm_port *portPtr)
  *                  use ''fmSetPortStateV2''.
  *
  * \note            When setting a port to the down state, it may be desirable
- *                  to purge any MA Table entries learned on that port. It is 
+ *                  to purge any MA Table entries learned on that port. It is
  *                  the caller's responsibility to call ''fmFlushPortAddresses''
  *                  to effect the purge.
  *
@@ -188,18 +189,18 @@ fm_status fmSetPortState(fm_int sw, fm_int port, fm_int mode, fm_int subMode)
  *                  specified mac.
  *
  * \note            When setting a port to the down state, it may be desirable
- *                  to purge any MA Table entries learned on that port. It is 
+ *                  to purge any MA Table entries learned on that port. It is
  *                  the caller's responsibility to call ''fmFlushPortAddresses''
  *                  to effect the purge.
  *
  * \param[in]       sw is the switch on which to operate.
  *
- * \param[in]       port is the port on which to operate. May not be the CPU 
+ * \param[in]       port is the port on which to operate. May not be the CPU
  *                  interface port.
  *
  * \param[in]       mac is the port's MAC on which to operate. May be specified
  *                  as FM_PORT_ACTIVE_MAC to operate on the MAC currently
- *                  selected as the active MAC with the 
+ *                  selected as the active MAC with the
  *                  ''FM_PORT_SELECT_ACTIVE_MAC'' port attribute. Must be
  *                  specified as FM_PORT_ACTIVE_MAC if port is not a
  *                  physical port.
@@ -214,10 +215,10 @@ fm_status fmSetPortState(fm_int sw, fm_int port, fm_int mode, fm_int subMode)
  * \return          FM_ERR_INVALID_PORT if port is invalid.
  *
  *****************************************************************************/
-fm_status fmSetPortStateV2(fm_int sw, 
-                           fm_int port, 
-                           fm_int mac, 
-                           fm_int mode, 
+fm_status fmSetPortStateV2(fm_int sw,
+                           fm_int port,
+                           fm_int mac,
+                           fm_int mode,
                            fm_int subMode)
 {
     fm_status err;
@@ -244,12 +245,12 @@ fm_status fmSetPortStateV2(fm_int sw,
                                    members,
                                    FM_MAX_NUM_LAG_MEMBERS);
     FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
-    
+
     /**************************************************
      * Don't allow a specific MAC to be specified if
      * this is not a logical port.
      **************************************************/
-    
+
     if ( (mac != FM_PORT_ACTIVE_MAC) && !fmIsCardinalPort(sw, port) )
     {
         FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err = FM_ERR_INVALID_PORT_MAC);
@@ -262,12 +263,12 @@ fm_status fmSetPortStateV2(fm_int sw,
 
         portPtr = GET_PORT_PTR(sw, memberPort);
 
-        FM_API_CALL_FAMILY(err, 
-                           portPtr->SetPortState, 
-                           sw, 
-                           memberPort, 
+        FM_API_CALL_FAMILY(err,
+                           portPtr->SetPortState,
+                           sw,
+                           memberPort,
                            mac,
-                           mode, 
+                           mode,
                            subMode);
         FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
 
@@ -289,9 +290,9 @@ ABORT:
  *
  * \chips           FM2000, FM3000, FM4000, FM6000, FM10000
  *
- * \desc            Retrieve a port's state information. For devices that 
- *                  provide more than one MAC per port, this function operates 
- *                  on the active port as selected with the 
+ * \desc            Retrieve a port's state information. For devices that
+ *                  provide more than one MAC per port, this function operates
+ *                  on the active port as selected with the
  *                  ''FM_PORT_SELECT_ACTIVE_MAC'' port attribute. To retrieve
  *                  state of a specific MAC for a port, use ''fmGetPortStateV2''.
  *
@@ -328,7 +329,7 @@ ABORT:
  *                                                                      \lb\lb
  *                  For devices other than FM6000, see ''Port Lane Status''
  *                  for its description.
- *                                                                      \lb\lb 
+ *                                                                      \lb\lb
  *                  For FM6000 devices, info holds the following bitfield:
  *                                                                      \lb\lb
  *                     RxRdy (bit 0):                                      \lb
@@ -369,9 +370,9 @@ fm_status fmGetPortState(fm_int  sw,
     fm_status err;
 
     err = fmGetPortStateV2(sw, port, FM_PORT_ACTIVE_MAC, mode, state, info);
-    
+
     return err;
-    
+
 }   /* end fmGetPortState */
 
 
@@ -383,8 +384,8 @@ fm_status fmGetPortState(fm_int  sw,
  *
  * \chips           FM2000, FM3000, FM4000, FM6000, FM10000
  *
- * \desc            Retrieve a port's state information. For devices that 
- *                  provide more than one MAC per port, this function 
+ * \desc            Retrieve a port's state information. For devices that
+ *                  provide more than one MAC per port, this function
  *                  operates on the specified mac.
  *
  * \param[in]       sw is the switch on which to operate.
@@ -394,7 +395,7 @@ fm_status fmGetPortState(fm_int  sw,
  *
  * \param[in]       mac is the port's MAC on which to operate. May be specified
  *                  as FM_PORT_ACTIVE_MAC to operate on the MAC currently
- *                  selected as the active MAC with the 
+ *                  selected as the active MAC with the
  *                  ''FM_PORT_SELECT_ACTIVE_MAC'' port attribute. Must be
  *                  specified as FM_PORT_ACTIVE_MAC if port is not a local
  *                  physical port.
@@ -427,7 +428,7 @@ fm_status fmGetPortState(fm_int  sw,
  *                                                                      \lb\lb
  *                  For devices other than FM6000, see ''Port Lane Status''
  *                  for its description.
- *                                                                      \lb\lb 
+ *                                                                      \lb\lb
  *                  For FM6000 devices, info holds the following bitfield:
  *                                                                      \lb\lb
  *                     RxRdy (bit 0):                                      \lb
@@ -481,8 +482,8 @@ fm_status fmGetPortStateV2(fm_int  sw,
  *
  * \chips           FM2000, FM3000, FM4000, FM6000, FM10000
  *
- * \desc            Retrieve a port's state information. For devices that 
- *                  provide more than one MAC per port, this function 
+ * \desc            Retrieve a port's state information. For devices that
+ *                  provide more than one MAC per port, this function
  *                  operates on the specified mac.
  *
  * \param[in]       sw is the switch on which to operate.
@@ -492,21 +493,21 @@ fm_status fmGetPortStateV2(fm_int  sw,
  *
  * \param[in]       mac is the port's MAC on which to operate. May be specified
  *                  as FM_PORT_ACTIVE_MAC to operate on the MAC currently
- *                  selected as the active MAC with the 
+ *                  selected as the active MAC with the
  *                  ''FM_PORT_SELECT_ACTIVE_MAC'' port attribute. Must be
  *                  specified as FM_PORT_ACTIVE_MAC if port is not a local
  *                  physical port.
- * 
+ *
  * \param[in]       numBuffers is the size of caller-provided info array where
  *                  this function will return per-lane information
- * 
+ *
  * \param[out]      numLanes is the pointer to a caller-provided area where
  *                  this function will return the number of lanes for which
  *                  the info buffer was provided. If the function had information
  *                  about more lanes than buffers provided by the caller, it
  *                  will fill out all available info entries and return
  *                  ''FM_ERR_BUFFER_FULL''
- *                
+ *
  * \param[out]      mode points to caller-allocated storage where this
  *                  function should place the port's mode (see ''Port States'')
  *                  as set in a prior call to ''fmSetPortState''.
@@ -537,11 +538,11 @@ fm_status fmGetPortStateV2(fm_int  sw,
  *                  (see ''Port Lane Status'').
  *
  * \return          FM_OK if successful.
- * 
+ *
  * \return          FM_ERR_INVALID_SWITCH if sw is invalid.
- * 
+ *
  * \return          FM_ERR_INVALID_PORT if port is invalid.
- * 
+ *
  * \return          FM_ERR_BUFFER_FULL if the function had more lanes to report
  *                  on than info entries provided by the caller
  *
@@ -558,7 +559,7 @@ fm_status fmGetPortStateV3( fm_int   sw,
     fm_status err;
     fm_port * portPtr;
 
-    FM_LOG_ENTRY_API_V2( FM_LOG_CAT_PORT, 
+    FM_LOG_ENTRY_API_V2( FM_LOG_CAT_PORT,
                          port,
                          "sw=%d port=%d mac=%d numBuffers=%d "
                          "numLanes=%p mode=%p state=%p info=%p\n",
@@ -586,15 +587,15 @@ fm_status fmGetPortStateV3( fm_int   sw,
     }
     else
     {
-        FM_API_CALL_FAMILY( err, 
-                            portPtr->GetPortState, 
-                            sw, 
-                            port, 
+        FM_API_CALL_FAMILY( err,
+                            portPtr->GetPortState,
+                            sw,
+                            port,
                             mac,
                             numBuffers,
                             numLanes,
-                            mode, 
-                            state, 
+                            mode,
+                            state,
                             info );
     }
 
@@ -646,15 +647,15 @@ fm_status fmSetPortAttributeInternal(fm_int sw,
     GET_PORT_STATE_ENTRY(sw, port, entry, &phys_port);
 
     portAttr = GET_PORT_ATTR(sw, port);
-    
+
     /**************************************************
-     * We use PORT_ATTR_LOCK to ensure that 
+     * We use PORT_ATTR_LOCK to ensure that
      * portSecurityState, portSecurityTrap and learning
      * are properly preserved since that lock is taken
      * through the normal path of updating these
      * attributes.
      **************************************************/
-    
+
     switch (attr)
     {
         case FM_PORT_SECURITY:
@@ -688,7 +689,7 @@ fm_status fmSetPortAttributeInternal(fm_int sw,
     {
         FM_DROP_PORT_ATTR_LOCK(sw);
     }
-    
+
     UNPROTECT_SWITCH(sw);
     return err;
 
@@ -713,7 +714,7 @@ fm_status fmSetPortAttributeInternal(fm_int sw,
  *                  from the LAG, its attribute values will not be restored
  *                  to the values it had previously.
  *
- * \note            For FM6000 devices, when setting an attribute with this 
+ * \note            For FM6000 devices, when setting an attribute with this
  *                  function, per-MAC attributes will affect all MACs on the
  *                  port and per-lane attributes will affect all lanes on the
  *                  port.  Use ''fmSetPortAttributeV2'' to set individual
@@ -721,8 +722,8 @@ fm_status fmSetPortAttributeInternal(fm_int sw,
  *
  * \param[in]       sw is the switch on which to operate.
  *
- * \param[in]       port is the logical port number on which to operate. May 
- *                  be a LAG logical port number. May also be the CPU interface 
+ * \param[in]       port is the logical port number on which to operate. May
+ *                  be a LAG logical port number. May also be the CPU interface
  *                  for some attributes. See ''Port Attributes'' for details.
  *
  * \param[in]       attr is the port attribute (see 'Port Attributes') to set.
@@ -736,7 +737,7 @@ fm_status fmSetPortAttributeInternal(fm_int sw,
  *                  a physical attribute for a port with no active MAC.
  * \return          FM_ERR_INVALID_PORT_LANE if an attempt was made to
  *                  configure a lane attribute for a port with no active lanes.
- * \return          FM_ERR_UNSUPPORTED if attribute is not supported for 
+ * \return          FM_ERR_UNSUPPORTED if attribute is not supported for
  *                  this switch.
  * \return          FM_ERR_INVALID_ATTRIB if unrecognized attribute.
  * \return          FM_ERR_READONLY_ATTRIB if read-only attribute.
@@ -762,15 +763,15 @@ fm_status fmSetPortAttribute(fm_int sw,
 {
     fm_status err;
 
-    err = fmSetPortAttributeV2(sw, 
-                               port, 
-                               FM_PORT_MAC_ALL, 
-                               FM_PORT_LANE_ALL, 
-                               attr, 
+    err = fmSetPortAttributeV2(sw,
+                               port,
+                               FM_PORT_MAC_ALL,
+                               FM_PORT_LANE_ALL,
+                               attr,
                                value);
-    
+
     return err;
-    
+
 }   /* end fmSetPortAttribute */
 
 
@@ -796,7 +797,7 @@ fm_status fmSetPortAttribute(fm_int sw,
  *                  These devices support multiple physical links per logical
  *                  port, though only one may carry frame traffic at a time.
  *                  The mac and lane arguments disambiguate between the
- *                  multiple physical link components. Previous Intel switch 
+ *                  multiple physical link components. Previous Intel switch
  *                  devices provide only a single physical link per port, so
  *                  no disambiguation is needed. This function may be
  *                  used for those devices, in which case the mac argument
@@ -805,23 +806,23 @@ fm_status fmSetPortAttribute(fm_int sw,
  *
  * \param[in]       sw is the switch on which to operate.
  *
- * \param[in]       port is the logical port number on which to operate. May 
- *                  be a LAG logical port number. May also be the CPU interface 
+ * \param[in]       port is the logical port number on which to operate. May
+ *                  be a LAG logical port number. May also be the CPU interface
  *                  for some attributes. See ''Port Attributes'' for details.
  *
- * \param[in]       mac is the port's zero-based MAC number on which to operate. 
- *                  May be specified as FM_PORT_ACTIVE_MAC to operate on the 
- *                  currently selected active MAC (see the 
- *                  ''FM_PORT_SELECT_ACTIVE_MAC'' port attribute). Must be 
- *                  specified as either FM_PORT_ACTIVE_MAC or zero for ports 
+ * \param[in]       mac is the port's zero-based MAC number on which to operate.
+ *                  May be specified as FM_PORT_ACTIVE_MAC to operate on the
+ *                  currently selected active MAC (see the
+ *                  ''FM_PORT_SELECT_ACTIVE_MAC'' port attribute). Must be
+ *                  specified as either FM_PORT_ACTIVE_MAC or zero for ports
  *                  that have only one MAC (physical link connection).
  *
- * \param[in]       lane is the port's zero-based lane number on which to 
+ * \param[in]       lane is the port's zero-based lane number on which to
  *                  operate. May be specified as FM_PORT_LANE_NA if the
  *                  lane number is not applicable to the attribute being
  *                  set. Must be set to FM_PORT_LANE_NA (for non-per-lane
- *                  attributes) when the port's 
- *                  ''FM_PORT_ETHERNET_INTERFACE_MODE'' attribute is set to 
+ *                  attributes) when the port's
+ *                  ''FM_PORT_ETHERNET_INTERFACE_MODE'' attribute is set to
  *                  ''FM_ETH_MODE_DISABLED'' on the MAC specified by mac.
  *
  * \param[in]       attr is the port attribute (see 'Port Attributes') to set.
@@ -831,11 +832,11 @@ fm_status fmSetPortAttribute(fm_int sw,
  * \return          FM_OK if successful.
  * \return          FM_ERR_INVALID_SWITCH if sw is invalid.
  * \return          FM_ERR_INVALID_PORT if port is invalid.
- * \return          FM_ERR_INVALID_PORT_MAC if mac is not valid for the 
+ * \return          FM_ERR_INVALID_PORT_MAC if mac is not valid for the
  *                  specified port, or if FM_PORT_SELECT_ACTIVE_MAC was
  *                  specified and the port has no active MAC selected.
  * \return          FM_ERR_INVALID_PORT_LANE if lane is not valid.
- * \return          FM_ERR_UNSUPPORTED if attribute is not supported for 
+ * \return          FM_ERR_UNSUPPORTED if attribute is not supported for
  *                  this switch.
  * \return          FM_ERR_INVALID_ATTRIB if unrecognized attribute.
  * \return          FM_ERR_READONLY_ATTRIB if read-only attribute.
@@ -894,7 +895,7 @@ fm_status fmSetPortAttributeV2(fm_int sw,
     {
         case FM_PORT_DEF_VLAN:
             if ( *((fm_uint32 *) value) >= FM_MAX_VLAN )
-            {  
+            {
                 err = FM_ERR_INVALID_VALUE;
                 goto ABORT;
             }
@@ -904,6 +905,8 @@ fm_status fmSetPortAttributeV2(fm_int sw,
         case FM_PORT_ROUTABLE:
         case FM_PORT_MAX_FRAME_SIZE:
         case FM_PORT_MIN_FRAME_SIZE:
+        case FM_PORT_MCAST_FLOODING:
+        case FM_PORT_UCAST_FLOODING:
         case FM_PORT_UPDATE_ROUTED_FRAME:
         case FM_PORT_UPDATE_TTL:
         case FM_PORT_UPDATE_DSCP:
@@ -926,12 +929,15 @@ fm_status fmSetPortAttributeV2(fm_int sw,
         case FM_PORT_TRAP_IEEE_OTHER:
         case FM_PORT_DEF_VLAN2:
         case FM_PORT_DEF_PRI2:
+        case FM_PORT_DROP_BV:
         case FM_PORT_PARSER_VLAN1_TAG:
         case FM_PORT_PARSER_VLAN2_TAG:
         case FM_PORT_MODIFY_VLAN1_TAG:
         case FM_PORT_MODIFY_VLAN2_TAG:
         case FM_PORT_PARSE_MPLS:
         case FM_PORT_ROUTED_FRAME_UPDATE_FIELDS:
+        case FM_PORT_RX_CUT_THROUGH:
+        case FM_PORT_TX_CUT_THROUGH:
         case FM_PORT_PARSER_FIRST_CUSTOM_TAG:
         case FM_PORT_PARSER_SECOND_CUSTOM_TAG:
         case FM_PORT_PARSER_STORE_MPLS:
@@ -944,6 +950,7 @@ fm_status fmSetPortAttributeV2(fm_int sw,
         case FM_PORT_RX_PAUSE:
         case FM_PORT_TX_PAUSE_MODE:
         case FM_PORT_RX_CLASS_PAUSE:
+        case FM_PORT_SMP_LOSSLESS_PAUSE:
         case FM_PORT_TAGGING_MODE:
         case FM_PORT_TXCFI:
         case FM_PORT_TXCFI2:
@@ -960,13 +967,13 @@ fm_status fmSetPortAttributeV2(fm_int sw,
         case FM_PORT_MCAST_PRUNING:
             allowMode = DISALLOW_CPU;
             /* We need to take different locks (routing, L2 and mtable lock),
-               for the benefit of updating multicast HNI flooding groups, 
+               for the benefit of updating multicast HNI flooding groups,
                to prevent possible lock inversions. Lock must
                be taken after VALIDATE_LOGICAL_PORT call for lock
                inversion reason as well. */
             takeLocks = TRUE;
             break;
-            
+
         default:
             allowMode = DISALLOW_CPU;
             break;
@@ -1058,16 +1065,16 @@ ABORT:
  *
  * \desc            Get a port attribute.
  *
- * \note            For FM6000 devices, this function may only be 
- *                  used to get attributes that are per-port and per-MAC for 
- *                  the active MAC of a port. To get per-MAC attributes for 
- *                  the inactive MAC, or to get per-lane attributes, use 
+ * \note            For FM6000 devices, this function may only be
+ *                  used to get attributes that are per-port and per-MAC for
+ *                  the active MAC of a port. To get per-MAC attributes for
+ *                  the inactive MAC, or to get per-lane attributes, use
  *                  ''fmGetPortAttributeV2''.
  *
  * \param[in]       sw is the switch on which to operate.
  *
- * \param[in]       port is the logical port number on which to operate. May 
- *                  be a LAG logical port number. May also be the CPU interface 
+ * \param[in]       port is the logical port number on which to operate. May
+ *                  be a LAG logical port number. May also be the CPU interface
  *                  for some attributes. See ''Port Attributes'' for details.
  *
  * \param[in]       attr is the port attribute (see 'Port Attributes') to get.
@@ -1082,7 +1089,7 @@ ABORT:
  *                  a physical attribute for a port with no active MAC.
  * \return          FM_ERR_INVALID_PORT_LANE if an attempt was made to
  *                  configure a lane attribute for a port with no active lanes.
- * \return          FM_ERR_UNSUPPORTED if attribute is not supported for 
+ * \return          FM_ERR_UNSUPPORTED if attribute is not supported for
  *                  this switch.
  * \return          FM_ERR_INVALID_ATTRIB if unrecognized attribute.
  *
@@ -1093,16 +1100,16 @@ fm_status fmGetPortAttribute(fm_int sw,
                              void * value)
 {
     fm_status err;
-    
+
     err = fmGetPortAttributeV2(sw,
                                port,
-                               FM_PORT_ACTIVE_MAC, 
-                               FM_PORT_LANE_NA, 
+                               FM_PORT_ACTIVE_MAC,
+                               FM_PORT_LANE_NA,
                                attr,
                                value);
-    
+
     return err;
-    
+
 }   /* end fmGetPortAttribute */
 
 
@@ -1121,7 +1128,7 @@ fm_status fmGetPortAttribute(fm_int sw,
  *                  These devices support multiple physical links per logical
  *                  port, though only one may carry frame traffic at a time.
  *                  The mac and lane arguments disambiguate between the
- *                  multiple physical link components. Previous Intel switch 
+ *                  multiple physical link components. Previous Intel switch
  *                  devices provide only a single physical link per port, so
  *                  no disambiguation is needed. This function may be
  *                  used for those devices, in which case the mac argument
@@ -1130,23 +1137,23 @@ fm_status fmGetPortAttribute(fm_int sw,
  *
  * \param[in]       sw is the switch on which to operate.
  *
- * \param[in]       port is the logical port number on which to operate. May 
- *                  be a LAG logical port number. May also be the CPU interface 
+ * \param[in]       port is the logical port number on which to operate. May
+ *                  be a LAG logical port number. May also be the CPU interface
  *                  for some attributes. See ''Port Attributes'' for details.
  *
- * \param[in]       mac is the port's zero-based MAC number on which to operate. 
- *                  May be specified as FM_PORT_ACTIVE_MAC to operate on the 
- *                  currently selected active MAC (see the 
- *                  ''FM_PORT_SELECT_ACTIVE_MAC'' port attribute). Must be 
- *                  specified as either FM_PORT_ACTIVE_MAC or zero for ports 
+ * \param[in]       mac is the port's zero-based MAC number on which to operate.
+ *                  May be specified as FM_PORT_ACTIVE_MAC to operate on the
+ *                  currently selected active MAC (see the
+ *                  ''FM_PORT_SELECT_ACTIVE_MAC'' port attribute). Must be
+ *                  specified as either FM_PORT_ACTIVE_MAC or zero for ports
  *                  that have only one MAC (physical link connection).
  *
- * \param[in]       lane is the port's zero-based lane number on which to 
+ * \param[in]       lane is the port's zero-based lane number on which to
  *                  operate. May be specified as FM_PORT_LANE_NA if the
  *                  lane number is not applicable to the attribute being
  *                  retrieved. Must be set to FM_PORT_LANE_NA (for non-per-lane
- *                  attributes) when the port's 
- *                  ''FM_PORT_ETHERNET_INTERFACE_MODE'' attribute is set to 
+ *                  attributes) when the port's
+ *                  ''FM_PORT_ETHERNET_INTERFACE_MODE'' attribute is set to
  *                  ''FM_ETH_MODE_DISABLED'' on the MAC specified by mac.
  *
  * \param[in]       attr is the port attribute (see 'Port Attributes') to get.
@@ -1157,11 +1164,11 @@ fm_status fmGetPortAttribute(fm_int sw,
  * \return          FM_OK if successful.
  * \return          FM_ERR_INVALID_SWITCH if sw is invalid.
  * \return          FM_ERR_INVALID_PORT if port is invalid.
- * \return          FM_ERR_INVALID_PORT_MAC if mac is not valid for the 
+ * \return          FM_ERR_INVALID_PORT_MAC if mac is not valid for the
  *                  specified port, or if FM_PORT_SELECT_ACTIVE_MAC was
  *                  specified and the port has no active MAC selected.
  * \return          FM_ERR_INVALID_PORT_LANE if lane is not valid.
- * \return          FM_ERR_UNSUPPORTED if attribute is not supported for 
+ * \return          FM_ERR_UNSUPPORTED if attribute is not supported for
  *                  this switch.
  * \return          FM_ERR_INVALID_ATTRIB if unrecognized attribute.
  *
@@ -1204,13 +1211,13 @@ fm_status fmGetPortAttributeV2(fm_int sw,
         }
     }
 
-    FM_API_CALL_FAMILY(err, 
-                       portPtr->GetPortAttribute, 
-                       sw, 
-                       port, 
+    FM_API_CALL_FAMILY(err,
+                       portPtr->GetPortAttribute,
+                       sw,
+                       port,
                        mac,
                        lane,
-                       attr, 
+                       attr,
                        value);
 
 ABORT:
@@ -1230,11 +1237,11 @@ ABORT:
  *
  * \desc            Enable or disable port security on a port.
  *
- * \note            On FM2000 devices, this function takes into account 
- *                  whether an ACL is already active on the port and if so, 
- *                  records the port security settings, but does not alter 
- *                  the state of the switch device. This approach is necessary 
- *                  to ensure that the port security feature does not 
+ * \note            On FM2000 devices, this function takes into account
+ *                  whether an ACL is already active on the port and if so,
+ *                  records the port security settings, but does not alter
+ *                  the state of the switch device. This approach is necessary
+ *                  to ensure that the port security feature does not
  *                  interfere with ACLs (ACLs have priority over port security
  *                  on FM2000 devices).
  *
@@ -1332,9 +1339,9 @@ fm_status fmUpdateSwitchPortMasks(fm_int sw)
     swstate = GET_SWITCH_PTR(sw);
 
     /**************************************************
-     * Capture the PORT_ATTR lock for the exclusive 
-     * access to portPtr->portMask and REG lock for the 
-     * exclusive access to switch register 
+     * Capture the PORT_ATTR lock for the exclusive
+     * access to portPtr->portMask and REG lock for the
+     * exclusive access to switch register
      * (i.e. PORT_CFG_2).
      **************************************************/
 
@@ -1531,7 +1538,7 @@ fm_status fmGetCpuPortInt(fm_int sw, fm_int *cpuPort)
  *
  * \param[in]       sw is the switch on which to operate.
  *
- * \param[in]       cpuPort contains the logical port number to set for the CPU 
+ * \param[in]       cpuPort contains the logical port number to set for the CPU
  *                  port.
  *
  * \return          FM_OK if successful.
@@ -1571,7 +1578,7 @@ fm_status fmSetCpuPort(fm_int sw, fm_int cpuPort)
 
 /*****************************************************************************/
 /** fmDbgDumpPortAttributes
- * \ingroup diagMisc 
+ * \ingroup diagMisc
  *
  * \chips           FM2000, FM3000, FM4000, FM6000, FM10000
  *
@@ -1589,11 +1596,7 @@ void fmDbgDumpPortAttributes(fm_int sw, fm_int port)
 {
     fm_switch *switchPtr;
 
-    if ( (sw < 0) || (sw >= FM_MAX_NUM_SWITCHES) )
-    {
-        FM_LOG_PRINT("ERROR: invalid switch %d\n", sw);
-        return;
-    }
+    VALIDATE_SWITCH_NO_RETURN(sw);
 
     switchPtr = GET_SWITCH_PTR(sw);
 
@@ -1622,7 +1625,7 @@ void fmDbgDumpPortAttributes(fm_int sw, fm_int port)
 
 /*****************************************************************************/
 /** fmDbgDumpPortStateTransitionsV2
- * \ingroup diagMisc 
+ * \ingroup diagMisc
  *
  * \chips           FM10000
  *
@@ -1649,13 +1652,13 @@ void fmDbgDumpPortAttributes(fm_int sw, fm_int port)
  *                      usecTime    - Show timestamp in usec instead of msec resolution
  *
  * \return          FM_OK if successful
- * 
+ *
  * \return          FM_ERR_NO_MEM if there was a memory allocation problem
- * 
+ *
  * \return          FM_ERR_INVALID_SWITCH if the switch ID is invalid
  *
  * \return          FM_ERR_INVALID_PORT if the port ID is invalid
- * 
+ *
  * \return          FM_ERR_UNSUPPORTED if this function isn't supported for
  *                  the requested chip
  *****************************************************************************/
@@ -1670,11 +1673,7 @@ fm_status fmDbgDumpPortStateTransitionsV2( fm_int  sw,
     fm_int     port;
     fm_int     cnt;
 
-    if ( (sw < 0) || (sw >= FM_MAX_NUM_SWITCHES) )
-    {
-        FM_LOG_PRINT("ERROR: invalid switch %d\n", sw);
-        return FM_ERR_INVALID_SWITCH;
-    }
+    VALIDATE_SWITCH(sw);
 
     switchPtr = GET_SWITCH_PTR(sw);
 
@@ -1697,8 +1696,8 @@ fm_status fmDbgDumpPortStateTransitionsV2( fm_int  sw,
     PROTECT_SWITCH(sw);
 
     FM_API_CALL_FAMILY( status,
-                        switchPtr->DbgDumpPortStateTransitionsV2, 
-                        sw, 
+                        switchPtr->DbgDumpPortStateTransitionsV2,
+                        sw,
                         portList,
                         portCnt,
                         maxEntries,
@@ -1714,7 +1713,7 @@ fm_status fmDbgDumpPortStateTransitionsV2( fm_int  sw,
 
 /*****************************************************************************/
 /** fmDbgDumpPortStateTransitions
- * \ingroup diagMisc 
+ * \ingroup diagMisc
  *
  * \chips           FM10000
  *
@@ -1726,13 +1725,13 @@ fm_status fmDbgDumpPortStateTransitionsV2( fm_int  sw,
  *                  Can't be a LAG logical port.
  *
  * \return          FM_OK if successful
- * 
+ *
  * \return          FM_ERR_NO_MEM if there was a memory allocation problem
- * 
+ *
  * \return          FM_ERR_INVALID_SWITCH if the switch ID is invalid
  *
  * \return          FM_ERR_INVALID_PORT if the port ID is invalid
- * 
+ *
  * \return          FM_ERR_UNSUPPORTED if this function isn't supported for
  *                  the requested chip
  *****************************************************************************/
@@ -1741,12 +1740,8 @@ fm_status fmDbgDumpPortStateTransitions(fm_int sw, fm_int port)
     fm_switch *switchPtr;
     fm_status  status;
 
-    if ( (sw < 0) || (sw >= FM_MAX_NUM_SWITCHES) )
-    {
-        FM_LOG_PRINT("ERROR: invalid switch %d\n", sw);
-        return FM_ERR_INVALID_SWITCH;
-    }
-
+    VALIDATE_SWITCH(sw);
+    
     switchPtr = GET_SWITCH_PTR(sw);
 
     if ( switchPtr == NULL )
@@ -1764,8 +1759,8 @@ fm_status fmDbgDumpPortStateTransitions(fm_int sw, fm_int port)
     PROTECT_SWITCH(sw);
 
     FM_API_CALL_FAMILY( status,
-                        switchPtr->DbgDumpPortStateTransitions, 
-                        sw, 
+                        switchPtr->DbgDumpPortStateTransitions,
+                        sw,
                         port );
 
     UNPROTECT_SWITCH(sw);
@@ -1779,7 +1774,7 @@ fm_status fmDbgDumpPortStateTransitions(fm_int sw, fm_int port)
 
 /*****************************************************************************/
 /** fmDbgSetPortStateTransitionHistorySize
- * \ingroup diagMisc 
+ * \ingroup diagMisc
  *
  * \chips           FM10000
  *
@@ -1790,33 +1785,29 @@ fm_status fmDbgDumpPortStateTransitions(fm_int sw, fm_int port)
  *
  * \param[in]       port is the port for which to retrieve attribute settings.
  *                  Can't be a LAG logical port.
- * 
+ *
  * \param[in]       size is the new size of the history buffer
  *
  * \return          FM_OK if successful
- * 
+ *
  * \return          FM_ERR_NO_MEM if there was a memory allocation problem
- * 
+ *
  * \return          FM_ERR_INVALID_SWITCH if the switch ID is invalid
  *
  * \return          FM_ERR_INVALID_PORT if the port ID is invalid
- * 
+ *
  * \return          FM_ERR_UNSUPPORTED if this function isn't supported for
  *                  the requested chip
- * 
+ *
  *****************************************************************************/
-fm_status fmDbgSetPortStateTransitionHistorySize( fm_int sw, 
-                                                  fm_int port, 
+fm_status fmDbgSetPortStateTransitionHistorySize( fm_int sw,
+                                                  fm_int port,
                                                   fm_int size )
 {
     fm_switch *switchPtr;
     fm_status  status;
 
-    if ( (sw < 0) || (sw >= FM_MAX_NUM_SWITCHES) )
-    {
-        FM_LOG_PRINT("ERROR: invalid switch %d\n", sw);
-        return FM_ERR_INVALID_SWITCH;
-    }
+    VALIDATE_SWITCH(sw);
 
     switchPtr = GET_SWITCH_PTR(sw);
 
@@ -1835,8 +1826,8 @@ fm_status fmDbgSetPortStateTransitionHistorySize( fm_int sw,
     PROTECT_SWITCH(sw);
 
     FM_API_CALL_FAMILY( status,
-                        switchPtr->DbgSetPortStateTransitionHistorySize, 
-                        sw, 
+                        switchPtr->DbgSetPortStateTransitionHistorySize,
+                        sw,
                         port,
                         size );
 
@@ -1849,7 +1840,7 @@ fm_status fmDbgSetPortStateTransitionHistorySize( fm_int sw,
 
 /*****************************************************************************/
 /** fmDbgClearPortStateTransitions
- * \ingroup diagMisc 
+ * \ingroup diagMisc
  *
  * \chips           FM10000
  *
@@ -1860,29 +1851,25 @@ fm_status fmDbgSetPortStateTransitionHistorySize( fm_int sw,
  *
  * \param[in]       port is the port for which to retrieve attribute settings.
  *                  Can't be a LAG logical port.
- * 
+ *
  * \return          FM_OK if successful
- * 
+ *
  * \return          FM_ERR_NO_MEM if there was a memory allocation problem
- * 
+ *
  * \return          FM_ERR_INVALID_SWITCH if the switch ID is invalid
  *
  * \return          FM_ERR_INVALID_PORT if the port ID is invalid
- * 
+ *
  * \return          FM_ERR_UNSUPPORTED if this function isn't supported for
  *                  the requested chip
- * 
+ *
  *****************************************************************************/
 fm_status fmDbgClearPortStateTransitions( fm_int sw, fm_int port )
 {
     fm_switch *switchPtr;
     fm_status  status;
 
-    if ( (sw < 0) || (sw >= FM_MAX_NUM_SWITCHES) )
-    {
-        FM_LOG_PRINT("ERROR: invalid switch %d\n", sw);
-        return FM_ERR_INVALID_SWITCH;
-    }
+    VALIDATE_SWITCH(sw);
 
     switchPtr = GET_SWITCH_PTR(sw);
 
@@ -1901,8 +1888,8 @@ fm_status fmDbgClearPortStateTransitions( fm_int sw, fm_int port )
     PROTECT_SWITCH(sw);
 
     FM_API_CALL_FAMILY( status,
-                        switchPtr->DbgClearPortStateTransitions, 
-                        sw, 
+                        switchPtr->DbgClearPortStateTransitions,
+                        sw,
                         port );
 
     UNPROTECT_SWITCH(sw);
@@ -1918,7 +1905,7 @@ fm_status fmDbgClearPortStateTransitions( fm_int sw, fm_int port )
  * \ingroup intPort
  *
  * \desc            Utility to print a port attribute values.
- * 
+ *
  * \param[in]       attrType is the attribute type.
  *
  * \param[in]       attrName is pointer to the attribute name in text.
@@ -1960,7 +1947,7 @@ void fmPrintPortAttributeValues(fm_int   attrType,
 
     /* Having lagValue == null indicates that the port is not in lag. */
     if (lagValue == NULL)
-    {     
+    {
         str = "Not in lag";
     }
     else
@@ -1978,7 +1965,7 @@ void fmPrintPortAttributeValues(fm_int   attrType,
                 FM_SPRINTF_S(buf,
                              sizeof(buf),
                              formatInt,
-                             attrName, 
+                             attrName,
                              *( (fm_int *) cachedValue ),
                              *( (fm_int *) value ),
                              *( (fm_int *) lagValue ));
@@ -1988,7 +1975,7 @@ void fmPrintPortAttributeValues(fm_int   attrType,
                 FM_SPRINTF_S(buf,
                              sizeof(buf),
                              formatText,
-                             attrName, 
+                             attrName,
                              str2,
                              *( (fm_int *) value ),
                              str);
@@ -2001,17 +1988,17 @@ void fmPrintPortAttributeValues(fm_int   attrType,
                 FM_SPRINTF_S(buf,
                              sizeof(buf),
                              formatInt,
-                             attrName, 
+                             attrName,
                              *( (fm_uint32 *) cachedValue ),
                              *( (fm_uint32 *) value ),
                              *( (fm_uint32 *) lagValue ));
             }
             else
             {
-                FM_SPRINTF_S(buf, 
+                FM_SPRINTF_S(buf,
                              sizeof(buf),
                              formatText,
-                             attrName, 
+                             attrName,
                              str2,
                              *( (fm_uint32 *) value ),
                              str);
@@ -2022,20 +2009,20 @@ void fmPrintPortAttributeValues(fm_int   attrType,
         case FM_TYPE_MACADDR:
             if (lagValue != NULL && perLag)
             {
-                FM_SPRINTF_S(buf, 
+                FM_SPRINTF_S(buf,
                              sizeof(buf),
                              format64,
-                             attrName, 
+                             attrName,
                              *( (fm_uint64 *) cachedValue ),
                              *( (fm_uint64 *) value ),
                              *( (fm_uint64 *) lagValue ));
             }
             else
             {
-                FM_SPRINTF_S(buf, 
+                FM_SPRINTF_S(buf,
                              sizeof(buf),
                              format64T,
-                             attrName, 
+                             attrName,
                              str2,
                              *( (fm_uint64 *) value ),
                              str);
@@ -2045,20 +2032,20 @@ void fmPrintPortAttributeValues(fm_int   attrType,
         case FM_TYPE_BOOL:
             if (lagValue != NULL && perLag)
             {
-                FM_SPRINTF_S(buf, 
+                FM_SPRINTF_S(buf,
                              sizeof(buf),
                              formatBool,
-                             attrName, 
+                             attrName,
                              (*( (fm_bool *) cachedValue)) ? "TRUE" : "FALSE",
                              (*( (fm_bool *) value ))      ? "TRUE" : "FALSE",
                              (*( (fm_bool *) lagValue ))   ? "TRUE" : "FALSE");
             }
             else
             {
-                FM_SPRINTF_S(buf, 
+                FM_SPRINTF_S(buf,
                              sizeof(buf),
                              formatBool,
-                             attrName, 
+                             attrName,
                              str2,
                              (*( (fm_bool *) value ))      ? "TRUE" : "FALSE",
                              str);
@@ -2072,7 +2059,7 @@ void fmPrintPortAttributeValues(fm_int   attrType,
                                        ((fm_bitArray *) value)->bitCount);
             if (err)
             {
-                FM_LOG_ERROR(FM_LOG_CAT_PORT, 
+                FM_LOG_ERROR(FM_LOG_CAT_PORT,
                              "Error while trying to convert bit array to port "
                              "mask");
             }
@@ -2080,10 +2067,10 @@ void fmPrintPortAttributeValues(fm_int   attrType,
             memset(buf2, 0, sizeof(buf2));
             for ( i = 0; i < FM_PORTMASK_NUM_WORDS; i++)
             {
-                FM_SPRINTF_S(buf2, 
-                             sizeof(buf2), 
-                             "%s%08x", 
-                             buf2, 
+                FM_SPRINTF_S(buf2,
+                             sizeof(buf2),
+                             "%s%08x",
+                             buf2,
                              portMask.maskWord[FM_PORTMASK_NUM_WORDS - 1 - i]);
             }
 
@@ -2092,9 +2079,9 @@ void fmPrintPortAttributeValues(fm_int   attrType,
                 memset(buf3, 0, sizeof(buf3));
                 for ( i = 0; i < FM_PORTMASK_NUM_WORDS; i++)
                 {
-                    FM_SPRINTF_S(buf3, 
-                                 sizeof(buf3), 
-                                 "%s%08x", 
+                    FM_SPRINTF_S(buf3,
+                                 sizeof(buf3),
+                                 "%s%08x",
                                  buf3,
                                  (*((fm_portmask *) cachedValue)).maskWord[FM_PORTMASK_NUM_WORDS - 1 - i]);
                 }
@@ -2102,27 +2089,27 @@ void fmPrintPortAttributeValues(fm_int   attrType,
                 memset(buf4, 0, sizeof(buf4));
                 for ( i = 0; i < FM_PORTMASK_NUM_WORDS; i++)
                 {
-                    FM_SPRINTF_S(buf4, 
-                                 sizeof(buf4), 
-                                 "%s%08x", 
+                    FM_SPRINTF_S(buf4,
+                                 sizeof(buf4),
+                                 "%s%08x",
                                  buf4,
                                  (*((fm_portmask *) lagValue)).maskWord[FM_PORTMASK_NUM_WORDS - 1 - i]);
                 }
-                
-                FM_SPRINTF_S(buf, 
+
+                FM_SPRINTF_S(buf,
                              sizeof(buf),
                              formatPortMask,
-                             attrName, 
+                             attrName,
                              buf3,
                              buf2,
                              buf4);
             }
             else
             {
-                FM_SPRINTF_S(buf, 
+                FM_SPRINTF_S(buf,
                              sizeof(buf),
                              formatPortMask,
-                             attrName, 
+                             attrName,
                              str2,
                              buf2,
                              str);
@@ -2130,10 +2117,10 @@ void fmPrintPortAttributeValues(fm_int   attrType,
             break;
 
         case FM_TYPE_PAUSE_PACING_TIME:
-            FM_SPRINTF_S(buf, 
+            FM_SPRINTF_S(buf,
                          sizeof(buf),
                          formatPPT,
-                         attrName, 
+                         attrName,
                          ( (fm_pausePacingTime *) value)->pauseClass,
                          ( (fm_pausePacingTime *) value)->timeNs);
             break;
@@ -2144,7 +2131,7 @@ void fmPrintPortAttributeValues(fm_int   attrType,
     }
 
     FM_LOG_PRINT("%s", buf);
-    
+
 }   /* end fmPrintPortAttributeValues */
 
 
@@ -2155,7 +2142,7 @@ void fmPrintPortAttributeValues(fm_int   attrType,
  * \ingroup intPort
  *
  * \desc            Compares two attributes and returns 0 if they are equal.
- * 
+ *
  * \param[in]       attrType type of attribute on which to operate.
  *
  * \param[in]       attr1 first attribute on which to operate.
@@ -2197,10 +2184,10 @@ fm_int fmComparePortAttributes(fm_int attrType, void *attr1, void *attr2)
             break;
 
         case FM_TYPE_PAUSE_PACING_TIME:
-            retVal = ( (( (fm_pausePacingTime *)attr1)->pauseClass == 
+            retVal = ( (( (fm_pausePacingTime *)attr1)->pauseClass ==
                         ( (fm_pausePacingTime *)attr2)->pauseClass) &&
-                       (( (fm_pausePacingTime *)attr1)->pauseClass == 
-                        ( (fm_pausePacingTime *)attr2)->pauseClass) ) ? 
+                       (( (fm_pausePacingTime *)attr1)->pauseClass ==
+                        ( (fm_pausePacingTime *)attr2)->pauseClass) ) ?
                      0 : 1;
             break;
 
@@ -2222,9 +2209,9 @@ fm_int fmComparePortAttributes(fm_int attrType, void *attr1, void *attr2)
  *
  * \desc            Indicate whether the given attribute is a per-lag port
  *                  attribute (i.e. can be set on a LAG logical port)
- * 
+ *
  * \param[in]       sw is the switch number to operate on.
- * 
+ *
  * \param[in]       attr is the attribute on which to operate.
  *
  * \return          TRUE if per-lag attribute.
@@ -2236,11 +2223,7 @@ fm_bool fmIsPerLagPortAttribute(fm_int sw, fm_uint attr)
     fm_switch *switchPtr;
     fm_bool    boolVal = FALSE;
 
-    if ( (sw < 0) || (sw >= FM_MAX_NUM_SWITCHES) )
-    {
-        FM_LOG_PRINT("ERROR: invalid switch %d\n", sw);
-        return FALSE;
-    }
+    VALIDATE_SWITCH(sw);
 
     switchPtr = GET_SWITCH_PTR(sw);
 
@@ -2271,7 +2254,7 @@ fm_bool fmIsPerLagPortAttribute(fm_int sw, fm_uint attr)
  * \ingroup intPort
  *
  * \desc            Returns the number of bytes in the specified ISL tag.
- * 
+ *
  * \param[in]       islTagFormat is ISL tag format.
  *
  * \return          Number of bytes in the specified ISL tag.
@@ -2321,9 +2304,9 @@ fm_int fmGetISLTagSize(fm_islTagFormat islTagFormat)
  *
  * \desc            Returns the number of ISL tag bytes required for the
  *                  specified port.
- * 
+ *
  * \param[in]       sw is the switch number to operate on.
- * 
+ *
  * \param[in]       port is the port for which to retrieve the number of bytes.
  *
  * \return          Number of ISL tag bytes required for the
@@ -2334,17 +2317,17 @@ fm_int fmGetPortISLTagSize(fm_int sw, fm_int port)
 {
     fm_islTagFormat     islTagFormat;
 
-    if (fmGetPortAttributeV2(sw, 
-                             port, 
+    if (fmGetPortAttributeV2(sw,
+                             port,
                              FM_PORT_ACTIVE_MAC,
                              FM_PORT_LANE_NA,
-                             FM_PORT_ISL_TAG_FORMAT, 
+                             FM_PORT_ISL_TAG_FORMAT,
                              &islTagFormat) != FM_OK)
     {
         return 0;
     }
 
-    return fmGetISLTagSize(islTagFormat);    
+    return fmGetISLTagSize(islTagFormat);
 
 }   /* end fmGetPortISLTagSize */
 
@@ -2361,7 +2344,7 @@ fm_int fmGetPortISLTagSize(fm_int sw, fm_int port)
  *                  state of certain transceiver signals. That is particularly
  *                  useful when there are transceiver signal changes that
  *                  could be used by the API to trigger certain actions.
- *                  The following commonly used signals are currently 
+ *                  The following commonly used signals are currently
  *                  represented by a single bit in the xcvrSignals bitmask
  *                  argument:                                              \lb
  *                  FM_PORT_XCVRSIG_MODPRES: asserted to indicate the
@@ -2374,7 +2357,7 @@ fm_int fmGetPortISLTagSize(fm_int sw, fm_int port)
  *                  FM_PORT_XCVRSIG_TXFAULT: asserted to indicate a Transmitter
  *                  Fault is being reported. De-asserted to indicate there is
  *                  no Fault or when the signal is not implemented
- * 
+ *
  * \note            Using this function is optional. When the application does
  *                  not use this function, the following default values are
  *                  used by the API:
@@ -2387,14 +2370,14 @@ fm_int fmGetPortISLTagSize(fm_int sw, fm_int port)
  *                  of the supported signals are reset to their default values
  *                  every time the ethernet interface mode is changed (see
  *                  ''fm_ethMode'').
- * 
+ *
  * \note            Every time the application invokes this function, the API
  *                  assumes the correct value of each of the signals (asserted,
  *                  de-asserted, or not implemented) is represented, whether or
  *                  not there has been a transition on that signal. However, if
  *                  FM_PORT_XCVRSIG_MODPRES is de-asserted (i.e. module is
  *                  not present), all other signals are ignored.
- * 
+ *
  * \note            For multi-lane transceiver modules (i.e. QSFP) the
  *                  application is expected to invoke this function for
  *                  each lane. It's the application's responsibility to ensure
@@ -2403,43 +2386,43 @@ fm_int fmGetPortISLTagSize(fm_int sw, fm_int port)
  *
  * \param[in]       sw is the switch on which to operate.
  *
- * \param[in]       port is the logical port number on which to operate. May 
+ * \param[in]       port is the logical port number on which to operate. May
  *                  not be a LAG logical port number nor a CPU interface.
  *
- * \param[in]       mac is the port's zero-based MAC number on which to operate. 
- *                  May be specified as FM_PORT_ACTIVE_MAC to operate on the 
- *                  currently selected active MAC (see the 
- *                  ''FM_PORT_SELECT_ACTIVE_MAC'' port attribute). Must be 
- *                  specified as either FM_PORT_ACTIVE_MAC or zero for ports 
+ * \param[in]       mac is the port's zero-based MAC number on which to operate.
+ *                  May be specified as FM_PORT_ACTIVE_MAC to operate on the
+ *                  currently selected active MAC (see the
+ *                  ''FM_PORT_SELECT_ACTIVE_MAC'' port attribute). Must be
+ *                  specified as either FM_PORT_ACTIVE_MAC or zero for ports
  *                  that have only one MAC (physical link connection). May
  *                  not be specified as FM_PORT_MAC_ALL.
  *
- * \param[in]       lane is the port's zero-based lane number on which to 
+ * \param[in]       lane is the port's zero-based lane number on which to
  *                  operate. May not be specified as FM_PORT_LANE_NA nor as
  *                  FM_PORT_LANE_ALL.
- * 
+ *
  * \param[in]       xcvrSignals a bitmask where each bit represents the status
- *                  of a given signal (see the ''Transceiver Signals'' 
+ *                  of a given signal (see the ''Transceiver Signals''
  *                  definitions).
- * 
+ *
  * \param[in]       xcvrInfo is a pointer to a caller-allocated area containing
- *                  additional information on this transceiver. 
+ *                  additional information on this transceiver.
  *
  * \return          FM_OK if successful.
  * \return          FM_ERR_INVALID_SWITCH if sw is invalid.
  * \return          FM_ERR_INVALID_PORT if port is invalid.
- * \return          FM_ERR_INVALID_PORT_MAC if mac is not valid for the 
+ * \return          FM_ERR_INVALID_PORT_MAC if mac is not valid for the
  *                  specified port, or if FM_PORT_SELECT_ACTIVE_MAC was
  *                  specified and the port has no active MAC selected.
  * \return          FM_ERR_INVALID_PORT_LANE if lane is not valid.
  * \return          FM_ERR_INVALID_ARGUMENT if one of the arguments is invalid
- * 
+ *
  *****************************************************************************/
-fm_status fmNotifyXcvrChange( fm_int     sw, 
-                              fm_int     port, 
-                              fm_int     mac, 
-                              fm_int     lane, 
-                              fm_uint32  xcvrSignals, 
+fm_status fmNotifyXcvrChange( fm_int     sw,
+                              fm_int     port,
+                              fm_int     mac,
+                              fm_int     lane,
+                              fm_uint32  xcvrSignals,
                               void      *xcvrInfo )
 {
     fm_status  err;
@@ -2481,37 +2464,37 @@ fm_status fmNotifyXcvrChange( fm_int     sw,
  *
  * \param[in]       sw is the switch on which to operate.
  *
- * \param[in]       port is the logical port number on which to operate. May 
+ * \param[in]       port is the logical port number on which to operate. May
  *                  not be a LAG logical. It can be a CPU interface.
  *
- * \param[in]       mac is the port's zero-based MAC number on which to operate. 
- *                  May be specified as FM_PORT_ACTIVE_MAC to operate on the 
- *                  currently selected active MAC (see the 
- *                  ''FM_PORT_SELECT_ACTIVE_MAC'' port attribute). Must be 
- *                  specified as either FM_PORT_ACTIVE_MAC or zero for ports 
+ * \param[in]       mac is the port's zero-based MAC number on which to operate.
+ *                  May be specified as FM_PORT_ACTIVE_MAC to operate on the
+ *                  currently selected active MAC (see the
+ *                  ''FM_PORT_SELECT_ACTIVE_MAC'' port attribute). Must be
+ *                  specified as either FM_PORT_ACTIVE_MAC or zero for ports
  *                  that have only one MAC (physical link connection). May
  *                  not be specified as FM_PORT_MAC_ALL.
  *
  * \param[out]      numLanes is the pointer to a caller allocated area where
  *                  this function will return the number of lanes associated
- *                  to the given port 
+ *                  to the given port
  *
  * \return          FM_OK if successful.
- * 
+ *
  * \return          FM_ERR_INVALID_SWITCH if sw is invalid.
- * 
+ *
  * \return          FM_ERR_INVALID_PORT if port is invalid.
- * 
- * \return          FM_ERR_INVALID_PORT_MAC if mac is not valid for the 
+ *
+ * \return          FM_ERR_INVALID_PORT_MAC if mac is not valid for the
  *                  specified port, or if FM_PORT_SELECT_ACTIVE_MAC was
  *                  specified and the port has no active MAC selected.
- * 
+ *
  * \return          FM_ERR_INVALID_ARGUMENT if one of the arguments is invalid
- * 
+ *
  *****************************************************************************/
-fm_status fmGetNumPortLanes( fm_int sw, 
-                             fm_int port, 
-                             fm_int mac, 
+fm_status fmGetNumPortLanes( fm_int sw,
+                             fm_int port,
+                             fm_int mac,
                              fm_int *numLanes )
 {
     fm_status  err;
@@ -2562,14 +2545,14 @@ fm_status fmGetNumPortLanes( fm_int sw,
  *
  * \param[in]       sw is the switch on which to operate.
  *
- * \param[in]       port is the logical port number on which to operate. May 
+ * \param[in]       port is the logical port number on which to operate. May
  *                  not be a LAG logical. It can be a CPU interface.
  *
- * \param[in]       mac is the port's zero-based MAC number on which to operate. 
- *                  May be specified as FM_PORT_ACTIVE_MAC to operate on the 
- *                  currently selected active MAC (see the 
- *                  ''FM_PORT_SELECT_ACTIVE_MAC'' port attribute). Must be 
- *                  specified as either FM_PORT_ACTIVE_MAC or zero for ports 
+ * \param[in]       mac is the port's zero-based MAC number on which to operate.
+ *                  May be specified as FM_PORT_ACTIVE_MAC to operate on the
+ *                  currently selected active MAC (see the
+ *                  ''FM_PORT_SELECT_ACTIVE_MAC'' port attribute). Must be
+ *                  specified as either FM_PORT_ACTIVE_MAC or zero for ports
  *                  that have only one MAC (physical link connection). May
  *                  not be specified as FM_PORT_MAC_ALL.
  *
@@ -2578,21 +2561,21 @@ fm_status fmGetNumPortLanes( fm_int sw,
  *                  FALSE otherwise
  *
  * \return          FM_OK if successful.
- * 
+ *
  * \return          FM_ERR_INVALID_SWITCH if sw is invalid.
- * 
+ *
  * \return          FM_ERR_INVALID_PORT if port is invalid.
- * 
- * \return          FM_ERR_INVALID_PORT_MAC if mac is not valid for the 
+ *
+ * \return          FM_ERR_INVALID_PORT_MAC if mac is not valid for the
  *                  specified port, or if FM_PORT_SELECT_ACTIVE_MAC was
  *                  specified and the port has no active MAC selected.
- * 
+ *
  * \return          FM_ERR_INVALID_ARGUMENT if one of the arguments is invalid
- * 
+ *
  *****************************************************************************/
-fm_status fmIsPortDisabled( fm_int   sw, 
-                            fm_int   port, 
-                            fm_int   mac, 
+fm_status fmIsPortDisabled( fm_int   sw,
+                            fm_int   port,
+                            fm_int   mac,
                             fm_bool *isDisabled )
 {
     fm_status  err;
@@ -2634,7 +2617,7 @@ fm_status fmIsPortDisabled( fm_int   sw,
 
 /*****************************************************************************/
 /** fmDbgDumpPortEeeStatus
- * \ingroup diagMisc 
+ * \ingroup diagMisc
  *
  * \chips           FM10000
  *
@@ -2645,28 +2628,24 @@ fm_status fmIsPortDisabled( fm_int   sw,
  *
  * \param[in]       port is the port whose attributes are to be dumped.
  *                  May not be a LAG logical port.
- * 
+ *
  * \param[in]       clear is TRUE if the counters should be reset.
  *
  * \return          FM_OK if successful
- * 
+ *
  * \return          FM_ERR_NO_MEM if there was a memory allocation problem.
  * \return          FM_ERR_INVALID_SWITCH if the switch ID is invalid.
  * \return          FM_ERR_INVALID_PORT if the port ID is invalid.
  * \return          FM_ERR_UNSUPPORTED if this function isn't supported for
  *                  the requested chip.
- * 
+ *
  *****************************************************************************/
 fm_status fmDbgDumpPortEeeStatus(fm_int sw, fm_int port, fm_bool clear)
 {
     fm_switch *switchPtr;
     fm_status  status;
 
-    if ( (sw < 0) || (sw >= FM_MAX_NUM_SWITCHES) )
-    {
-        FM_LOG_PRINT("ERROR: invalid switch %d\n", sw);
-        return FM_ERR_INVALID_SWITCH;
-    }
+    VALIDATE_SWITCH(sw);
 
     switchPtr = GET_SWITCH_PTR(sw);
 
@@ -2685,8 +2664,8 @@ fm_status fmDbgDumpPortEeeStatus(fm_int sw, fm_int port, fm_bool clear)
     PROTECT_SWITCH(sw);
 
     FM_API_CALL_FAMILY( status,
-                        switchPtr->DbgDumpPortEeeStatus, 
-                        sw, 
+                        switchPtr->DbgDumpPortEeeStatus,
+                        sw,
                         port,
                         clear );
 
@@ -2701,7 +2680,7 @@ fm_status fmDbgDumpPortEeeStatus(fm_int sw, fm_int port, fm_bool clear)
 
 /*****************************************************************************/
 /** fmDbgEnablePortEee
- * \ingroup diagMisc 
+ * \ingroup diagMisc
  *
  * \chips           FM10000
  *
@@ -2715,24 +2694,20 @@ fm_status fmDbgDumpPortEeeStatus(fm_int sw, fm_int port, fm_bool clear)
  * \param[in]       mode is the EEE mode to configure.
  *
  * \return          FM_OK if successful
- * 
+ *
  * \return          FM_ERR_NO_MEM if there was a memory allocation problem.
  * \return          FM_ERR_INVALID_SWITCH if the switch ID is invalid.
  * \return          FM_ERR_INVALID_PORT if the port ID is invalid.
  * \return          FM_ERR_UNSUPPORTED if this function isn't supported for
  *                  the requested chip.
- * 
+ *
  *****************************************************************************/
 fm_status fmDbgEnablePortEee(fm_int sw, fm_int port, fm_int mode)
 {
     fm_switch *switchPtr;
     fm_status  status;
 
-    if ( (sw < 0) || (sw >= FM_MAX_NUM_SWITCHES) )
-    {
-        FM_LOG_PRINT("ERROR: invalid switch %d\n", sw);
-        return FM_ERR_INVALID_SWITCH;
-    }
+    VALIDATE_SWITCH(sw);
 
     switchPtr = GET_SWITCH_PTR(sw);
 
@@ -2751,8 +2726,8 @@ fm_status fmDbgEnablePortEee(fm_int sw, fm_int port, fm_int mode)
     PROTECT_SWITCH(sw);
 
     FM_API_CALL_FAMILY( status,
-                        switchPtr->DbgEnablePortEee, 
-                        sw, 
+                        switchPtr->DbgEnablePortEee,
+                        sw,
                         port,
                         mode );
 
@@ -2769,9 +2744,9 @@ fm_status fmDbgEnablePortEee(fm_int sw, fm_int port, fm_int mode)
 /** fmIsValidPortAttribute
  * \ingroup intPort
  *
- * \desc            Indicate whether the given attribute is valid in the 
+ * \desc            Indicate whether the given attribute is valid in the
  *                  Switch API
- * 
+ *
  * \param[in]       attr is the attribute on which to operate.
  *
  * \return          TRUE if valid attribute.
