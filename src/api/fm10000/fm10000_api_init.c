@@ -1619,6 +1619,14 @@ static fm_status InitDefaultAttributes(fm_int sw)
                                           FM_PORT_ISL_TAG_FORMAT,
                                           &portAttr->islTagFormat);
             FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_SWITCH, err);
+
+            err = fm10000SetPortAttribute(sw,
+                                          port,
+                                          FM_PORT_ACTIVE_MAC,
+                                          FM_PORT_LANE_NA,
+                                          FM_PORT_LEARNING,
+                                          &portAttr->learning);
+            FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_SWITCH, err);
         }
     }
 
