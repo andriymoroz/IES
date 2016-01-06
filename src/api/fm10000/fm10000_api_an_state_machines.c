@@ -66,6 +66,9 @@ static fm_status ConfigureAnTimers( fm_smEventInfo *eventInfo, void *userInfo );
 static fm_status NotifyPortAutonegComplete( fm_smEventInfo *eventInfo, void *userInfo );
 static fm_status NotifyPortAutonegRestarted( fm_smEventInfo *eventInfo, void *userInfo );
 static fm_status DoAbilityMatch( fm_smEventInfo *eventInfo, void *userInfo );
+static fm_status StartAnPollingTimer( fm_smEventInfo *eventInfo, void *userInfo );
+static fm_status StopAnPollingTimer( fm_smEventInfo *eventInfo, void *userInfo );
+static fm_status PerformAnPortStatusValidation( fm_smEventInfo *eventInfo, void *userInfo );
 
 
 
@@ -105,6 +108,7 @@ static fm_status Clause73StateMachineS10E13Callback( fm_smEventInfo *eventInfo, 
 static fm_status Clause73StateMachineS11E0Callback( fm_smEventInfo *eventInfo, void *userInfo );
 static fm_status Clause73StateMachineS11E1Callback( fm_smEventInfo *eventInfo, void *userInfo );
 static fm_status Clause73StateMachineS11E11Callback( fm_smEventInfo *eventInfo, void *userInfo );
+static fm_status Clause73StateMachineS11E14Callback( fm_smEventInfo *eventInfo, void *userInfo );
 
 /* Declarations of transition callbacks for FM10000_CLAUSE37_AN_STATE_MACHINE */
 static fm_status Clause37StateMachineS0E0Callback( fm_smEventInfo *eventInfo, void *userInfo );
@@ -181,7 +185,8 @@ fm_text fm10000AnEventsMap[FM10000_AN_EVENT_MAX] =
     "AN_EVENT_LINK_OK_IND",
     "AN_EVENT_TRANSMIT_DISABLE_IND",
     "AN_EVENT_GOOD_CHECK_IND",
-    "AN_EVENT_GOOD_IND"
+    "AN_EVENT_GOOD_IND",
+    "AN_EVENT_POLLING_TIMER_EXP_IND"
 
 };
 
@@ -701,6 +706,108 @@ static fm_status DoAbilityMatch( fm_smEventInfo *eventInfo, void *userInfo )
     return status;
 
 }   /* end DoAbilityMatch */
+
+
+/*****************************************************************************/
+/** StartAnPollingTimer
+ * \ingroup intAnStateMachine 
+ *
+ * \desc            One of the action callbacks for this state machine
+ *                  category.
+ *
+ * \param[in]       eventInfo is a pointer to a caller-allocated area
+ *                  containing the generic event descriptor.
+ * 
+ * \param[in]       userInfo is a pointer to a caller-allocated area containing
+ *                  purpose-specific event info.
+ * 
+ * \return          Caller-provided return codes.
+ * 
+ *****************************************************************************/
+static fm_status StartAnPollingTimer( fm_smEventInfo *eventInfo, void *userInfo )
+{
+    fm_status status;
+    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
+
+    FM_LOG_DEBUG_V2( FM_LOG_CAT_PORT_AUTONEG,
+                     port,
+                     "Event %s occurred on port %d, executing StartAnPollingTimer\n", 
+                     fm10000AnEventsMap[eventInfo->eventId],
+                     port );
+
+    status = fm10000StartAnPollingTimer( eventInfo, userInfo );
+
+    return status;
+
+}   /* end StartAnPollingTimer */
+
+
+/*****************************************************************************/
+/** StopAnPollingTimer
+ * \ingroup intAnStateMachine 
+ *
+ * \desc            One of the action callbacks for this state machine
+ *                  category.
+ *
+ * \param[in]       eventInfo is a pointer to a caller-allocated area
+ *                  containing the generic event descriptor.
+ * 
+ * \param[in]       userInfo is a pointer to a caller-allocated area containing
+ *                  purpose-specific event info.
+ * 
+ * \return          Caller-provided return codes.
+ * 
+ *****************************************************************************/
+static fm_status StopAnPollingTimer( fm_smEventInfo *eventInfo, void *userInfo )
+{
+    fm_status status;
+    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
+
+    FM_LOG_DEBUG_V2( FM_LOG_CAT_PORT_AUTONEG,
+                     port,
+                     "Event %s occurred on port %d, executing StopAnPollingTimer\n", 
+                     fm10000AnEventsMap[eventInfo->eventId],
+                     port );
+
+    status = fm10000StopAnPollingTimer( eventInfo, userInfo );
+
+    return status;
+
+}   /* end StopAnPollingTimer */
+
+
+/*****************************************************************************/
+/** PerformAnPortStatusValidation
+ * \ingroup intAnStateMachine 
+ *
+ * \desc            One of the action callbacks for this state machine
+ *                  category.
+ *
+ * \param[in]       eventInfo is a pointer to a caller-allocated area
+ *                  containing the generic event descriptor.
+ * 
+ * \param[in]       userInfo is a pointer to a caller-allocated area containing
+ *                  purpose-specific event info.
+ * 
+ * \return          Caller-provided return codes.
+ * 
+ *****************************************************************************/
+static fm_status PerformAnPortStatusValidation( fm_smEventInfo *eventInfo, void *userInfo )
+{
+    fm_status status;
+    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
+
+    FM_LOG_DEBUG_V2( FM_LOG_CAT_PORT_AUTONEG,
+                     port,
+                     "Event %s occurred on port %d, executing PerformAnPortStatusValidation\n", 
+                     fm10000AnEventsMap[eventInfo->eventId],
+                     port );
+
+    status = fm10000PerformAnPortStatusValidation( eventInfo, userInfo );
+
+    return status;
+
+}   /* end PerformAnPortStatusValidation */
 
 
 /*****************************************************************************/
@@ -2259,6 +2366,9 @@ static fm_status Clause73StateMachineS11E1Callback( fm_smEventInfo *eventInfo, v
 
     ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken = FALSE;
         
+    status = StopAnPollingTimer( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
+            
     status = TakeRegLock( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
             
@@ -2306,6 +2416,9 @@ static fm_status Clause73StateMachineS11E11Callback( fm_smEventInfo *eventInfo, 
 
     ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken = FALSE;
         
+    status = StopAnPollingTimer( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
+            
     status = TakeRegLock( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
             
@@ -2333,6 +2446,47 @@ ABORT:
     return status;
 
 }   /* end Clause73StateMachineS11E11Callback */
+
+/*****************************************************************************/
+/** Clause73StateMachineS11E14Callback
+ * \ingroup intAnStateMachine
+ *
+ * \desc            Transition callback for AN state machine type
+ *                  ''FM10000_CLAUSE73_AN_STATE_MACHINE'', when event
+ *                  ''FM10000_AN_EVENT_POLLING_TIMER_EXP_IND'' occurs in state
+ *                  ''FM10000_AN_STATE_GOOD''.
+ * 
+ * \param[in]       eventInfo is a pointer to a caller-allocated area
+ *                  containing the generic event descriptor.
+ * 
+ * \param[in]       userInfo is a pointer to a caller-allocated area containing
+ *                  purpose-specific event info.
+ * 
+ * \return          See return codes from the action callback functions.
+ * 
+ *****************************************************************************/
+static fm_status Clause73StateMachineS11E14Callback( fm_smEventInfo *eventInfo, void *userInfo )
+{
+    fm_status status = FM_OK;
+    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
+
+    ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken = FALSE;
+        
+    status = StartAnPollingTimer( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
+            
+    status = PerformAnPortStatusValidation( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
+            
+ABORT:
+    if( ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken == TRUE )
+    {
+        DropRegLock( eventInfo, userInfo );
+    }
+
+    return status;
+
+}   /* end Clause73StateMachineS11E14Callback */
 
 /******************************************************************************
  * Definitions of transition callbacks for FM10000_CLAUSE37_AN_STATE_MACHINE
@@ -4407,11 +4561,21 @@ fm_status fm10000RegisterClause73AnStateMachine( void )
     stt[FM10000_AN_STATE_GOOD]
        [FM10000_AN_EVENT_TRANSMIT_DISABLE_IND].used = TRUE;
     stt[FM10000_AN_STATE_GOOD]
-       [FM10000_AN_EVENT_TRANSMIT_DISABLE_IND].nextState = FM10000_AN_STATE_TRANSMIT_DISABLE;
+       [FM10000_AN_EVENT_TRANSMIT_DISABLE_IND].nextState = FM10000_AN_STATE_DISABLED;
     stt[FM10000_AN_STATE_GOOD]
        [FM10000_AN_EVENT_TRANSMIT_DISABLE_IND].conditionCallback = NULL;
     stt[FM10000_AN_STATE_GOOD]
        [FM10000_AN_EVENT_TRANSMIT_DISABLE_IND].transitionCallback = Clause73StateMachineS11E11Callback;
+
+    /* transition for state=AN_STATE_GOOD(11), event=AN_EVENT_POLLING_TIMER_EXP_IND(14) */
+    stt[FM10000_AN_STATE_GOOD]
+       [FM10000_AN_EVENT_POLLING_TIMER_EXP_IND].used = TRUE;
+    stt[FM10000_AN_STATE_GOOD]
+       [FM10000_AN_EVENT_POLLING_TIMER_EXP_IND].nextState = FM10000_AN_STATE_GOOD;
+    stt[FM10000_AN_STATE_GOOD]
+       [FM10000_AN_EVENT_POLLING_TIMER_EXP_IND].conditionCallback = NULL;
+    stt[FM10000_AN_STATE_GOOD]
+       [FM10000_AN_EVENT_POLLING_TIMER_EXP_IND].transitionCallback = Clause73StateMachineS11E14Callback;
 
     /* fill out the state transition table for this state machine type */
     for (i = 0 ; i < FM10000_AN_STATE_MAX  ; i++)

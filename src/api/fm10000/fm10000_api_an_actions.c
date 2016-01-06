@@ -74,6 +74,7 @@ static fm_status ConfigureAn73NextPages( fm_smEventInfo *eventInfo,
                                          void           *userInfo );
 static fm_status ConfigureAn37NextPages( fm_smEventInfo *eventInfo, 
                                          void           *userInfo );
+static void HandleAnPollingTimerEvent( void *arg );
 
 
 
@@ -1247,6 +1248,59 @@ ABORT:
 
 
 
+/*****************************************************************************/
+/** HandleAnPollingTimerEvent
+ * \ingroup intPort
+ * 
+ * \desc            Handles the expiration of the timer used for polling
+ *                  during the AN_GOOD state
+ *
+ * \param[in]       arg is the pointer to the argument passed when the timer
+ *                  was started, in this case the pointer to the lane extension
+ *                  structure (type ''fm10000_lane'')
+ *
+ * \return          None
+ *
+ *****************************************************************************/
+static void HandleAnPollingTimerEvent( void *arg )
+{
+    fm_smEventInfo           eventInfo; 
+    fm10000_portSmEventInfo *portEventInfo;
+    fm10000_port            *portExt;
+    fm_int                   sw;
+    fm_int                   port;
+
+    
+    portExt             = arg;
+    eventInfo.smType    = portExt->anSmType;
+    eventInfo.eventId   = FM10000_AN_EVENT_POLLING_TIMER_EXP_IND;
+    portEventInfo       = &portExt->eventInfo;
+    sw                  = portEventInfo->switchPtr->switchNumber;
+    port                = portExt->base->portNumber;
+
+    FM_LOG_DEBUG_V2( FM_LOG_CAT_PORT_AUTONEG,
+                     port,
+                     "AN polling timer expired on port %d (switch %d, portPtr=%p)\n",
+                     port,
+                     sw,
+                     (void *)portExt->base );
+
+    PROTECT_SWITCH( sw );
+    eventInfo.lock = FM_GET_STATE_LOCK( sw );
+    eventInfo.dontSaveRecord = FALSE;
+    portExt->eventInfo.regLockTaken = FALSE;
+
+    fmNotifyStateMachineEvent( portExt->anSmHandle,
+                               &eventInfo,
+                               portEventInfo,
+                               &port );
+    UNPROTECT_SWITCH( sw );
+
+}   /* end HandleAnPollingTimerEvent */
+
+
+
+
 /*****************************************************************************
  * Public Functions
  *****************************************************************************/
@@ -2280,6 +2334,184 @@ fm_status fm10000DoAbilityMatch( fm_smEventInfo *eventInfo, void *userInfo )
     return FM_OK;
 
 }   /* end fm10000DoAbilityMatch */
+
+
+
+
+/*****************************************************************************/
+/** fm10000StartAnPollingTimer
+ * \ingroup intPort
+ *
+ * \desc            Action starting the AN polling timer.
+ * 
+ * \param[in]       eventInfo pointer to a caller-allocated area containing
+ *                  the generic event descriptor (unsed in this function)
+ * 
+ * \param[in]       userInfo pointer to a caller-allocated area containing the
+ *                  purpose specific event descriptor (cast to
+ *                  ''fm10000_portSmEventInfo'' in this function)
+ * 
+ * \return          FM_OK if successful
+ * \return          Other ''Status Codes'' as appropriate in case of failure.
+ * 
+ *****************************************************************************/
+fm_status fm10000StartAnPollingTimer( fm_smEventInfo *eventInfo,
+                                      void           *userInfo )
+{
+    fm_status     status;
+    fm10000_port *portExt;
+    fm_timestamp  timeout = { 2, 0 };
+
+    FM_NOT_USED(eventInfo);
+
+    status = FM_OK;
+
+    if (GET_PROPERTY()->enableStatusPolling == TRUE)
+    {
+        /* start an 2 sec port-level timer. The callback will generate
+           a FM10000_PORT_EVENT_POLLING_TIMER_EXP_IND event */
+        portExt = ((fm10000_portSmEventInfo *)userInfo)->portExt;
+
+        if (((fm10000_portSmEventInfo *)userInfo)->portAttrExt->eeeEnable &&
+            portExt->ethMode == FM_ETH_MODE_1000BASE_KX)
+        {
+            /* 0.5 seconds for faster link down detection */
+            timeout.sec = 0;
+            timeout.usec = 5000;
+        }
+    
+        status = fmStartTimer( portExt->timerHandle,
+                               &timeout,
+                               1, 
+                               HandleAnPollingTimerEvent,
+                               portExt );
+    }
+
+    return status;
+
+}   /* end fm10000StartAnPollingTimer */
+
+
+
+
+/*****************************************************************************/
+/** fm10000StopAnPollingTimer
+ * \ingroup intPort
+ *
+ * \desc            Action stopping the AN polling timer 
+ * 
+ * \param[in]       eventInfo pointer to a caller-allocated area containing
+ *                  the generic event descriptor (unsed in this function)
+ * 
+ * \param[in]       userInfo pointer to a caller-allocated area containing the
+ *                  purpose specific event descriptor (cast to
+ *                  ''fm10000_portSmEventInfo'' in this function)
+ * 
+ * \return          FM_OK if successful
+ * \return          Other ''Status Codes'' as appropriate in case of failure.
+ * 
+ *****************************************************************************/
+fm_status fm10000StopAnPollingTimer( fm_smEventInfo *eventInfo,
+                                     void           *userInfo )
+{
+    fm_status     status;
+    fm10000_port *portExt;
+
+    FM_NOT_USED(eventInfo);
+
+    status = FM_OK;
+
+    if (GET_PROPERTY()->enableStatusPolling == TRUE)
+    {
+        portExt = ((fm10000_portSmEventInfo *)userInfo)->portExt;
+    
+        status = fmStopTimer( portExt->timerHandle );
+    }
+    return status;
+
+}   /* end fm10000StopAnPollingTimer */
+
+
+
+
+/*****************************************************************************/
+/** fm10000PerformAnPortStatusValidation
+ * \ingroup intPort
+ *
+ * \desc            Action performing a port status validation for
+ *                  autonegotiated modes
+ * 
+ * \param[in]       eventInfo pointer to a caller-allocated area containing
+ *                  the generic event descriptor (unsed in this function)
+ * 
+ * \param[in]       userInfo pointer to a caller-allocated area containing the
+ *                  purpose specific event descriptor (cast to
+ *                  ''fm10000_portSmEventInfo'' in this function)
+ * 
+ * \return          FM_OK if successful
+ * \return          Other ''Status Codes'' as appropriate in case of failure.
+ * 
+ *****************************************************************************/
+fm_status fm10000PerformAnPortStatusValidation( fm_smEventInfo *eventInfo,
+                                                void           *userInfo )
+{
+    fm_status     status;
+    fm_switch    *switchPtr;
+    fm_int        sw;
+    fm10000_port *portExt;
+    fm_int        port;
+    fm_int        physLane;
+    fm_int        epl;
+    fm_uint32     pcsRxStatus;
+    fm_uint       state;
+    fm_uint       codeSyncStatus;
+    fm_uint       rxLpiActive;
+    fm_bool       eeeEnabled;
+
+
+    status = FM_OK;
+    eventInfo->dontSaveRecord = TRUE;
+
+    if (GET_PROPERTY()->enableStatusPolling == TRUE)
+    {
+        switchPtr  = ((fm10000_portSmEventInfo *)userInfo)->switchPtr;
+        sw         = switchPtr->switchNumber;
+        portExt    = ((fm10000_portSmEventInfo *)userInfo)->portExt;
+        port       = portExt->base->portNumber;
+        eeeEnabled = ((fm10000_portSmEventInfo *)userInfo)->portAttrExt->eeeEnable;
+
+        if (eeeEnabled && portExt->ethMode == FM_ETH_MODE_1000BASE_KX)
+        {
+            epl      = portExt->endpoint.epl;
+            physLane = portExt->nativeLaneExt->physLane;
+
+            status = switchPtr->ReadUINT32(sw,
+                    FM10000_PCS_1000BASEX_RX_STATUS(epl, physLane),
+                    &pcsRxStatus);
+            FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_PORT, status);
+
+            state = FM_GET_FIELD(pcsRxStatus,
+                                FM10000_PCS_1000BASEX_RX_STATUS, State);
+            codeSyncStatus = FM_GET_BIT(pcsRxStatus,
+                                FM10000_PCS_1000BASEX_RX_STATUS, CodeSyncStatus);
+            rxLpiActive = FM_GET_BIT(pcsRxStatus,
+                                FM10000_PCS_1000BASEX_RX_STATUS, RxLpiActive);
+
+            if (state < 18 && codeSyncStatus == 0 && rxLpiActive == 1)
+            {
+                FM_LOG_DEBUG( FM_LOG_CAT_PORT,
+                             "Force port %d link down on signal loss\n", 
+                             port);
+
+                /* Disable AN and reenable AN to bring link down */
+                switchPtr->WriteUINT32(sw, FM10000_AN_73_CFG(epl, physLane), 0);
+                switchPtr->WriteUINT32(sw, FM10000_AN_73_CFG(epl, physLane), 1);
+            }
+        }
+    }
+    return status;
+
+}   /* end fm10000PerformAnPortStatusValidation */
 
 
 

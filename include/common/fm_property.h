@@ -667,7 +667,7 @@ typedef enum
 /* Indicates whether port status polling is enabled or not */
 #define FM_AAK_API_PORT_ENABLE_STATUS_POLLING           "api.port.enableStatusPolling"
 #define FM_AAT_API_PORT_ENABLE_STATUS_POLLING           FM_API_ATTR_BOOL
-#define FM_AAD_API_PORT_ENABLE_STATUS_POLLING           FALSE
+#define FM_AAD_API_PORT_ENABLE_STATUS_POLLING           TRUE
 
 /* Indicates GSME timestamping mode. Valid values are: */
 /* 0: system up time                                   */

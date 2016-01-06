@@ -88,6 +88,7 @@ typedef enum
     FM10000_AN_EVENT_TRANSMIT_DISABLE_IND,
     FM10000_AN_EVENT_GOOD_CHECK_IND,
     FM10000_AN_EVENT_GOOD_IND,
+    FM10000_AN_EVENT_POLLING_TIMER_EXP_IND,
     FM10000_AN_EVENT_MAX
 
 } fm10000_anSmEvents;
@@ -110,6 +111,9 @@ fm_status fm10000ConfigureAnTimers( fm_smEventInfo *eventInfo, void *userInfo );
 fm_status fm10000NotifyPortAutonegComplete( fm_smEventInfo *eventInfo, void *userInfo );
 fm_status fm10000NotifyPortAutonegRestarted( fm_smEventInfo *eventInfo, void *userInfo );
 fm_status fm10000DoAbilityMatch( fm_smEventInfo *eventInfo, void *userInfo );
+fm_status fm10000StartAnPollingTimer( fm_smEventInfo *eventInfo, void *userInfo );
+fm_status fm10000StopAnPollingTimer( fm_smEventInfo *eventInfo, void *userInfo );
+fm_status fm10000PerformAnPortStatusValidation( fm_smEventInfo *eventInfo, void *userInfo );
 
 
 

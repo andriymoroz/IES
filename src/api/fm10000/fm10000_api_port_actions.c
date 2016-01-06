@@ -2374,9 +2374,14 @@ fm_status fm10000NotifyApiPortUp( fm_smEventInfo *eventInfo, void *userInfo )
             status = fm10000StartDeferredLpiTimer(eventInfo,userInfo);
             FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
         }
-        else
+        else if (portAttrExt->ethMode != FM_ETH_MODE_AN_73)
         {
             status = fm10000StartPortStatusPollingTimer(eventInfo,userInfo);
+            FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+        }
+        else
+        {
+            status = fm10000StartAnPollingTimer(eventInfo,userInfo);
             FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
         }
 
@@ -4922,6 +4927,8 @@ fm_status fm10000DeferredLpiMode( fm_smEventInfo *eventInfo, void *userInfo )
                 FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, status);
             }
         }
+
+        status = fm10000StartAnPollingTimer(eventInfo,userInfo);
     }
 ABORT:
     return  status;
@@ -7162,6 +7169,9 @@ fm_status fm10000SetupAdminModeUp ( fm_smEventInfo *eventInfo,
     {
         /* remote fault */
         *nextState = FM10000_PORT_STATE_REMOTE_FAULT;
+
+        fm10000StartPortStatusPollingTimer(eventInfo,userInfo);
+
     }
     else
     {
@@ -7169,9 +7179,10 @@ fm_status fm10000SetupAdminModeUp ( fm_smEventInfo *eventInfo,
         *nextState = FM10000_PORT_STATE_LOCAL_FAULT;
 
         status = fm10000Restart100gSyncDetection(eventInfo,userInfo);
+
+        fm10000StartPortStatusPollingTimer(eventInfo,userInfo);
     }
 
-    fm10000StartPortStatusPollingTimer(eventInfo,userInfo);
 
 ABORT:
     return status;
@@ -7820,41 +7831,67 @@ fm_status fm10000ProcessPortStatusPollingTimer( fm_smEventInfo *eventInfo,
     fm_status status;
     fm_int    port;
     fm_int    currentState;
+    fm10000_portAttr   *portAttrExt;
 
     status = FM_OK;
 
+    portAttrExt = ((fm10000_portSmEventInfo *)userInfo)->portAttrExt;
+
     if (GET_PROPERTY()->enableStatusPolling)
     {
-        currentState = *nextState;
+        if (portAttrExt->fabricLoopback == FM_PORT_LOOPBACK_OFF)
+        {
+            currentState = *nextState;
+        
+            status = fm10000ProcessPortStatus( eventInfo, userInfo, nextState );
+        
+            port = ((fm10000_portSmEventInfo *)userInfo)->portExt->base->portNumber;
     
-        status = fm10000ProcessPortStatus( eventInfo, userInfo, nextState );
+            if (status == FM_OK)
+            {
+                if (currentState == *nextState)
+                {
+                    eventInfo->dontSaveRecord = TRUE;
+                    fm10000StartPortStatusPollingTimer(eventInfo, userInfo);
+                    
+                    if (*nextState == FM10000_PORT_STATE_LOCAL_FAULT)
+                    {
+                        /* if in local fault and for 100G only, try restart the
+                         * the lane aligment detection state machine.
+                         * The called function has an embedded filter to execute
+                         * the action only in the case of 100G links */
+                        status = fm10000Restart100gSyncDetection(eventInfo,userInfo);
+                    }
+                }
+                else
+                {
+                    if (*nextState == FM10000_PORT_STATE_UP)
+                    {
+                        status = fm10000NotifyApiPortUp(eventInfo,userInfo);
+                    }
+                    else
+                    {
+                        status = fm10000ReleaseSchedBwLnkDown(eventInfo,userInfo);
+        
+                        if (status == FM_OK)
+                        {
+                            status = fm10000NotifyApiPortDown(eventInfo,userInfo);
+                        }
     
-        port = ((fm10000_portSmEventInfo *)userInfo)->portExt->base->portNumber;
-
-        if (currentState == *nextState)
+                        fm10000StartPortStatusPollingTimer(eventInfo, userInfo);
+                    }
+    
+                }   /* end if-else (currentState == *nextState) */
+    
+            }   /* end if (status == FM_OK) */
+        }
+        else
         {
             eventInfo->dontSaveRecord = TRUE;
             fm10000StartPortStatusPollingTimer(eventInfo, userInfo);
         }
-        else
-        {
-            if (*nextState == FM10000_PORT_STATE_UP)
-            {
-                status = fm10000NotifyApiPortUp(eventInfo,userInfo);
-            }
-            else
-            {
-                status = fm10000ReleaseSchedBwLnkDown(eventInfo,userInfo);
 
-                if (status == FM_OK)
-                {
-                    status = fm10000NotifyApiPortDown(eventInfo,userInfo);
-                }
-
-                fm10000StartPortStatusPollingTimer(eventInfo, userInfo);
-            }
-        }
-    }
+    }   /* end if (GET_PROPERTY()->enableStatusPolling) */
 
     return status;
 
