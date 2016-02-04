@@ -5,7 +5,7 @@
  * Creation Date:   July 20, 2010
  * Description:     Constants for attributes and attribute values
  *
- * Copyright (c) 2005 - 2015, Intel Corporation
+ * Copyright (c) 2005 - 2016, Intel Corporation
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -318,6 +318,14 @@
  *
  *  \chips  FM10000 */
 #define FM_FLOW_MATCH_LOGICAL_PORT       (FM_LITERAL_U64(1) << 26)
+
+/** Match the TTL field in an IPv4 header or Hop Limit in an IPv6 header.
+ *  Specify ttl and ttlMask in ''fm_flowValue''.
+ *                                                                      \lb\lb
+ *  For FM10000 devices, this condition is available for TCAM tables.
+ *
+ *  \chips  FM10000 */
+#define FM_FLOW_MATCH_TTL                (FM_LITERAL_U64(1) << 27)
 
 /** @} (end of Doxygen group) */
 
@@ -641,6 +649,36 @@ enum _fm_flowGroupAttr
      *  \chips  FM10000 */
     FM_FLOW_TABLE_SCENARIO,
 
+    /** Type fm_flowCondition: A read-only attribute used to get a bit mask of
+     *  matching conditions supported by a flow table.
+     *
+     *  \chips FM10000 */
+    FM_FLOW_TABLE_CONDITION,
+
+    /** Type fm_uint32: A read-only attribute used to get the maximum number of
+     *  actions supported by rules in flow table.
+     *
+     *  \chips FM10000 */
+    FM_FLOW_TABLE_MAX_ACTIONS,
+
+    /** Type fm_flowAction: A read-only attribute used to get a bitmask of
+     *  actions supported by rules in flow table.
+     *
+     *  \chips FM10000 */
+    FM_FLOW_TABLE_SUPPORTED_ACTIONS,
+
+    /** Type fm_int: A read-only attribute used to get the size of the flow
+     *  table.
+     *
+     *  \chips FM10000 */
+    FM_FLOW_TABLE_MAX_ENTRIES,
+
+    /** Type fm_int: A read-only attribute used to get the number of empty
+     *  flow entries left in the flow table.
+     *
+     *  \chips FM10000 */
+    FM_FLOW_TABLE_EMPTY_ENTRIES,
+
    /** UNPUBLISHED: For internal use only. */
     FM_FLOW_ATTR_MAX
 };
@@ -727,17 +765,23 @@ enum _fm_flowGroupAttr
  *                                                                      \lb\lb
  *  For FM10000 devices, this action is available for TCAM tables.
  *
+ *  This action is not supported in the SWAG environment due to the
+ *  possibility of undesired double tagging when passing a frame from
+ *  one switch to another.
+ *
  *  \chips  FM6000, FM10000 */
 #define FM_FLOW_ACTION_PUSH_VLAN         (FM_LITERAL_U64(1) << 7)
 
 /** Pop the outermost VLAN header from the frame.
  *                                                                      \lb\lb
  *  For FM10000 devices this action must always be paired with
- *  ''FM_FLOW_ACTION_SET_VLAN'' to specify the new vlan that would be used
- *  for filtering.
- *  This action pops all parsed VLAN headers for FM10000 devices. The VLAN 
- *  headers parsing configuration is specified by ''FM_PORT_PARSER_VLAN1_TAG'',
- *  ''FM_PORT_PARSER_VLAN2_TAG'' and ''FM_SWITCH_PARSER_VLAN_ETYPES'' attributes.
+ *  ''FM_FLOW_ACTION_SET_VLAN'' or
+ *  ''FM_FLOW_ACTION_UPD_OR_ADD_VLAN'' to specify the new vlan
+ *  that would be used for filtering. This action pops all
+ *  parsed VLAN headers for FM10000 devices. The VLAN headers
+ *  parsing configuration is specified by
+ *  ''FM_PORT_PARSER_VLAN1_TAG'', ''FM_PORT_PARSER_VLAN2_TAG''
+ *  and ''FM_SWITCH_PARSER_VLAN_ETYPES'' attributes.
  *                                                                      \lb\lb
  *  For FM10000 devices, this action is available for TCAM tables.
  *
@@ -942,6 +986,14 @@ enum _fm_flowGroupAttr
  *
  *  \chips  FM10000 */
 #define FM_FLOW_ACTION_MIRROR_GRP            (FM_LITERAL_U64(1) << 35)
+
+/** Either update the existing VLAN ID if a VLAN tag is present
+  * in the frame or add a VLAN tag if the frame was untagged.
+  *                                                                     \lb\lb
+  * For FM10000 devices, this action is available for TCAM tables.
+  *
+  * \chips FM10000 */  
+#define FM_FLOW_ACTION_UPD_OR_ADD_VLAN       (FM_LITERAL_U64(1) << 36)
 
 
 /** @} (end of Doxygen group) */
@@ -1165,7 +1217,16 @@ typedef struct _fm_flowValue
      *  ''FM_FLOW_MATCH_VSI_TEP'' condition */
     fm_uint16       vsiTep;
 
+    /** IP Time To Live (IPv4) or Hop Limit (IPv6) for the
+     *  ''FM_FLOW_MATCH_TTL'' condition. */
+    fm_byte         ttl;
+
+    /** IP Time To Live (IPv4) or Hop Limit (IPv6) mask for the
+     *  ''FM_FLOW_MATCH_TTL'' condition. */
+    fm_byte         ttlMask;
+
 } fm_flowValue;
+
 
 /**************************************************/
 /** \ingroup typeStruct
@@ -1333,6 +1394,7 @@ typedef struct _fm_flowParam
 
 } fm_flowParam;
 
+
 /**************************************************/
 /** \ingroup typeStruct
  *  Used as an argument to ''fmGetFlowCount''.
@@ -1347,6 +1409,7 @@ typedef struct _fm_flowCounters
 
 } fm_flowCounters;
 
+
 /**************************************************/
 /** \ingroup typeScalar
  *  A Flow API matching condition, used as an argument 
@@ -1357,6 +1420,7 @@ typedef struct _fm_flowCounters
  *  of each bit in the mask.
  **************************************************/
 typedef fm_uint64       fm_flowCondition;
+
 
 /**************************************************/
 /** \ingroup typeScalar

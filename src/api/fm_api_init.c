@@ -6,7 +6,7 @@
  * Description:     Functions for initialization and switch status/information
  *                  retrieval functions for the API
  *
- * Copyright (c) 2005 - 2015, Intel Corporation
+ * Copyright (c) 2005 - 2016, Intel Corporation
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -33,6 +33,7 @@
  *****************************************************************************/
 
 #include <fm_sdk_int.h>
+#include <api/internal/fm_api_int.h>
 #include <common/fm_version.h>
 
 /*****************************************************************************
@@ -51,6 +52,11 @@ typedef struct _fm_switchModelEntry
 
 #define MAX_BUF_SIZE                    256
 #define NUM_CAT                         64
+
+#ifdef FM_SUPPORT_SWAG
+#define DEF_TIMEOUT                     1
+#define MAX_RETRIES                     5
+#endif
 
 /*****************************************************************************
  * Global Variables
@@ -322,7 +328,7 @@ static fm_logCatMap logCatMap[] =
     { "alos_time",          FM_LOG_CAT_ALOS_TIME          },
     { "model",              FM_LOG_CAT_MODEL              },
     { "parity",             FM_LOG_CAT_PARITY             },
-    { "spare24",            FM_LOG_CAT_SPARE24            },
+    { "glort",              FM_LOG_CAT_GLORT              },
     { "spare25",            FM_LOG_CAT_SPARE25            },
     { "lag",                FM_LOG_CAT_LAG                },
     { "spare27",            FM_LOG_CAT_SPARE27            },
@@ -977,6 +983,8 @@ static fm_status fmAllocateSwitchDataStructures(fm_int sw)
     swstate->glortInfo.specialMask    = ~0;
     swstate->glortInfo.specialSize    = -1;
     swstate->glortInfo.specialALength = -1;
+
+    swstate->glortInfo.tunnelBase     = ~0;
 
     /**************************************************
      * Switch-Type-Specific Initializations
@@ -1765,6 +1773,83 @@ static fm_status TerminateLocalDispatchThread(void)
 
 }   /* end TerminateLocalDispatchThread */
 
+
+
+#ifdef FM_SUPPORT_SWAG
+/*****************************************************************************/
+/** ValidateInternalLinks
+ * \ingroup intSwitch
+ *
+ * \desc            Validate all internal links of a SWAG are all UP in order
+ *                  to finish initialization of the SWAG.
+ *
+ * \param           None
+ *
+ * \return          status
+ *
+ *****************************************************************************/
+static fm_status ValidateInternalLinks(fm_int sw)
+{
+    fm_status      err = FM_OK;
+    fm_swagLink    link;
+    fm_int         mode;
+    fm_int         portState;
+    fm_int         info;
+    fm_int         retries = 0;
+
+    FM_LOG_ENTRY_API(FM_LOG_CAT_SWAG, "sw=%d\n", sw);
+
+    err = fmGetSWAGLinkFirst(sw, &link);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWAG, err);
+
+    while (err == FM_OK)
+    {
+        if (link.type == FM_SWAG_LINK_INTERNAL)
+        {
+            err = fmGetPortState(sw, 
+                                 link.logicalPort,
+                                 &mode,
+                                 &portState,
+                                 &info);
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWAG, err);
+
+            if (portState != FM_PORT_STATE_UP)
+            {
+                if (retries < MAX_RETRIES)
+                {
+                    retries++;
+                    fmDelay(DEF_TIMEOUT, 0);
+                }
+                else
+                {
+                    FM_LOG_ERROR(FM_LOG_CAT_SWAG,
+                                 "Port %d didn't come UP after %d seconds, aborting\n",
+                                 link.logicalPort,
+                                 ++retries);
+                    err = FM_ERR_INVALID_PORT_STATE;
+                    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWAG, err);
+                }
+
+                continue;
+            }
+
+            retries = 0;
+        }
+
+        err = fmGetSWAGLinkNext(sw, &link, &link);
+    }
+
+    if (err == FM_ERR_NO_MORE)
+    {
+        err = FM_OK; 
+    }
+
+ABORT:
+
+    FM_LOG_EXIT_API(FM_LOG_CAT_SWAG, err);
+
+}   /* end ValidateInternalLinks */
+#endif
 
 
 
@@ -3047,6 +3132,11 @@ RESTART:
                 FM_API_CALL_FAMILY(err, switchPtr->MailboxInit, sw);
                 FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
             }
+
+            /* Scan all internal links and report if at least one link
+               is down */
+            err = ValidateInternalLinks(sw);
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWAG, err);
         }
     }
 
@@ -3533,7 +3623,7 @@ static fm_status FindNextSwitch(fm_int currentSwitch, fm_int *nextSwitch)
                          currentSwitch,
                          (void *) nextSwitch);
 
-    for (sw = currentSwitch + 1 ; sw < FM_MAX_NUM_SWITCHES ; sw++)
+    for (sw = currentSwitch + 1 ; sw < fmRootPlatform->cfg.numSwitches ; sw++)
     {
         if ( !SWITCH_LOCK_EXISTS(sw) )
         {
@@ -3556,7 +3646,7 @@ static fm_status FindNextSwitch(fm_int currentSwitch, fm_int *nextSwitch)
 
     *nextSwitch = sw;
 
-    if (sw >= FM_MAX_NUM_SWITCHES)
+    if (sw >= fmRootPlatform->cfg.numSwitches)
     {
         *nextSwitch = -1;
         err         = FM_ERR_NO_SWITCHES;
@@ -4318,7 +4408,7 @@ fm_status fmHandleSwitchRemoved(fm_int sw, fm_eventSwitchRemoved *removeEvent)
         /* Bring the switch down first */
         (void)fmSetSwitchState(sw, FALSE);
     }
-
+    
     /* Free all component structures */
     status = fmFreeSwitchDataStructures(sw);
 
@@ -4395,3 +4485,38 @@ fm_status fmGetApiVersion(char * buf, int len)
 
 }   /* end fmGetApiVersion */
 
+
+
+
+/*****************************************************************************/
+/** fmEnableSwitchMacFiltering
+ * \ingroup intSwitch
+ * 
+ * \chips           FM10000
+ *
+ * \desc            Configures switch to handle inner/outer MAC filtering
+ *                  request coming from mailbox.
+ *
+ * \param[in]       sw is the switch number to operate on.
+ *
+ * \return          FM_OK if successful.
+ *
+ *****************************************************************************/
+fm_status fmEnableSwitchMacFiltering(fm_int sw)
+{
+    fm_status  err;
+    fm_switch *switchPtr;
+
+    FM_LOG_ENTRY(FM_LOG_CAT_SWITCH, "sw=%d\n", sw);
+
+    VALIDATE_AND_PROTECT_SWITCH(sw);
+
+    switchPtr = GET_SWITCH_PTR(sw);
+
+    FM_API_CALL_FAMILY(err, switchPtr->EnableSwitchMacFiltering, sw);
+
+    UNPROTECT_SWITCH(sw);
+
+    FM_LOG_EXIT(FM_LOG_CAT_SWITCH, err);
+
+}   /* end fmEnableSwitchMacFiltering */

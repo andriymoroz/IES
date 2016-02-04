@@ -29,7 +29,7 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
+ *****************************************************************************/
 
 #include <fm_sdk_fm10000_int.h>
 
@@ -1125,6 +1125,8 @@ fm_status fmPlatformNotifyPortState(fm_int  sw,
                                     fm_int  state)
 {
     fm_bool disabled;
+    fm_bool autodetected;
+    fm_bool modeMismatch;
 
     FM_NOT_USED(mac);
 
@@ -1138,6 +1140,17 @@ fm_status fmPlatformNotifyPortState(fm_int  sw,
         /* Disable transceiver if port state is powered down */
         disabled = (state == FM_PORT_MODE_ADMIN_PWRDOWN);
         fmPlatformMgmtEnableXcvr(sw, port, !disabled);
+    }
+
+    if (state == FM_PORT_STATE_UP)
+    {
+        fmPlatformGetPortEthModeState(sw, port, &autodetected, &modeMismatch);
+        if (modeMismatch)
+        {
+            fmPlatformSendCableMismatchEvent(sw,
+                                             port,
+                                             FM_EVENT_PRIORITY_LOW);
+        }
     }
 
     return fmPlatformLedSetPortState(sw, port, isConfig, state);
@@ -1547,27 +1560,8 @@ fm_status fmPlatformSetPortEthMode(fm_int sw, fm_int port)
         return FM_ERR_INVALID_PORT;
     }
 
-    status = fmSetPortAttributeV2(sw,
-                                  port,
-                                  0,
-                                  FM_PORT_LANE_NA,
-                                  FM_PORT_ETHERNET_INTERFACE_MODE,
-                                  &portCfg->ethMode);
-    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
-
-
     if (portCfg->ethMode == FM_ETH_MODE_AN_73)
     {
-        /* Enable AN */
-        anEnabled = FM_PORT_AUTONEG_CLAUSE_73;
-        status = fmSetPortAttributeV2(sw,
-                                      port,
-                                      0,
-                                      FM_PORT_LANE_NA,
-                                      FM_PORT_AUTONEG,
-                                      &anEnabled);
-        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
-
         /* Set the basepage */
         anBasePage = portCfg->an73Ability | 0x4001;
         status = fmSetPortAttributeV2(sw,
@@ -1577,6 +1571,15 @@ fm_status fmPlatformSetPortEthMode(fm_int sw, fm_int port)
                                       FM_PORT_AUTONEG_BASEPAGE,
                                       &anBasePage);
 
+        /* Enable AN */
+        anEnabled = FM_PORT_AUTONEG_CLAUSE_73;
+        status = fmSetPortAttributeV2(sw,
+                                      port,
+                                      0,
+                                      FM_PORT_LANE_NA,
+                                      FM_PORT_AUTONEG,
+                                      &anEnabled);
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
     }
     else if (portCfg->ethMode == FM_ETH_MODE_SGMII)
     {
@@ -1589,6 +1592,14 @@ fm_status fmPlatformSetPortEthMode(fm_int sw, fm_int port)
                                       FM_PORT_AUTONEG,
                                       &anEnabled);
     }
+
+    status = fmSetPortAttributeV2(sw,
+                                  port,
+                                  0,
+                                  FM_PORT_LANE_NA,
+                                  FM_PORT_ETHERNET_INTERFACE_MODE,
+                                  &portCfg->ethMode);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
 
 ABORT:
 
@@ -1672,6 +1683,27 @@ fm_status fmPlatformPortInitialize(fm_int sw)
 
         /* Set the ethernet mode. */
         restoreDisableState = FALSE;
+        if (portCfg->ethMode == FM_ETH_MODE_AN_73)
+        {
+            /* Set the basepage ethMode is AN-73 */
+            anBasePage = portCfg->an73Ability | 0x4001;
+            status = fmSetPortAttributeV2(sw,
+                                          port,
+                                          mac,
+                                          FM_PORT_LANE_NA,
+                                          FM_PORT_AUTONEG_BASEPAGE,
+                                          &anBasePage);
+            if ( status != FM_OK )
+            {
+                FM_LOG_ERROR_V2( FM_LOG_CAT_PORT,
+                                 port,
+                                 "Error configuring autoneg basepage "
+                                 "on port %d\n",
+                                 port );
+                restoreDisableState = TRUE;
+            }
+        }
+
         if (portCfg->ethMode != FM_ETH_MODE_DISABLED)
         {
             status = fmSetPortAttributeV2(sw,
@@ -1757,27 +1789,6 @@ fm_status fmPlatformPortInitialize(fm_int sw)
             }
         }
 
-        if (portCfg->ethMode == FM_ETH_MODE_AN_73)
-        {
-            /* Set the basepage ethMode is AN-73 */
-            anBasePage = portCfg->an73Ability | 0x4001;
-            status = fmSetPortAttributeV2(sw,
-                                          port,
-                                          mac,
-                                          FM_PORT_LANE_NA,
-                                          FM_PORT_AUTONEG_BASEPAGE,
-                                          &anBasePage);
-            if ( status != FM_OK )
-            {
-                FM_LOG_ERROR_V2( FM_LOG_CAT_PORT,
-                                 port,
-                                 "Error configuring autoneg basepage "
-                                 "on port %d\n",
-                                 port );
-                restoreDisableState = TRUE;
-            }
-        }
-
         dfeMode = portCfg->dfeMode;
         FM_LOG_DEBUG_V2( FM_LOG_CAT_PORT,
                          port,
@@ -1854,3 +1865,70 @@ fm_status fmPlatformPortInitialize(fm_int sw)
     FM_LOG_EXIT(FM_LOG_CAT_PLATFORM, status);
 
 }   /* end fmPlatformPortInitialize */
+
+
+
+
+/*****************************************************************************/
+/* fmPlatformGetPortEthModeState
+ * \ingroup intPlatform
+ *
+ * \desc            Returns Ethernet mode state (i.e if the mode was set using
+ *                  autodetect module and if the Ethernet mode configured is
+ *                  supported by the type of cable used or if there is a mismatch.
+ *
+ * \param[in]       sw is the switch number.
+ * 
+ * \param[in]       port is the logical port.
+ *
+ * \param[out]      pointer to a user allocated variable to store the
+ *                  autodetected mode status.
+ * 
+ * \param[out]      pointer to a user allocated variable to store the mismatch 
+ *                  status.
+ *
+ * \return          void.
+ *
+ *****************************************************************************/
+fm_status fmPlatformGetPortEthModeState(fm_int   sw, 
+                                        fm_int   port, 
+                                        fm_bool *autodetectedMode, 
+                                        fm_bool *modeMismatch)
+{
+    fm_status           err;
+    fm_bool             modeSupported;
+    fm_ethMode          autoEthMode;
+    fm_uint64           AnBaseBage;
+    fm_platformCfgPort *portCfg;
+    fm_platXcvrInfo    *xcvrInfo;
+    fm_int portIdx;
+
+    *modeMismatch       = FALSE;
+    *autodetectedMode   = FALSE; 
+
+    portIdx = fmPlatformCfgPortGetIndex(sw, port);
+    portCfg = FM_PLAT_GET_PORT_CFG(sw, portIdx);
+    xcvrInfo = &GET_PLAT_STATE(sw)->xcvrInfo[portIdx];
+
+    err = fmGetPortAttribute(sw, port, FM_PORT_AUTONEG_BASEPAGE, &AnBaseBage); 
+
+    err = fmPlatformMgmtIsEthModeSupportedByXcvrType(xcvrInfo,
+                                                     AnBaseBage,
+                                                     &modeSupported,
+                                                     &autoEthMode);
+
+    if (modeSupported == TRUE)
+    {
+        if ((autoEthMode == xcvrInfo->ethMode) && portCfg->autodetect)
+        {
+            *autodetectedMode = TRUE;
+        }
+    }
+    else
+    {
+        *modeMismatch = TRUE;   
+    }
+
+    return err;
+
+}   /* end fmPlatformGetPortEthModeState */

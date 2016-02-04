@@ -42,12 +42,11 @@
 #ifndef __FM_FM10000_API_SERDES_DFE_STATE_MACHINES_H
 #define __FM_FM10000_API_SERDES_DFE_STATE_MACHINES_H
 
-
-/* declaration of the serdes-level state machine types */
+/* declaration of the SerDesDfe-level state machine types */
 #define FM10000_BASIC_SERDES_DFE_STATE_MACHINE 300
 
 
-/* declaration of serdes-level states */
+/* declaration of SerDesDfe-level states */
 typedef enum
 {
     FM10000_SERDES_DFE_STATE_START = 0,
@@ -64,7 +63,7 @@ typedef enum
 extern fm_text fm10000SerDesDfeStatesMap[FM10000_SERDES_DFE_STATE_MAX];
 
 
-/* declaration of serdes-level events */
+/* declaration of SerDesDfe-level events */
 typedef enum
 {
     FM10000_SERDES_DFE_EVENT_START_TUNING_REQ = 0,
@@ -107,6 +106,7 @@ fm_status fm10000SerDesDfeReadEyeH( fm_smEventInfo *eventInfo, void *userInfo );
 fm_status fm10000SerDesDfeConfigureEyeW( fm_smEventInfo *eventInfo, void *userInfo );
 fm_status fm10000SerDesDfeConfigureEyeH( fm_smEventInfo *eventInfo, void *userInfo );
 fm_status fm10000SerDesDfeDontSaveRecord( fm_smEventInfo *eventInfo, void *userInfo );
+fm_status fm10000SerDesDfeRestartStopTuningTimer( fm_smEventInfo *eventInfo, void *userInfo );
 
 
 
@@ -114,14 +114,13 @@ fm_status fm10000SerDesDfeDontSaveRecord( fm_smEventInfo *eventInfo, void *userI
 fm_status fm10000SerDesDfeProcessPCalTimeout( fm_smEventInfo *eventInfo, void *userInfo, fm_int *nextState );
 fm_status fm10000SerDesDfeProcessPushAutoStartTuning( fm_smEventInfo *eventInfo, void *userInfo, fm_int *nextState );
 fm_status fm10000SerDesDfeProcessICalTimeout( fm_smEventInfo *eventInfo, void *userInfo, fm_int *nextState );
-fm_status fm10000SerDesDfeProcessStopTuningTimeout( fm_smEventInfo *eventInfo, void *userInfo, fm_int *nextState );
 
 
 
 /* declaration of the log callback functions, if any */
 fm_status fm10000LogSerDesDfeTransition( fm_smTransitionRecord *record );
 
-/* declaration of registration functions for serdes-level state machine types */
+/* declaration of registration functions for SerDesDfe-level state machine types */
 fm_status fm10000RegisterBasicSerDesDfeStateMachine( void );
 
 #endif /* __FM_FM10000_API_SERDES_DFE_STATE_MACHINES_H */

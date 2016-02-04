@@ -48,12 +48,18 @@
  *  "disabled" - Watermarks are disabled (except for Global).
  *                                                                      \lb\lb
  *  "lossy" - All memory is dedicated to a lossy watermark configuration.
+ *  Recommended when PAUSE flow control is disabled on all ports.
  *                                                                      \lb\lb
  *  "lossy_lossless" - Memory is split between lossy and lossless 
- *  configurations.
+ *  configurations. Recommended for class-based PAUSE flow control where
+ *  some ports have PAUSE enabled and other have PAUSE disabled. Mapping from
+ *  Switch Priority to Traffic Class and from Traffic Class to SMP must be set
+ *  properly to make sure that the lossy ports and lossless ports are
+ *  respectively mapped to the lossy and lossless memory partition.
  *                                                                      \lb\lb
  *  "lossless" - All memory is dedicated to a lossless watermark 
- *  configuration. */
+ *  configuration. Recommended for port-based PAUSE flow control. It is
+ *  also recommended that PAUSE be enabled on all active ports. */
 #define FM_AAK_API_FM10000_WMSELECT                  "api.FM10000.wmSelect"
 #define FM_AAT_API_FM10000_WMSELECT                  FM_API_ATTR_TEXT
 #define FM_AAD_API_FM10000_WMSELECT                  "lossy"

@@ -6,7 +6,7 @@
  * Description:     Structures and functions for dealing with VLAN
  *                  configuration
  *
- * Copyright (c) 2005 - 2015, Intel Corporation
+ * Copyright (c) 2005 - 2016, Intel Corporation
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -718,7 +718,6 @@ fm_status fmAddVlanPortInternal(fm_int    sw,
                  port,
                  tag);
 
-    err       = FM_OK;
     switchPtr = GET_SWITCH_PTR(sw);
     portPtr   = GET_PORT_PTR(sw, port);
 
@@ -1592,8 +1591,15 @@ fm_status fmGetVlanPortList(fm_int    sw,
 
     switchPtr = GET_SWITCH_PTR(sw);
 
+    if (maxPorts <= 0)
+    {
+        *nPorts = 0;
+        err = FM_ERR_BUFFER_FULL;
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_VLAN, err);
+    }
+
     for (*nPorts = 0, cpi = 0 ;
-         (*nPorts < maxPorts) && (cpi < switchPtr->numCardinalPorts) ;
+         (*nPorts <= maxPorts) && (cpi < switchPtr->numCardinalPorts) ;
          cpi++)
     {
         port = GET_LOGICAL_PORT(sw, cpi);
@@ -1602,26 +1608,22 @@ fm_status fmGetVlanPortList(fm_int    sw,
                                   &switchPtr->vidTable[vlanID],
                                   port,
                                   &isMember);
-
-        if (err != FM_OK)
-        {
-            goto ABORT;
-        }
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_VLAN, err);
 
         if (isMember)
         {
             (*nPorts)++;
 
-            if (*nPorts >= maxPorts)
+            if (*nPorts > maxPorts)
             {
+                --(*nPorts);
                 err = FM_ERR_BUFFER_FULL;
-                goto ABORT;
+                FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_VLAN, err)
             }
 
             *ports++ = port;
         }
     }
-
 
 ABORT:
 

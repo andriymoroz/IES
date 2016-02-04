@@ -5,7 +5,7 @@
  * Creation Date:  November 28, 2013
  * Description:    Low-level API for manipulating the Tunneling Engine.
  *
- * Copyright (c) 2013 - 2015, Intel Corporation
+ * Copyright (c) 2013 - 2016, Intel Corporation
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -732,6 +732,7 @@ fm_status fm10000TeInit(fm_int sw)
     fm_uint32              teCfg[FM10000_TE_CFG_WIDTH];
     fm_registerSGListEntry sgList;
     fm_int                 i;
+    fm_fm10000TeTrapCfg    teTrapCfg;
 
     FM_LOG_ENTRY(FM_LOG_CAT_TE, "sw = %d\n", sw);
 
@@ -754,6 +755,19 @@ fm_status fm10000TeInit(fm_int sw)
         FM_ARRAY_SET_BIT(teCfg, FM10000_TE_CFG, SwitchLoopbackDisable, 1);
 
         err = fmRegCacheWrite(sw, 1, &sgList, TRUE);
+        FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_TE, err);
+    }
+
+    /* Configure Trap DGlort for No Flow Match. Mainly to 
+     * capture undefined NAT flow. */
+    teTrapCfg.noFlowMatch = FM_FM10000_TE_TRAP_DGLORT1;
+    for (i = 0; i < FM10000_TE_TRAP_CONFIG_ENTRIES; i++)
+    {
+        err = fm10000SetTeTrap(sw, 
+                               i, 
+                               &teTrapCfg, 
+                               FM10000_TE_TRAP_NO_FLOW_MATCH, 
+                               FALSE); 
         FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_TE, err);
     }
 
@@ -2045,8 +2059,8 @@ fm_status fm10000SetTeDefaultTunnel(fm_int                 sw,
 {
     fm_registerSGListEntry sgList[7];
     fm_int                 i;
-    fm_int                 sgIndex = 0;
-    fm_status              err = FM_OK;
+    fm_int                 sgIndex;
+    fm_status              err;
     fm_uint32              teDefaultL4Dst[FM10000_TE_DEFAULT_L4DST_WIDTH] = {0};
     fm_uint32              teCfg[FM10000_TE_CFG_WIDTH] = {0};
     fm_uint32              teTunHeaderCfg[FM10000_TE_TUN_HEADER_CFG_WIDTH] = {0};
@@ -2055,7 +2069,7 @@ fm_status fm10000SetTeDefaultTunnel(fm_int                 sw,
     fm_uint32              teDefaultNgeMask[FM10000_TE_DEFAULT_NGE_MASK_WIDTH] = {0};
     fm_uint32              teDmac[FM10000_TE_DMAC_WIDTH] = {0};
     fm_uint32              teSmac[FM10000_TE_SMAC_WIDTH] = {0};
-    fm_bool                regLockTaken = FALSE;
+    fm_bool                regLockTaken;
     fm_uint32              chipVersion;
 
     FM_LOG_ENTRY( FM_LOG_CAT_TE,
@@ -2070,7 +2084,16 @@ fm_status fm10000SetTeDefaultTunnel(fm_int                 sw,
                   fieldSelectMask,
                   FM_BOOLSTRING(useCache) );
 
+    sgIndex      = 0;
+    err          = FM_OK;
+    regLockTaken = FALSE;
+    chipVersion  = 0;
+
+    FM_CLEAR(sgList);
+
+
     VALIDATE_AND_PROTECT_SWITCH(sw);
+
 
     if (!fmSupportsTe(sw))
     {
@@ -4664,7 +4687,11 @@ fm_status fm10000SetTeData(fm_int            sw,
                   teDataLength,
                   FM_BOOLSTRING(useCache) );
 
+    FM_CLEAR(sgList);
+
+
     VALIDATE_AND_PROTECT_SWITCH(sw);
+
 
     if (!fmSupportsTe(sw))
     {
@@ -6159,12 +6186,12 @@ fm_status fm10000GetTeDataBlockLength(fm_fm10000TeData *teData,
 {
     fm_int                        teDataIndex;
     fm_int                        i;
-    fm_status                     err = FM_OK;
-    fm_int                        teDataReg16Length = 0;
+    fm_status                     err;
+    fm_int                        teDataReg16Length;
     fm_fm10000TeDataFlowKeyVal *  flowKeyVal;
     fm_fm10000TeDataFlowEncapVal *flowEncapVal;
     fm_fm10000TeDataFlowDecapVal *flowDecapVal;
-    fm_fm10000TeDataTunnelVal    *tunnelVal;
+    fm_fm10000TeDataTunnelVal *   tunnelVal;
 
     FM_LOG_ENTRY( FM_LOG_CAT_TE,
                   "teData = %p, "
@@ -6173,6 +6200,9 @@ fm_status fm10000GetTeDataBlockLength(fm_fm10000TeData *teData,
                   (void*)teData,
                   teDataLength,
                   (void*)blockLength);
+
+    err               = FM_OK;
+    teDataReg16Length = 0;
 
     /* sanity check on the arguments */
     FM_API_REQUIRE(teData != NULL, FM_ERR_INVALID_ARGUMENT);

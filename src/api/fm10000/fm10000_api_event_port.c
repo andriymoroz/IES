@@ -5,7 +5,7 @@
  * Creation Date:   May 13, 2013
  * Description:     Port related event handling
  *
- * Copyright (c) 2005 - 2012, Intel Corporation
+ * Copyright (c) 2005 - 2016, Intel Corporation
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -29,7 +29,7 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
+ *****************************************************************************/
 
 #include <fm_sdk_fm10000_int.h>
 
@@ -317,6 +317,7 @@ void fm10000DebounceLinkStates(fm_int     sw,
                               fm_thread *thread,
                               fm_thread *handlerThread)
 {
+#if 0
     fm_status       err;
     fm_int          cpi;
     fm_int          port;
@@ -325,7 +326,7 @@ void fm10000DebounceLinkStates(fm_int     sw,
     fm_switch *     switchPtr;
     fm10000_switch *switchExt;
     fm_portAttr *   portAttr;
-    
+#endif
 
     FM_LOG_ENTRY_VERBOSE(FM_LOG_CAT_EVENT_PORT,
                          "sw=%d thread=%p:<%s> handlerThread=%p:<%s>\n",
@@ -335,13 +336,15 @@ void fm10000DebounceLinkStates(fm_int     sw,
                          (void *) handlerThread,
                          handlerThread->name);
 
+    FM_NOT_USED(sw);
     FM_NOT_USED(thread);
     FM_NOT_USED(handlerThread);
 
+#if 0
     switchPtr = GET_SWITCH_PTR(sw);
     switchExt = GET_SWITCH_EXT(sw);
 
-    /* get current timestamp, dont need really accurate time per port
+    /* get current timestamp, don't need really accurate time per port
      * so move this out of the for loop
      */
     err = fmGetTime(&currentTime);
@@ -358,15 +361,9 @@ void fm10000DebounceLinkStates(fm_int     sw,
         portAttr  = GET_PORT_ATTR(sw, port);
 
     }   /* end for (cpi = 1 ; cpi < switchPtr->numCardinalPorts ; cpi++) */
+#endif
 
     FM_LOG_EXIT_VOID_VERBOSE(FM_LOG_CAT_EVENT_PORT);
 
 }   /* end fm10000DebounceLinkStates */
-
-
-
-
-
-
-
 

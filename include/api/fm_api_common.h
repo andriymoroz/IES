@@ -85,8 +85,14 @@
 
 /* Special port used to manage the multicast flooding glort
  * in the FM10000. */
-#define FM_PORT_MCAST           (FM_MAX_LOGICAL_PORT - 8)
+#define FM_PORT_MCAST             (FM_MAX_LOGICAL_PORT - 8)
 
+/* Special ports for handling undefined NAT and DeNAT Flow. These ports 
+ * will map to CPU port's glort. It doesn't have any glort mapping on
+ * its own. Hence it is chosen outside of FM_MAX_LOGICAL_PORT. */ 
+#define FM_PORT_NAT_UNDEF_FLOW    (FM_MAX_LOGICAL_PORT + 1)
+
+#define FM_PORT_DENAT_UNDEF_FLOW  (FM_MAX_LOGICAL_PORT + 2)
 
 /** Use to determine whether switch is accessible */
 #define FM_IS_STATE_ALIVE(state) \

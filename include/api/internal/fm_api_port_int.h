@@ -600,6 +600,23 @@ struct _fm_port
                                          fm_int              attr,
                                          fm_int              index,
                                          void *              value);
+    fm_status              (*AddQueueQOS)(fm_int sw,
+                                          fm_int port, 
+                                          fm_qosQueueParam *param);
+    fm_status              (*DeleteQueueQOS)(fm_int sw, 
+                                             fm_int port, 
+                                             fm_int queueId);
+    fm_status              (*SetAttributeQueueQOS)(fm_int sw,
+                                                   fm_int port,
+                                                   fm_int queueId, 
+                                                   fm_int attr, 
+                                                   void  *value);
+    fm_status              (*GetAttributeQueueQOS)(fm_int sw,
+                                                   fm_int port,
+                                                   fm_int queueId, 
+                                                   fm_int attr, 
+                                                   void  *value);
+    fm_status              (*DumpQueueQOS)(fm_int sw);
 
     /* Statistics Support */
     fm_status              (*GetPortCounters)(fm_int sw,
@@ -652,6 +669,10 @@ struct _fm_port
     fm_status              (*IsSpecialPort)( fm_int   sw, 
                                              fm_int   port, 
                                              fm_bool *isSpecialPort );
+
+    fm_status              (*IsEplPort)( fm_int   sw, 
+                                         fm_int   port, 
+                                         fm_bool *isEplPort );
 
     fm_status              (*GetNumPortLanes)( fm_int sw, 
                                                fm_int port,

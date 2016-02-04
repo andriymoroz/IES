@@ -5,7 +5,7 @@
  * Creation Date:   April 2015
  * Description:     BSM utility shared functions.
  *
- * Copyright (c) 2015, Intel Corporation
+ * Copyright (c) 2015 - 2016, Intel Corporation
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -86,6 +86,9 @@
 #define SERDES_OOR_STATUS_PASS_2    451
 #define SW_LOCK_ERR_STATUS          452
 #define PCIE_EN_REFCLK_STATUS       453
+#define RE_RESET_MASK_STATUS_1      454
+#define RE_RESET_MASK_STATUS_2      455
+#define RE_RESET_ERR_STATUS         456
 
 /* BSM_STATUS step bits */
 #define FM10000_BSM_STATUS_l_Step   0
@@ -123,7 +126,42 @@ typedef struct _nvmVersionRegAccess
                                fm_registerReadUINT32Func readFunc,
                                fm_int                    pep, 
                                fm_uint32                 miliSec);
+    fm_status (*funcResetPoll)(fm_int                    sw,
+                               fm_registerReadUINT32Func readFunc,
+                               fm_int                    pep, 
+                               fm_uint32                 miliSec);
 } nvmVersionRegAccess;
+
+#define LTSSM_TYPE_GEN_WIDTH        0
+#define LTSSM_TYPE_LTSSM            1
+
+#define RESET_TYPE_PINS_STAT        0
+#define RESET_TYPE_LTSSM            1
+#define RESET_TYPE_LTSSM_ENABLE     2
+#define RESET_TYPE_PASS_A           3
+
+/* structure which holds ltssm log entry */
+typedef struct _ltssmLogEntry {
+
+    /* entry type: LTSSM_TYPE_GEN_WIDTH or LTSSM_TYPE_LTSSM */
+    fm_int       entryType;
+    fm_int       pep;
+    fm_uint32    newValue;
+    fm_uint32    oldValue;
+    fm_timestamp time;
+} ltssmLogEntry;
+
+/* structure which holds reset log entry */
+typedef struct _resetLogEntry {
+
+    /* entry type: 0:resetPinChange, 1:ltssmChange */
+    fm_int       entryType;
+    fm_int       pep;
+    fm_uint32    newValue;
+    fm_uint32    oldValue;
+    fm_timestamp time;
+} resetLogEntry;
+
 
 /*****************************************************************************
  * Global Variables
@@ -172,6 +210,7 @@ static const regStrMap ltssmRegMap[] =
         {0x0000001D, 0xFFFFFFFF, "LPBK_EXIT_TIMEOUT(0x1D)"},
         {0x0000001E, 0xFFFFFFFF, "HOT_RESET_ENTRY(0x1E)"},
         {0x0000001F, 0xFFFFFFFF, "HOT_RESET(0x1F)"},
+        {0xFFFFFFFF, 0xFFFFFFFF, "NA"},
         {0x00000000, 0x00000000, "(Unrecognized)"} /* must be the last one */
 };
 
@@ -246,6 +285,10 @@ static fm_status DbgLtssmRegPollDefault(fm_int                    sw,
                                         fm_registerReadUINT32Func readFunc,
                                         fm_int                    pep,
                                         fm_uint32                 miliSec);
+static fm_status DbgResetToLtssmPollDefault(fm_int                    sw,
+                                            fm_registerReadUINT32Func readFunc,
+                                            fm_int                    pep,
+                                            fm_uint32                 miliSec);
 
 /* nvm image dbg functions entries array*/
 static const nvmVersionRegAccess fm10000NvmAccess[] =
@@ -255,12 +298,14 @@ static const nvmVersionRegAccess fm10000NvmAccess[] =
                 .funcBsmScratchDump     = DbgDumpBsmScratchDefault,
                 .funcBsmStatusPoll      = DbgBsmStatusRegPollDefault,
                 .funcLtssmPoll          = DbgLtssmRegPollDefault,
+                .funcResetPoll          = DbgResetToLtssmPollDefault,
         },
         {
                 .maxVersionSupported    = NVM_VERSION_MAX,
                 .funcBsmScratchDump     = NULL,
                 .funcBsmStatusPoll      = NULL,
                 .funcLtssmPoll          = NULL,
+                .funcResetPoll          = NULL,
         },
 };
 
@@ -544,18 +589,25 @@ static fm_status DbgLtssmRegPollDefault(fm_int                    sw,
     fm_timestamp tDiff;
     fm_timestamp tStart;
     fm_int       i;
-    fm_uint32    iter;
+    fm_uint64    iter;
     fm_uint32    ltssm;
     fm_uint32    genWidth;
     fm_uint32    ltssmValues[10];
     fm_uint32    genWidthValues[10];
+    ltssmLogEntry *ltssmEntry = NULL;
+    fm_int         numLogEntry;
+    fm_int         j;
     regStrMap    ltssmRegDataNew;
     regStrMap    ltssmRegDataOld;
     fm_uint32    devCfg;
     fm_int       start;
     fm_int       end;
+    fm_uint64    tmp;
+    fm_uint32    idx;
+
     ltssmRegDataOld.msg = NULL;
     ltssmRegDataNew.msg = NULL;
+    
 
     FM_LOG_ENTRY(FM_LOG_CAT_PLATFORM, "sw=%d\n", sw);
 
@@ -568,35 +620,52 @@ static fm_status DbgLtssmRegPollDefault(fm_int                    sw,
     tTresh.sec = miliSec / 1000;
     tTresh.usec = (miliSec % 1000) * 1000;
     
-    FM_LOG_PRINT("\n");
-    FM_LOG_PRINT("\nLTSSM status registers poll");
+    FM_LOG_PRINT("\n\n");
+    FM_LOG_PRINT("LTSSM status registers poll\n");
     
     /* get nvmVersion */
     err = readFunc(sw, FM10000_BSM_SCRATCH(EEPROM_IMAGE_VERSION), &nvmVer);
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PLATFORM, err);
 
-    FM_LOG_PRINT("\n%-25s[%d]      : 0x%08x (%02x.%02x)",
+    FM_LOG_PRINT("%-25s[%d]      : 0x%08x (%02x.%02x)\n",
                  "EEPROM VERSION",
                  EEPROM_IMAGE_VERSION,
                  nvmVer, 
                  (nvmVer & 0xFF00) >> 8,
                  (nvmVer & 0x00FF));
 
+    /* Initialize to invalid values */;
+    for (idx = 0; idx < FM_NENTRIES(ltssmValues); idx++)
+    {
+        genWidthValues[idx] = 0xFFFFFFFF;
+        ltssmValues[idx]    = 0xFFFFFFFF;
+    }
+
+    j = 0;
+    numLogEntry = 50000;
+    ltssmEntry = malloc( numLogEntry * sizeof(ltssmLogEntry) );
+
+    if ( ltssmEntry == NULL )
+    {
+        err = FM_ERR_NO_MEM;
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PLATFORM, err);
+    }
+
+    FM_LOG_PRINT("\n");
+    FM_LOG_PRINT("For better performance, results will be dumped in %d ms\n", 
+                 miliSec);
     FM_LOG_PRINT("\n");
 
-    FM_CLEAR(ltssmValues);
-    FM_CLEAR(genWidthValues);
-    
     err = fmGetTime(&tStart);
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PLATFORM, err);
 
     fmSubTimestamps(&tStart, &tStart, &tDiff);
-    FM_LOG_PRINT("\n%-10s %-4s %-25s %-25s",
+    FM_LOG_PRINT("%-10s %-4s %-25s %-25s\n",
                  "t(s.us)",
                  "pep",
                  "last state",
                  "new state");
-    FM_LOG_PRINT("\n%-10s %-4s %-25s %-25s",
+    FM_LOG_PRINT("%-10s %-4s %-25s %-25s\n",
                   "---------",
                   "---",
                   "----------------------",
@@ -644,26 +713,37 @@ static fm_status DbgLtssmRegPollDefault(fm_int                    sw,
             
             if (ltssmValues[i - 1] != ltssm)
             {
-                LtssmToStr(ltssm, &ltssmRegDataNew);
-                LtssmToStr(ltssmValues[i - 1], &ltssmRegDataOld);
-                FM_LOG_PRINT("\n%02lld.%06lld  %3d  %-22s -> %-25s",
-                             tDiff.sec,
-                             tDiff.usec,
-                             (i - 1),
-                             ltssmRegDataOld.msg,
-                             ltssmRegDataNew.msg);
+                ltssmEntry[j].entryType = LTSSM_TYPE_LTSSM;
+                ltssmEntry[j].newValue  = ltssm;
+                ltssmEntry[j].oldValue  = ltssmValues[i - 1];
+                ltssmEntry[j].pep       = i - 1;
+                ltssmEntry[j].time.sec  = tDiff.sec;
+                ltssmEntry[j].time.usec = tDiff.usec;
+                j++;
+
+                /* Verify we don't go over the number of
+                 * log entries allocated */
+                if (j >= numLogEntry)
+                {
+                    break;
+                }
             }
             if (genWidthValues[i - 1] != genWidth)
             {
-                FM_LOG_PRINT("\n%02lld.%06lld  %3d  Gen%d x%d %-14s -> Gen%d x%d",
-                             tDiff.sec,
-                             tDiff.usec,
-                             (i - 1),
-                             genWidthValues[i - 1] & 0xF,
-                             (genWidthValues[i - 1] >> 4) & 0x1F,
-                             " ",
-                             genWidth & 0xF,
-                             (genWidth >> 4) & 0x1F);
+                ltssmEntry[j].entryType = LTSSM_TYPE_GEN_WIDTH;
+                ltssmEntry[j].newValue  = genWidth;
+                ltssmEntry[j].oldValue  = genWidthValues[i - 1];
+                ltssmEntry[j].pep       = i - 1;
+                ltssmEntry[j].time.sec  = tDiff.sec;
+                ltssmEntry[j].time.usec = tDiff.usec;
+                j++;
+
+                /* Verify we don't go over the number of
+                 * log entries allocated */
+                if (j >= numLogEntry)
+                {
+                    break;
+                }
             }
             
             ltssmValues[i - 1]    = ltssm;
@@ -674,19 +754,518 @@ static fm_status DbgLtssmRegPollDefault(fm_int                    sw,
         
         iter++;
 
+        /* Verify we don't go over the number of
+         * log entries allocated */
+        if (j >= numLogEntry)
+        {
+            break;
+        }
+
     } while (TIME_PASSED(tDiff, tTresh) == 0);
 
+    for ( i = 0 ; i < j ; i++ )
+    {
+        if (ltssmEntry[i].entryType == LTSSM_TYPE_LTSSM)
+        {
+            LtssmToStr(ltssmEntry[i].newValue, &ltssmRegDataNew);
+            LtssmToStr(ltssmEntry[i].oldValue, &ltssmRegDataOld);
+            FM_LOG_PRINT("%02lld.%06lld  %3d  %-22s -> %-25s\n",
+                         ltssmEntry[i].time.sec,
+                         ltssmEntry[i].time.usec,
+                         ltssmEntry[i].pep,
+                         ltssmRegDataOld.msg,
+                         ltssmRegDataNew.msg);
+        }
+        else
+        {
+            if (ltssmEntry[i].oldValue == 0xFFFFFFFF)
+            {
+                FM_LOG_PRINT("%02lld.%06lld  %3d  NA      %-14s -> Gen%d x%d\n",
+                         ltssmEntry[i].time.sec,
+                         ltssmEntry[i].time.usec,
+                         ltssmEntry[i].pep,
+                         " ",
+                         ltssmEntry[i].newValue & 0xF,
+                         (ltssmEntry[i].newValue >> 4) & 0x1F);
+            }
+            else
+            {
+                FM_LOG_PRINT("%02lld.%06lld  %3d  Gen%d x%d %-14s -> Gen%d x%d\n",
+                             ltssmEntry[i].time.sec,
+                             ltssmEntry[i].time.usec,
+                             ltssmEntry[i].pep,
+                             ltssmEntry[i].oldValue & 0xF,
+                             (ltssmEntry[i].oldValue >> 4) & 0x1F,
+                             " ",
+                             ltssmEntry[i].newValue & 0xF,
+                             (ltssmEntry[i].newValue >> 4) & 0x1F);
+            }
+        }
+    }
+
     FM_LOG_PRINT("\n");
-    FM_LOG_PRINT("Report completed iterations %d in %lld.%06lld, seconds",
+    FM_LOG_PRINT("Report completed iterations %lld in %lld.%06lld seconds\n",
                  iter,
                  tDiff.sec,
                  tDiff.usec);
-    FM_LOG_PRINT("\n\n");
+
+    iter *= 1e6;
+    tmp = (tDiff.sec * 1e6) + tDiff.usec;
+    if (tmp != 0)
+    {
+        FM_LOG_PRINT("  iterations/sec: %lld\n", iter/tmp);
+    }
+    FM_LOG_PRINT("  logged entries: %d\n", j);
+    FM_LOG_PRINT("\n");
 
 ABORT:
+
+    if ( ltssmEntry )
+    {
+        free( ltssmEntry );
+    }
+
     FM_LOG_EXIT(FM_LOG_CAT_PLATFORM, err);
 
 }   /* end DbgLtssmRegPollDefault */
+
+
+
+
+/*****************************************************************************/
+/** DbgResetToLtssmPollDefault
+ * \ingroup intDiagReg
+ *
+ * \desc            NVM default function version for dbg LTSSM registers 
+ *                  polling.
+ *                  Function examines the difference of time between the
+ *                  PCIE_RESET_N pin toggling to 1 and the start of link
+ *                  training (LTSSM != DETECT_QUIET).
+ *                  For upper NVM versions, corresponding functions could be
+ *                  defined in fm10000NvmAccess array.
+ *
+ * \param[in]       sw is the switch the ltssm will be polled.
+ * 
+ * \param[in]       readFunc is the function pointer to read 32-bit registers.
+ * 
+ * \param[in]       pep is the PEP to poll LTSSM for, use -1 to poll all PEPs.
+ * 
+ * \param[in]       miliSec polling time in milliseconds.
+ *
+ * \return          FM_OK if successful.
+ * \return          Other ''Status Codes'' as appropriate in case of
+ *                  failure.
+ *
+ *****************************************************************************/
+static fm_status DbgResetToLtssmPollDefault(fm_int                    sw,
+                                            fm_registerReadUINT32Func readFunc,
+                                            fm_int                    pep, 
+                                            fm_uint32                 miliSec)
+{
+    fm_status    err;
+    fm_uint      nvmVer;
+    fm_timestamp tTresh;
+    fm_timestamp tNow;
+    fm_timestamp tDiff;
+    fm_timestamp tStart;
+    fm_timestamp tDiff2;
+    fm_int       i;
+    fm_int       j;
+    fm_int       k;
+    fm_int       numLogEntry;
+    fm_uint64    iter;
+    fm_uint32    ltssmReg;
+    fm_uint32    ltssm;
+    fm_uint32    ltssmEnable;
+    fm_uint32    pinsStat;
+    fm_uint32    pinsStat2;
+    fm_uint32    passA;
+    fm_uint32    devCfg;
+    resetLogEntry *resetEntry=NULL;
+    fm_uint32    ltssmValues[10];
+    fm_uint32    pinsStatValues[10];
+    fm_uint32    ltssmEnableValues[10];
+    fm_uint32    passAValues[10];
+    fm_bool      done[10];
+    regStrMap    ltssmRegDataNew;
+    regStrMap    ltssmRegDataOld;
+    fm_int       start;
+    fm_int       end;
+    fm_uint64    tmp;
+    fm_uint32    idx;
+
+    ltssmRegDataOld.msg = NULL;
+    ltssmRegDataNew.msg = NULL;
+    
+    FM_LOG_ENTRY(FM_LOG_CAT_PLATFORM, "sw=%d\n", sw);
+
+    if (!readFunc)
+    {
+        FM_LOG_EXIT(FM_LOG_CAT_PLATFORM, FM_ERR_INVALID_ARGUMENT);
+    }
+    
+    iter = 0;
+    tTresh.sec = miliSec / 1000;
+    tTresh.usec = (miliSec % 1000) * 1000;
+
+    j = 0;
+    numLogEntry = 50000;
+    resetEntry = malloc( numLogEntry * sizeof(resetLogEntry) );
+
+    if ( resetEntry == NULL )
+    {
+        err = FM_ERR_NO_MEM;
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PLATFORM, err);
+    }
+    
+    FM_LOG_PRINT("\n\n");
+    FM_LOG_PRINT("Reset to LTSSM start polling\n");
+    
+    /* get nvmVersion */
+    err = readFunc(sw, FM10000_BSM_SCRATCH(EEPROM_IMAGE_VERSION), &nvmVer);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PLATFORM, err);
+
+    FM_LOG_PRINT("%-25s[%d]      : 0x%08x (%02x.%02x)\n",
+                 "EEPROM VERSION",
+                 EEPROM_IMAGE_VERSION,
+                 nvmVer, 
+                 (nvmVer & 0xFF00) >> 8,
+                 (nvmVer & 0x00FF));
+
+    FM_LOG_PRINT("\n");
+    FM_LOG_PRINT("For better performance, results will be dumped in %d ms\n", 
+                 miliSec);
+    FM_LOG_PRINT("\n");
+
+    err = fmGetTime(&tStart);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PLATFORM, err);
+
+    fmSubTimestamps(&tStart, &tStart, &tDiff);
+    FM_LOG_PRINT("%-10s %-10s %-4s %-25s %-25s\n",
+                 "t(s.us)",
+                 "diff(s.us)",
+                 "pep",
+                 "last state",
+                 "new state");
+    FM_LOG_PRINT("%-10s %-10s %-4s %-25s %-25s\n",
+                  "---------",
+                  "---------",
+                  "---",
+                  "----------------------",
+                  "----------------------");
+
+    err = readFunc(sw, FM10000_DEVICE_CFG(), &devCfg);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PLATFORM, err);
+
+    /* Initialize to invalid values */;
+    for (idx = 0; idx < FM_NENTRIES(pinsStatValues); idx++)
+    {
+        pinsStatValues[idx]    = 0xFFFFFFFF;
+        ltssmValues[idx]       = 0xFFFFFFFF;
+        ltssmEnableValues[idx] = 0xFFFFFFFF;
+        passAValues[idx]       = 0xFFFFFFFF;
+        done[idx] = 0;
+    }
+
+    /* Determine if all PEPs need to be scanned or just one */
+    if (pep < 0 || pep > 8)
+    {
+        start = 1;
+        end = 9;
+    }
+    else
+    {
+        start = pep+1;
+        end = start;
+    }
+
+    do
+    {
+        err = fmGetTime(&tNow);
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PLATFORM, err);
+
+        err = readFunc(sw, FM10000_PINS_STAT(), &pinsStat);
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PLATFORM, err);
+
+        err = readFunc(sw, FM10000_BSM_SCRATCH(454), &passA);
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PLATFORM, err);
+
+        for ( i = start ; i <= end ; i++ )
+        {
+            /* Execute on enabled PEPs only */
+            if ( (devCfg & (1 << (i-1 + FM10000_DEVICE_CFG_b_PCIeEnable_0))) == 0)
+            {
+                continue;
+            }
+
+            pinsStat2 = (pinsStat >> (i-1)) & 0x1;
+
+            if (pinsStatValues[i-1] != pinsStat2)
+            {
+                resetEntry[j].entryType = RESET_TYPE_PINS_STAT;
+                resetEntry[j].newValue  = pinsStat2;
+                resetEntry[j].oldValue  = pinsStatValues[i - 1];
+                resetEntry[j].pep       = i - 1;
+                resetEntry[j].time.sec  = tDiff.sec;
+                resetEntry[j].time.usec = tDiff.usec;
+                j++;
+
+                /* Verify we don't go over the number of
+                 * log entries allocated */
+                if (j >= numLogEntry)
+                {
+                    break;
+                }
+            }
+
+            pinsStatValues[i - 1] = pinsStat2;
+
+            if (pinsStat2 == 0)
+            {
+                ltssmValues[i - 1] = 0xFFFFFFFF;
+                ltssmEnableValues[i - 1]  = 0xFFFFFFFF;
+                passAValues[i - 1] = 0xFFFFFFFF;
+                done[i - 1] = 0;
+                continue;
+            }
+
+            if ( (passAValues[i - 1] == 0xFFFFFFFF) && (passA == 0))
+            {
+                resetEntry[j].entryType = RESET_TYPE_PASS_A;
+                resetEntry[j].newValue  = passA;
+                resetEntry[j].oldValue  = passAValues[i - 1];
+                resetEntry[j].pep       = i - 1;
+                resetEntry[j].time.sec  = tDiff.sec;
+                resetEntry[j].time.usec = tDiff.usec;
+                j++;
+
+                passAValues[i - 1] = passA;
+
+                /* Verify we don't go over the number of
+                 * log entries allocated */
+                if (j >= numLogEntry)
+                {
+                    break;
+                }
+            }
+            else if (passAValues[i - 1] == 0 && (passA & (1 << (i-1))))
+            {
+                resetEntry[j].entryType = RESET_TYPE_PASS_A;
+                resetEntry[j].newValue  = passA;
+                resetEntry[j].oldValue  = passAValues[i - 1];
+                resetEntry[j].pep       = i - 1;
+                resetEntry[j].time.sec  = tDiff.sec;
+                resetEntry[j].time.usec = tDiff.usec;
+                j++;
+
+                passAValues[i - 1] = passA;
+
+                /* Verify we don't go over the number of
+                 * log entries allocated */
+                if (j >= numLogEntry)
+                {
+                    break;
+                }
+            }
+
+            if (ltssmEnableValues[i - 1] == 0xFFFFFFFF)
+            {
+                err = readFunc(sw, FM10000_PCIE_PF_ADDR(FM10000_PCIE_CTRL(), i-1), &ltssmEnable);
+                FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PLATFORM, err);
+
+                ltssmEnable &= (1 << FM10000_PCIE_CTRL_b_LTSSM_ENABLE);
+
+                if (ltssmEnable)
+                {
+                    resetEntry[j].entryType = RESET_TYPE_LTSSM_ENABLE;
+                    resetEntry[j].newValue  = ltssmEnable;
+                    resetEntry[j].oldValue  = ltssmEnableValues[i - 1];
+                    resetEntry[j].pep       = i - 1;
+                    resetEntry[j].time.sec  = tDiff.sec;
+                    resetEntry[j].time.usec = tDiff.usec;
+                    j++;
+
+                    /* Verify we don't go over the number of
+                     * log entries allocated */
+                    if (j >= numLogEntry)
+                    {
+                        break;
+                    }
+
+                    ltssmEnableValues[i - 1] = ltssmEnable;
+                }
+            }
+
+            if (done[i - 1] == 1)
+            {
+                continue;
+            }
+
+            ltssmReg    = 0x00201CA | (i << 20);
+
+            err = readFunc(sw, ltssmReg, &ltssm);
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PLATFORM, err);
+
+            ltssm    &= 0x3F;
+
+
+            if (ltssm != 0)
+            {
+                done[i - 1] = 1;
+            }
+
+            if (ltssmValues[i - 1] != ltssm)
+            {
+                resetEntry[j].entryType = RESET_TYPE_LTSSM;
+                resetEntry[j].newValue  = ltssm;
+                resetEntry[j].oldValue  = ltssmValues[i - 1];
+                resetEntry[j].pep       = i - 1;
+                resetEntry[j].time.sec  = tDiff.sec;
+                resetEntry[j].time.usec = tDiff.usec;
+                j++;
+
+                /* Verify we don't go over the number of
+                 * log entries allocated */
+                if (j >= numLogEntry)
+                {
+                    break;
+                }
+            }
+            
+            ltssmValues[i - 1]    = ltssm;
+            
+        }
+        fmSubTimestamps(&tNow, &tStart, &tDiff);
+        
+        iter++;
+
+        /* Verify we don't go over the number of
+         * log entries allocated */
+        if (j >= numLogEntry)
+        {
+            break;
+        }
+
+    } while (TIME_PASSED(tDiff, tTresh) == 0);
+
+    for ( i = 0 ; i < j ; i++ )
+    {
+        /* Find last TS and diff it */
+        for (k = i-1; k >= 0; k--)
+        {
+            if (resetEntry[i].pep == resetEntry[k].pep)
+            {
+                fmSubTimestamps(&resetEntry[i].time, &resetEntry[k].time, &tDiff2);
+                break;
+            }
+        }
+        
+        if (k<0)
+        {
+            tDiff2.sec = 0;
+            tDiff2.usec = 0;
+        }
+
+        if (resetEntry[i].entryType == RESET_TYPE_LTSSM)
+        {
+            LtssmToStr(resetEntry[i].newValue, &ltssmRegDataNew);
+            LtssmToStr(resetEntry[i].oldValue, &ltssmRegDataOld);
+            FM_LOG_PRINT("%02lld.%06lld  %02lld.%06lld  %3d  %-22s -> %-25s\n",
+                         resetEntry[i].time.sec,
+                         resetEntry[i].time.usec,
+                         tDiff2.sec,
+                         tDiff2.usec,
+                         resetEntry[i].pep,
+                         ltssmRegDataOld.msg,
+                         ltssmRegDataNew.msg);
+        }
+        else if (resetEntry[i].entryType == RESET_TYPE_PASS_A)
+        {
+            FM_LOG_PRINT("%02lld.%06lld  %02lld.%06lld  %3d  PASS_A=0x%08x      -> PASS_A=0x%08x\n",
+                         resetEntry[i].time.sec,
+                         resetEntry[i].time.usec,
+                         tDiff2.sec,
+                         tDiff2.usec,
+                         resetEntry[i].pep,
+                         resetEntry[i].oldValue,
+                         resetEntry[i].newValue);
+        }
+        else if (resetEntry[i].entryType == RESET_TYPE_LTSSM_ENABLE)
+        {
+            if (resetEntry[i].oldValue == 0xFFFFFFFF)
+            {
+                FM_LOG_PRINT("%02lld.%06lld  %02lld.%06lld  %3d  LTSSM_ENABLE=0         -> LTSSM_ENABLE=%d\n",
+                         resetEntry[i].time.sec,
+                         resetEntry[i].time.usec,
+                         tDiff2.sec,
+                         tDiff2.usec,
+                         resetEntry[i].pep,
+                         resetEntry[i].newValue & 0x1);
+            }
+            else
+            {
+                FM_LOG_PRINT("%02lld.%06lld  %02lld.%06lld  %3d  LTSSM_ENABLE=%d         -> LTSSM_ENABLE=%d\n",
+                             resetEntry[i].time.sec,
+                             resetEntry[i].time.usec,
+                             tDiff2.sec,
+                             tDiff2.usec,
+                             resetEntry[i].pep,
+                             resetEntry[i].oldValue & 0x1,
+                             resetEntry[i].newValue & 0x1);
+            }
+        }
+        else
+        {
+            if (resetEntry[i].oldValue == 0xFFFFFFFF)
+            {
+                FM_LOG_PRINT("%02lld.%06lld  %02lld.%06lld  %3d  PCIE_RESET_N=NA        -> PCIE_RESET_N=%d\n",
+                         resetEntry[i].time.sec,
+                         resetEntry[i].time.usec,
+                         tDiff2.sec,
+                         tDiff2.usec,
+                         resetEntry[i].pep,
+                         resetEntry[i].newValue & 0x1);
+            }
+            else
+            {
+                FM_LOG_PRINT("%02lld.%06lld  %02lld.%06lld  %3d  PCIE_RESET_N=%d         -> PCIE_RESET_N=%d\n",
+                             resetEntry[i].time.sec,
+                             resetEntry[i].time.usec,
+                             tDiff2.sec,
+                             tDiff2.usec,
+                             resetEntry[i].pep,
+                             resetEntry[i].oldValue & 0x1,
+                             resetEntry[i].newValue & 0x1);
+            }
+        }
+    }
+
+    FM_LOG_PRINT("\n");
+    FM_LOG_PRINT("Report completed iterations %lld in %lld.%06lld seconds\n",
+                 iter,
+                 tDiff.sec,
+                 tDiff.usec);
+
+    iter *= 1e6;
+    tmp = (tDiff.sec * 1e6) + tDiff.usec;
+    if (tmp != 0)
+    {
+        FM_LOG_PRINT("  iterations/sec: %lld\n", iter/tmp);
+    }
+    FM_LOG_PRINT("  logged entries: %d\n", j);
+    FM_LOG_PRINT("\n");
+//  FM_LOG_PRINT("FM10000_PCIE_CTRL version\n");
+
+ABORT:
+
+    if ( resetEntry )
+    {
+        free( resetEntry );
+    }
+
+    FM_LOG_EXIT(FM_LOG_CAT_PLATFORM, err);
+
+}   /* end DbgResetToLtssmPollDefault */
 
 
 
@@ -743,12 +1322,12 @@ static fm_status DbgBsmStatusRegPollDefault(fm_int                    sw,
     err = readFunc(sw, FM10000_BSM_SCRATCH(EEPROM_IMAGE_VERSION), &nvmVer);
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PLATFORM, err);
 
-    FM_LOG_PRINT("\n");
-    FM_LOG_PRINT("\nPolling BSM_STATUS register for %lld.%06lld seconds",
+    FM_LOG_PRINT("\n\n");
+    FM_LOG_PRINT("Polling BSM_STATUS register for %lld.%06lld seconds\n",
                    tTresh.sec,
                    tTresh.usec);
     
-    FM_LOG_PRINT("\n%-25s[%d]      : 0x%08x (%02x.%02x)",
+    FM_LOG_PRINT("%-25s[%d]      : 0x%08x (%02x.%02x)\n",
                  "EEPROM VERSION",
                  EEPROM_IMAGE_VERSION,
                  nvmVer, 
@@ -1168,16 +1747,54 @@ static fm_status DbgDumpBsmScratchDefault(fm_int                    sw,
         err = readFunc(sw, FM10000_BSM_SCRATCH(SERDES_OOR_STATUS_PASS_1), &value);
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PLATFORM, err);
 
-        err = readFunc(sw, FM10000_BSM_SCRATCH(SERDES_OOR_STATUS_PASS_2), &value2);
-        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PLATFORM, err);
-        
-        FM_LOG_PRINT("\n%-25s[%d,%d]  : 0x%08x 0x%08x (%s)",
-                     "SERDES_OOR_STATUS_PASS_{2,1}",
-                     SERDES_OOR_STATUS_PASS_2,
-                     SERDES_OOR_STATUS_PASS_1,
-                     value2, value,
-                     "Serdes on OutOfReset pass/fail status");
-        DumpBsmSerdesStatusRegister(value, value2);
+        if ((nvmVer & 0xFFFF) >= 0x0216)
+        {
+            FM_LOG_PRINT("\n%-25s[%d]      : 0x%08x (%s), %s",
+                         "SERDES_OOR_STATUS_PASS_1",
+                         SERDES_OOR_STATUS_PASS_1,
+                         value,
+                         "Serdes on OutOfReset pass/fail status",
+                         value == 0 ? "PASS" : "FAIL");
+
+            err = readFunc(sw, FM10000_BSM_SCRATCH(RE_RESET_MASK_STATUS_1), &value);
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PLATFORM, err);
+            err = readFunc(sw, FM10000_BSM_SCRATCH(RE_RESET_MASK_STATUS_2), &value2);
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PLATFORM, err);
+
+            FM_LOG_PRINT("\n%-25s[%d]      : 0x%08x (%s)",
+                         "RE_RESET_MASK_STATUS_1",
+                         RE_RESET_MASK_STATUS_1,
+                         value,
+                         "Last Updated Serdes in PASS A, (1<<PEP)");
+            FM_LOG_PRINT("\n%-25s[%d]      : 0x%08x (%s)",
+                         "RE_RESET_MASK_STATUS_2",
+                         RE_RESET_MASK_STATUS_2,
+                         value2,
+                         "Last Updated Serdes in PASS B, (1<<PEP)");
+
+            err = readFunc(sw, FM10000_BSM_SCRATCH(RE_RESET_ERR_STATUS), &value);
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PLATFORM, err);
+
+            FM_LOG_PRINT("\n%-25s[%d]      : 0x%08x (%s), %s",
+                         "RE_RESET_ERR_STATUS",
+                         RE_RESET_ERR_STATUS,
+                         value,
+                         "RE_RESET_MASK_STATUS_{1,2} not equal errors",
+                         value == 0 ? "PASS" : "FAIL");
+        }
+        else
+        {
+            err = readFunc(sw, FM10000_BSM_SCRATCH(SERDES_OOR_STATUS_PASS_2), &value2);
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PLATFORM, err);
+            
+            FM_LOG_PRINT("\n%-25s[%d,%d]  : 0x%08x 0x%08x (%s)",
+                         "SERDES_OOR_STATUS_PASS_{2,1}",
+                         SERDES_OOR_STATUS_PASS_2,
+                         SERDES_OOR_STATUS_PASS_1,
+                         value2, value,
+                         "Serdes on OutOfReset pass/fail status");
+            DumpBsmSerdesStatusRegister(value, value2);
+        }
     }
 
     if (regMask & REG_MASK_BSM_LOCKS)
@@ -1362,6 +1979,78 @@ ABORT:
     
 }   /* end fm10000DbgPollLtssm */
 
+
+
+
+/*****************************************************************************/
+/** fm10000DbgPollReset
+ *
+ * \desc            Reset polling function.
+ *                  Examines the PCIE_RESET_N and LTSSM to determine how
+ *                  long it took from reset to start of link training.
+ *                  Registers value change detection dumps the corresponding
+ *                  dbg message. 
+ *
+ * \param[in]       sw switch BSM_SCRATCH will be examined.
+ *
+ * \param[in]       readFunc is the function pointer to read 32-bit registers.
+ * 
+ * \param[in]       pep is the PEP to poll LTSSM for, use -1 to poll all PEPs.
+ * 
+ * \param[in]       miliSec polling time in milliseconds.
+ *
+ * \return          FM_OK if successful.
+ * \return          Other ''Status Codes'' as appropriate in case of
+ *                  failure.
+ *
+ *****************************************************************************/
+fm_status fm10000DbgPollReset(fm_int                    sw,
+                              fm_registerReadUINT32Func readFunc,
+                              fm_int                    pep,
+                              fm_uint32                 miliSec)
+{
+    fm_status err;
+    fm_uint   nvmVer;
+    fm_int    size;
+    fm_int    i;
+
+    FM_LOG_ENTRY(FM_LOG_CAT_PLATFORM, "sw=%d\n", sw);
+   
+    if (!readFunc)
+    {
+        FM_LOG_EXIT(FM_LOG_CAT_PLATFORM, FM_ERR_INVALID_ARGUMENT);
+    }
+    
+    /* get nvmVersion */
+    err = readFunc(sw, FM10000_BSM_SCRATCH(EEPROM_IMAGE_VERSION), &nvmVer);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PLATFORM, err);
+    
+    /* find the funcLtssmPoll function supporting nvm version */
+    size = FM_NENTRIES(fm10000NvmAccess);
+    for ( i = 0 ; i < size ; i++)
+    {
+        if (fm10000NvmAccess[i].maxVersionSupported >= nvmVer)
+        {
+            if (!fm10000NvmAccess[i].funcResetPoll)
+            {
+                FM_LOG_EXIT(FM_LOG_CAT_PLATFORM, FM_ERR_UNSUPPORTED);
+            }
+            
+            /* got valid function version */
+            err = fm10000NvmAccess[i].funcResetPoll(sw,
+                                                    readFunc,
+                                                    pep,
+                                                    miliSec);
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PLATFORM, err);
+            
+            break;
+        }
+    }
+    
+ABORT:
+    FM_LOG_EXIT(FM_LOG_CAT_PLATFORM, err);
+    
+}   /* end fm10000DbgPollReset */
 
 
 

@@ -254,6 +254,18 @@ typedef struct _fm_internalMacAddrEntry
     /* TAG secure bit. (FM6000, FM10000) */
     fm_bool    secure;
 
+    /* Flag to retrieve the GloRT from TE rule. (FM10000) */
+    fm_bool     isTunnelEntry;
+
+    /* GLoRT for the entry. (FM10000) */
+    fm_uint32   glort;
+
+    /* Tunnel group of entry. (FM10000) */
+    fm_int      tunnelGrp;
+
+    /* Tunnel rule of entry. (FM10000) */
+    fm_int      tunnelRule;
+
 } fm_internalMacAddrEntry;
 
 

@@ -234,6 +234,8 @@ static fm_platformStrMap an73AbilityMap[] =
     { "NP",           FM_PLAT_AN73_ABILITY_NP           },
     { "1GBase-KX",    FM_PLAT_AN73_ABILITY_1000BASE_KX  },
     { "10GBase-KR",   FM_PLAT_AN73_ABILITY_10GBASE_KR   },
+    { "25GBase-CR",   FM_PLAT_AN73_ABILITY_25GGBASE_CR_KR},
+    { "25GBase-KR",   FM_PLAT_AN73_ABILITY_25GGBASE_CR_KR},
     { "40GBase-KR4",  FM_PLAT_AN73_ABILITY_40GBASE_KR4  },
     { "40GBase-CR4",  FM_PLAT_AN73_ABILITY_40GBASE_CR4  },
     { "100GBase-KR4", FM_PLAT_AN73_ABILITY_100GBASE_KR4 },
@@ -712,8 +714,8 @@ void fmPlatformCfgDump(void)
             PRINT_VALUE("  pep", portCfg->pep);
             PRINT_VALUE("  tunnel", portCfg->tunnel);
             PRINT_VALUE("  loopback", portCfg->loopback);
-            PRINT_VALUE("  speed", portCfg->speed);
             PRINT_VALUE("  autodetect", portCfg->autodetect);
+            PRINT_VALUE("  speed", portCfg->speed);
             PRINT_STRING( "  ethMode",
                          GetStrMap( portCfg->ethMode,
                                     ethModeMap,
@@ -735,12 +737,6 @@ void fmPlatformCfgDump(void)
                                     FALSE,
                                     tmpStr,
                                     sizeof(tmpStr)  ) );
-            PRINT_STRING( "  capability",
-                         GetStrBitMap( portCfg->cap,
-                                       portCapMap,
-                                       FM_NENTRIES(portCapMap),
-                                       tmpStr,
-                                       sizeof(tmpStr) ) );
             PRINT_STRING("  dfeMode",
                          GetStrMap(portCfg->dfeMode, 
                                    dfeModeMap, 
@@ -748,6 +744,18 @@ void fmPlatformCfgDump(void)
                                    FALSE,
                                    tmpStr,
                                    sizeof(tmpStr) ) );
+            PRINT_STRING( "  capability",
+                         GetStrBitMap( portCfg->cap,
+                                       portCapMap,
+                                       FM_NENTRIES(portCapMap),
+                                       tmpStr,
+                                       sizeof(tmpStr) ) );
+            PRINT_STRING( "  an73AbilityCfg",
+                         GetStrBitMap( portCfg->an73AbilityCfg,
+                                       an73AbilityMap,
+                                       FM_NENTRIES(an73AbilityMap),
+                                       tmpStr,
+                                       sizeof(tmpStr) ) );
             PRINT_STRING( "  an73Ability",
                          GetStrBitMap( portCfg->an73Ability,
                                        an73AbilityMap,

@@ -6,7 +6,7 @@
  * Description:    ACL code related to the non-disruptive part of the compiler
  *                 for FM10000.
  *
- * Copyright (c) 2013 - 2014, Intel Corporation
+ * Copyright (c) 2013 - 2015, Intel Corporation
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -30,7 +30,7 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
+ *****************************************************************************/
 
 #include <fm_sdk_fm10000_int.h>
 #include <common/fm_version.h>
@@ -96,11 +96,6 @@ extern void fmInitializeConcreteKey(fm_byte *muxSelect);
 extern fm_status fmConvertAbstractToConcreteKey(fm_tree *      abstractKeyTree,
                                                 fm_byte *      muxSelect,
                                                 fm_uint16 *    muxUsed);
-
-extern fm_status fmCountActionSlicesNeeded(fm_int               sw,
-                                           fm_aclErrorReporter *errReport,
-                                           fm_aclRule *         rule,
-                                           fm_int *             actionSlices);
 
 extern void fmTranslateAclScenario(fm_int      sw,
                                    fm_uint32   aclScenario,
@@ -5319,7 +5314,7 @@ fm_status fm10000NonDisruptCleanRoutes(fm_fm10000CompiledAcls *cacls,
             if ( (acl >= 0) && ((acl != ecmpRule->aclNumber) ||
                                 (rule != ecmpRule->ruleNumber)) )
             {
-                node = FM_DLL_GET_NEXT(node, next);
+                node = FM_DLL_GET_NEXT(node, nextPtr);
                 continue;
             }
 
@@ -5377,7 +5372,7 @@ fm_status fm10000NonDisruptCleanRoutes(fm_fm10000CompiledAcls *cacls,
             {
                 goto ABORT;
             }
-            node = FM_DLL_GET_NEXT(node, next);
+            node = FM_DLL_GET_NEXT(node, nextPtr);
         }
         if (fmDListSize(ecmpList) == 0)
         {
@@ -6152,7 +6147,7 @@ fm_status fm10000NonDisruptAddSelect(fm_int                  sw,
     newNumCondition = fmCountConditionSliceUsage(compiledAcl->muxSelect);
 
     /* See if the new rule needs more action slice then allocated. */
-    err = fmCountActionSlicesNeeded(sw, NULL, rule, &newNumAction);
+    err = fm10000CountActionSlicesNeeded(sw, NULL, rule, &newNumAction);
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_ACL, err);
 
     /* Find the number of new slices needed */
@@ -6622,10 +6617,10 @@ fm_status fm10000NonDisruptAddIngAclRule(fm_int                  sw,
     newCompiledAclRule->portSetId = FM_PORT_SET_ALL;
     newCompiledAclRule->physicalPos = -1;
 
-    err = fmCountActionSlicesNeeded(sw,
-                                    NULL,
-                                    rule,
-                                    &newCompiledAclRule->numActions);
+    err = fm10000CountActionSlicesNeeded(sw,
+                                         NULL,
+                                         rule,
+                                         &newCompiledAclRule->numActions);
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_ACL, err);
 
     if (newCompiledAclRule->numActions > FM10000_ACL_MAX_ACTIONS_PER_RULE)
@@ -8067,10 +8062,10 @@ fm_status fm10000NonDisruptQuickUpdate(fm_int sw, fm_int acl, fm_int rule)
         compiledAclRsrvdActSlice = compiledAcl->sliceInfo.actionEnd -
                                    compiledAcl->sliceInfo.keyEnd + 1;
 
-        err = fmCountActionSlicesNeeded(sw,
-                                        NULL,
-                                        aclRuleEntry,
-                                        &numActionsSlices);
+        err = fm10000CountActionSlicesNeeded(sw,
+                                             NULL,
+                                             aclRuleEntry,
+                                             &numActionsSlices);
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_ACL, err);
 
         /* Updated action needs more slice than currently allocated, call a

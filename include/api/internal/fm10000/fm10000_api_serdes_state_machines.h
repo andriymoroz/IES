@@ -42,14 +42,13 @@
 #ifndef __FM_FM10000_API_SERDES_STATE_MACHINES_H
 #define __FM_FM10000_API_SERDES_STATE_MACHINES_H
 
-
-/* declaration of the serdes-level state machine types */
+/* declaration of the SerDes-level state machine types */
 #define FM10000_BASIC_SERDES_STATE_MACHINE 200
 #define FM10000_PCIE_SERDES_STATE_MACHINE 201
 #define FM10000_STUB_SERDES_STATE_MACHINE 202
 
 
-/* declaration of serdes-level states */
+/* declaration of SerDes-level states */
 typedef enum
 {
     FM10000_SERDES_STATE_DISABLED = 0,
@@ -75,7 +74,7 @@ typedef enum
 extern fm_text fm10000SerDesStatesMap[FM10000_SERDES_STATE_MAX];
 
 
-/* declaration of serdes-level events */
+/* declaration of SerDes-level events */
 typedef enum
 {
     FM10000_SERDES_EVENT_POWERUP_REQ = 0,
@@ -105,6 +104,7 @@ typedef enum
     FM10000_SERDES_EVENT_FAR_LOOPBACK_OFF_REQ,
     FM10000_SERDES_EVENT_ENABLE_EEE_MODE_REQ,
     FM10000_SERDES_EVENT_DISABLE_EEE_MODE_REQ,
+    FM10000_SERDES_EVENT_VALIDATE_TIMEOUT_IND,
     FM10000_SERDES_EVENT_MAX
 
 } fm10000_serdesSmEvents;
@@ -184,6 +184,11 @@ fm_status fm10000SerDesDisableEeeOpMode( fm_smEventInfo *eventInfo, void *userIn
 fm_status fm10000SerDesRstSignalOkDebounce( fm_smEventInfo *eventInfo, void *userInfo );
 fm_status fm10000SerDesConfigureEee( fm_smEventInfo *eventInfo, void *userInfo );
 fm_status fm10000SerDesSaveKrTimeoutStats( fm_smEventInfo *eventInfo, void *userInfo );
+fm_status fm10000SerDesExecuteErrorValidation( fm_smEventInfo *eventInfo, void *userInfo );
+fm_status fm10000SerDesExecuteErrorValidationWithActions( fm_smEventInfo *eventInfo, void *userInfo );
+fm_status fm10000SerDesExecutePendingErrorActions( fm_smEventInfo *eventInfo, void *userInfo );
+fm_status fm10000SerDesStartErrorValidationTimer( fm_smEventInfo *eventInfo, void *userInfo );
+fm_status fm10000SerDesStopErrorValidationTimer( fm_smEventInfo *eventInfo, void *userInfo );
 
 
 
@@ -218,7 +223,7 @@ fm_status fm10000SerDesConfigureEthOrPcie( fm_smEventInfo *eventInfo, void *user
 /* declaration of the log callback functions, if any */
 fm_status fm10000LogSerDesTransition( fm_smTransitionRecord *record );
 
-/* declaration of registration functions for serdes-level state machine types */
+/* declaration of registration functions for SerDes-level state machine types */
 fm_status fm10000RegisterBasicSerDesStateMachine( void );
 fm_status fm10000RegisterPcieSerDesStateMachine( void );
 fm_status fm10000RegisterStubSerDesStateMachine( void );

@@ -147,7 +147,7 @@ static int CompareByGlort(const void *aPtr, const void *bPtr)
 
 
 /*****************************************************************************/
-/** portTypeToGlortType
+/** PortTypeToGlortType
  * \ingroup intPort
  *
  * \desc            Returns the text representation of a logical port type.
@@ -157,7 +157,7 @@ static int CompareByGlort(const void *aPtr, const void *bPtr)
  * \return          Pointer to a string representing the logical port type.
  *
  *****************************************************************************/
-static fm_glortType portTypeToGlortType(fm_portType type)
+static fm_glortType PortTypeToGlortType(fm_portType type)
 {
 
     switch (type)
@@ -193,7 +193,7 @@ static fm_glortType portTypeToGlortType(fm_portType type)
             return FM_GLORT_TYPE_UNSPECIFIED;
     }
 
-}   /* end portTypeToGlortType */
+}   /* end PortTypeToGlortType */
 
 
 
@@ -790,7 +790,7 @@ static fm_status AssignPortResources(fm_switch *   switchPtr,
                  parmPtr->numPorts,
                  parmPtr->baseGlort);
 
-    glortType = portTypeToGlortType(parmPtr->portType);
+    glortType = PortTypeToGlortType(parmPtr->portType);
     err = fmRequestGlortRange(switchPtr->switchNumber,
                               parmPtr->baseGlort,
                               parmPtr->numPorts,
@@ -1547,8 +1547,6 @@ ABORT:
  *
  * \desc            Allocates a contiguous block of virtual port entries
  *                  for given PEP.
- *                                                                      \lb\lb
- *                  Called via the AllocVirtualLogicalPort function pointer.
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -1915,7 +1913,7 @@ fm_status fmCommonFreeLogicalPort(fm_int sw, fm_int logicalPort)
 
         FM_SET_LPORT_FREE(lportInfo, port);
 
-        glortType = portTypeToGlortType(portPtr->portType);
+        glortType = PortTypeToGlortType(portPtr->portType);
         err = fmReleaseGlortRange(sw,
                                   portPtr->glort,
                                   1,
@@ -2490,7 +2488,7 @@ fm_status fmCreateLogicalPortForGlort(fm_int    sw,
     FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_PORT, err);
 
     portPtr   = GET_PORT_PTR(sw, *logicalPort);
-    glortType = portTypeToGlortType(portPtr->portType);
+    glortType = PortTypeToGlortType(portPtr->portType);
     err = fmRequestGlortRange(sw,
                               glort,
                               1,
@@ -2590,7 +2588,7 @@ fm_status fmCreateLogicalPortForMailboxGlort(fm_int    sw,
     FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_PORT, err);
 
     portPtr   = GET_PORT_PTR(sw, *logicalPort);
-    glortType = portTypeToGlortType(portPtr->portType);
+    glortType = PortTypeToGlortType(portPtr->portType);
     err = fmRequestGlortRange(sw,
                               glort,
                               1,
@@ -2676,7 +2674,7 @@ fm_status fmFreeLogicalPortForMailboxGlort(fm_int sw,
 
     if (portPtr != NULL)
     {
-        glortType = portTypeToGlortType(portPtr->portType);
+        glortType = PortTypeToGlortType(portPtr->portType);
         err = fmReleaseGlortRange(sw,
                                   portPtr->glort,
                                   1,
@@ -3196,6 +3194,57 @@ fm_status fmIsSpecialPort( fm_int sw, fm_int port, fm_bool *isSpecialPort )
     return status;
 
 }   /* end fmIsSpecialPort */
+
+
+
+
+/*****************************************************************************/
+/** fmIsEplPort
+ * \ingroup intlport
+ *
+ * \desc            Checks whether a logical port belongs to an EPL.
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \param[in]       port is the logical port on which to operate.
+ *
+ * \param[out]      isEplPort points to a caller-provided Boolean
+ *                  variable where this function will return TRUE if the
+ *                  logical port belongs to an EPL.
+ *
+ * \return          FM_OK if successful
+ * \return          FM_ERR_INVALID_SWITCH if the switch ID is invalid
+ * \return          FM_ERR_SWITCH_NOT_UP if the switch in not up
+ * \return          FM_ERR_INVALID_PORT if the port ID is invalid
+ * \return          FM_ERR_INVALID_ARGUMENT if the pointer argument is invalid
+ *
+ *****************************************************************************/
+fm_status fmIsEplPort( fm_int sw, fm_int port, fm_bool *isEplPort )
+{
+    fm_status  status;
+    fm_port   *portPtr;
+
+    VALIDATE_AND_PROTECT_SWITCH(sw);
+
+    VALIDATE_LOGICAL_PORT( sw, port, ALLOW_ALL );
+
+    portPtr = GET_PORT_PTR(sw, port);
+
+    /* Invoke the chip-specific function, if any */
+    if ( portPtr->IsEplPort != NULL )
+    {
+        status = portPtr->IsEplPort( sw, port, isEplPort );
+    }
+    else
+    {
+        *isEplPort = FALSE;
+        status     = FM_OK;
+    }
+
+    UNPROTECT_SWITCH(sw);
+    return status;
+
+}   /* end fmIsEplPort */
 
 
 
@@ -5903,6 +5952,8 @@ fm_status fmFreeMcastLogicalPort(fm_int sw, fm_int port)
 }   /* end fmFreeMcastLogicalPort */
 
 
+
+
 /*****************************************************************************/
 /** fmIsInLAGGlortRange
  * \ingroup intPort
@@ -5924,16 +5975,49 @@ fm_status fmFreeMcastLogicalPort(fm_int sw, fm_int port)
  *****************************************************************************/
 fm_bool fmIsInLAGGlortRange(fm_int sw, fm_uint32 glort)
 {
-    fm_switch *     switchPtr;
-    fm_glortRange * range;
+    fm_switch *         switchPtr;
+    fm_glortRange *     range;
+#ifdef FM_SUPPORT_SWAG
+    fm_int              swagId;
+    fmSWAG_switch *     swagExt;
+    fmSWAG_allocLags *  lagAlloc;
+    fm_int              i;
+#endif
 
     switchPtr = GET_SWITCH_PTR(sw);
     range = &switchPtr->glortRange;
 
-    return ( (glort >= range->lagBaseGlort) &&
-             (glort < (range->lagBaseGlort + range->lagCount) ) );
+    if ( (glort >= range->lagBaseGlort) &&
+         (glort < (range->lagBaseGlort + range->lagCount) ) )
+    {
+        return TRUE;
+    }
+
+#ifdef FM_SUPPORT_SWAG
+
+    swagId = switchPtr->swag;
+
+    swagExt = GET_SWITCH_EXT(swagId);
+
+    for(i = 0 ; i < FM_SWAG_MAX_LAG_ALLOCS ; i++)
+    {
+        lagAlloc = &swagExt->logicalPortInfo.allocLagsEntry[i];
+
+        if (lagAlloc->glortSize != 0 &&
+            glort >= lagAlloc->glort && 
+            glort < (lagAlloc->glort + lagAlloc->glortSize) )
+        {
+            return TRUE;
+        }
+    }
+
+#endif
+
+    return FALSE;
 
 }   /* end fmIsInLAGGlortRange */
+
+
 
 
 /*****************************************************************************/
@@ -5995,6 +6079,7 @@ fm_status fmDbgDumpGlortConfig(fm_int sw)
     FM_LOG_PRINT("specialMask    : 0x%04x\n", info->specialMask);
     FM_LOG_PRINT("specialSize    : %d\n",     info->specialSize);
     FM_LOG_PRINT("specialALength : %d\n",     info->specialALength);
+    FM_LOG_PRINT("tunnelBase     : 0x%04x\n", info->tunnelBase);
 
     UNPROTECT_SWITCH(sw);
 

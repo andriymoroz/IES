@@ -6,7 +6,7 @@
  * Description:     Functions for managing stacked intra and extra switch
  *                  aggregate systems.
  *
- * Copyright (c) 2005 - 2015, Intel Corporation
+ * Copyright (c) 2005 - 2016, Intel Corporation
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -570,7 +570,6 @@ fm_status fmGetInternalPortFromRemotePort(fm_int sw,
 
     switchPtr = GET_SWITCH_PTR(sw);
     portPtr = switchPtr->portTable[remotePort];
-    tmpErr  = FM_OK;
 
     if (portPtr != NULL)
     {
@@ -581,20 +580,18 @@ fm_status fmGetInternalPortFromRemotePort(fm_int sw,
                 while (!internalPortSearchDone)
                 {
                     err = fmGetLogicalPortGlort(sw, remotePort, &glort);
-    
                     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_STACKING, err);
         
                     /* For remote port, we find the internal port */
                     err = fmFindForwardingRulePortByGlort(sw, glort, &port);
 
-                    /* If no forwarding rule was found, check if this glort
-                       is assigned for mailbox purpose. */ 
                     if (err != FM_OK)
                     {
+                        /* If no forwarding rule was found, check if this glort
+                         * is assigned for mailbox purposes. */ 
                         tmpErr = fmFindInternalPortByMailboxGlort(sw,
                                                                   glort,
                                                                   &port);
-
                         if (tmpErr == FM_OK)
                         {
                             err = FM_OK;
@@ -2732,6 +2729,8 @@ fm_status fmCreateStackLBG(fm_int sw, fm_int lbgNumber)
  *
  * \return          FM_OK if successful.
  * \return          FM_ERR_INVALID_SWITCH if sw is invalid.
+ * \return          FM_ERR_UNSUPPORTED if the requested LBG mode is not
+ *                  supported by this function.
  * \return          FM_ERR_NO_MEM if not enough memory is available for the
  *                  lbg structure.
  *
@@ -2740,7 +2739,8 @@ fm_status fmCreateStackLBGExt(fm_int        sw,
                               fm_int        lbgNumber, 
                               fm_LBGParams *params)
 {
-    fm_status    err;
+    fm_status  err;
+    fm_switch *switchPtr;
 
     FM_LOG_ENTRY_API(FM_LOG_CAT_STACKING,
                      "sw = %d, lbgNumber = %d, params = %p\n",
@@ -2752,10 +2752,28 @@ fm_status fmCreateStackLBGExt(fm_int        sw,
 
     FM_TAKE_LBG_LOCK(sw);
 
+    switchPtr = GET_SWITCH_PTR(sw);
+
+    if (params != NULL)
+    {
+        if (params->mode != FM_LBG_MODE_MAPPED_L234HASH)
+        {
+            err = FM_ERR_UNSUPPORTED;
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_STACKING, err);
+        }
+    }
+    else if (switchPtr->lbgInfo.mode != FM_LBG_MODE_MAPPED_L234HASH)
+    {
+        err = FM_ERR_UNSUPPORTED;
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_STACKING, err);
+    }
+
     err = fmCreateLBGInt(sw, &lbgNumber, params, TRUE);
 
+
+ABORT:
     FM_DROP_LBG_LOCK(sw);
-    
+
     UNPROTECT_SWITCH(sw);
 
     FM_LOG_EXIT_API(FM_LOG_CAT_STACKING, err);

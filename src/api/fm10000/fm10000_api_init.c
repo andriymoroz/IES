@@ -5,7 +5,7 @@
  * Creation Date:   December 3, 2012
  * Description:     FM10xxx-specific API initialization functions
  *
- * Copyright (c) 2012 - 2015, Intel Corporation
+ * Copyright (c) 2012 - 2016, Intel Corporation
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -54,6 +54,12 @@
 #define FM10000_PFL_FREQ_SEL_F500             2
 #define FM10000_PFL_FREQ_SEL_F400             3
 #define FM10000_PFL_FREQ_SEL_F300             4
+
+/* Actual frequency based on preconfigured PLL */
+#define FM10000_PFL_FREQ_F600MHZ              612
+#define FM10000_PFL_FREQ_F500MHZ              510
+#define FM10000_PFL_FREQ_F400MHZ              408
+#define FM10000_PFL_FREQ_F300MHZ              306
 
 /* SKU values */
 #define FM10000_SKU_FM10840             0
@@ -148,6 +154,7 @@ const fm_switch FM10000SwitchDefaultTable =
     .GetSwitchAttribute                 = fm10000GetSwitchAttribute,
     .GetCpuPort                         = fm10000GetCpuPort,
     .SetCpuPort                         = fm10000SetCpuPort,
+    .EnableSwitchMacFiltering           = fm10000EnableSwitchMacFiltering,
 
     /**************************************************
      * Logical Port Management
@@ -242,10 +249,6 @@ const fm_switch FM10000SwitchDefaultTable =
     /* QOS support functions.  */
     .GetSwitchQOS                       = fm10000GetSwitchQOS,
     .SetSwitchQOS                       = fm10000SetSwitchQOS,
-#if 0
-    .StopTraffic                        = fm10000StopTraffic,
-    .RestartTraffic                     = fm10000RestartTraffic,
-#endif
 
     /**************************************************
      * Statistics Support
@@ -529,6 +532,8 @@ const fm_switch FM10000SwitchDefaultTable =
     .DeleteFlowBalanceGrp               = fm10000DeleteFlowBalanceGrp,
     .AddFlowBalanceGrpEntry             = fm10000AddFlowBalanceGrpEntry,
     .DeleteFlowBalanceGrpEntry          = fm10000DeleteFlowBalanceGrpEntry,
+    .GetFlowTableIndexUnused            = fm10000GetFlowTableIndexUnused,
+    .GetFlowTableSupportedActions       = fm10000GetFlowTableSupportedActions,
 
     /**************************************************
      * Tunnel Operations
@@ -672,13 +677,12 @@ const fm_switch FM10000SwitchDefaultTable =
     .DbgDumpWatermarksV3                = fm10000DbgDumpWatermarksV3,
     .DbgDumpMemoryUsageV3               = fm10000DbgDumpMemoryUsageV3,
     .DbgDumpQOS                         = fm10000DbgDumpQOS,
+    .DbgDumpQueueQOS                    = fm10000DbgDumpQueueQOS,
 #if 0
     .DbgDumpPortMasks                   = fm10000DbgDumpPortMasks,
     .DbgDumpPortMax                     = fm10000DbgDumpPortMax,
     .DbgPolicerTest                     = fm10000DbgPolicerTest,
     .DbgSwitchSelfTest                  = fm10000DbgSwitchSelfTest,
-    .DbgDumpWatermarksV2                = fm10000DbgDumpWatermarksV2,
-    .DbgDumpMemoryUsageV2               = fm10000DbgDumpMemoryUsageV2,
 #endif
     .DbgDumpMulticastTables             = fm10000DbgDumpMulticastVlanTable,
 
@@ -721,7 +725,6 @@ const fm_switch FM10000SwitchDefaultTable =
     .MailboxInit                         = fm10000MailboxInit,
     .MailboxFreeDataStructures           = fm10000MailboxFreeDataStructures,
     .MailboxFreeResources                = fm10000MailboxFreeResources,
-    .ProcessCreateFlowTableRequest       = fm10000ProcessCreateFlowTableRequest,
     .GetSchedPortSpeedForPep             = fm10000GetSchedPortSpeedForPep,
     .FindInternalPortByMailboxGlort      = fm10000FindInternalPortByMailboxGlort,
     .SetXcastFlooding                    = fm10000SetXcastFlooding,
@@ -736,6 +739,7 @@ const fm_switch FM10000SwitchDefaultTable =
     .DbgDumpBsmScratch                   = fm10000DbgDumpBsmScratch,
     .DbgPollBsmStatus                    = fm10000DbgPollBsmStatus,
     .DbgPollLtssm                        = fm10000DbgPollLtssm,
+    .DbgPollReset                        = fm10000DbgPollReset,
 
 };  /* end FM10000SwitchDefaultTable */
 
@@ -911,7 +915,7 @@ static fm_status InitSpecialPort(fm_int sw, fm_int port)
                      (portPtr->portType == FM_PORT_TYPE_LOOPBACK) ||
                      ( (isPciePort == TRUE) && (addPepsToFlooding == FALSE) ) )
                 {
-                    FM_PORTMASK_DISABLE_BIT(&destMask, portNumber);
+                    FM_PORTMASK_DISABLE_BIT(&destMask, cpi);
                 }
             }
             break;
@@ -930,7 +934,7 @@ static fm_status InitSpecialPort(fm_int sw, fm_int port)
                      (portPtr->portType == FM_PORT_TYPE_CPU_MGMT2) ||
                      (portPtr->portType == FM_PORT_TYPE_LOOPBACK) )
                 {
-                    FM_PORTMASK_DISABLE_BIT(&destMask, portNumber);
+                    FM_PORTMASK_DISABLE_BIT(&destMask, cpi);
                 }
             }
             break;
@@ -1125,7 +1129,7 @@ static void GetIMProperties(fm_int sw)
 /** fm10000InitializeGlortRanges
  * \ingroup intSwitch
  *
- * \desc            Initializes the glort ranges for the FM10000 switch
+ * \desc            Initializes the GloRT ranges for the FM10000 switch
  *                  if they have not already been defined.
  *
  * \param[in]       sw contains the switch number
@@ -1146,7 +1150,7 @@ static fm_status fm10000InitializeGlortRanges(fm_int sw)
     glorts    = &switchPtr->glortRange;
 
     /***************************************************
-     * Initialize the glort ranges if they have not
+     * Initialize the GloRT ranges if they have not
      * been already initialized.
      **************************************************/
 
@@ -1173,7 +1177,7 @@ static fm_status fm10000InitializeGlortRanges(fm_int sw)
 
     if (glorts->lagBaseGlort == (fm_uint32) ~0)
     {
-        /* Allocate the LAG glort range from the end. If stacking
+        /* Allocate the LAG GloRT range from the end. If stacking
          * is used, the boundary will not have to be calculated, those
          * can start at FM10000_GLORT_LAG_BASE. */
         glorts->lagCount     = FM_NUM_LOCAL_LAGS * FM10000_GLORTS_PER_LAG;
@@ -1187,10 +1191,10 @@ static fm_status fm10000InitializeGlortRanges(fm_int sw)
                                FM10000_GLORT_LAG_SIZE,
                                glorts->lagCount);
 
-        /* For FM10000, the glort space allocated for LAG is limited to
+        /* For FM10000, the GloRT space allocated for LAG is limited to
          * 0x2000-0x2FFF. Make sure that this will not be exceeded by
-         * stacking glort requirements. If this glort space needs to be
-         * exceeded, the default glort range for local lags should be overridden
+         * stacking GloRT requirements. If this GloRT space needs to be
+         * exceeded, the default GloRT range for local lags should be overridden
          * with fmSetStackGlortRangeExt(). */
         FM_LOG_ABORT_ON_ASSERT(FM_LOG_CAT_SWITCH,
                                ((FM_NUM_LOCAL_LAGS + FM_NUM_STACK_LAGS)
@@ -1214,7 +1218,7 @@ static fm_status fm10000InitializeGlortRanges(fm_int sw)
     {
         numStackMcastGroups = GET_FM10000_PROPERTY()->mcastNumStackGroups;
 
-        /* Allocate the local multicast groups glort range from the end.
+        /* Allocate the local multicast groups GloRT range from the end.
          * If stacking is used, the boundary will not have to be calculated,
          * those can start at FM10000_GLORT_MCAST_BASE. */
         glorts->mcastBaseGlort =
@@ -1222,10 +1226,10 @@ static fm_status fm10000InitializeGlortRanges(fm_int sw)
         glorts->mcastCount     =
             FM10000_GLORT_MCAST_SIZE - numStackMcastGroups;
 
-        /* For FM10000, the default glort space allocated for multicasts is
+        /* For FM10000, the default GloRT space allocated for multicasts is
          * 0x3000-0x3FFF. Make sure that this will not be exceeded by
-         * stacking glort requirements. If this glort space needs to be
-         * exceeded, the default glort range for local mulitcasts should be
+         * stacking GloRT requirements. If this GloRT space needs to be
+         * exceeded, the default GloRT range for local mulitcasts should be
          * overridden with fmSetStackGlortRangeExt(). */
         FM_LOG_ABORT_ON_ASSERT(FM_LOG_CAT_SWITCH,
                                numStackMcastGroups <=
@@ -1239,12 +1243,13 @@ static fm_status fm10000InitializeGlortRanges(fm_int sw)
     if (switchPtr->mailboxInfo.glortBase == (fm_uint16) ~0)
     {
         switchPtr->mailboxInfo.glortBase    = FM10000_MAILBOX_GLORT_BASE;
-        switchPtr->mailboxInfo.glortMask    = FM10000_MAILBOX_GLORT_MASK;
-        switchPtr->mailboxInfo.glortsPerPep = FM10000_MAILBOX_GLORTS_PER_PEP;
+        switchPtr->mailboxInfo.glortsPerPep = GET_PROPERTY()->hniGlortsPerPep;
+        switchPtr->mailboxInfo.glortMask    =
+            0xFFFF & ~(switchPtr->mailboxInfo.glortsPerPep - 1);
     }
 
     /***************************************************
-     * CPU glort range for the FM10000.
+     * CPU GloRT range for the FM10000.
      **************************************************/
 
     switchPtr->glortInfo.cpuBase        = FM10000_GLORT_CPU_BASE;
@@ -1255,10 +1260,12 @@ static fm_status fm10000InitializeGlortRanges(fm_int sw)
     switchPtr->glortInfo.specialSize    = FM10000_GLORT_SPECIAL_SIZE;
     switchPtr->glortInfo.specialALength = FM10000_GLORT_SPECIAL_A_LENGTH;
 
+    switchPtr->glortInfo.tunnelBase     = FM10000_GLORT_TUNNEL_BASE;
+
     glorts    = &switchPtr->glortRange;
 
     /*****************************************************************
-     * Multicast glort information
+     * Multicast GloRT information
      *
      * The value must be a a power of 2 greater then 64 but not greater
      * then FM_MCG_MAX_ENTRIES_PER_GLORT
@@ -2171,24 +2178,24 @@ static fm_status SetFHClockFreq(fm_int sw, fm_int fhClock)
         switch (featureCode)
         {
             case FM10000_PFL_FEATURE_CODE_LIMITED1:
-                maxFreq = 600000000;
+                maxFreq = FM10000_PFL_FREQ_F600MHZ*1000000;
                 break;
 
             case FM10000_PFL_FEATURE_CODE_LIMITED2:
-                maxFreq = 500000000;
+                maxFreq = FM10000_PFL_FREQ_F500MHZ*1000000;
                 break;
 
             case FM10000_PFL_FEATURE_CODE_LIMITED3:
-                maxFreq = 400000000;
+                maxFreq = FM10000_PFL_FREQ_F400MHZ*1000000;
                 break;
 
             case FM10000_PFL_FEATURE_CODE_LIMITED4:
-                maxFreq = 300000000;
+                maxFreq = FM10000_PFL_FREQ_F300MHZ*1000000;
                 break;
 
             default:
                 /* Should never get here */
-                maxFreq = 600000000;
+                maxFreq = FM10000_PFL_FREQ_F600MHZ*1000000;
                 break;
         }
 
@@ -2212,15 +2219,15 @@ static fm_status SetFHClockFreq(fm_int sw, fm_int fhClock)
             fhClock = maxFreq;
         }
 
-        if (fhClock >= 600000000)
+        if (fhClock >= (FM10000_PFL_FREQ_F600MHZ*1000000))
         {
             freqSel = FM10000_PFL_FREQ_SEL_F600;
         }
-        else if (fhClock >= 500000000)
+        else if (fhClock >= (FM10000_PFL_FREQ_F500MHZ*1000000))
         {
             freqSel = FM10000_PFL_FREQ_SEL_F500;
         }
-        else if (fhClock >= 400000000)
+        else if (fhClock >= (FM10000_PFL_FREQ_F400MHZ*1000000))
         {
             freqSel = FM10000_PFL_FREQ_SEL_F400;
         }
@@ -2338,10 +2345,9 @@ static fm_status WaitForSoftResetLockOwner(fm_int sw, fm_uint owner, fm_uint tim
     {
         if (owner != FM10000_SOFT_RESET_LOCK_API)
         {
-            FM_LOG_ERROR(FM_LOG_CAT_SWITCH,
-                         "Lockowner is already held by API. Request %d\n", owner);
+            FM_LOG_WARNING(FM_LOG_CAT_SWITCH,
+                           "Lockowner is already held by API. Request %d\n", owner);
         }
-        FM_LOG_EXIT(FM_LOG_CAT_SWITCH, err);
     }
 
     while (lockOwner != owner)
@@ -2784,9 +2790,14 @@ fm_status fm10000DropSoftResetLock(fm_int sw)
                                                 FM10000_BSM_SCRATCH(2),
                                                 0 ));
                 break;
+            case FM10000_SOFT_RESET_LOCK_FREE:
+                FM_LOG_WARNING(FM_LOG_CAT_SWITCH,
+                    "Attempt to release API lock but lock is already free\n");
+                return FM_OK;
+                break;
             default:
                 FM_LOG_WARNING(FM_LOG_CAT_SWITCH,
-                    "Attemp to release API lock but lock is being used by %d\n",
+                    "Attempt to release API lock but lock is being used by %d\n",
                     lockOwner);
                 break;
         }
@@ -3206,7 +3217,6 @@ fm_status fm10000BootSwitch(fm_int sw)
 
     FM_LOG_ENTRY(FM_LOG_CAT_SWITCH, "sw=%d\n", sw);
 
-    err       = FM_OK;
     switchPtr = GET_SWITCH_PTR(sw);
     switchExt = GET_SWITCH_EXT(sw);
 
@@ -3810,9 +3820,12 @@ fm_status fm10000InitSwitch(fm_switch *switchPtr)
     status = switchPtr->WriteUINT32(sw,
                                     FM10000_SW_IM(),
                                     0xffffffff);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, status);
+
     status = switchPtr->WriteUINT32(sw,
                                     FM10000_SW_IP(),
                                     0x0);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, status);
 
     /* Select the desired interrupt mask register */
     if (switchPtr->msiEnabled)
@@ -4091,6 +4104,10 @@ fm_status fm10000InitPortTable(fm_switch *switchPtr)
      * Initialize (clear) all serDes interrupts.
      **************************************************/
     err = fm10000SerdesClearAllSerDesInterrupts(sw);
+    if (err != FM_OK)
+    {
+        FM_LOG_ERROR(FM_LOG_CAT_SWITCH, "Error clearing SerDes interrupts\n");
+    }
 
     /***************************************************
      * Allocate and initialize the lane state table.
@@ -4164,6 +4181,25 @@ fm_status fm10000InitPortTable(fm_switch *switchPtr)
             FM_LOG_ERROR( FM_LOG_CAT_PORT,
                           "Unable to create the timer for serdes %d\n",
                           cnt );
+            FM_LOG_EXIT( FM_LOG_CAT_PORT, err );
+        }
+
+        /* 
+         * Create the SerDes Error Handling timer associated to this 
+         * serdes/lane.
+         */
+        FM_SPRINTF_S( serdesTimerName,  
+                      sizeof(serdesTimerName),
+                      "SerDes%02dETimer",
+                      cnt ); 
+        err = fmCreateTimer( serdesTimerName, 
+                             fmApiTimerTask, 
+                             &laneExtPtr->timerHandleErrorValidation );
+        if ( err != FM_OK )
+        {
+            FM_LOG_ERROR( FM_LOG_CAT_PORT,
+                         "Unable to create the timer for SerDes Error Handling%d\n", 
+                         cnt );
             FM_LOG_EXIT( FM_LOG_CAT_PORT, err );
         }
 
@@ -4611,10 +4647,13 @@ fm_status fm10000InitPort( fm_int sw, fm_port *portPtr )
                 laneExt->physLane      = physLane;
 
                 ethMode = FM_ETH_MODE_DISABLED;
+
+                FM_TAKE_STATE_LOCK(sw);
                 err = fm10000ConfigureEthMode( sw,
                                                portPtr->portNumber,
                                                ethMode,
                                                &unused );
+                FM_DROP_STATE_LOCK(sw);
                 FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_SWITCH, err);
 
                 portAttrExt->ethMode = ethMode;
@@ -5114,8 +5153,9 @@ fm_status fm10000PostBootSwitch(fm_int sw)
         if (!FM_GET_BIT(regVal, FM10000_PCIE_RXQCTL, ENABLE))
         {
             FM_LOG_ERROR(FM_LOG_CAT_SWITCH,
-                         "RX DMA Disabled. Expect pep %d RXQCTL[0].enable=1"
+                         "Sw#%d: RX DMA Disabled. Expect pep %d RXQCTL[0].enable=1 "
                          "but is 0. RXQCTL=0x%x\n",
+                         sw,
                          pepId,
                          regVal);
         }
@@ -5301,48 +5341,48 @@ fm_status fm10000ComputeFHClockFreq(fm_int sw, fm_float *fhMhz)
         {
             case FM10000_PFL_FEATURE_CODE_FULL:
             case FM10000_PFL_FEATURE_CODE_LIMITED1:
-                maxFreq = 600;
+                maxFreq = FM10000_PFL_FREQ_F600MHZ;
                 break;
 
             case FM10000_PFL_FEATURE_CODE_LIMITED2:
-                maxFreq = 500;
+                maxFreq = FM10000_PFL_FREQ_F500MHZ;
                 break;
 
             case FM10000_PFL_FEATURE_CODE_LIMITED3:
-                maxFreq = 400;
+                maxFreq = FM10000_PFL_FREQ_F400MHZ;
                 break;
 
             case FM10000_PFL_FEATURE_CODE_LIMITED4:
-                maxFreq = 300;
+                maxFreq = FM10000_PFL_FREQ_F300MHZ;
                 break;
 
             default:
                 /* Should never get here */
-                maxFreq = 600;
+                maxFreq = FM10000_PFL_FREQ_F600MHZ;
                 break;
         }
 
         switch (freqSel)
         {
             case FM10000_PFL_FREQ_SEL_F600:
-                *fhMhz = 600;
+                *fhMhz = FM10000_PFL_FREQ_F600MHZ;
                 break;
 
             case FM10000_PFL_FREQ_SEL_F500:
-                *fhMhz = 500;
+                *fhMhz = FM10000_PFL_FREQ_F500MHZ;
                 break;
 
             case FM10000_PFL_FREQ_SEL_F400:
-                *fhMhz = 400;
+                *fhMhz = FM10000_PFL_FREQ_F400MHZ;
                 break;
 
             case FM10000_PFL_FREQ_SEL_F300:
-                *fhMhz = 300;
+                *fhMhz = FM10000_PFL_FREQ_F300MHZ;
                 break;
 
             default:
                 /* Should never get here */
-                *fhMhz = 600;
+                *fhMhz = FM10000_PFL_FREQ_F600MHZ;
                 break;
         }
 

@@ -5,7 +5,7 @@
  * Creation Date:   December 3, 2012
  * Description:     FM10xxx specific VLAN functions
  *
- * Copyright (c) 2012 - 2015, Intel Corporation
+ * Copyright (c) 2012 - 2016, Intel Corporation
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -104,7 +104,6 @@ static fm_status SetPerPortProperties(fm_int    sw,
 
     switchPtr = GET_SWITCH_PTR(sw);
     ventryExt = GET_VLAN_EXT(sw, vlanID);
-    status    = FM_OK;
 
     FM_TAKE_L2_LOCK(sw);
 
@@ -588,7 +587,7 @@ ABORT:
  * \return          FM_OK if successful.
  *
  *****************************************************************************/
-fm_status fm10000WriteVlanEntry(fm_int    sw, fm_uint16 vlanID)
+fm_status fm10000WriteVlanEntry(fm_int sw, fm_uint16 vlanID)
 {
     fm_status          status;
 
@@ -620,21 +619,27 @@ fm_status fm10000WriteVlanEntry(fm_int    sw, fm_uint16 vlanID)
 fm_status fm10000WriteTagEntry(fm_int sw, fm_uint16 vlanID)
 {
     fm_status          status;
-    fm_switch *        switchPtr;
     fm10000_vlanEntry *ventryExt;
     fm_uint32          regVals[FM10000_MOD_VLAN_TAG_VID1_MAP_WIDTH];
 
     FM_LOG_ENTRY(FM_LOG_CAT_VLAN, "sw=%d, vlanID=%u\n", sw, vlanID);
 
-    switchPtr = GET_SWITCH_PTR(sw);
     ventryExt = GET_VLAN_EXT(sw, vlanID);
 
     TAKE_REG_LOCK(sw);
 
     /* write MOD_VLAN_TAG_VID1_MAP registers */
     FM_CLEAR(regVals);
-    FM_ARRAY_SET_PORTMASK( regVals, FM10000_MOD_VLAN_TAG_VID1_MAP, Tag, &ventryExt->tag);
-    FM_ARRAY_SET_FIELD(    regVals, FM10000_MOD_VLAN_TAG_VID1_MAP, VID, ventryExt->egressVid );
+
+    FM_ARRAY_SET_PORTMASK(regVals,
+                          FM10000_MOD_VLAN_TAG_VID1_MAP,
+                          Tag,
+                          &ventryExt->tag);
+
+    FM_ARRAY_SET_FIELD(regVals,
+                       FM10000_MOD_VLAN_TAG_VID1_MAP,
+                       VID,
+                       ventryExt->egressVid);
 
     /* write to this one register (single indexed) */
     status = fmRegCacheWriteSingle1D(sw,
@@ -675,8 +680,6 @@ fm_status fm10000ConfigureVlanLearningMode(fm_int sw, fm_vlanLearningMode mode)
 
     FM_LOG_ENTRY(FM_LOG_CAT_VLAN, "sw=%d, mode=%d\n", sw, mode);
 
-    status = FM_OK;
-
     switch (mode)
     {
         case FM_VLAN_LEARNING_MODE_INDEPENDENT:
@@ -696,12 +699,11 @@ fm_status fm10000ConfigureVlanLearningMode(fm_int sw, fm_vlanLearningMode mode)
     for (vlan = 1 ; vlan < FM_MAX_VLAN ; vlan++)
     {
         status = fm10000WriteVlanEntryV2(sw, vlan, -1);
-        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_VLAN, status);
+        FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_VLAN, status);
     }
 #endif
 
-ABORT:
-    FM_LOG_EXIT(FM_LOG_CAT_VLAN, status);
+    FM_LOG_EXIT(FM_LOG_CAT_VLAN, FM_OK);
 
 }   /* end fm10000ConfigureVlanLearningMode */
 
@@ -1268,7 +1270,6 @@ fm_status fm10000GetVlanAttribute(fm_int    sw,
     fm_vlanEntry *     ventry;
     fm10000_vlanEntry *ventryExt;
     fm_status          status;
-    fm10000_switch *   switchExt;
 
     FM_LOG_ENTRY(FM_LOG_CAT_VLAN,
                  "sw=%d, vlanID=%u, attr=%d, value=%p\n",
@@ -1277,7 +1278,6 @@ fm_status fm10000GetVlanAttribute(fm_int    sw,
                  attr,
                  (void *) value);
 
-    switchExt = GET_SWITCH_EXT(sw);
     ventry    = GET_VLAN_PTR(sw, vlanID);
     ventryExt = GET_VLAN_EXT(sw, vlanID);
     status    = FM_OK;
@@ -1356,7 +1356,6 @@ fm_status fm10000SetVlanAttribute(fm_int    sw,
     fm10000_vlanEntry * ventryExt;
     fm_status           status;
     fm_bool             routable;
-    fm10000_switch *    switchExt;
     fm_fm10000MapVIDCfg mapVidCfg;
 
     FM_LOG_ENTRY(FM_LOG_CAT_VLAN,
@@ -1366,7 +1365,6 @@ fm_status fm10000SetVlanAttribute(fm_int    sw,
                  attr,
                  (void *) value);
 
-    switchExt = GET_SWITCH_EXT(sw);
     ventry    = GET_VLAN_PTR(sw, vlanID);
     ventryExt = GET_VLAN_EXT(sw, vlanID);
 
@@ -1492,7 +1490,6 @@ fm_status fm10000GetVlanPortAttribute(fm_int    sw,
                                       void *    value)
 {
     fm_switch *        switchPtr;
-    fm_vlanEntry *     ventry;
     fm10000_vlanEntry *ventryExt;
     fm_int             physPort;
     fm_status          status;
@@ -1506,7 +1503,6 @@ fm_status fm10000GetVlanPortAttribute(fm_int    sw,
                   (void *) value);
 
     switchPtr = GET_SWITCH_PTR(sw);
-    ventry    = GET_VLAN_PTR(sw, vlanID);
     ventryExt = GET_VLAN_EXT(sw, vlanID);
 
     status = fmMapLogicalPortToPhysical(switchPtr, port, &physPort);
@@ -1562,7 +1558,6 @@ fm_status fm10000GetVlanPortAttribute(fm_int    sw,
 fm_status fm10000SetVlanCounterID(fm_int sw, fm_uint vlanID, fm_uint vcnt)
 {
     fm_status          status;
-    fm_vlanEntry *     ventry;
     fm10000_vlanEntry *ventryExt;
 
     FM_LOG_ENTRY(FM_LOG_CAT_VLAN,
@@ -1571,7 +1566,6 @@ fm_status fm10000SetVlanCounterID(fm_int sw, fm_uint vlanID, fm_uint vcnt)
                  vlanID,
                  vcnt);
 
-    ventry    = GET_VLAN_PTR(sw, vlanID);
     ventryExt = GET_VLAN_EXT(sw, vlanID);
 
     ventryExt->statIndex = vcnt;

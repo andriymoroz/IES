@@ -538,6 +538,11 @@ fm_uint fmGetSwitchCount(void);
 /* Returns the API version string. */
 fm_status fmGetApiVersion(char * buf, int len);
 
+/* Configures switch to proper handle inner/outer MAC filtering
+ * request coming from mailbox.
+ */
+fm_status fmEnableSwitchMacFiltering(fm_int sw);
+
 /* different boot related enables */
 fm_status fmEnableEEPROMMode(fm_int sw, fm_bool enable);
 fm_status fmEnableLEDInvert(fm_int sw, fm_bool enable);

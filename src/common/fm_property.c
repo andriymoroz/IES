@@ -7,7 +7,7 @@
  *                  properties.  The subsystem begins empty and is intended
  *                  to be set by other components (platform, ALOS).
  *
- * Copyright (c) 2005 - 2015, Intel Corporation
+ * Copyright (c) 2005 - 2016, Intel Corporation
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -40,9 +40,12 @@
  * Macros, Constants & Types
  *****************************************************************************/
 
-#define _FORMAT_I     "    %-30s: %d\n"
-#define _FORMAT_H     "    %-30s: 0x%x\n"
-#define _FORMAT_T     "    %-30s: %s\n"
+#define _FORMAT_I     "  %-40s  int   %d\n"
+#define _FORMAT_B     "  %-40s  bool  %s\n"
+#define _FORMAT_H     "  %-40s  int   0x%x\n"
+#define _FORMAT_T     "  %-40s  text  %s\n"
+
+#define TFSTR(x)      (x)?"true":"false"
 
 
 
@@ -228,7 +231,9 @@ fm_status fmInitializeApiProperties(void)
     prop->supportRouteLookups = FM_AAD_API_SUPPORT_ROUTE_LOOKUPS;
     prop->routeMaintenanceEnable = FM_AAD_API_ROUTING_MAINTENANCE_ENABLE;
     prop->autoVlan2Tagging = FM_AAD_API_AUTO_VLAN2_TAGGING;
-  
+    prop->hniGlortsPerPep = FM_AAD_API_HNI_GLORTS_PER_PEP;
+
+
     prop->interruptHandlerDisable = FM_AAD_DEBUG_BOOT_INTERRUPT_HANDLER;
     prop->maTableMaintenanceEnable = FM_AAD_API_MA_TABLE_MAINTENENANCE_ENABLE;
     prop->fastMaintenanceEnable = FM_AAD_API_FAST_MAINTENANCE_ENABLE;
@@ -289,6 +294,12 @@ fm_status fmInitializeApiProperties(void)
     prop->hniInnOutEntriesPerPep = FM_AAD_API_HNI_INN_OUT_ENTRIES_PER_PEP;
     prop->hniInnOutEntriesPerPort = FM_AAD_API_HNI_INN_OUT_ENTRIES_PER_PORT;
     prop->anTimerAllowOutSpec = FM_AAD_API_AN_INHBT_TIMER_ALLOW_OUT_OF_SPEC;
+    prop->serdesValidate = FM_AAD_API_SERDES_VALIDATE;
+    prop->sbmasterValidate = FM_AAD_API_SBM_VALIDATE;
+    prop->serdesErrActionUpState = FM_AAD_API_SERDES_ACTION_IN_UP_STATE;
+    prop->serdesValidateTimer = FM_AAD_API_SERDES_VALIDATE_TIMER;
+    prop->hniFlowEntriesPerVf = FM_AAD_API_HNI_FLOW_ENTRIES_VF;
+    prop->cpuPortXCastMode = FM_AAD_API_CPU_PORT_XCAST_MODE;
 
 
 #if defined(FM_SUPPORT_FM10000)
@@ -338,6 +349,7 @@ fm_status fmInitializeApiProperties(void)
             sizeof(fm10kProp->schedMode), "%s",
             FM_AAD_API_FM10000_SCHED_MODE);
     fm10kProp->updateSchedOnLinkChange = FM_AAD_API_FM10000_UPD_SCHED_ON_LNK_CHANGE;
+
 
     fm10kProp->createRemoteLogicalPorts = FM_AAD_API_FM10000_CREATE_REMOTE_LOGICAL_PORTS;
     fm10kProp->autonegCl37Timeout = FM_AAD_API_FM10000_AUTONEG_CLAUSE_37_TIMEOUT;
@@ -511,6 +523,10 @@ fm_status fmLoadApiPropertyTlv(fm_byte *tlv)
         case FM_TLV_API_AUTO_VLAN2_TAG:
             prop->autoVlan2Tagging = GetTlvBool(tlv + 3);
         break;
+        case FM_TLV_API_HNI_GLORTS_PER_PEP:
+            prop->hniGlortsPerPep = GetTlvInt(tlv + 3, tlvLen);
+        break;
+
 
         case FM_TLV_API_INTR_HANDLER_DIS:
             prop->interruptHandlerDisable = GetTlvBool(tlv + 3);
@@ -670,6 +686,24 @@ fm_status fmLoadApiPropertyTlv(fm_byte *tlv)
         break;
         case FM_TLV_API_AN_TIMER_ALLOW_OUT_SPEC:
             prop->anTimerAllowOutSpec = GetTlvBool(tlv + 3);
+        break;
+        case FM_TLV_API_SERDES_VALIDATE:
+            prop->serdesValidate = GetTlvBool(tlv + 3);
+        break;
+        case FM_TLV_API_SBMASTER_VALIDATE:
+            prop->sbmasterValidate = GetTlvBool(tlv + 3);
+        break;
+        case FM_TVL_API_SERDES_VALIDATE_TIMER:
+            prop->serdesValidateTimer = GetTlvInt(tlv + 3, tlvLen);
+        break;
+        case FM_TVL_API_SERDES_ACTION_UP_ALLOWED:
+            prop->serdesErrActionUpState = GetTlvBool(tlv + 3);
+        break;
+        case FM_TLV_API_HNI_FLOW_ENTRIES_PER_VF:
+            prop->hniFlowEntriesPerVf = GetTlvInt(tlv + 3, tlvLen);
+        break;
+        case FM_TLV_API_CPU_PORT_XCAST_MODE:
+            prop->cpuPortXCastMode = GetTlvBool(tlv + 3);
         break;
 
 #if defined(FM_SUPPORT_FM10000)
@@ -1458,6 +1492,41 @@ fm_status fmGetApiProperty(fm_text        key,
         valBool = prop->anTimerAllowOutSpec;
         expType = FM_API_ATTR_BOOL;
     }
+    else if (strcmp(key, FM_AAK_API_SERDES_VALIDATE) == 0)
+    {
+        valBool = prop->serdesValidate;
+        expType = FM_API_ATTR_BOOL;
+    }
+    else if (strcmp(key, FM_AAK_API_SBM_VALIDATE) == 0)
+    {
+        valBool = prop->sbmasterValidate;
+        expType = FM_API_ATTR_BOOL;
+    }
+    else if (strcmp(key, FM_AAK_API_SERDES_ACTION_IN_UP_STATE) == 0)
+    {
+        valBool = prop->serdesErrActionUpState;
+        expType = FM_API_ATTR_BOOL;
+    }
+    else if (strcmp(key, FM_AAK_API_SERDES_VALIDATE_TIMER) == 0)
+    {
+        valInt = prop->serdesValidateTimer;
+        expType = FM_API_ATTR_INT;
+    }
+    else if (strcmp(key, FM_AAK_API_HNI_FLOW_ENTRIES_VF) == 0)
+    {
+        valInt = prop->hniFlowEntriesPerVf;
+        expType = FM_API_ATTR_INT;
+    }
+    else if (strcmp(key, FM_AAK_API_CPU_PORT_XCAST_MODE) == 0)
+    {
+        valBool = prop->cpuPortXCastMode;
+        expType = FM_API_ATTR_BOOL;
+    }
+    else if (strcmp(key, FM_AAK_API_HNI_GLORTS_PER_PEP) == 0)
+    {
+        valInt = prop->hniGlortsPerPep;
+        expType = FM_API_ATTR_INT;
+    }
 
 
 #if defined(FM_SUPPORT_FM10000)
@@ -2058,163 +2127,170 @@ void fmDbgDumpApiProperties(void)
     prop = GET_PROPERTY();
 
     FM_LOG_PRINT("##########################################################\n");
-    FM_LOG_PRINT(_FORMAT_I, "isWhiteModel",
-        prop->isWhiteModel);
+    FM_LOG_PRINT(_FORMAT_B, FM_AAK_API_PLATFORM_IS_WHITE_MODEL, TFSTR(prop->isWhiteModel));
+    FM_LOG_PRINT(_FORMAT_I, FM_AAK_API_STP_DEF_STATE_VLAN_MEMBER, prop->defStateVlanMember);
+    FM_LOG_PRINT(_FORMAT_B, FM_AAK_API_DIRECT_SEND_TO_CPU, TFSTR(prop->directSendToCpu));
+    FM_LOG_PRINT(_FORMAT_I, FM_AAK_API_STP_DEF_STATE_VLAN_NON_MEMBER, prop->defStateVlanNonMember);
+    FM_LOG_PRINT(_FORMAT_B, FM_AAK_DEBUG_BOOT_IDENTIFYSWITCH, TFSTR(prop->bootIdentifySw));
+    FM_LOG_PRINT(_FORMAT_B, FM_AAK_DEBUG_BOOT_RESET, TFSTR(prop->bootReset));
+    FM_LOG_PRINT(_FORMAT_B, FM_AAK_DEBUG_BOOT_AUTOINSERTSWITCH, TFSTR(prop->autoInsertSwitches));
+    FM_LOG_PRINT(_FORMAT_I, FM_AAK_API_BOOT_RESET_TIME, prop->deviceResetTime);
+    FM_LOG_PRINT(_FORMAT_B, FM_AAK_API_AUTO_ENABLE_SWAG_LINKS, TFSTR(prop->swagAutoEnableLinks));
+    FM_LOG_PRINT(_FORMAT_I, FM_AAK_API_FREE_EVENT_BLOCK_THRESHOLD, prop->eventBlockThreshold);
+    FM_LOG_PRINT(_FORMAT_I, FM_AAK_API_FREE_EVENT_UNBLOCK_THRESHOLD, prop->eventUnblockThreshold);
+    FM_LOG_PRINT(_FORMAT_I, FM_AAK_API_EVENT_SEM_TIMEOUT, prop->eventSemTimeout);
+    FM_LOG_PRINT(_FORMAT_B, FM_AAK_API_PACKET_RX_DIRECT_ENQUEUEING, TFSTR(prop->rxDirectEnqueueing));
+    FM_LOG_PRINT(_FORMAT_I, FM_AAK_API_PACKET_RX_DRV_DEST, prop->rxDriverDestinations);
+    FM_LOG_PRINT(_FORMAT_B, FM_AAK_API_ASYNC_LAG_DELETION, TFSTR(prop->lagAsyncDeletion));
+    FM_LOG_PRINT(_FORMAT_B, FM_AAK_API_MA_EVENT_ON_STATIC_ADDR, TFSTR(prop->maEventOnStaticAddr));
+    FM_LOG_PRINT(_FORMAT_B, FM_AAK_API_MA_EVENT_ON_DYNAMIC_ADDR, TFSTR(prop->maEventOnDynAddr));
+    FM_LOG_PRINT(_FORMAT_B, FM_AAK_API_MA_EVENT_ON_ADDR_CHANGE, TFSTR(prop->maEventOnAddrChange));
+    FM_LOG_PRINT(_FORMAT_B, FM_AAK_API_MA_FLUSH_ON_PORT_DOWN, TFSTR(prop->maFlushOnPortDown));
+    FM_LOG_PRINT(_FORMAT_B, FM_AAK_API_MA_FLUSH_ON_VLAN_CHANGE, TFSTR(prop->maFlushOnVlanChange));
+    FM_LOG_PRINT(_FORMAT_B, FM_AAK_API_MA_FLUSH_ON_LAG_CHANGE, TFSTR(prop->maFlushOnLagChange));
+    FM_LOG_PRINT(_FORMAT_I, FM_AAK_API_MA_TCN_FIFO_BURST_SIZE, prop->maTcnFifoBurstSize);
+    FM_LOG_PRINT(_FORMAT_B, FM_AAK_API_SWAG_INTERNAL_VLAN_STATS, TFSTR(prop->swagIntVlanStats));
+    FM_LOG_PRINT(_FORMAT_B, FM_AAK_API_PER_LAG_MANAGEMENT, TFSTR(prop->perLagManagement));
+    FM_LOG_PRINT(_FORMAT_B, FM_AAK_API_PARITY_REPAIR_ENABLE, TFSTR(prop->parityRepairEnable));
+    FM_LOG_PRINT(_FORMAT_I, FM_AAK_API_SWAG_MAX_ACL_PORT_SETS, prop->swagMaxAclPortSets);
+    FM_LOG_PRINT(_FORMAT_I, FM_AAK_API_MAX_PORT_SETS, prop->maxPortSets);
+    FM_LOG_PRINT(_FORMAT_B, FM_AAK_API_PACKET_RECEIVE_ENABLE, TFSTR(prop->packetReceiveEnable));
+    FM_LOG_PRINT(_FORMAT_B, FM_AAK_API_1_ADDR_PER_MCAST_GROUP, TFSTR(prop->multicastSingleAddress));
+    FM_LOG_PRINT(_FORMAT_I, FM_AAK_API_PLATFORM_MODEL_POSITION, prop->modelPosition);
+    FM_LOG_PRINT(_FORMAT_I, FM_AAK_API_NUM_VN_TUNNEL_NEXTHOPS, prop->vnNumNextHops);
+    FM_LOG_PRINT(_FORMAT_I, FM_AAK_API_VN_ENCAP_PROTOCOL, prop->vnEncapProtocol);
+    FM_LOG_PRINT(_FORMAT_I, FM_AAK_API_VN_ENCAP_VERSION, prop->vnEncapVersion);
+    FM_LOG_PRINT(_FORMAT_B, FM_AAK_API_SUPPORT_ROUTE_LOOKUPS, TFSTR(prop->supportRouteLookups));
+    FM_LOG_PRINT(_FORMAT_B, FM_AAK_API_ROUTING_MAINTENANCE_ENABLE, TFSTR(prop->routeMaintenanceEnable));
+    FM_LOG_PRINT(_FORMAT_B, FM_AAK_API_AUTO_VLAN2_TAGGING, TFSTR(prop->autoVlan2Tagging));
+    FM_LOG_PRINT(_FORMAT_I, FM_AAK_API_HNI_GLORTS_PER_PEP, prop->hniGlortsPerPep);
 
-    FM_LOG_PRINT(_FORMAT_I, "defStateVlanMember", prop->defStateVlanMember);
-    FM_LOG_PRINT(_FORMAT_I, "directSendToCpu", prop->directSendToCpu);
-    FM_LOG_PRINT(_FORMAT_I, "defStateVlanNonMember", prop->defStateVlanNonMember);
-    FM_LOG_PRINT(_FORMAT_I, "bootIdentifySw", prop->bootIdentifySw);
-    FM_LOG_PRINT(_FORMAT_I, "bootReset", prop->bootReset);
-    FM_LOG_PRINT(_FORMAT_I, "autoInsertSwitches", prop->autoInsertSwitches);
-    FM_LOG_PRINT(_FORMAT_I, "deviceResetTime", prop->deviceResetTime);
-    FM_LOG_PRINT(_FORMAT_I, "swagAutoEnableLinks", prop->swagAutoEnableLinks);
-    FM_LOG_PRINT(_FORMAT_I, "eventBlockThreshold", prop->eventBlockThreshold);
-    FM_LOG_PRINT(_FORMAT_I, "eventUnblockThreshold", prop->eventUnblockThreshold);
-    FM_LOG_PRINT(_FORMAT_I, "eventSemTimeout", prop->eventSemTimeout);
-    FM_LOG_PRINT(_FORMAT_I, "rxDirectEnqueueing", prop->rxDirectEnqueueing);
-    FM_LOG_PRINT(_FORMAT_I, "rxDriverDestinations", prop->rxDriverDestinations);
-    FM_LOG_PRINT(_FORMAT_I, "lagAsyncDeletion", prop->lagAsyncDeletion);
-    FM_LOG_PRINT(_FORMAT_I, "maEventOnStaticAddr", prop->maEventOnStaticAddr);
-    FM_LOG_PRINT(_FORMAT_I, "maEventOnDynAddr", prop->maEventOnDynAddr);
-    FM_LOG_PRINT(_FORMAT_I, "maEventOnAddrChange", prop->maEventOnAddrChange);
-    FM_LOG_PRINT(_FORMAT_I, "maFlushOnPortDown", prop->maFlushOnPortDown);
-    FM_LOG_PRINT(_FORMAT_I, "maFlushOnVlanChange", prop->maFlushOnVlanChange);
-    FM_LOG_PRINT(_FORMAT_I, "maFlushOnLagChange", prop->maFlushOnLagChange);
-    FM_LOG_PRINT(_FORMAT_I, "maTcnFifoBurstSize", prop->maTcnFifoBurstSize);
-    FM_LOG_PRINT(_FORMAT_I, "swagIntVlanStats", prop->swagIntVlanStats);
-    FM_LOG_PRINT(_FORMAT_I, "perLagManagement", prop->perLagManagement);
-    FM_LOG_PRINT(_FORMAT_I, "parityRepairEnable", prop->parityRepairEnable);
-    FM_LOG_PRINT(_FORMAT_I, "swagMaxAclPortSets", prop->swagMaxAclPortSets);
-    FM_LOG_PRINT(_FORMAT_I, "maxPortSets", prop->maxPortSets);
-    FM_LOG_PRINT(_FORMAT_I, "packetReceiveEnable", prop->packetReceiveEnable);
-    FM_LOG_PRINT(_FORMAT_I, "multicastSingleAddress", prop->multicastSingleAddress);
-    FM_LOG_PRINT(_FORMAT_I, "modelPosition", prop->modelPosition);
-    FM_LOG_PRINT(_FORMAT_I, "vnNumNextHops", prop->vnNumNextHops);
-    FM_LOG_PRINT(_FORMAT_I, "vnEncapProtocol", prop->vnEncapProtocol);
-    FM_LOG_PRINT(_FORMAT_I, "vnEncapVersion", prop->vnEncapVersion);
-    FM_LOG_PRINT(_FORMAT_I, "supportRouteLookups", prop->supportRouteLookups);
-    FM_LOG_PRINT(_FORMAT_I, "routeMaintenanceEnable", prop->routeMaintenanceEnable);
-    FM_LOG_PRINT(_FORMAT_I, "autoVlan2Tagging", prop->autoVlan2Tagging);
-  
-    FM_LOG_PRINT(_FORMAT_I, "interruptHandlerDisable", prop->interruptHandlerDisable);
-    FM_LOG_PRINT(_FORMAT_I, "maTableMaintenanceEnable", prop->maTableMaintenanceEnable);
-    FM_LOG_PRINT(_FORMAT_I, "fastMaintenanceEnable", prop->fastMaintenanceEnable);
-    FM_LOG_PRINT(_FORMAT_I, "fastMaintenancePer", prop->fastMaintenancePer);
-    FM_LOG_PRINT(_FORMAT_I, "strictGlotPhysical", prop->strictGlotPhysical);
-    FM_LOG_PRINT(_FORMAT_I, "resetWmAtPauseOff", prop->resetWmAtPauseOff);
-    FM_LOG_PRINT(_FORMAT_I, "swagAutoSubSwitches", prop->swagAutoSubSwitches);
-    FM_LOG_PRINT(_FORMAT_I, "swagAutoIntPorts", prop->swagAutoIntPorts);
-    FM_LOG_PRINT(_FORMAT_I, "swagAutoVNVsi", prop->swagAutoVNVsi);
-    FM_LOG_PRINT(_FORMAT_I, "byPassEnable", prop->byPassEnable);
-    FM_LOG_PRINT(_FORMAT_I, "lagDelSemTimeout", prop->lagDelSemTimeout);
-    FM_LOG_PRINT(_FORMAT_I, "stpEnIntPortCtrl", prop->stpEnIntPortCtrl);
-    FM_LOG_PRINT(_FORMAT_I, "modelPortMapType", prop->modelPortMapType);
-    FM_LOG_PRINT(_FORMAT_T, "modelSwitchType", prop->modelSwitchType);
-    FM_LOG_PRINT(_FORMAT_I, "modelSendEOT", prop->modelSendEOT);
-    FM_LOG_PRINT(_FORMAT_I, "modelLogEgressInfo", prop->modelLogEgressInfo);
-    FM_LOG_PRINT(_FORMAT_I, "enableRefClock", prop->enableRefClock);
-    FM_LOG_PRINT(_FORMAT_I, "setRefClock", prop->setRefClock);
-    FM_LOG_PRINT(_FORMAT_I, "priorityBufQueues", prop->priorityBufQueues);
-    FM_LOG_PRINT(_FORMAT_I, "pktSchedType", prop->pktSchedType);
-    FM_LOG_PRINT(_FORMAT_I, "separateBufPoolEnable", prop->separateBufPoolEnable);
-    FM_LOG_PRINT(_FORMAT_I, "numBuffersRx", prop->numBuffersRx);
-    FM_LOG_PRINT(_FORMAT_I, "numBuffersTx", prop->numBuffersTx);
-    FM_LOG_PRINT(_FORMAT_T, "modelPktInterface", prop->modelPktInterface);
-    FM_LOG_PRINT(_FORMAT_T, "pktInterface", prop->pktInterface);
-    FM_LOG_PRINT(_FORMAT_T, "modelTopologyName", prop->modelTopologyName);
-    FM_LOG_PRINT(_FORMAT_I, "modelUseModelPath", prop->modelUseModelPath);
-    FM_LOG_PRINT(_FORMAT_T, "modelDevBoardIp", prop->modelDevBoardIp);
-    FM_LOG_PRINT(_FORMAT_I, "modelDevBoardPort", prop->modelDevBoardPort);
-    FM_LOG_PRINT(_FORMAT_I, "modelDeviceCfg", prop->modelDeviceCfg);
-    FM_LOG_PRINT(_FORMAT_I, "modelChipVersion", prop->modelChipVersion);
-    FM_LOG_PRINT(_FORMAT_I, "sbusServerPort", prop->sbusServerPort);
-    FM_LOG_PRINT(_FORMAT_I, "isWhiteModel", prop->isWhiteModel);
-    FM_LOG_PRINT(_FORMAT_T, "initLoggingCat", prop->initLoggingCat);
-    FM_LOG_PRINT(_FORMAT_I, "addPepsToFlooding", prop->addPepsToFlooding);
-    FM_LOG_PRINT(_FORMAT_I, "allowFtagVlanTagging", prop->allowFtagVlanTagging);
-    FM_LOG_PRINT(_FORMAT_I, "ignoreBwViolation", prop->ignoreBwViolation);
-    FM_LOG_PRINT(_FORMAT_I, "dfeAllowEarlyLinkUp", prop->dfeAllowEarlyLinkUp);
-    FM_LOG_PRINT(_FORMAT_I, "dfeAllowKrPcal", prop->dfeAllowKrPcal);
-    FM_LOG_PRINT(_FORMAT_I, "dfeEnableSigOkDebounce", prop->dfeEnableSigOkDebounce);
-    FM_LOG_PRINT(_FORMAT_I, "enableStatusPolling", prop->enableStatusPolling);
-    FM_LOG_PRINT(_FORMAT_I, "gsmeTimestampMode", prop->gsmeTimestampMode);
-    FM_LOG_PRINT(_FORMAT_I, "hniMcastFlooding", prop->hniMcastFlooding);
-    FM_LOG_PRINT(_FORMAT_I, "hniMacEntriesPerPep", prop->hniMacEntriesPerPep);
-    FM_LOG_PRINT(_FORMAT_I, "hniMacEntriesPerPort", prop->hniMacEntriesPerPort);
-    FM_LOG_PRINT(_FORMAT_I, "hniInnOutEntriesPerPep", prop->hniInnOutEntriesPerPep);
-    FM_LOG_PRINT(_FORMAT_I, "anTimerAllowOutSpec", prop->hniInnOutEntriesPerPort);
-    FM_LOG_PRINT(_FORMAT_I, "anTimerAllowOutSpec", prop->anTimerAllowOutSpec);
 
+    FM_LOG_PRINT(_FORMAT_B, FM_AAK_DEBUG_BOOT_INTERRUPT_HANDLER, TFSTR(prop->interruptHandlerDisable));
+    FM_LOG_PRINT(_FORMAT_B, FM_AAK_API_MA_TABLE_MAINTENENANCE_ENABLE, TFSTR(prop->maTableMaintenanceEnable));
+    FM_LOG_PRINT(_FORMAT_B, FM_AAK_API_FAST_MAINTENANCE_ENABLE, TFSTR(prop->fastMaintenanceEnable));
+    FM_LOG_PRINT(_FORMAT_I, FM_AAK_API_FAST_MAINTENANCE_PERIOD, prop->fastMaintenancePer);
+    FM_LOG_PRINT(_FORMAT_B, FM_AAK_API_STRICT_GLORT_PHYSICAL, TFSTR(prop->strictGlotPhysical));
+    FM_LOG_PRINT(_FORMAT_B, FM_AAK_API_RESET_WATERMARK_AT_PAUSE_OFF, TFSTR(prop->resetWmAtPauseOff));
+    FM_LOG_PRINT(_FORMAT_B, FM_AAK_API_SWAG_AUTO_SUB_SWITCHES, TFSTR(prop->swagAutoSubSwitches));
+    FM_LOG_PRINT(_FORMAT_B, FM_AAK_API_SWAG_AUTO_INTERNAL_PORTS, TFSTR(prop->swagAutoIntPorts));
+    FM_LOG_PRINT(_FORMAT_B, FM_AAK_API_SWAG_AUTO_VN_VSI, TFSTR(prop->swagAutoVNVsi));
+    FM_LOG_PRINT(_FORMAT_B, FM_AAK_API_PLATFORM_BYPASS_ENABLE, TFSTR(prop->byPassEnable));
+    FM_LOG_PRINT(_FORMAT_I, FM_AAK_API_LAG_DELETE_SEMAPHORE_TIMEOUT, prop->lagDelSemTimeout);
+    FM_LOG_PRINT(_FORMAT_B, FM_AAK_API_STP_ENABLE_INTERNAL_PORT_CTRL, TFSTR(prop->stpEnIntPortCtrl));
+    FM_LOG_PRINT(_FORMAT_I, FM_AAK_API_PLATFORM_MODEL_PORT_MAP_TYPE, prop->modelPortMapType);
+    FM_LOG_PRINT(_FORMAT_T, FM_AAK_API_PLATFORM_MODEL_SWITCH_TYPE, prop->modelSwitchType);
+    FM_LOG_PRINT(_FORMAT_B, FM_AAK_API_PLATFORM_MODEL_SEND_EOT, TFSTR(prop->modelSendEOT));
+    FM_LOG_PRINT(_FORMAT_B, FM_AAK_API_PLATFORM_MODEL_LOG_EGRESS_INFO, TFSTR(prop->modelLogEgressInfo));
+    FM_LOG_PRINT(_FORMAT_B, FM_AAK_API_PLATFORM_ENABLE_REF_CLOCK, TFSTR(prop->enableRefClock));
+    FM_LOG_PRINT(_FORMAT_B, FM_AAK_API_PLATFORM_SET_REF_CLOCK, TFSTR(prop->setRefClock));
+    FM_LOG_PRINT(_FORMAT_B, FM_AAK_API_PLATFORM_PRIORITY_BUFFER_QUEUES, TFSTR(prop->priorityBufQueues));
+    FM_LOG_PRINT(_FORMAT_I, FM_AAK_API_PLATFORM_PKT_SCHED_TYPE, prop->pktSchedType);
+    FM_LOG_PRINT(_FORMAT_B, FM_AAK_API_PLATFORM_SEPARATE_BUFFER_POOL_ENABLE, TFSTR(prop->separateBufPoolEnable));
+    FM_LOG_PRINT(_FORMAT_I, FM_AAK_API_PLATFORM_NUM_BUFFERS_RX, prop->numBuffersRx);
+    FM_LOG_PRINT(_FORMAT_I, FM_AAK_API_PLATFORM_NUM_BUFFERS_TX, prop->numBuffersTx);
+    FM_LOG_PRINT(_FORMAT_T, FM_AAK_API_PLATFORM_MODEL_PKT_INTERFACE, prop->modelPktInterface);
+    FM_LOG_PRINT(_FORMAT_T, FM_AAK_API_PLATFORM_PKT_INTERFACE, prop->pktInterface);
+    FM_LOG_PRINT(_FORMAT_T, FM_AAK_API_PLATFORM_MODEL_TOPOLOGY_NAME, prop->modelTopologyName);
+    FM_LOG_PRINT(_FORMAT_B, FM_AAK_API_PLATFORM_MODEL_TOPOLOGY_USE_MODEL_PATH, TFSTR(prop->modelUseModelPath));
+    FM_LOG_PRINT(_FORMAT_T, FM_AAK_API_PLATFORM_MODEL_DEV_BOARD_IP, prop->modelDevBoardIp);
+    FM_LOG_PRINT(_FORMAT_I, FM_AAK_API_PLATFORM_MODEL_DEV_BOARD_PORT, prop->modelDevBoardPort);
+    FM_LOG_PRINT(_FORMAT_I, FM_AAK_API_PLATFORM_MODEL_DEVICE_CFG, prop->modelDeviceCfg);
+    FM_LOG_PRINT(_FORMAT_I, FM_AAK_API_PLATFORM_MODEL_CHIP_VERSION, prop->modelChipVersion);
+    FM_LOG_PRINT(_FORMAT_I, FM_AAK_API_PLATFORM_SBUS_SERVER_PORT, prop->sbusServerPort);
+    FM_LOG_PRINT(_FORMAT_T, FM_AAK_API_DEBUG_INIT_LOGGING_CAT, prop->initLoggingCat);
+    FM_LOG_PRINT(_FORMAT_B, FM_AAK_API_PORT_ADD_PEPS_TO_FLOODING, TFSTR(prop->addPepsToFlooding));
+    FM_LOG_PRINT(_FORMAT_B, FM_AAK_API_PORT_ALLOW_FTAG_VLAN_TAGGING, TFSTR(prop->allowFtagVlanTagging));
+    FM_LOG_PRINT(_FORMAT_B, FM_AAK_API_SCH_IGNORE_BW_VIOLATION_NO_WARNING, TFSTR(prop->ignoreBwViolation == 2));
+    FM_LOG_PRINT(_FORMAT_B, FM_AAK_API_SCH_IGNORE_BW_VIOLATION, TFSTR(prop->ignoreBwViolation == 1));
+    FM_LOG_PRINT(_FORMAT_B, FM_AAK_API_DFE_ALLOW_EARLY_LINK_UP_MODE, TFSTR(prop->dfeAllowEarlyLinkUp));
+    FM_LOG_PRINT(_FORMAT_B, FM_AAK_API_DFE_ALLOW_KR_PCAL_MODE, TFSTR(prop->dfeAllowKrPcal));
+    FM_LOG_PRINT(_FORMAT_B, FM_AAK_API_DFE_ENABLE_SIGNALOK_DEBOUNCING, TFSTR(prop->dfeEnableSigOkDebounce));
+    FM_LOG_PRINT(_FORMAT_B, FM_AAK_API_PORT_ENABLE_STATUS_POLLING, TFSTR(prop->enableStatusPolling));
+    FM_LOG_PRINT(_FORMAT_I, FM_AAK_API_GSME_TIMESTAMP_MODE, prop->gsmeTimestampMode);
+    FM_LOG_PRINT(_FORMAT_B, FM_AAK_API_MULTICAST_HNI_FLOODING, TFSTR(prop->hniMcastFlooding));
+    FM_LOG_PRINT(_FORMAT_I, FM_AAK_API_HNI_MAC_ENTRIES_PER_PEP, prop->hniMacEntriesPerPep);
+    FM_LOG_PRINT(_FORMAT_I, FM_AAK_API_HNI_MAC_ENTRIES_PER_PORT, prop->hniMacEntriesPerPort);
+    FM_LOG_PRINT(_FORMAT_I, FM_AAK_API_HNI_INN_OUT_ENTRIES_PER_PEP, prop->hniInnOutEntriesPerPep);
+    FM_LOG_PRINT(_FORMAT_I, FM_AAK_API_HNI_INN_OUT_ENTRIES_PER_PORT, prop->hniInnOutEntriesPerPort);
+    FM_LOG_PRINT(_FORMAT_B, FM_AAK_API_AN_INHBT_TIMER_ALLOW_OUT_OF_SPEC, TFSTR(prop->anTimerAllowOutSpec));
+    FM_LOG_PRINT(_FORMAT_I, FM_AAK_API_SERDES_VALIDATE, prop->serdesValidate);
+    FM_LOG_PRINT(_FORMAT_I, FM_AAK_API_SBM_VALIDATE, prop->sbmasterValidate);
+    FM_LOG_PRINT(_FORMAT_I,
+                 FM_AAK_API_SERDES_VALIDATE_TIMER,
+                 prop->serdesValidateTimer);
+    FM_LOG_PRINT(_FORMAT_I, FM_AAK_API_HNI_FLOW_ENTRIES_VF, prop->hniFlowEntriesPerVf);
+    FM_LOG_PRINT(_FORMAT_B, FM_AAK_API_CPU_PORT_XCAST_MODE, TFSTR(prop->cpuPortXCastMode));
 
 #if defined(FM_SUPPORT_FM10000)
-    FM_LOG_PRINT("##########################################################\n");
+    FM_LOG_PRINT("############################################################\n");
 
     fm10kProp = GET_FM10000_PROPERTY();
-    FM_LOG_PRINT(_FORMAT_T, "wmSelect", fm10kProp->wmSelect);
-    FM_LOG_PRINT(_FORMAT_I, "cmRxSmpPrivBytes", fm10kProp->cmRxSmpPrivBytes);
-    FM_LOG_PRINT(_FORMAT_I, "cmTxTcHogBytes", fm10kProp->cmTxTcHogBytes);
-    FM_LOG_PRINT(_FORMAT_I, "cmSmpSdVsHogPercent", fm10kProp->cmSmpSdVsHogPercent);
-    FM_LOG_PRINT(_FORMAT_I, "cmSmpSdJitterBits", fm10kProp->cmSmpSdJitterBits);
-    FM_LOG_PRINT(_FORMAT_I, "cmTxSdOnPrivate", fm10kProp->cmTxSdOnPrivate);
-    FM_LOG_PRINT(_FORMAT_I, "cmTxSdOnSmpFree", fm10kProp->cmTxSdOnSmpFree);
-    FM_LOG_PRINT(_FORMAT_I, "cmPauseBufferBytes", fm10kProp->cmPauseBufferBytes);
-    FM_LOG_PRINT(_FORMAT_I, "mcastMaxEntriesPerCam", fm10kProp->mcastMaxEntriesPerCam);
-    FM_LOG_PRINT(_FORMAT_I, "ffuUcastSliceRangeFirst", fm10kProp->ffuUcastSliceRangeFirst);
-    FM_LOG_PRINT(_FORMAT_I, "ffuUcastSliceRangeLast", fm10kProp->ffuUcastSliceRangeLast);
-    FM_LOG_PRINT(_FORMAT_I, "ffuMcastSliceRangeFirst", fm10kProp->ffuMcastSliceRangeFirst);
-    FM_LOG_PRINT(_FORMAT_I, "ffuMcastSliceRangeLast", fm10kProp->ffuMcastSliceRangeLast);
-    FM_LOG_PRINT(_FORMAT_I, "ffuAclSliceRangeFirst", fm10kProp->ffuAclSliceRangeFirst);
-    FM_LOG_PRINT(_FORMAT_I, "ffuAclSliceRangeLast", fm10kProp->ffuAclSliceRangeLast);
-    FM_LOG_PRINT(_FORMAT_I, "ffuMapMacResvdForRoute", fm10kProp->ffuMapMacResvdForRoute);
-    FM_LOG_PRINT(_FORMAT_I, "ffuUcastPrecedenceMin", fm10kProp->ffuUcastPrecedenceMin);
-    FM_LOG_PRINT(_FORMAT_I, "ffuUcastPrecedenceMax", fm10kProp->ffuUcastPrecedenceMax);
-    FM_LOG_PRINT(_FORMAT_I, "ffuMcastPrecedenceMin", fm10kProp->ffuMcastPrecedenceMin);
-    FM_LOG_PRINT(_FORMAT_I, "ffuMcastPrecedenceMax", fm10kProp->ffuMcastPrecedenceMax);
-    FM_LOG_PRINT(_FORMAT_I, "ffuAclPrecedenceMin", fm10kProp->ffuAclPrecedenceMin);
-    FM_LOG_PRINT(_FORMAT_I, "ffuAclPrecedenceMax", fm10kProp->ffuAclPrecedenceMax);
-    FM_LOG_PRINT(_FORMAT_I, "ffuAclStrictCountPolice", fm10kProp->ffuAclStrictCountPolice);
-    FM_LOG_PRINT(_FORMAT_I, "initUcastFloodTriggers", fm10kProp->initUcastFloodTriggers);
-    FM_LOG_PRINT(_FORMAT_I, "initMcastFloodTriggers", fm10kProp->initMcastFloodTriggers);
-    FM_LOG_PRINT(_FORMAT_I, "initBcastFloodTriggers", fm10kProp->initBcastFloodTriggers);
-    FM_LOG_PRINT(_FORMAT_I, "initResvdMacTriggers", fm10kProp->initResvdMacTriggers);
-    FM_LOG_PRINT(_FORMAT_I, "floodingTrapPriority", fm10kProp->floodingTrapPriority);
-    FM_LOG_PRINT(_FORMAT_I, "autonegGenerateEvents", fm10kProp->autonegGenerateEvents);
-    FM_LOG_PRINT(_FORMAT_I, "linkDependsOfDfe", fm10kProp->linkDependsOfDfe);
-    FM_LOG_PRINT(_FORMAT_I, "vnUseSharedEncapFlows", fm10kProp->vnUseSharedEncapFlows);
-    FM_LOG_PRINT(_FORMAT_I, "vnMaxRemoteAddress", fm10kProp->vnMaxRemoteAddress);
-    FM_LOG_PRINT(_FORMAT_I, "vnTunnelGroupHashSize", fm10kProp->vnTunnelGroupHashSize);
-    FM_LOG_PRINT(_FORMAT_I, "vnTeVid", fm10kProp->vnTeVid);
-    FM_LOG_PRINT(_FORMAT_I, "vnEncapAclNumber", fm10kProp->vnEncapAclNumber);
-    FM_LOG_PRINT(_FORMAT_I, "vnDecapAclNumber", fm10kProp->vnDecapAclNumber);
-    FM_LOG_PRINT(_FORMAT_I, "mcastNumStackGroups", fm10kProp->mcastNumStackGroups);
-    FM_LOG_PRINT(_FORMAT_I, "vnTunnelOnlyOnIngress", fm10kProp->vnTunnelOnlyOnIngress);
-    FM_LOG_PRINT(_FORMAT_I, "mtableCleanupWm", fm10kProp->mtableCleanupWm);
-    FM_LOG_PRINT(_FORMAT_T, "schedMode", fm10kProp->schedMode);
-    FM_LOG_PRINT(_FORMAT_I, "updateSchedOnLinkChange", fm10kProp->updateSchedOnLinkChange);
+    FM_LOG_PRINT(_FORMAT_T, FM_AAK_API_FM10000_WMSELECT, fm10kProp->wmSelect);
+    FM_LOG_PRINT(_FORMAT_I, FM_AAK_API_FM10000_CM_RX_SMP_PRIVATE_BYTES, fm10kProp->cmRxSmpPrivBytes);
+    FM_LOG_PRINT(_FORMAT_I, FM_AAK_API_FM10000_CM_TX_TC_HOG_BYTES, fm10kProp->cmTxTcHogBytes);
+    FM_LOG_PRINT(_FORMAT_I, FM_AAK_API_FM10000_CM_SMP_SD_VS_HOG_PERCENT, fm10kProp->cmSmpSdVsHogPercent);
+    FM_LOG_PRINT(_FORMAT_I, FM_AAK_API_FM10000_CM_SMP_SD_JITTER_BITS, fm10kProp->cmSmpSdJitterBits);
+    FM_LOG_PRINT(_FORMAT_I, FM_AAK_API_FM10000_CM_TX_SD_ON_PRIVATE, fm10kProp->cmTxSdOnPrivate);
+    FM_LOG_PRINT(_FORMAT_B, FM_AAK_API_FM10000_CM_TX_SD_ON_SMP_FREE, TFSTR(fm10kProp->cmTxSdOnSmpFree));
+    FM_LOG_PRINT(_FORMAT_B, FM_AAK_API_FM10000_CM_PAUSE_BUFFER_BYTES, TFSTR(fm10kProp->cmPauseBufferBytes));
+    FM_LOG_PRINT(_FORMAT_I, FM_AAK_API_FM10000_MCAST_MAX_ENTRIES_PER_CAM, fm10kProp->mcastMaxEntriesPerCam);
+    FM_LOG_PRINT(_FORMAT_I, FM_AAK_API_FM10000_FFU_UNICAST_SLICE_1ST, fm10kProp->ffuUcastSliceRangeFirst);
+    FM_LOG_PRINT(_FORMAT_I, FM_AAK_API_FM10000_FFU_UNICAST_SLICE_LAST, fm10kProp->ffuUcastSliceRangeLast);
+    FM_LOG_PRINT(_FORMAT_I, FM_AAK_API_FM10000_FFU_MULTICAST_SLICE_1ST, fm10kProp->ffuMcastSliceRangeFirst);
+    FM_LOG_PRINT(_FORMAT_I, FM_AAK_API_FM10000_FFU_MULTICAST_SLICE_LAST, fm10kProp->ffuMcastSliceRangeLast);
+    FM_LOG_PRINT(_FORMAT_I, FM_AAK_API_FM10000_FFU_ACL_SLICE_1ST, fm10kProp->ffuAclSliceRangeFirst);
+    FM_LOG_PRINT(_FORMAT_I, FM_AAK_API_FM10000_FFU_ACL_SLICE_LAST, fm10kProp->ffuAclSliceRangeLast);
+    FM_LOG_PRINT(_FORMAT_I, FM_AAK_API_FM10000_FFU_MAPMAC_ROUTING, fm10kProp->ffuMapMacResvdForRoute);
+    FM_LOG_PRINT(_FORMAT_I, FM_AAK_API_FM10000_FFU_UNICAST_PRECEDENCE_MIN, fm10kProp->ffuUcastPrecedenceMin);
+    FM_LOG_PRINT(_FORMAT_I, FM_AAK_API_FM10000_FFU_UNICAST_PRECEDENCE_MAX, fm10kProp->ffuUcastPrecedenceMax);
+    FM_LOG_PRINT(_FORMAT_I, FM_AAK_API_FM10000_FFU_MULTICAST_PRECEDENCE_MIN, fm10kProp->ffuMcastPrecedenceMin);
+    FM_LOG_PRINT(_FORMAT_I, FM_AAK_API_FM10000_FFU_MULTICAST_PRECEDENCE_MAX, fm10kProp->ffuMcastPrecedenceMax);
+    FM_LOG_PRINT(_FORMAT_I, FM_AAK_API_FM10000_FFU_ACL_PRECEDENCE_MIN, fm10kProp->ffuAclPrecedenceMin);
+    FM_LOG_PRINT(_FORMAT_I, FM_AAK_API_FM10000_FFU_ACL_PRECEDENCE_MAX, fm10kProp->ffuAclPrecedenceMax);
+    FM_LOG_PRINT(_FORMAT_B, FM_AAK_API_FM10000_FFU_ACL_STRICT_COUNT_POLICE, TFSTR(fm10kProp->ffuAclStrictCountPolice));
+    FM_LOG_PRINT(_FORMAT_B, FM_AAK_API_FM10000_INIT_UCAST_FLOODING_TRIGGERS, TFSTR(fm10kProp->initUcastFloodTriggers));
+    FM_LOG_PRINT(_FORMAT_B, FM_AAK_API_FM10000_INIT_MCAST_FLOODING_TRIGGERS, TFSTR(fm10kProp->initMcastFloodTriggers));
+    FM_LOG_PRINT(_FORMAT_B, FM_AAK_API_FM10000_INIT_BCAST_FLOODING_TRIGGERS, TFSTR(fm10kProp->initBcastFloodTriggers));
+    FM_LOG_PRINT(_FORMAT_B, FM_AAK_API_FM10000_INIT_RESERVED_MAC_TRIGGERS, TFSTR(fm10kProp->initResvdMacTriggers));
+    FM_LOG_PRINT(_FORMAT_I, FM_AAK_API_FM10000_FLOODING_TRAP_PRIORITY, fm10kProp->floodingTrapPriority);
+    FM_LOG_PRINT(_FORMAT_B, FM_AAK_API_FM10000_AUTONEG_GENERATE_EVENTS, TFSTR(fm10kProp->autonegGenerateEvents));
+    FM_LOG_PRINT(_FORMAT_B, FM_AAK_API_FM10000_LINK_DEPENDS_ON_DFE, TFSTR(fm10kProp->linkDependsOfDfe));
+    FM_LOG_PRINT(_FORMAT_B, FM_AAK_API_FM10000_VN_USE_SHARED_ENCAP_FLOWS, TFSTR(fm10kProp->vnUseSharedEncapFlows));
+    FM_LOG_PRINT(_FORMAT_I, FM_AAK_API_FM10000_VN_MAX_TUNNEL_RULES, fm10kProp->vnMaxRemoteAddress);
+    FM_LOG_PRINT(_FORMAT_I, FM_AAK_API_FM10000_VN_TUNNEL_GROUP_HASH_SIZE, fm10kProp->vnTunnelGroupHashSize);
+    FM_LOG_PRINT(_FORMAT_I, FM_AAK_API_FM10000_VN_TE_VID, fm10kProp->vnTeVid);
+    FM_LOG_PRINT(_FORMAT_I, FM_AAK_API_FM10000_VN_ENCAP_ACL_NUM, fm10kProp->vnEncapAclNumber);
+    FM_LOG_PRINT(_FORMAT_I, FM_AAK_API_FM10000_VN_DECAP_ACL_NUM, fm10kProp->vnDecapAclNumber);
+    FM_LOG_PRINT(_FORMAT_I, FM_AAK_API_FM10000_MCAST_NUM_STACK_GROUPS, fm10kProp->mcastNumStackGroups);
+    FM_LOG_PRINT(_FORMAT_B, FM_AAK_API_FM10000_VN_TUNNEL_ONLY_IN_INGRESS, TFSTR(fm10kProp->vnTunnelOnlyOnIngress));
+    FM_LOG_PRINT(_FORMAT_I, FM_AAK_API_FM10000_MTABLE_CLEANUP_WATERMARK, fm10kProp->mtableCleanupWm);
+    FM_LOG_PRINT(_FORMAT_T, FM_AAK_API_FM10000_SCHED_MODE, fm10kProp->schedMode);
+    FM_LOG_PRINT(_FORMAT_B, FM_AAK_API_FM10000_UPD_SCHED_ON_LNK_CHANGE, TFSTR(fm10kProp->updateSchedOnLinkChange));
 
-    FM_LOG_PRINT(_FORMAT_I, "createRemoteLogicalPorts", fm10kProp->createRemoteLogicalPorts);
-    FM_LOG_PRINT(_FORMAT_I, "autonegCl37Timeout", fm10kProp->autonegCl37Timeout);
-    FM_LOG_PRINT(_FORMAT_I, "autonegSgmiiTimeout", fm10kProp->autonegSgmiiTimeout);
-    FM_LOG_PRINT(_FORMAT_I, "useHniServicesLoopback", fm10kProp->useHniServicesLoopback);
-    FM_LOG_PRINT(_FORMAT_I, "antiBubbleWm", fm10kProp->antiBubbleWm);
-    FM_LOG_PRINT(_FORMAT_I, "serdesOpMode", fm10kProp->serdesOpMode);
-    FM_LOG_PRINT(_FORMAT_I, "serdesDbgLevel", fm10kProp->serdesDbgLevel);
-    FM_LOG_PRINT(_FORMAT_I, "parityEnableInterrupts", fm10kProp->parityEnableInterrupts);
-    FM_LOG_PRINT(_FORMAT_I, "parityStartTcamMonitors", fm10kProp->parityStartTcamMonitors);
-    FM_LOG_PRINT(_FORMAT_I, "parityCrmTimeout", fm10kProp->parityCrmTimeout);
-    FM_LOG_PRINT(_FORMAT_I, "schedOverspeed", fm10kProp->schedOverspeed);
-    FM_LOG_PRINT(_FORMAT_H, "intrLinkIgnoreMask", fm10kProp->intrLinkIgnoreMask);
-    FM_LOG_PRINT(_FORMAT_H, "intrAutonegIgnoreMask", fm10kProp->intrAutonegIgnoreMask);
-    FM_LOG_PRINT(_FORMAT_H, "intrSerdesIgnoreMask", fm10kProp->intrSerdesIgnoreMask);
-    FM_LOG_PRINT(_FORMAT_H, "intrPcieIgnoreMask", fm10kProp->intrPcieIgnoreMask);
-    FM_LOG_PRINT(_FORMAT_H, "intrMaTcnIgnoreMask", fm10kProp->intrMaTcnIgnoreMask);
-    FM_LOG_PRINT(_FORMAT_H, "intrFhTailIgnoreMask", fm10kProp->intrFhTailIgnoreMask);
-    FM_LOG_PRINT(_FORMAT_H, "intrSwIgnoreMask", fm10kProp->intrSwIgnoreMask);
-    FM_LOG_PRINT(_FORMAT_H, "intrTeIgnoreMask", fm10kProp->intrTeIgnoreMask);
-    FM_LOG_PRINT(_FORMAT_I, "enableEeeSpicoIntr", fm10kProp->enableEeeSpicoIntr);
-    FM_LOG_PRINT(_FORMAT_I, "useAlternateSpicoFw", fm10kProp->useAlternateSpicoFw);
-    FM_LOG_PRINT(_FORMAT_I, "allowKrPcalOnEee", fm10kProp->allowKrPcalOnEee);
+
+    FM_LOG_PRINT(_FORMAT_B, FM_AAK_API_FM10000_CREATE_REMOTE_LOGICAL_PORTS, TFSTR(fm10kProp->createRemoteLogicalPorts));
+    FM_LOG_PRINT(_FORMAT_I, FM_AAK_API_FM10000_AUTONEG_CLAUSE_37_TIMEOUT, fm10kProp->autonegCl37Timeout);
+    FM_LOG_PRINT(_FORMAT_I, FM_AAK_API_FM10000_AUTONEG_SGMII_TIMEOUT, fm10kProp->autonegSgmiiTimeout);
+    FM_LOG_PRINT(_FORMAT_B, FM_AAK_API_FM10000_HNI_SERVICES_LOOPBACK, TFSTR(fm10kProp->useHniServicesLoopback));
+    FM_LOG_PRINT(_FORMAT_I, FM_AAK_API_FM10000_ANTI_BUBBLE_WM, fm10kProp->antiBubbleWm);
+    FM_LOG_PRINT(_FORMAT_I, FM_AAK_API_FM10000_SERDES_OP_MODE, fm10kProp->serdesOpMode);
+    FM_LOG_PRINT(_FORMAT_I, FM_AAK_API_FM10000_SERDES_DBG_LVL, fm10kProp->serdesDbgLevel);
+    FM_LOG_PRINT(_FORMAT_B, FM_AAK_API_FM10000_PARITY_INTERRUPTS, TFSTR(fm10kProp->parityEnableInterrupts));
+    FM_LOG_PRINT(_FORMAT_B, FM_AAK_API_FM10000_START_TCAM_MONITORS, TFSTR(fm10kProp->parityStartTcamMonitors));
+    FM_LOG_PRINT(_FORMAT_I, FM_AAK_API_FM10000_CRM_TIMEOUT, fm10kProp->parityCrmTimeout);
+    FM_LOG_PRINT(_FORMAT_I, FM_AAK_API_FM10000_SCHED_OVERSPEED, fm10kProp->schedOverspeed);
+    FM_LOG_PRINT(_FORMAT_H, FM_AAK_API_FM10000_INTR_LINK_IGNORE_MASK, fm10kProp->intrLinkIgnoreMask);
+    FM_LOG_PRINT(_FORMAT_H, FM_AAK_API_FM10000_INTR_AUTONEG_IGNORE_MASK, fm10kProp->intrAutonegIgnoreMask);
+    FM_LOG_PRINT(_FORMAT_H, FM_AAK_API_FM10000_INTR_SERDES_IGNORE_MASK, fm10kProp->intrSerdesIgnoreMask);
+    FM_LOG_PRINT(_FORMAT_H, FM_AAK_API_FM10000_INTR_PCIE_IGNORE_MASK, fm10kProp->intrPcieIgnoreMask);
+    FM_LOG_PRINT(_FORMAT_H, FM_AAK_API_FM10000_INTR_MATCN_IGNORE_MASK, fm10kProp->intrMaTcnIgnoreMask);
+    FM_LOG_PRINT(_FORMAT_H, FM_AAK_API_FM10000_INTR_FHTAIL_IGNORE_MASK, fm10kProp->intrFhTailIgnoreMask);
+    FM_LOG_PRINT(_FORMAT_H, FM_AAK_API_FM10000_INTR_SW_IGNORE_MASK, fm10kProp->intrSwIgnoreMask);
+    FM_LOG_PRINT(_FORMAT_H, FM_AAK_API_FM10000_INTR_TE_IGNORE_MASK, fm10kProp->intrTeIgnoreMask);
+    FM_LOG_PRINT(_FORMAT_I, FM_AAK_API_FM10000_ENABLE_EEE_SPICO_INTR, fm10kProp->enableEeeSpicoIntr);
+    FM_LOG_PRINT(_FORMAT_B, FM_AAK_API_FM10000_USE_ALTERNATE_SPICO_FW, TFSTR(fm10kProp->useAlternateSpicoFw));
+    FM_LOG_PRINT(_FORMAT_B, FM_AAK_API_FM10000_ALLOW_KRPCAL_ON_EEE, TFSTR(fm10kProp->allowKrPcalOnEee));
 
 #endif
 

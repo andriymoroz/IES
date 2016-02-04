@@ -5,7 +5,7 @@
  * Creation Date:   May 29, 2008 
  * Description:     Generic sflow interface.
  *
- * Copyright (c) 2005 - 2014, Intel Corporation
+ * Copyright (c) 2005 - 2015, Intel Corporation
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -29,7 +29,7 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
+ *****************************************************************************/
 
 #include <fm_sdk_int.h>
 
@@ -461,6 +461,8 @@ fm_status fmGetSFlowPortList(fm_int   sw,
  * \return          FM_ERR_INVALID_SFLOW_INSTANCE if sFlowId is invalid.
  * \return          FM_ERR_INVALID_ARGUMENT if value is NULL.
  * \return          FM_ERR_INVALID_SFLOW_ATTR if attr is not recognized.
+ * \return          FM_ERR_UNSUPPORTED if the request is not supported by
+ *                  the underlying switch.
  *
  *****************************************************************************/
 fm_status fmSetSFlowAttribute(fm_int sw, 

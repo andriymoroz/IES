@@ -159,7 +159,6 @@ fm_status fm10000ComputeAddressIndex(fm_int     sw,
 
 fm_status fm10000ConvertEntryToWords(fm_int                   sw,
                                      fm_internalMacAddrEntry *entry,
-                                     fm_int                   port,
                                      fm_uint32 *              words);
 
 #if 0

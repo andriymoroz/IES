@@ -52,8 +52,103 @@
 /* Base ACL position for Flow tables. */
 #define FM10000_FLOW_BASE_ACL       21000000
 
-/* Deep Inspection Profile index for FM_FLOW_MATCH_TCP_FLAGS usage. */
-#define FM10000_FLOW_DI_PROFILE     4
+/* Bitmask defining which conditions are supported in TCAM table. */
+#define FM10000_FLOW_SUPPORTED_TCAM_CONDITIONS \
+    (FM_FLOW_MATCH_SRC_MAC            | \
+     FM_FLOW_MATCH_DST_MAC            | \
+     FM_FLOW_MATCH_ETHERTYPE          | \
+     FM_FLOW_MATCH_VLAN               | \
+     FM_FLOW_MATCH_VLAN_PRIORITY      | \
+     FM_FLOW_MATCH_SRC_IP             | \
+     FM_FLOW_MATCH_DST_IP             | \
+     FM_FLOW_MATCH_PROTOCOL           | \
+     FM_FLOW_MATCH_L4_SRC_PORT        | \
+     FM_FLOW_MATCH_L4_DST_PORT        | \
+     FM_FLOW_MATCH_INGRESS_PORT_SET   | \
+     FM_FLOW_MATCH_TOS                | \
+     FM_FLOW_MATCH_FRAME_TYPE         | \
+     FM_FLOW_MATCH_SRC_PORT           | \
+     FM_FLOW_MATCH_TCP_FLAGS          | \
+     FM_FLOW_MATCH_L4_DEEP_INSPECTION | \
+     FM_FLOW_MATCH_L2_DEEP_INSPECTION | \
+     FM_FLOW_MATCH_SWITCH_PRIORITY    | \
+     FM_FLOW_MATCH_VLAN_TAG_TYPE      | \
+     FM_FLOW_MATCH_VLAN2              | \
+     FM_FLOW_MATCH_PRIORITY2          | \
+     FM_FLOW_MATCH_FRAG               | \
+     FM_FLOW_MATCH_LOGICAL_PORT)
+
+/* Bitmask defining which conditions are supported in TE table. */
+#define FM10000_FLOW_SUPPORTED_TE_CONDITIONS \
+    (FM_FLOW_MATCH_SRC_MAC            | \
+     FM_FLOW_MATCH_DST_MAC            | \
+     FM_FLOW_MATCH_VLAN               | \
+     FM_FLOW_MATCH_SRC_IP             | \
+     FM_FLOW_MATCH_DST_IP             | \
+     FM_FLOW_MATCH_PROTOCOL           | \
+     FM_FLOW_MATCH_L4_SRC_PORT        | \
+     FM_FLOW_MATCH_L4_DST_PORT        | \
+     FM_FLOW_MATCH_VNI                | \
+     FM_FLOW_MATCH_VSI_TEP)
+
+/* Bitmask defining which conditions are supported in BST table.
+ * Value is 0 as BST is not supported for fm10000. */
+#define FM10000_FLOW_SUPPORTED_BST_CONDITIONS 0
+
+/* Bitmask defining which actions are supported in TCAM table. */
+#define FM10000_FLOW_SUPPORTED_TCAM_ACTIONS    \
+    (FM_FLOW_ACTION_FORWARD             | \
+     FM_FLOW_ACTION_FORWARD_NORMAL      | \
+     FM_FLOW_ACTION_TRAP                | \
+     FM_FLOW_ACTION_DROP                | \
+     FM_FLOW_ACTION_DEFAULT             | \
+     FM_FLOW_ACTION_COUNT               | \
+     FM_FLOW_ACTION_REDIRECT_TUNNEL     | \
+     FM_FLOW_ACTION_BALANCE             | \
+     FM_FLOW_ACTION_ROUTE               | \
+     FM_FLOW_ACTION_PERMIT              | \
+     FM_FLOW_ACTION_DENY                | \
+     FM_FLOW_ACTION_SET_VLAN            | \
+     FM_FLOW_ACTION_PUSH_VLAN           | \
+     FM_FLOW_ACTION_POP_VLAN            | \
+     FM_FLOW_ACTION_SET_VLAN_PRIORITY   | \
+     FM_FLOW_ACTION_SET_SWITCH_PRIORITY | \
+     FM_FLOW_ACTION_SET_DSCP            | \
+     FM_FLOW_ACTION_LOAD_BALANCE        | \
+     FM_FLOW_ACTION_SET_FLOOD_DEST      | \
+     FM_FLOW_ACTION_MIRROR_GRP)
+
+/* Bitmask defining which actions are supported in TE table. */
+#define FM10000_FLOW_SUPPORTED_TE_ACTIONS \
+    (FM_FLOW_ACTION_SET_DIP     | \
+     FM_FLOW_ACTION_SET_SIP     | \
+     FM_FLOW_ACTION_SET_L4DST   | \
+     FM_FLOW_ACTION_SET_L4SRC   | \
+     FM_FLOW_ACTION_SET_TTL     | \
+     FM_FLOW_ACTION_SET_DMAC    | \
+     FM_FLOW_ACTION_SET_SMAC    | \
+     FM_FLOW_ACTION_ENCAP_VNI   | \
+     FM_FLOW_ACTION_ENCAP_SIP   | \
+     FM_FLOW_ACTION_ENCAP_TTL   | \
+     FM_FLOW_ACTION_ENCAP_L4DST | \
+     FM_FLOW_ACTION_ENCAP_L4SRC | \
+     FM_FLOW_ACTION_ENCAP_NGE   | \
+     FM_FLOW_ACTION_COUNT       | \
+     FM_FLOW_ACTION_DECAP_KEEP  | \
+     FM_FLOW_ACTION_DECAP_MOVE  | \
+     FM_FLOW_ACTION_FORWARD)
+
+/* Bitmask defining which actions are supported in BST table.
+ * Value is 0 as BST is not supported for fm10000. */
+#define FM10000_FLOW_SUPPORTED_BST_ACTIONS 0
+
+/* Maximum number of actions that can be set for a flow in created 
+ * TCAM table. */
+#define FM10000_TCAM_TABLE_MAX_ACTIONS 3
+
+/* Maximum number of actions that can be set for a flow in created 
+ * TE table. */
+#define FM10000_TE_TABLE_MAX_ACTIONS   1
 
 /*  Structure that contains information related to the Flow API table. */
 typedef struct _fm10000_flowTableInfo
@@ -105,6 +200,12 @@ typedef struct _fm10000_flowTableInfo
 
     /* ACL scenario bitmask. */
     fm_uint32              scenario;
+
+    /* Preallocated FFU action slices. */
+    fm_int                 preallocatedSlices;
+
+    /* Maximum number of actions that can be set for a flow in a table. */
+    fm_uint32              maxAction;
 
 } fm10000_flowTableInfo;
 
@@ -283,5 +384,12 @@ fm_status fm10000AddFlowUser(fm_int sw,
 fm_status fm10000DelFlowUser(fm_int sw,
                              fm_int tableIndex,
                              fm_int flowId);
+
+fm_status fm10000GetFlowTableIndexUnused(fm_int  sw,
+                                         fm_int *tableIndex);
+
+fm_status fm10000GetFlowTableSupportedActions(fm_int           sw,
+                                              fm_flowTableType flowTableType,
+                                              fm_flowAction *  flowAction);
 
 #endif /* __FM_FM10000_API_FLOW_INT_H */

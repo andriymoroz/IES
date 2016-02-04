@@ -52,4 +52,9 @@ fm_status fmPlatformMapLogicalPortToPlatform(fm_int               sw,
                                              fm_uint32 *          hwResId,
                                              fm_platformCfgPort **portCfg);
 
+fm_status fmPlatformGetPortEthModeState(fm_int   sw, 
+                                        fm_int   port, 
+                                        fm_bool *autodetectedMode, 
+                                        fm_bool *modeMismatch);
+
 #endif /* __FM_PLATFORM_PORT_H */

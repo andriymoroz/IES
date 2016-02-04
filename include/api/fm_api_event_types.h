@@ -81,6 +81,7 @@ typedef struct _fm10000_eplIntr
 
 } fm10000_eplIntr;
 
+
 /**************************************************/
 /** \ingroup intTypeStruct
  * Structure used to report FM10000-specific
@@ -243,11 +244,11 @@ typedef struct _fm_interrupt
  *  \chips  FM2000, FM3000, FM4000, FM6000, FM10000 */
 #define FM_EVENT_SECURITY				    (1 << 9)
 
-/** FM4000 only. Reported by the API directly to the application. Indicates
- *  a software event has occurred - some other software components
- *  wrote the relevant software interrupt bit in the hardware and
- *  generated an event via interrupts. The associated event structure is
- *  ''fm_eventSoftware''. 
+/** Reported by the API directly to the application. Indicates that a
+ *  software event has occurred - some other software component wrote
+ *  the relevant software interrupt bit in the hardware and generated an
+ *  event via interrupts. The associated event structure is
+ *  ''fm_eventSoftware''.
  *
  *  \chips  FM3000, FM4000, FM6000 */
 #define FM_EVENT_SOFTWARE				    (1 << 10)
@@ -322,12 +323,21 @@ typedef struct _fm_interrupt
 #define FM_EVENT_PACKET_ENQUEUED            (1 << 19)
 
 /** Reported by the platform directly to the application.
- *  Indicates that new logical ports for PEP usage were created or deleted.
- *  The associated event structure is ''fm_eventLogicalPort''.
+ *  Indicates that new logical ports for PEP use were created or
+ *  deleted. The associated event structure is ''fm_eventLogicalPort''.
  *  
  * \chips FM10000
  */
 #define FM_EVENT_LOGICAL_PORT               (1 << 20)
+
+/** Reported by the platform directly to the application.
+ *  Indicates that the ethernet mode is not suported by the type
+ *  of cable detected.
+ *  The associated event structure is ''fm_eventCableMismatch''.
+ *  
+ * \chips FM10000
+ */
+#define FM_EVENT_CABLE_MISMATCH             (1 << 21)
 
 /** @} (end of Doxygen group) */
 
@@ -767,6 +777,19 @@ typedef struct _fm_eventLogicalPort
 
 
 /**************************************************/
+/** \ingroup typeStruct
+ * Structure used to report an ''FM_EVENT_CABLE_MISMATCH'' 
+ * software event.
+ **************************************************/
+typedef struct _fm_eventCableMismatch
+{
+    /** The port on which the mismatch was detected. */
+    fm_int port;
+
+} fm_eventCableMismatch;
+
+
+/**************************************************/
 /* Internal event type identifier.
  **************************************************/
 typedef enum
@@ -788,6 +811,7 @@ typedef enum
     FM_EVID_SYSTEM,
     FM_EVID_ARP,
     FM_EVID_PLATFORM,
+    FM_EVID_CABLE_MISMATCH,
 
     /* Add new types above this line */
     FM_EVID_OUT_OF_EVENTS,
@@ -877,7 +901,6 @@ typedef struct _fm_eventPlatform
     fm_byte   eventData[FM_EVENT_PLATFORM_MAX_SIZE];
 
 } fm_eventPlatform;
-
 
 /**************************************************/
 /** \ingroup typeEnum
@@ -1244,25 +1267,25 @@ typedef union _fm_eventPayload
      *  Application code should never receive this event. */
     fm_eventSoftware         fpSoftwareEvent;
 
-    /** Switch Inserted Event */
+    /** Switch Inserted event. */
     fm_eventSwitchInserted   fpSwitchInsertedEvent;
 
-    /** Switch Removed Event */
+    /** Switch Removed event. */
     fm_eventSwitchRemoved    fpSwitchRemovedEvent;
 
-    /** Parity error Event */
+    /** Parity error event. */
     fm_eventParityError      fpParityErrorEvent;
 
-    /** Fibm retries threshold event */
+    /** Fibm retries threshold event. */
     fm_eventFibm             fibmRetries;
 
-    /** CRM interrupt event */
+    /** CRM interrupt event. */
     fm_eventCrm              fpCrmEvent;
 
-    /** ARP interrupt event */
+    /** ARP interrupt event. */
     fm_eventArp              fpArpEvent;
 
-    /** MAC table purge scan complete event */
+    /** MAC table purge scan complete event. */
     fm_bool                  purgeScanComplete; 
 
     /** Egress timestamp event. */
@@ -1273,8 +1296,16 @@ typedef union _fm_eventPayload
      *  this event. */
     fm_eventPlatform         fpPlatformEvent;
 
-    /** Logical port creation/deletion event. */
+    /** Logical port creation/deletion event.
+     *  
+     *  \chips  FM10000 */
     fm_eventLogicalPort      fpLogicalPortEvent;
+
+    /** The detected cable type does not support the configured port
+     *  ethernet mode.
+     *  
+     *  \chips  FM10000 */
+    fm_eventCableMismatch    cableMismatchEvent;
 
 } fm_eventPayload;
 

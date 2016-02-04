@@ -582,6 +582,10 @@ fm_status fmInitAddressTable(fm_switch *switchPtr)
  *                  address.
  * \return          FM_ERR_USE_MCAST_FUNCTIONS if an attempt was made to
  *                  add a MAC address to a multicast group.
+ * \return          FM_ERR_TUNNEL_INVALID_ENTRY if the entry specified when
+ *                  using isTunnelEntry is not valid.
+ * \return          FM_ERR_UNSUPPORTED if the retrieved tunnel entry GloRT
+ *                  makes use of user field.
  *
  *****************************************************************************/
 fm_status fmAddAddress(fm_int sw, fm_macAddressEntry *entry)
@@ -692,6 +696,10 @@ ABORT:
  * \return          FM_OK if successful, or error code (see fm_errno.h)
  * \return          FM_ERR_ADDR_BANK_FULL if there is no room in the MA table
  *                  for the specified address.
+ * \return          FM_ERR_TUNNEL_INVALID_ENTRY if the entry specified when
+ *                  using isTunnelEntry is not valid.
+ * \return          FM_ERR_UNSUPPORTED if the retrieved GloRT makes use of user
+ *                  field.
  *
  *****************************************************************************/
 fm_status fmAddAddressInternal(fm_int                      sw,

@@ -5,7 +5,7 @@
  * Creation Date:   2006
  * Description:     API Properties subsystem.
  *
- * Copyright (c) 2006 - 2015, Intel Corporation
+ * Copyright (c) 2006 - 2016, Intel Corporation
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -387,9 +387,21 @@ typedef enum
  *  this property to FALSE enables Virtual-Network tunneling to function
  *  properly. The virtual networking subsystem will force this
  *  property to FALSE. */
-#define FM_AAK_API_AUTO_VLAN2_TAGGING             "api.vlan.autoVlan2Tagging"
-#define FM_AAT_API_AUTO_VLAN2_TAGGING             FM_API_ATTR_BOOL
-#define FM_AAD_API_AUTO_VLAN2_TAGGING             TRUE
+#define FM_AAK_API_AUTO_VLAN2_TAGGING       "api.vlan.autoVlan2Tagging"
+#define FM_AAT_API_AUTO_VLAN2_TAGGING       FM_API_ATTR_BOOL
+#define FM_AAD_API_AUTO_VLAN2_TAGGING       TRUE
+
+/** Whether the host system attached to the CPU management port is
+ *  allowed to receive broadcast, unicast, and multicast flooding
+ *  traffic. The default value is TRUE, which means that the host system
+ *  is allowed to receive flooded traffic. If FALSE, the XCast mode of
+ *  the CPU management port is set to NONE and the host system will not
+ *  receive flooded traffic. Note that this does not control whether the
+ *  switch application instance attached to the CPU port will receive
+ *  flooding traffic. */
+#define FM_AAK_API_CPU_PORT_XCAST_MODE      "api.allowXcastToCpuPortHostSystem"
+#define FM_AAT_API_CPU_PORT_XCAST_MODE      FM_API_ATTR_BOOL
+#define FM_AAD_API_CPU_PORT_XCAST_MODE      TRUE
 
 /* -------- Add new DOCUMENTED api properties above this line! -------- */
 
@@ -649,6 +661,15 @@ typedef enum
 #define FM_AAT_API_SCH_IGNORE_BW_VIOLATION_NO_WARNING   FM_API_ATTR_BOOL
 #define FM_AAD_API_SCH_IGNORE_BW_VIOLATION_NO_WARNING   FALSE
 
+/* Indicates if SerDes Error Validation action execution is enabled
+ * for SerDes Up states.
+ * SerDes considered in Up state when not in 
+ * DISABLED, CONFIGURED and POWERED-UP states. 
+ */
+#define FM_AAK_API_SERDES_ACTION_IN_UP_STATE            "api.serdes.actionUpState"
+#define FM_AAT_API_SERDES_ACTION_IN_UP_STATE            FM_API_ATTR_BOOL
+#define FM_AAD_API_SERDES_ACTION_IN_UP_STATE            FALSE
+
 /* Indicates whether to early link up mode is enabled or not */
 #define FM_AAK_API_DFE_ALLOW_EARLY_LINK_UP_MODE         "api.dfe.allowEarlyLinkUp"
 #define FM_AAT_API_DFE_ALLOW_EARLY_LINK_UP_MODE         FM_API_ATTR_BOOL
@@ -708,11 +729,40 @@ typedef enum
 #define FM_AAT_API_HNI_INN_OUT_ENTRIES_PER_PORT  FM_API_ATTR_INT
 #define FM_AAD_API_HNI_INN_OUT_ENTRIES_PER_PORT  64
 
+/* The number of GloRTs per PEP port added on driver demand. The value
+ * must be a power of two. */
+#define FM_AAK_API_HNI_GLORTS_PER_PEP       "api.hni.glortsPerPep"
+#define FM_AAT_API_HNI_GLORTS_PER_PEP       FM_API_ATTR_INT
+#define FM_AAD_API_HNI_GLORTS_PER_PEP       1024
+
 /* Indicates whether it is possible to use values out of the valid range
  * for FM_PORT_AUTONEG_LINK_INHB_TIMER and FM_PORT_AUTONEG_LINK_INHB_TIMER_KX*/
 #define FM_AAK_API_AN_INHBT_TIMER_ALLOW_OUT_OF_SPEC     "api.an.timerAllowOutSpec"
 #define FM_AAT_API_AN_INHBT_TIMER_ALLOW_OUT_OF_SPEC     FM_API_ATTR_BOOL
 #define FM_AAD_API_AN_INHBT_TIMER_ALLOW_OUT_OF_SPEC     FALSE
+
+/* Indicates the periodic timer value in seconds the SerDes and SBus Master
+ * is validated for unrecoverable errors.
+ * Single timer is used for SerDes and SBus Master Validation. 
+ * Valid value range 60 - 3600. */
+#define FM_AAK_API_SERDES_VALIDATE_TIMER            "api.serdes.validateTimer"
+#define FM_AAT_API_SERDES_VALIDATE_TIMER            FM_API_ATTR_INT
+#define FM_AAD_API_SERDES_VALIDATE_TIMER            360
+
+/* Whether SerDes Error Handling is enabled. */
+#define FM_AAK_API_SERDES_VALIDATE                  "api.serdes.validate"
+#define FM_AAT_API_SERDES_VALIDATE                  FM_API_ATTR_BOOL
+#define FM_AAD_API_SERDES_VALIDATE                  FALSE
+
+/* Whether SBus Master Error Handling is enabled. */
+#define FM_AAK_API_SBM_VALIDATE                     "api.sbmaster.validate"
+#define FM_AAT_API_SBM_VALIDATE                     FM_API_ATTR_BOOL
+#define FM_AAD_API_SBM_VALIDATE                     FALSE
+
+/* Specifies maximum number of flow entries per VF added on driver demand. */
+#define FM_AAK_API_HNI_FLOW_ENTRIES_VF           "api.hni.flowEntriesPerVf"
+#define FM_AAT_API_HNI_FLOW_ENTRIES_VF           FM_API_ATTR_INT
+#define FM_AAD_API_HNI_FLOW_ENTRIES_VF           64
 
 /************************************************************************
  ****                                                                ****

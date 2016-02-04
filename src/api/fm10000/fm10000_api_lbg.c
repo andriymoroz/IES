@@ -1,4 +1,3 @@
-
 /* vim:ts=4:sw=4:expandtab
  * (No tabs, indent level is 4 spaces)  */
 /*****************************************************************************
@@ -6,7 +5,7 @@
  * Creation Date:   September, 2013
  * Description:     FM10000 services for LBG management.
  *
- * Copyright (c) 2005 - 2015, Intel Corporation
+ * Copyright (c) 2005 - 2016, Intel Corporation
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -30,7 +29,7 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
+ *****************************************************************************/
 
 #include <fm_sdk_fm10000_int.h>
 
@@ -132,10 +131,9 @@ static fm_status FillArpDataFromLBGMember(fm_int        sw,
         case FM_LBG_MEMBER_TYPE_PORT:
             if ( (fmIsValidPort(sw, 
                                 lbgMember->port, 
-                              ( FM_PORT_TYPE_REMOTE   | 
-                                FM_PORT_TYPE_CPU      | 
-                                FM_PORT_TYPE_PHYSICAL | 
-                                FM_PORT_TYPE_VIRTUAL ) ) ) ||
+                                ( ALLOW_REMOTE  | 
+                                  ALLOW_CPU     |
+                                  ALLOW_VIRTUAL  ) ) ) ||
                  ( lbgMember->port == FM_PORT_DROP ) )
             {
                 err = fmGetLogicalPortGlort(sw, lbgMember->port, &dglort);
@@ -156,7 +154,7 @@ static fm_status FillArpDataFromLBGMember(fm_int        sw,
             egressVlan = lbgMember->egressVlan;
             if (lbgMember->vrid == FM_ROUTER_ANY)
             {
-                routerId = FM10000_ROUTER_ID_NO_REPLACEMENT;
+                routerId = FM_ROUTER_ID_NO_REPLACEMENT;
             }
             else
             {
@@ -237,7 +235,7 @@ static fm_status FillArpDataFromLBGMember(fm_int        sw,
             FM_SET_FIELD64(*arpData, FM10000_ARP_ENTRY_GLORT, DGLORT,
                            glortUser.glort);
             FM_SET_FIELD64(*arpData, FM10000_ARP_ENTRY_GLORT, RouterIdGlort,
-                           FM10000_ROUTER_ID_NO_REPLACEMENT);
+                           FM_ROUTER_ID_NO_REPLACEMENT);
             FM_SET_BIT64(*arpData, FM10000_ARP_ENTRY_GLORT, markRouted, 0);
             break;
 
@@ -288,7 +286,6 @@ static fm_status UpdateDistributionInHWGlortTable(fm_int       sw,
     fm_portmask *       mask;
     fm_portmask         destMask;
     fm_int              bin;
-    fm10000_LBGGroup *  groupExt = NULL;
 
 
     FM_LOG_ENTRY(FM_LOG_CAT_LBG, 
@@ -300,7 +297,6 @@ static fm_status UpdateDistributionInHWGlortTable(fm_int       sw,
         FM_LOG_EXIT(FM_LOG_CAT_LBG, FM_ERR_INVALID_ARGUMENT);
     }
 
-    groupExt = group->extension;
     groupPortPtr  = GET_PORT_PTR(sw, group->lbgLogicalPort);
 
     if (!groupPortPtr)
@@ -810,10 +806,9 @@ static fm_status ValidateDistributionMapRangeV2(
         {
             if (!fmIsValidPort(sw, 
                                lbgMember->port, 
-                               ( FM_PORT_TYPE_REMOTE   | 
-                                 FM_PORT_TYPE_CPU      | 
-                                 FM_PORT_TYPE_PHYSICAL |
-                                 FM_PORT_TYPE_VIRTUAL ) ) )
+                               ( ALLOW_REMOTE  | 
+                                 ALLOW_CPU     |
+                                 ALLOW_VIRTUAL  ) ) )
             {
                 /* If the port is not the drop port, consider it invalid */
                 if (lbgMember->port != FM_PORT_DROP)
@@ -915,7 +910,7 @@ fm_status ValidateLbgParams(fm_int        sw,
 
     if ( (params->numberOfBins < 0) ||
          ( (params->mode == FM_LBG_MODE_MAPPED_L234HASH) && 
-           (params->numberOfBins > 16) ) )
+           ( (params->numberOfBins > 16) || (params->numberOfBins < 1) ) ) )
     {
             err = FM_ERR_INVALID_ARGUMENT;
             FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_LBG, err);
@@ -1489,21 +1484,17 @@ ABORT:
 fm_status fm10000DeleteLBG(fm_int sw, fm_int lbgNumber)
 {
     fm_status            err = FM_OK;
-    fm_switch *          switchPtr;
     fm_LBGGroup *        group;
     fm10000_LBGGroup *   groupExt;
     fm_LBGInfo *         info;
     fm_bool              isUsed = FALSE;
-    fm_logicalPortInfo * lportInfo;
     fm_portType          portType;
 
     FM_LOG_ENTRY(FM_LOG_CAT_LBG,
                  "sw=%d, lbgNumber=%d\n",
                  sw, lbgNumber);
 
-    switchPtr = GET_SWITCH_PTR(sw);
-    info      = GET_LBG_INFO(sw);
-    lportInfo = &switchPtr->logicalPortInfo;
+    info = GET_LBG_INFO(sw);
 
     err = fmTreeFind(&info->groups, lbgNumber, (void **) &group);
     if (err != FM_OK)
@@ -1786,7 +1777,6 @@ fm_status fm10000SetLBGAttribute(fm_int sw,
     fm_int                         bin;
     fm_int                         method;
     fm_LBGDistributionMapRangeV2 * rangeV2;
-    fm10000_LBGGroup *             groupExt = NULL;
 
     FM_LOG_ENTRY(FM_LOG_CAT_LBG,
                  "sw=%d, lbgNumber=%d, attr=%d, value=%p\n",
@@ -1799,8 +1789,6 @@ fm_status fm10000SetLBGAttribute(fm_int sw,
     {
         FM_LOG_EXIT(FM_LOG_CAT_LBG, FM_ERR_INVALID_LBG);
     }
-
-    groupExt = group->extension;
 
     switch (attr)
     {
@@ -1874,9 +1862,9 @@ fm_status fm10000SetLBGAttribute(fm_int sw,
             {
                 if (!fmIsValidPort(sw, 
                                    range->ports[bin], 
-                                   ( FM_PORT_TYPE_REMOTE  | 
-                                     FM_PORT_TYPE_CPU     | 
-                                     FM_PORT_TYPE_PHYSICAL ) ) )
+                                   ( ALLOW_REMOTE  | 
+                                     ALLOW_CPU     |
+                                     ALLOW_VIRTUAL  ) ) )
                 {
                     /* If the port is not the drop port, consider it invalid */
                     if (range->ports[bin] != FM_PORT_DROP)
@@ -1992,7 +1980,6 @@ fm_status fm10000GetLBGAttribute(fm_int sw,
     fm_LBGInfo *                  info;
     fm_LBGDistributionMapRange *  mapRange;
     fm_LBGDistributionMapRangeV2 *mapRangeV2;
-    fm10000_LBGGroup *            groupExt = NULL;
     fm_int                        i;
 
     FM_LOG_ENTRY(FM_LOG_CAT_LBG,
@@ -2007,7 +1994,6 @@ fm_status fm10000GetLBGAttribute(fm_int sw,
     {
         FM_LOG_EXIT(FM_LOG_CAT_LBG, FM_ERR_INVALID_LBG);
     }
-    groupExt = group->extension;
 
     switch (attr)
     {
@@ -2359,18 +2345,16 @@ fm_status fm10000GetLBGInfo(fm_int sw,
                             fm_int *arpBaseIndex, 
                             fm_int *arpBlockLength)
 {
-    fm_status err = FM_OK;
-    fm_switch *       switchPtr;
-    fm_LBGGroup *     group;
-    fm10000_LBGGroup *groupExt;
-    fm_LBGInfo *      info;
+    fm_status           err = FM_OK;
+    fm_LBGGroup *       group;
+    fm10000_LBGGroup *  groupExt;
+    fm_LBGInfo *        info;
     
     FM_LOG_ENTRY(FM_LOG_CAT_LBG,
                  "sw=%d lbgNumber=%d\n",
                  sw,
                  lbgNumber);
 
-    switchPtr = GET_SWITCH_PTR(sw);
     info      = GET_LBG_INFO(sw);
 
     err = fmTreeFind(&info->groups, lbgNumber, (void **) &group);
@@ -2581,14 +2565,10 @@ fm_status fm10000GetPortParametersForLBG(fm_int sw,
                                          fm_int *numPorts,
                                          fm_int *numDestEntries)
 {
-    fm_switch *switchPtr;
 
     FM_LOG_ENTRY(FM_LOG_CAT_LBG,
                  "sw=%d, numPorts=%p, numDestEntries=%p\n",
                  sw, (void *) numPorts, (void *) numDestEntries);
-
-    switchPtr = GET_SWITCH_PTR(sw);
-
 
     /***************************************************
      * The assumption is that the caller, has set
@@ -2600,6 +2580,7 @@ fm_status fm10000GetPortParametersForLBG(fm_int sw,
     FM_LOG_EXIT(FM_LOG_CAT_LBG, FM_OK);
 
 }   /* end fm10000GetPortParametersForLBG */
+
 
 
 

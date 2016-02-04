@@ -722,6 +722,105 @@ fm_status fm10000DbgSerdesInjectErrors(fm_int   sw,
 
 
 /*****************************************************************************/
+/** fm10000DbgSerdesRegisterInjectError
+ * \ingroup intSerdes
+ *
+ * \desc            Inject the specified SerDes register with the value.
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \param[in]       serDes is the SERDES number.
+ *
+ * \param[in]       regAddr register address to be injected.
+ *
+ * \param[in]       value injected error value.
+ *
+ * \return          FM_OK if successful.
+ * \return          Other ''Status Codes'' as appropriate in case of failure.
+ *
+ *****************************************************************************/
+fm_status fm10000DbgSerdesRegisterInjectError(fm_int    sw,
+                                              fm_int    serDes,
+                                              fm_int    regAddr,
+                                              fm_uint32 value)
+{
+    fm_status        err;
+    fm10000_serdes  *serdesPtr;
+    fm10000_switch  *switchExt;
+
+
+    switchExt = GET_SWITCH_EXT(sw);
+    serdesPtr = &switchExt->serdesXServices;
+
+
+    err = FM_ERR_UNSUPPORTED;
+
+    if (serdesPtr->magicNumber != FM10000_SERDES_STRUCT_MAGIG_NUMBER)
+    {
+
+        err = FM_ERR_UNINITIALIZED;
+    }
+    else if (serdesPtr->dbgSerDesRegInjectError != NULL)
+    {
+        err = serdesPtr->dbgSerDesRegInjectError(sw, serDes, regAddr, value);
+    }
+
+    return err;
+
+}
+
+
+
+/*****************************************************************************/
+/** fm10000DbgSbmRegisterInjectError
+ * \ingroup intSerdes
+ *
+ * \desc            Inject the SBus Master Spico register with the value,
+ *                  The Spico is associated with the specified serdes.
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \param[in]       regAddr Spico register address to be injected.
+ *
+ * \param[in]       value injected error value.
+ *
+ * \return          FM_OK if successful.
+ * \return          Other ''Status Codes'' as appropriate in case of failure.
+ *
+ *****************************************************************************/
+fm_status fm10000DbgSbmRegisterInjectError(fm_int    sw,
+                                           fm_int    regAddr,
+                                           fm_uint32 value)
+{
+    fm_status        err;
+    fm10000_serdes  *serdesPtr;
+    fm10000_switch  *switchExt;
+
+
+    switchExt = GET_SWITCH_EXT(sw);
+    serdesPtr = &switchExt->serdesXServices;
+
+
+    err = FM_ERR_UNSUPPORTED;
+
+    if (serdesPtr->magicNumber != FM10000_SERDES_STRUCT_MAGIG_NUMBER)
+    {
+
+        err = FM_ERR_UNINITIALIZED;
+    }
+    else if (serdesPtr->dbgSbmRegInjectError != NULL)
+    {
+        err = serdesPtr->dbgSbmRegInjectError(sw, regAddr, value);
+    }
+
+    return err;
+
+}
+
+
+
+
+/*****************************************************************************/
 /** fm10000DbgReadSBusRegister
  * \ingroup intDiag
  *

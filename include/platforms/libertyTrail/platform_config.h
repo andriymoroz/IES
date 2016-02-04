@@ -34,7 +34,7 @@
 #ifndef __FM_PLATFORM_CONFIG_H
 #define __FM_PLATFORM_CONFIG_H
 
-#include <net/if.h>  
+/*#include <net/if.h>*/
 #include <api/internal/fm10000/fm10000_api_hw_int.h>
 #include <platforms/util/fm_util.h>
 #include <platforms/util/retimer/fm_util_gn2412.h>
@@ -223,7 +223,7 @@ typedef enum
 #define FM_PLAT_PORT_CAP_SPEED_20G      (1 << 8)
 #define FM_PLAT_PORT_IS_20G_CAP(pCfg)   ((pCfg)->cap & FM_PLAT_PORT_CAP_SPEED_20G)
 #define FM_PLAT_PORT_CAP_SPEED_25G      (1 << 9)
-#define FM_PLAT_PORT_IS_25G_CAP(pCfg)   ((pCfg)->cap & FM_PLAT_PORT_CAP_SPEED_20G)
+#define FM_PLAT_PORT_IS_25G_CAP(pCfg)   ((pCfg)->cap & FM_PLAT_PORT_CAP_SPEED_25G)
 #define FM_PLAT_PORT_CAP_SPEED_40G      (1 << 10)
 #define FM_PLAT_PORT_IS_40G_CAP(pCfg)   ((pCfg)->cap & FM_PLAT_PORT_CAP_SPEED_40G)
 #define FM_PLAT_PORT_CAP_SPEED_100G     (1 << 11)
@@ -234,22 +234,15 @@ typedef enum
 /* AN73 abilities.
    IMPORTANT: The bit position already represent the proper bit position
               in the AN73 base page register_*/
-#define FM_PLAT_AN73_ABILITY_RF            (1 << 13)
-#define FM_PLAT_AN73_ABILITY_NP            (1 << 15)
-#define FM_PLAT_AN73_ABILITY_1000BASE_KX   (1 << 21)
-#define FM_PLAT_AN73_ABILITY_10GBASE_KR    (1 << 23)
-#define FM_PLAT_AN73_ABILITY_40GBASE_KR4   (1 << 24)
-#define FM_PLAT_AN73_ABILITY_40GBASE_CR4   (1 << 25)
-#define FM_PLAT_AN73_ABILITY_100GBASE_KR4  (1 << 28)
-#define FM_PLAT_AN73_ABILITY_100GBASE_CR4  (1 << 29)
-
-#define FM_PLAT_AN73_DEFAULT_ABILITIES      \
-    ( FM_PLAT_AN73_ABILITY_1000BASE_KX      | \
-      FM_PLAT_AN73_ABILITY_10GBASE_KR       | \
-      FM_PLAT_AN73_ABILITY_40GBASE_KR4      | \
-      FM_PLAT_AN73_ABILITY_40GBASE_CR4      | \
-      FM_PLAT_AN73_ABILITY_100GBASE_KR4     | \
-      FM_PLAT_AN73_ABILITY_100GBASE_CR4 )
+#define FM_PLAT_AN73_ABILITY_RF                 (1 << 13)
+#define FM_PLAT_AN73_ABILITY_NP                 (1 << 15)
+#define FM_PLAT_AN73_ABILITY_1000BASE_KX        (1 << 21)
+#define FM_PLAT_AN73_ABILITY_10GBASE_KR         (1 << 23)
+#define FM_PLAT_AN73_ABILITY_40GBASE_KR4        (1 << 24)
+#define FM_PLAT_AN73_ABILITY_40GBASE_CR4        (1 << 25)
+#define FM_PLAT_AN73_ABILITY_100GBASE_KR4       (1 << 28)
+#define FM_PLAT_AN73_ABILITY_100GBASE_CR4       (1 << 29)
+#define FM_PLAT_AN73_ABILITY_25GGBASE_CR_KR     (1 << 31) /* CR or KR */
 
 /* Bits to indicate if the serdes value has been set. */
 #define FM_STATE_SERDES_IN_PROGRESS     0x1
@@ -321,6 +314,9 @@ typedef struct
 
 typedef struct
 {
+    /* Flags for config loading status */
+    fm_uint32           loadFlags;
+
     /* Port index. Same as the index to the structure */
     fm_int              portIdx;
 
@@ -374,7 +370,7 @@ typedef struct
     fm_uint32           an73AbilityCfg;
 
     /* DFE mode */
-    fm_byte dfeMode;
+    fm_byte             dfeMode;
 
     /* Associated PHY number, if any */
     fm_int              phyNum;

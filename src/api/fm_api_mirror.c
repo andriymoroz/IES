@@ -559,11 +559,14 @@ fm_status fmDeleteMirrorInt(fm_int sw, fm_int group)
 
     GET_PORT_MIRROR_GROUP_NO_SWLOCK_CHECK(sw, grp, group);
 
-    /* ACL Lock needs to be taken prior to the mirror lock for lock inversion
-     * prevention. The ACL lock is needed on fmDeleteMirrorInt() because some
-     * validation is done at the ACL level to make sure this group is currently 
-     * unused. */ 
+    /* ACL lock and state lock need to be taken prior to the mirror lock for
+     * lock inversion prevention. The ACL lock is needed on fmDeleteMirrorInt()
+     * because some validation is done at the ACL level to make sure this group
+     * is currently unused. The state lock is needed when notifying the CRM
+     * state machine about suspending/resuming TCAM checking during update of
+     * ACL trigger mask. */ 
     FM_TAKE_ACL_LOCK(sw);
+    FM_TAKE_STATE_LOCK(sw);
     TAKE_MIRROR_LOCK(sw);
 
     if (!grp->used)
@@ -603,6 +606,7 @@ fm_status fmDeleteMirrorInt(fm_int sw, fm_int group)
 
 ABORT:
     DROP_MIRROR_LOCK(sw);
+    FM_DROP_STATE_LOCK(sw);
     FM_DROP_ACL_LOCK(sw);
     FM_LOG_EXIT(FM_LOG_CAT_MIRROR, err);
 
@@ -3808,12 +3812,15 @@ fm_status fmSetMirrorAttributeInt(fm_int sw,
     /* Get the pointer to the mirror group */
     GET_PORT_MIRROR_GROUP_NO_SWLOCK_CHECK(sw, grp, group);
 
-    /* Get the ACL lock prior to the mirror lock to keep the right precedence.
-     * ACL Lock is needed to make sure the updated group is not being
-     * referenced by any ACL/rule. */
+    /* Get the ACL lock and the state lock prior to the mirror lock to keep
+     * the right precedence. ACL Lock is needed to make sure the updated group
+     * is not being referenced by any ACL/rule. The state lock is needed when
+     * notifying the CRM state machine about suspending/resuming TCAM checking
+     * during update of ACL trigger mask. */
     if (attr == FM_MIRROR_ACL)
     {
         FM_TAKE_ACL_LOCK(sw);
+        FM_TAKE_STATE_LOCK(sw);
     }
     /* Get the mirror lock */
     TAKE_MIRROR_LOCK(sw);
@@ -3833,6 +3840,7 @@ ABORT:
 
     if (attr == FM_MIRROR_ACL)
     {
+        FM_DROP_STATE_LOCK(sw);
         FM_DROP_ACL_LOCK(sw);
     }
 

@@ -46,6 +46,34 @@
  * Macros, Constants & Types
  *****************************************************************************/
 
+#define ST(s) FM10000_CRM_STATE_ ## s
+#define EV(e) FM10000_CRM_EVENT_ ## e
+#define TG(g) TransitionGroup ## g
+#define FN(n) (genericFunction) n
+
+typedef void (*genericFunction)(void);
+
+/****************************************************************/
+/** \ingroup intCrmStateMachine 
+ * Definition of the State Machine Transition Table values.
+ ****************************************************************/
+typedef struct _fm_smTable
+{
+    /* callback for transition or condition */
+    genericFunction         callback;
+    
+    /** current state identifier */
+    fm_int                  current;
+
+    /** event identifier */
+    fm_int                  event;
+
+    /** next state identifier */
+    fm_int                  next;
+
+} fm_smTable;
+
+
 /*****************************************************************************
  * Local function prototypes
  *****************************************************************************/
@@ -63,12 +91,12 @@ static fm_status CrmUnmaskInterrupts( fm_smEventInfo *eventInfo, void *userInfo 
 static fm_status CrmDummy( fm_smEventInfo *eventInfo, void *userInfo, fm_int *nextState );
 
 
-/* Declarations of transition callbacks for FM10000_BASIC_CRM_STATE_MACHINE */
-static fm_status BasicStateMachineS1E0Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status BasicStateMachineS2E1Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status BasicStateMachineS3E3Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status BasicStateMachineS5E0Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status BasicStateMachineS5E4Callback( fm_smEventInfo *eventInfo, void *userInfo );
+
+/* declaration of transition group callbacks */
+static fm_status TG(0)( fm_smEventInfo *eventInfo, void *userInfo );
+static fm_status TG(1)( fm_smEventInfo *eventInfo, void *userInfo );
+static fm_status TG(2)( fm_smEventInfo *eventInfo, void *userInfo );
+static fm_status TG(3)( fm_smEventInfo *eventInfo, void *userInfo );
 
 
 /*****************************************************************************
@@ -87,7 +115,7 @@ fm_text fm10000CrmStatesMap[FM10000_CRM_STATE_MAX] =
 
 };
 
-/* array containing descriptive names for each of the crm events */
+/* array containing descriptive names for each of the CRM events */
 fm_text fm10000CrmEventsMap[FM10000_CRM_EVENT_MAX] =
 {
     "CRM_EVENT_SUSPEND_REQ",
@@ -102,13 +130,26 @@ fm_text fm10000CrmEventsMap[FM10000_CRM_EVENT_MAX] =
  * Local Variables
  *****************************************************************************/
 
+
+static const fm_smTable fm10000BasicSmTable[] = {
+    { FN(TG(0)), ST(UPDATING) , EV(RESUME_REQ) , ST(RESUMING)  },
+    { FN(TG(0)), ST(REPAIRING), EV(REPAIR_IND) , ST(RESUMING)  },
+    { FN(TG(1)), ST(RESUMING) , EV(TIMEOUT_IND), ST(ACTIVE)    },
+    { FN(TG(2)), ST(RESUMING) , EV(SUSPEND_REQ), ST(UPDATING)  },
+    { NULL     , ST(ACTIVE)   , EV(FAULT_IND)  , ST(REPAIRING) },
+    { NULL     , ST(DUPLEX)   , EV(RESUME_REQ) , ST(REPAIRING) },
+    { NULL     , ST(DUPLEX)   , EV(REPAIR_IND) , ST(UPDATING)  },
+    { FN(TG(3)), ST(ACTIVE)   , EV(SUSPEND_REQ), ST(UPDATING)  }
+};
+
+
+
 /*****************************************************************************
  * Local Functions
  *****************************************************************************/
 
 /*****************************************************************************/
-/** CrmMaskInterrupts
- * \ingroup intCrmStateMachine 
+/* CrmMaskInterrupts
  *
  * \desc            One of the action callbacks for this state machine
  *                  category.
@@ -143,8 +184,7 @@ static fm_status CrmMaskInterrupts( fm_smEventInfo *eventInfo, void *userInfo )
 
 
 /*****************************************************************************/
-/** CrmUpdateChecksum
- * \ingroup intCrmStateMachine 
+/* CrmUpdateChecksum
  *
  * \desc            One of the action callbacks for this state machine
  *                  category.
@@ -179,8 +219,7 @@ static fm_status CrmUpdateChecksum( fm_smEventInfo *eventInfo, void *userInfo )
 
 
 /*****************************************************************************/
-/** CrmStartTimer
- * \ingroup intCrmStateMachine 
+/* CrmStartTimer
  *
  * \desc            One of the action callbacks for this state machine
  *                  category.
@@ -215,8 +254,7 @@ static fm_status CrmStartTimer( fm_smEventInfo *eventInfo, void *userInfo )
 
 
 /*****************************************************************************/
-/** CrmCancelTimer
- * \ingroup intCrmStateMachine 
+/* CrmCancelTimer
  *
  * \desc            One of the action callbacks for this state machine
  *                  category.
@@ -251,8 +289,7 @@ static fm_status CrmCancelTimer( fm_smEventInfo *eventInfo, void *userInfo )
 
 
 /*****************************************************************************/
-/** CrmUnmaskInterrupts
- * \ingroup intCrmStateMachine 
+/* CrmUnmaskInterrupts
  *
  * \desc            One of the action callbacks for this state machine
  *                  category.
@@ -287,8 +324,7 @@ static fm_status CrmUnmaskInterrupts( fm_smEventInfo *eventInfo, void *userInfo 
 
 
 /*****************************************************************************/
-/** CrmDummy
- * \ingroup intCrmStateMachine 
+/* CrmDummy
  *
  * \desc            One of the condition callbacks for this state machine
  *                  category.
@@ -310,7 +346,7 @@ static fm_status CrmDummy( fm_smEventInfo *eventInfo, void *userInfo, fm_int *ne
     fm_status status;
     fm_int crmId = ((fm10000_crmUserInfo *)userInfo)->crmId;
     
-    /* this log message can be modified once the crm-specific event
+    /* this log message can be modified once the Crm-specific event
        info structure will be defined */
     FM_LOG_DEBUG_V2( FM_LOG_CAT_CRM,
                      crmId,
@@ -328,17 +364,14 @@ static fm_status CrmDummy( fm_smEventInfo *eventInfo, void *userInfo, fm_int *ne
 
 
 /******************************************************************************
- * Definitions of transition callbacks for FM10000_BASIC_CRM_STATE_MACHINE
+ * Definitions of transition group callbacks 
  *****************************************************************************/
 
+
 /*****************************************************************************/
-/** BasicStateMachineS1E0Callback
- * \ingroup intCrmStateMachine
+/* TransitionGroup0
  *
- * \desc            Transition callback for CRM state machine type
- *                  ''FM10000_BASIC_CRM_STATE_MACHINE'', when event
- *                  ''FM10000_CRM_EVENT_SUSPEND_REQ'' occurs in state
- *                  ''FM10000_CRM_STATE_ACTIVE''.
+ * \desc            Transition callback for CRM state machine.
  * 
  * \param[in]       eventInfo is a pointer to a caller-allocated area
  *                  containing the generic event descriptor.
@@ -349,61 +382,27 @@ static fm_status CrmDummy( fm_smEventInfo *eventInfo, void *userInfo, fm_int *ne
  * \return          See return codes from the action callback functions.
  * 
  *****************************************************************************/
-static fm_status BasicStateMachineS1E0Callback( fm_smEventInfo *eventInfo, void *userInfo )
+static fm_status TG(0)( fm_smEventInfo *eventInfo, void *userInfo )
 {
     fm_status status = FM_OK;
     fm_int crmId = ((fm10000_crmUserInfo *)userInfo)->crmId;
-        
-    status = CrmMaskInterrupts( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_CRM, crmId, status );
-            
-ABORT:
-    return status;
 
-}   /* end BasicStateMachineS1E0Callback */
-
-/*****************************************************************************/
-/** BasicStateMachineS2E1Callback
- * \ingroup intCrmStateMachine
- *
- * \desc            Transition callback for CRM state machine type
- *                  ''FM10000_BASIC_CRM_STATE_MACHINE'', when event
- *                  ''FM10000_CRM_EVENT_RESUME_REQ'' occurs in state
- *                  ''FM10000_CRM_STATE_UPDATING''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status BasicStateMachineS2E1Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int crmId = ((fm10000_crmUserInfo *)userInfo)->crmId;
-        
     status = CrmUpdateChecksum( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_CRM, crmId, status );
-            
+
     status = CrmStartTimer( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_CRM, crmId, status );
-            
+
 ABORT:
     return status;
 
-}   /* end BasicStateMachineS2E1Callback */
+}   /* end TransitionGroup0 */
+
 
 /*****************************************************************************/
-/** BasicStateMachineS3E3Callback
- * \ingroup intCrmStateMachine
+/* TransitionGroup1
  *
- * \desc            Transition callback for CRM state machine type
- *                  ''FM10000_BASIC_CRM_STATE_MACHINE'', when event
- *                  ''FM10000_CRM_EVENT_REPAIR_IND'' occurs in state
- *                  ''FM10000_CRM_STATE_REPAIRING''.
+ * \desc            Transition callback for CRM state machine.
  * 
  * \param[in]       eventInfo is a pointer to a caller-allocated area
  *                  containing the generic event descriptor.
@@ -414,83 +413,74 @@ ABORT:
  * \return          See return codes from the action callback functions.
  * 
  *****************************************************************************/
-static fm_status BasicStateMachineS3E3Callback( fm_smEventInfo *eventInfo, void *userInfo )
+static fm_status TG(1)( fm_smEventInfo *eventInfo, void *userInfo )
 {
     fm_status status = FM_OK;
     fm_int crmId = ((fm10000_crmUserInfo *)userInfo)->crmId;
-        
-    status = CrmUpdateChecksum( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_CRM, crmId, status );
-            
-    status = CrmStartTimer( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_CRM, crmId, status );
-            
-ABORT:
-    return status;
 
-}   /* end BasicStateMachineS3E3Callback */
-
-/*****************************************************************************/
-/** BasicStateMachineS5E0Callback
- * \ingroup intCrmStateMachine
- *
- * \desc            Transition callback for CRM state machine type
- *                  ''FM10000_BASIC_CRM_STATE_MACHINE'', when event
- *                  ''FM10000_CRM_EVENT_SUSPEND_REQ'' occurs in state
- *                  ''FM10000_CRM_STATE_RESUMING''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status BasicStateMachineS5E0Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int crmId = ((fm10000_crmUserInfo *)userInfo)->crmId;
-        
-    status = CrmCancelTimer( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_CRM, crmId, status );
-            
-ABORT:
-    return status;
-
-}   /* end BasicStateMachineS5E0Callback */
-
-/*****************************************************************************/
-/** BasicStateMachineS5E4Callback
- * \ingroup intCrmStateMachine
- *
- * \desc            Transition callback for CRM state machine type
- *                  ''FM10000_BASIC_CRM_STATE_MACHINE'', when event
- *                  ''FM10000_CRM_EVENT_TIMEOUT_IND'' occurs in state
- *                  ''FM10000_CRM_STATE_RESUMING''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status BasicStateMachineS5E4Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int crmId = ((fm10000_crmUserInfo *)userInfo)->crmId;
-        
     status = CrmUnmaskInterrupts( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_CRM, crmId, status );
-            
+
 ABORT:
     return status;
 
-}   /* end BasicStateMachineS5E4Callback */
+}   /* end TransitionGroup1 */
+
+
+/*****************************************************************************/
+/* TransitionGroup2
+ *
+ * \desc            Transition callback for CRM state machine.
+ * 
+ * \param[in]       eventInfo is a pointer to a caller-allocated area
+ *                  containing the generic event descriptor.
+ * 
+ * \param[in]       userInfo is a pointer to a caller-allocated area containing
+ *                  purpose-specific event info.
+ * 
+ * \return          See return codes from the action callback functions.
+ * 
+ *****************************************************************************/
+static fm_status TG(2)( fm_smEventInfo *eventInfo, void *userInfo )
+{
+    fm_status status = FM_OK;
+    fm_int crmId = ((fm10000_crmUserInfo *)userInfo)->crmId;
+
+    status = CrmCancelTimer( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_CRM, crmId, status );
+
+ABORT:
+    return status;
+
+}   /* end TransitionGroup2 */
+
+
+/*****************************************************************************/
+/* TransitionGroup3
+ *
+ * \desc            Transition callback for CRM state machine.
+ * 
+ * \param[in]       eventInfo is a pointer to a caller-allocated area
+ *                  containing the generic event descriptor.
+ * 
+ * \param[in]       userInfo is a pointer to a caller-allocated area containing
+ *                  purpose-specific event info.
+ * 
+ * \return          See return codes from the action callback functions.
+ * 
+ *****************************************************************************/
+static fm_status TG(3)( fm_smEventInfo *eventInfo, void *userInfo )
+{
+    fm_status status = FM_OK;
+    fm_int crmId = ((fm10000_crmUserInfo *)userInfo)->crmId;
+
+    status = CrmMaskInterrupts( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_CRM, crmId, status );
+
+ABORT:
+    return status;
+
+}   /* end TransitionGroup3 */
 
 
 /*****************************************************************************
@@ -499,8 +489,7 @@ ABORT:
 
 
 /*****************************************************************************/
-/** fm10000RegisterBasicCrmStateMachine
- * \ingroup intCrmStateMachine
+/* fm10000RegisterBasicCrmStateMachine
  *
  * \desc            This function registers with the Generic State Machine
  *                  Engine state machine type ''FM10000_BASIC_CRM_STATE_MACHINE''.
@@ -518,7 +507,7 @@ ABORT:
  *****************************************************************************/
 fm_status fm10000RegisterBasicCrmStateMachine( void )
 {
-    fm_int      i;
+    fm_uint     i;
     fm_status   status;
     fm_smTransitionEntry  stt[FM10000_CRM_STATE_MAX][FM10000_CRM_EVENT_MAX];
     fm_smTransitionEntry *dynstt[FM10000_CRM_STATE_MAX];
@@ -532,305 +521,36 @@ fm_status fm10000RegisterBasicCrmStateMachine( void )
     /* clear out the temporary state transition table */
     FM_MEMSET_S( stt, sizeof(stt), 0, sizeof(stt));
 
-    /* transition for state=CRM_STATE_IDLE(0), event=CRM_EVENT_SUSPEND_REQ(0) */
-    stt[FM10000_CRM_STATE_IDLE]
-       [FM10000_CRM_EVENT_SUSPEND_REQ].used = TRUE;
-    stt[FM10000_CRM_STATE_IDLE]
-       [FM10000_CRM_EVENT_SUSPEND_REQ].nextState = FM10000_CRM_STATE_IDLE;
-    stt[FM10000_CRM_STATE_IDLE]
-       [FM10000_CRM_EVENT_SUSPEND_REQ].conditionCallback = NULL;
-    stt[FM10000_CRM_STATE_IDLE]
-       [FM10000_CRM_EVENT_SUSPEND_REQ].transitionCallback = NULL;
+    for (i = 0 ; 
+         i < (sizeof(fm10000BasicSmTable) / sizeof(fm_smTable)); 
+         i++)
+    {
+        stt[fm10000BasicSmTable[i].current]
+           [fm10000BasicSmTable[i].event].used = TRUE;
 
-    /* transition for state=CRM_STATE_IDLE(0), event=CRM_EVENT_RESUME_REQ(1) */
-    stt[FM10000_CRM_STATE_IDLE]
-       [FM10000_CRM_EVENT_RESUME_REQ].used = TRUE;
-    stt[FM10000_CRM_STATE_IDLE]
-       [FM10000_CRM_EVENT_RESUME_REQ].nextState = FM10000_CRM_STATE_IDLE;
-    stt[FM10000_CRM_STATE_IDLE]
-       [FM10000_CRM_EVENT_RESUME_REQ].conditionCallback = NULL;
-    stt[FM10000_CRM_STATE_IDLE]
-       [FM10000_CRM_EVENT_RESUME_REQ].transitionCallback = NULL;
+        stt[fm10000BasicSmTable[i].current]
+           [fm10000BasicSmTable[i].event].nextState = 
+               fm10000BasicSmTable[i].next;
 
-    /* transition for state=CRM_STATE_IDLE(0), event=CRM_EVENT_FAULT_IND(2) */
-    stt[FM10000_CRM_STATE_IDLE]
-       [FM10000_CRM_EVENT_FAULT_IND].used = TRUE;
-    stt[FM10000_CRM_STATE_IDLE]
-       [FM10000_CRM_EVENT_FAULT_IND].nextState = FM10000_CRM_STATE_IDLE;
-    stt[FM10000_CRM_STATE_IDLE]
-       [FM10000_CRM_EVENT_FAULT_IND].conditionCallback = NULL;
-    stt[FM10000_CRM_STATE_IDLE]
-       [FM10000_CRM_EVENT_FAULT_IND].transitionCallback = NULL;
+        if (fm10000BasicSmTable[i].next == FM_STATE_UNSPECIFIED)
+        {
+            stt[fm10000BasicSmTable[i].current]
+               [fm10000BasicSmTable[i].event].conditionCallback = 
+                   (fm_smConditionCallback) fm10000BasicSmTable[i].callback;
 
-    /* transition for state=CRM_STATE_IDLE(0), event=CRM_EVENT_REPAIR_IND(3) */
-    stt[FM10000_CRM_STATE_IDLE]
-       [FM10000_CRM_EVENT_REPAIR_IND].used = TRUE;
-    stt[FM10000_CRM_STATE_IDLE]
-       [FM10000_CRM_EVENT_REPAIR_IND].nextState = FM10000_CRM_STATE_IDLE;
-    stt[FM10000_CRM_STATE_IDLE]
-       [FM10000_CRM_EVENT_REPAIR_IND].conditionCallback = NULL;
-    stt[FM10000_CRM_STATE_IDLE]
-       [FM10000_CRM_EVENT_REPAIR_IND].transitionCallback = NULL;
+            stt[fm10000BasicSmTable[i].current]
+               [fm10000BasicSmTable[i].event].transitionCallback = NULL;
+        }
+        else
+        {
+            stt[fm10000BasicSmTable[i].current]
+               [fm10000BasicSmTable[i].event].conditionCallback = NULL;
 
-    /* transition for state=CRM_STATE_IDLE(0), event=CRM_EVENT_TIMEOUT_IND(4) */
-    stt[FM10000_CRM_STATE_IDLE]
-       [FM10000_CRM_EVENT_TIMEOUT_IND].used = TRUE;
-    stt[FM10000_CRM_STATE_IDLE]
-       [FM10000_CRM_EVENT_TIMEOUT_IND].nextState = FM10000_CRM_STATE_IDLE;
-    stt[FM10000_CRM_STATE_IDLE]
-       [FM10000_CRM_EVENT_TIMEOUT_IND].conditionCallback = NULL;
-    stt[FM10000_CRM_STATE_IDLE]
-       [FM10000_CRM_EVENT_TIMEOUT_IND].transitionCallback = NULL;
-
-    /* transition for state=CRM_STATE_ACTIVE(1), event=CRM_EVENT_SUSPEND_REQ(0) */
-    stt[FM10000_CRM_STATE_ACTIVE]
-       [FM10000_CRM_EVENT_SUSPEND_REQ].used = TRUE;
-    stt[FM10000_CRM_STATE_ACTIVE]
-       [FM10000_CRM_EVENT_SUSPEND_REQ].nextState = FM10000_CRM_STATE_UPDATING;
-    stt[FM10000_CRM_STATE_ACTIVE]
-       [FM10000_CRM_EVENT_SUSPEND_REQ].conditionCallback = NULL;
-    stt[FM10000_CRM_STATE_ACTIVE]
-       [FM10000_CRM_EVENT_SUSPEND_REQ].transitionCallback = BasicStateMachineS1E0Callback;
-
-    /* transition for state=CRM_STATE_ACTIVE(1), event=CRM_EVENT_RESUME_REQ(1) */
-    stt[FM10000_CRM_STATE_ACTIVE]
-       [FM10000_CRM_EVENT_RESUME_REQ].used = TRUE;
-    stt[FM10000_CRM_STATE_ACTIVE]
-       [FM10000_CRM_EVENT_RESUME_REQ].nextState = FM10000_CRM_STATE_ACTIVE;
-    stt[FM10000_CRM_STATE_ACTIVE]
-       [FM10000_CRM_EVENT_RESUME_REQ].conditionCallback = NULL;
-    stt[FM10000_CRM_STATE_ACTIVE]
-       [FM10000_CRM_EVENT_RESUME_REQ].transitionCallback = NULL;
-
-    /* transition for state=CRM_STATE_ACTIVE(1), event=CRM_EVENT_FAULT_IND(2) */
-    stt[FM10000_CRM_STATE_ACTIVE]
-       [FM10000_CRM_EVENT_FAULT_IND].used = TRUE;
-    stt[FM10000_CRM_STATE_ACTIVE]
-       [FM10000_CRM_EVENT_FAULT_IND].nextState = FM10000_CRM_STATE_REPAIRING;
-    stt[FM10000_CRM_STATE_ACTIVE]
-       [FM10000_CRM_EVENT_FAULT_IND].conditionCallback = NULL;
-    stt[FM10000_CRM_STATE_ACTIVE]
-       [FM10000_CRM_EVENT_FAULT_IND].transitionCallback = NULL;
-
-    /* transition for state=CRM_STATE_ACTIVE(1), event=CRM_EVENT_REPAIR_IND(3) */
-    stt[FM10000_CRM_STATE_ACTIVE]
-       [FM10000_CRM_EVENT_REPAIR_IND].used = TRUE;
-    stt[FM10000_CRM_STATE_ACTIVE]
-       [FM10000_CRM_EVENT_REPAIR_IND].nextState = FM10000_CRM_STATE_ACTIVE;
-    stt[FM10000_CRM_STATE_ACTIVE]
-       [FM10000_CRM_EVENT_REPAIR_IND].conditionCallback = NULL;
-    stt[FM10000_CRM_STATE_ACTIVE]
-       [FM10000_CRM_EVENT_REPAIR_IND].transitionCallback = NULL;
-
-    /* transition for state=CRM_STATE_ACTIVE(1), event=CRM_EVENT_TIMEOUT_IND(4) */
-    stt[FM10000_CRM_STATE_ACTIVE]
-       [FM10000_CRM_EVENT_TIMEOUT_IND].used = TRUE;
-    stt[FM10000_CRM_STATE_ACTIVE]
-       [FM10000_CRM_EVENT_TIMEOUT_IND].nextState = FM10000_CRM_STATE_ACTIVE;
-    stt[FM10000_CRM_STATE_ACTIVE]
-       [FM10000_CRM_EVENT_TIMEOUT_IND].conditionCallback = NULL;
-    stt[FM10000_CRM_STATE_ACTIVE]
-       [FM10000_CRM_EVENT_TIMEOUT_IND].transitionCallback = NULL;
-
-    /* transition for state=CRM_STATE_UPDATING(2), event=CRM_EVENT_SUSPEND_REQ(0) */
-    stt[FM10000_CRM_STATE_UPDATING]
-       [FM10000_CRM_EVENT_SUSPEND_REQ].used = TRUE;
-    stt[FM10000_CRM_STATE_UPDATING]
-       [FM10000_CRM_EVENT_SUSPEND_REQ].nextState = FM10000_CRM_STATE_UPDATING;
-    stt[FM10000_CRM_STATE_UPDATING]
-       [FM10000_CRM_EVENT_SUSPEND_REQ].conditionCallback = NULL;
-    stt[FM10000_CRM_STATE_UPDATING]
-       [FM10000_CRM_EVENT_SUSPEND_REQ].transitionCallback = NULL;
-
-    /* transition for state=CRM_STATE_UPDATING(2), event=CRM_EVENT_RESUME_REQ(1) */
-    stt[FM10000_CRM_STATE_UPDATING]
-       [FM10000_CRM_EVENT_RESUME_REQ].used = TRUE;
-    stt[FM10000_CRM_STATE_UPDATING]
-       [FM10000_CRM_EVENT_RESUME_REQ].nextState = FM10000_CRM_STATE_RESUMING ;
-    stt[FM10000_CRM_STATE_UPDATING]
-       [FM10000_CRM_EVENT_RESUME_REQ].conditionCallback = NULL;
-    stt[FM10000_CRM_STATE_UPDATING]
-       [FM10000_CRM_EVENT_RESUME_REQ].transitionCallback = BasicStateMachineS2E1Callback;
-
-    /* transition for state=CRM_STATE_UPDATING(2), event=CRM_EVENT_FAULT_IND(2) */
-    stt[FM10000_CRM_STATE_UPDATING]
-       [FM10000_CRM_EVENT_FAULT_IND].used = TRUE;
-    stt[FM10000_CRM_STATE_UPDATING]
-       [FM10000_CRM_EVENT_FAULT_IND].nextState = FM10000_CRM_STATE_UPDATING;
-    stt[FM10000_CRM_STATE_UPDATING]
-       [FM10000_CRM_EVENT_FAULT_IND].conditionCallback = NULL;
-    stt[FM10000_CRM_STATE_UPDATING]
-       [FM10000_CRM_EVENT_FAULT_IND].transitionCallback = NULL;
-
-    /* transition for state=CRM_STATE_UPDATING(2), event=CRM_EVENT_REPAIR_IND(3) */
-    stt[FM10000_CRM_STATE_UPDATING]
-       [FM10000_CRM_EVENT_REPAIR_IND].used = TRUE;
-    stt[FM10000_CRM_STATE_UPDATING]
-       [FM10000_CRM_EVENT_REPAIR_IND].nextState = FM10000_CRM_STATE_UPDATING;
-    stt[FM10000_CRM_STATE_UPDATING]
-       [FM10000_CRM_EVENT_REPAIR_IND].conditionCallback = NULL;
-    stt[FM10000_CRM_STATE_UPDATING]
-       [FM10000_CRM_EVENT_REPAIR_IND].transitionCallback = NULL;
-
-    /* transition for state=CRM_STATE_UPDATING(2), event=CRM_EVENT_TIMEOUT_IND(4) */
-    stt[FM10000_CRM_STATE_UPDATING]
-       [FM10000_CRM_EVENT_TIMEOUT_IND].used = TRUE;
-    stt[FM10000_CRM_STATE_UPDATING]
-       [FM10000_CRM_EVENT_TIMEOUT_IND].nextState = FM10000_CRM_STATE_UPDATING;
-    stt[FM10000_CRM_STATE_UPDATING]
-       [FM10000_CRM_EVENT_TIMEOUT_IND].conditionCallback = NULL;
-    stt[FM10000_CRM_STATE_UPDATING]
-       [FM10000_CRM_EVENT_TIMEOUT_IND].transitionCallback = NULL;
-
-    /* transition for state=CRM_STATE_REPAIRING(3), event=CRM_EVENT_SUSPEND_REQ(0) */
-    stt[FM10000_CRM_STATE_REPAIRING]
-       [FM10000_CRM_EVENT_SUSPEND_REQ].used = TRUE;
-    stt[FM10000_CRM_STATE_REPAIRING]
-       [FM10000_CRM_EVENT_SUSPEND_REQ].nextState = FM10000_CRM_STATE_REPAIRING;
-    stt[FM10000_CRM_STATE_REPAIRING]
-       [FM10000_CRM_EVENT_SUSPEND_REQ].conditionCallback = NULL;
-    stt[FM10000_CRM_STATE_REPAIRING]
-       [FM10000_CRM_EVENT_SUSPEND_REQ].transitionCallback = NULL;
-
-    /* transition for state=CRM_STATE_REPAIRING(3), event=CRM_EVENT_RESUME_REQ(1) */
-    stt[FM10000_CRM_STATE_REPAIRING]
-       [FM10000_CRM_EVENT_RESUME_REQ].used = TRUE;
-    stt[FM10000_CRM_STATE_REPAIRING]
-       [FM10000_CRM_EVENT_RESUME_REQ].nextState = FM10000_CRM_STATE_REPAIRING ;
-    stt[FM10000_CRM_STATE_REPAIRING]
-       [FM10000_CRM_EVENT_RESUME_REQ].conditionCallback = NULL;
-    stt[FM10000_CRM_STATE_REPAIRING]
-       [FM10000_CRM_EVENT_RESUME_REQ].transitionCallback = NULL;
-
-    /* transition for state=CRM_STATE_REPAIRING(3), event=CRM_EVENT_FAULT_IND(2) */
-    stt[FM10000_CRM_STATE_REPAIRING]
-       [FM10000_CRM_EVENT_FAULT_IND].used = TRUE;
-    stt[FM10000_CRM_STATE_REPAIRING]
-       [FM10000_CRM_EVENT_FAULT_IND].nextState = FM10000_CRM_STATE_REPAIRING;
-    stt[FM10000_CRM_STATE_REPAIRING]
-       [FM10000_CRM_EVENT_FAULT_IND].conditionCallback = NULL;
-    stt[FM10000_CRM_STATE_REPAIRING]
-       [FM10000_CRM_EVENT_FAULT_IND].transitionCallback = NULL;
-
-    /* transition for state=CRM_STATE_REPAIRING(3), event=CRM_EVENT_REPAIR_IND(3) */
-    stt[FM10000_CRM_STATE_REPAIRING]
-       [FM10000_CRM_EVENT_REPAIR_IND].used = TRUE;
-    stt[FM10000_CRM_STATE_REPAIRING]
-       [FM10000_CRM_EVENT_REPAIR_IND].nextState = FM10000_CRM_STATE_RESUMING;
-    stt[FM10000_CRM_STATE_REPAIRING]
-       [FM10000_CRM_EVENT_REPAIR_IND].conditionCallback = NULL;
-    stt[FM10000_CRM_STATE_REPAIRING]
-       [FM10000_CRM_EVENT_REPAIR_IND].transitionCallback = BasicStateMachineS3E3Callback;
-
-    /* transition for state=CRM_STATE_REPAIRING(3), event=CRM_EVENT_TIMEOUT_IND(4) */
-    stt[FM10000_CRM_STATE_REPAIRING]
-       [FM10000_CRM_EVENT_TIMEOUT_IND].used = TRUE;
-    stt[FM10000_CRM_STATE_REPAIRING]
-       [FM10000_CRM_EVENT_TIMEOUT_IND].nextState = FM10000_CRM_STATE_REPAIRING;
-    stt[FM10000_CRM_STATE_REPAIRING]
-       [FM10000_CRM_EVENT_TIMEOUT_IND].conditionCallback = NULL;
-    stt[FM10000_CRM_STATE_REPAIRING]
-       [FM10000_CRM_EVENT_TIMEOUT_IND].transitionCallback = NULL;
-
-    /* transition for state=CRM_STATE_DUPLEX(4), event=CRM_EVENT_SUSPEND_REQ(0) */
-    stt[FM10000_CRM_STATE_DUPLEX]
-       [FM10000_CRM_EVENT_SUSPEND_REQ].used = TRUE;
-    stt[FM10000_CRM_STATE_DUPLEX]
-       [FM10000_CRM_EVENT_SUSPEND_REQ].nextState = FM10000_CRM_STATE_DUPLEX;
-    stt[FM10000_CRM_STATE_DUPLEX]
-       [FM10000_CRM_EVENT_SUSPEND_REQ].conditionCallback = NULL;
-    stt[FM10000_CRM_STATE_DUPLEX]
-       [FM10000_CRM_EVENT_SUSPEND_REQ].transitionCallback = NULL;
-
-    /* transition for state=CRM_STATE_DUPLEX(4), event=CRM_EVENT_RESUME_REQ(1) */
-    stt[FM10000_CRM_STATE_DUPLEX]
-       [FM10000_CRM_EVENT_RESUME_REQ].used = TRUE;
-    stt[FM10000_CRM_STATE_DUPLEX]
-       [FM10000_CRM_EVENT_RESUME_REQ].nextState = FM10000_CRM_STATE_REPAIRING ;
-    stt[FM10000_CRM_STATE_DUPLEX]
-       [FM10000_CRM_EVENT_RESUME_REQ].conditionCallback = NULL;
-    stt[FM10000_CRM_STATE_DUPLEX]
-       [FM10000_CRM_EVENT_RESUME_REQ].transitionCallback = NULL;
-
-    /* transition for state=CRM_STATE_DUPLEX(4), event=CRM_EVENT_FAULT_IND(2) */
-    stt[FM10000_CRM_STATE_DUPLEX]
-       [FM10000_CRM_EVENT_FAULT_IND].used = TRUE;
-    stt[FM10000_CRM_STATE_DUPLEX]
-       [FM10000_CRM_EVENT_FAULT_IND].nextState = FM10000_CRM_STATE_DUPLEX;
-    stt[FM10000_CRM_STATE_DUPLEX]
-       [FM10000_CRM_EVENT_FAULT_IND].conditionCallback = NULL;
-    stt[FM10000_CRM_STATE_DUPLEX]
-       [FM10000_CRM_EVENT_FAULT_IND].transitionCallback = NULL;
-
-    /* transition for state=CRM_STATE_DUPLEX(4), event=CRM_EVENT_REPAIR_IND(3) */
-    stt[FM10000_CRM_STATE_DUPLEX]
-       [FM10000_CRM_EVENT_REPAIR_IND].used = TRUE;
-    stt[FM10000_CRM_STATE_DUPLEX]
-       [FM10000_CRM_EVENT_REPAIR_IND].nextState = FM10000_CRM_STATE_UPDATING;
-    stt[FM10000_CRM_STATE_DUPLEX]
-       [FM10000_CRM_EVENT_REPAIR_IND].conditionCallback = NULL;
-    stt[FM10000_CRM_STATE_DUPLEX]
-       [FM10000_CRM_EVENT_REPAIR_IND].transitionCallback = NULL;
-
-    /* transition for state=CRM_STATE_DUPLEX(4), event=CRM_EVENT_TIMEOUT_IND(4) */
-    stt[FM10000_CRM_STATE_DUPLEX]
-       [FM10000_CRM_EVENT_TIMEOUT_IND].used = TRUE;
-    stt[FM10000_CRM_STATE_DUPLEX]
-       [FM10000_CRM_EVENT_TIMEOUT_IND].nextState = FM10000_CRM_STATE_DUPLEX;
-    stt[FM10000_CRM_STATE_DUPLEX]
-       [FM10000_CRM_EVENT_TIMEOUT_IND].conditionCallback = NULL;
-    stt[FM10000_CRM_STATE_DUPLEX]
-       [FM10000_CRM_EVENT_TIMEOUT_IND].transitionCallback = NULL;
-
-    /* transition for state=CRM_STATE_RESUMING(5), event=CRM_EVENT_SUSPEND_REQ(0) */
-    stt[FM10000_CRM_STATE_RESUMING]
-       [FM10000_CRM_EVENT_SUSPEND_REQ].used = TRUE;
-    stt[FM10000_CRM_STATE_RESUMING]
-       [FM10000_CRM_EVENT_SUSPEND_REQ].nextState = FM10000_CRM_STATE_UPDATING;
-    stt[FM10000_CRM_STATE_RESUMING]
-       [FM10000_CRM_EVENT_SUSPEND_REQ].conditionCallback = NULL;
-    stt[FM10000_CRM_STATE_RESUMING]
-       [FM10000_CRM_EVENT_SUSPEND_REQ].transitionCallback = BasicStateMachineS5E0Callback;
-
-    /* transition for state=CRM_STATE_RESUMING(5), event=CRM_EVENT_RESUME_REQ(1) */
-    stt[FM10000_CRM_STATE_RESUMING]
-       [FM10000_CRM_EVENT_RESUME_REQ].used = TRUE;
-    stt[FM10000_CRM_STATE_RESUMING]
-       [FM10000_CRM_EVENT_RESUME_REQ].nextState = FM10000_CRM_STATE_RESUMING ;
-    stt[FM10000_CRM_STATE_RESUMING]
-       [FM10000_CRM_EVENT_RESUME_REQ].conditionCallback = NULL;
-    stt[FM10000_CRM_STATE_RESUMING]
-       [FM10000_CRM_EVENT_RESUME_REQ].transitionCallback = NULL;
-
-    /* transition for state=CRM_STATE_RESUMING(5), event=CRM_EVENT_FAULT_IND(2) */
-    stt[FM10000_CRM_STATE_RESUMING]
-       [FM10000_CRM_EVENT_FAULT_IND].used = TRUE;
-    stt[FM10000_CRM_STATE_RESUMING]
-       [FM10000_CRM_EVENT_FAULT_IND].nextState = FM10000_CRM_STATE_RESUMING;
-    stt[FM10000_CRM_STATE_RESUMING]
-       [FM10000_CRM_EVENT_FAULT_IND].conditionCallback = NULL;
-    stt[FM10000_CRM_STATE_RESUMING]
-       [FM10000_CRM_EVENT_FAULT_IND].transitionCallback = NULL;
-
-    /* transition for state=CRM_STATE_RESUMING(5), event=CRM_EVENT_REPAIR_IND(3) */
-    stt[FM10000_CRM_STATE_RESUMING]
-       [FM10000_CRM_EVENT_REPAIR_IND].used = TRUE;
-    stt[FM10000_CRM_STATE_RESUMING]
-       [FM10000_CRM_EVENT_REPAIR_IND].nextState = FM10000_CRM_STATE_RESUMING;
-    stt[FM10000_CRM_STATE_RESUMING]
-       [FM10000_CRM_EVENT_REPAIR_IND].conditionCallback = NULL;
-    stt[FM10000_CRM_STATE_RESUMING]
-       [FM10000_CRM_EVENT_REPAIR_IND].transitionCallback = NULL;
-
-    /* transition for state=CRM_STATE_RESUMING(5), event=CRM_EVENT_TIMEOUT_IND(4) */
-    stt[FM10000_CRM_STATE_RESUMING]
-       [FM10000_CRM_EVENT_TIMEOUT_IND].used = TRUE;
-    stt[FM10000_CRM_STATE_RESUMING]
-       [FM10000_CRM_EVENT_TIMEOUT_IND].nextState = FM10000_CRM_STATE_ACTIVE;
-    stt[FM10000_CRM_STATE_RESUMING]
-       [FM10000_CRM_EVENT_TIMEOUT_IND].conditionCallback = NULL;
-    stt[FM10000_CRM_STATE_RESUMING]
-       [FM10000_CRM_EVENT_TIMEOUT_IND].transitionCallback = BasicStateMachineS5E4Callback;
+            stt[fm10000BasicSmTable[i].current]
+               [fm10000BasicSmTable[i].event].transitionCallback = 
+                   (fm_smTransitionCallback) fm10000BasicSmTable[i].callback;
+        }
+    }
 
     /* fill out the state transition table for this state machine type */
     for (i = 0 ; i < FM10000_CRM_STATE_MAX ; i++)
@@ -848,4 +568,5 @@ fm_status fm10000RegisterBasicCrmStateMachine( void )
     return status;
 
 }   /* end fm10000RegisterBasicCrmStateMachine */
+
 

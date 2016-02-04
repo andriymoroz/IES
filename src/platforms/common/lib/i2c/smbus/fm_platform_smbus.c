@@ -292,6 +292,9 @@ fm_status fmPlatformSMBusI2cWriteRead(int      fd,
     fm_int               len;
     fm_int               off;
 
+    FM_LOG_ENTRY(FM_LOG_CAT_PLATFORM, "dev 0x%02x wl %d rl %d data %02x%02x\n",
+        device, wl, rl, (wl > 0) ? data[0]:0, (wl > 1) ? data[1]:0);
+
     if (fd <= 0)
     {
         status = FM_ERR_UNSUPPORTED;

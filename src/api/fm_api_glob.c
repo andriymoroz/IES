@@ -97,6 +97,7 @@ static fm_status MapLagPortToMemberPort(fm_int  sw,
 {
     fm_int      portList[FM_MAX_NUM_LAG_MEMBERS];
     fm_port *   portPtr;
+    fm_lag *    lagPtr;
     fm_int      numPorts;
     fm_status   err;
 
@@ -106,13 +107,20 @@ static fm_status MapLagPortToMemberPort(fm_int  sw,
         return FM_ERR_INVALID_PORT;
     }
 
+    lagPtr = GET_LAG_PTR(sw, portPtr->lagIndex);
+
+    if(lagPtr == NULL)
+    {
+        return FM_ERR_INVALID_PORT;
+    }
+
     /* Get a list of active member ports. */
-    err = fmGetLAGMemberPorts(sw,
-                              portPtr->lagIndex,
-                              &numPorts,
-                              portList,
-                              FM_MAX_NUM_LAG_MEMBERS,
-                              TRUE);
+    err = fmGetLAGCardinalPortList(sw, 
+                                   lagPtr->logicalPort,
+                                   &numPorts,
+                                   portList, 
+                                   FM_MAX_NUM_LAG_MEMBERS);
+
     if (err != FM_OK)
     {
         return err;

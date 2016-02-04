@@ -5,7 +5,7 @@
  * Creation Date:   January 16, 2008
  * Description:     Spanning tree instance API
  *
- * Copyright (c) 2005 - 2015, Intel Corporation
+ * Copyright (c) 2005 - 2016, Intel Corporation
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -93,7 +93,6 @@ static fm_status StpInstancePreamble(fm_int  sw,
     VALIDATE_AND_PROTECT_SWITCH(sw);
 
     switchPtr    = GET_SWITCH_PTR(sw);
-    err          = FM_OK;
     timeout.sec  = 30;
     timeout.usec = 0;
 

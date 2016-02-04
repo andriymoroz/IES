@@ -1361,6 +1361,8 @@ fm_status fmResetLBGMember(fm_LBGMember *lbgMember)
     lbgMember->port          = FM_PORT_DROP;
     lbgMember->mcastGroup    = -1;
     lbgMember->l234Lbg       = -1;
+    lbgMember->tunnelGrp     = -1;
+    lbgMember->tunnelRule    = -1;
 
 ABORT:
     FM_LOG_EXIT_VERBOSE(FM_LOG_CAT_LBG, err);
@@ -1425,6 +1427,11 @@ fm_status fmCopyLBGMember(fm_LBGMember *destLbgMember,
 
         case FM_LBG_MEMBER_TYPE_L234_LBG:
             destLbgMember->l234Lbg    = srcLbgMember->l234Lbg;
+            break;
+
+        case FM_LBG_MEMBER_TYPE_TUNNEL:
+            destLbgMember->tunnelGrp  = srcLbgMember->tunnelGrp;
+            destLbgMember->tunnelRule = srcLbgMember->tunnelRule;
             break;
 
         default:

@@ -200,6 +200,10 @@ ABORT:
  * \param[in]       vlanID is the VLAN identifier to set.
  *
  * \return          FM_OK if successful.
+ * \return          FM_ERR_INVALID_VLAN if the vlanID is invalid.
+ * \return          FM_ERR_INVALID_ARGUMENT if one of the arguments is invalid.
+ * \return          FM_ERR_UNSUPPORTED if the request is not supported by
+ *                  the underlying switch.
  *
  *****************************************************************************/
 static fm_status SetVlan(fm_int sw, fm_int sflowId, fm_uint16 vlanID)
@@ -234,8 +238,9 @@ static fm_status SetVlan(fm_int sw, fm_int sflowId, fm_uint16 vlanID)
     switch (sflowEntry->sflowType)
     {
         case FM_SFLOW_TYPE_INGRESS:
-            mirrorVlanType = FM_MIRROR_VLAN_INGRESS;
-            break;
+            /* FM10000 does not support ingress mirroring. */
+            err = FM_ERR_UNSUPPORTED;
+            goto ABORT;
 
         case FM_SFLOW_TYPE_EGRESS:
             mirrorVlanType = FM_MIRROR_VLAN_EGRESS;
@@ -495,12 +500,10 @@ fm_status fm10000DeleteSFlow(fm_int sw, fm_int sFlowId)
 
     FM_LOG_ENTRY(FM_LOG_CAT_SFLOW, "sw=%d, sFlowId=%d\n", sw, sFlowId);
 
-    /* ACL Lock needs to be taken prior to the mirror lock for lock inversion
-     * prevention. The ACL lock is needed on fmDeleteMirrorInt() because some
-     * validation is done at the ACL level to make sure this group is currently
-     * unused. */
+    /* Take ACL and state locks before sFlow (mirror) lock to prevent
+     * lock inversion in fmDeleteMirrorInt. */
     FM_TAKE_ACL_LOCK(sw);
-
+    FM_TAKE_STATE_LOCK(sw);
     TAKE_SFLOW_LOCK(sw);
 
     sflowEntry = GetSflowEntry(sw, sFlowId);
@@ -515,6 +518,7 @@ fm_status fm10000DeleteSFlow(fm_int sw, fm_int sFlowId)
     }
 
     DROP_SFLOW_LOCK(sw);
+    FM_DROP_STATE_LOCK(sw);
     FM_DROP_ACL_LOCK(sw);
  
     FM_LOG_EXIT(FM_LOG_CAT_SFLOW, err);
@@ -857,6 +861,8 @@ fm_status fm10000GetSFlowPortList(fm_int   sw,
  *
  * \return          FM_OK if successful.
  * \return          FM_ERR_INVALID_SFLOW_ATTR if attr is not recognized.
+ * \return          FM_ERR_UNSUPPORTED if the request is not supported by
+ *                  the underlying switch.
  *
  *****************************************************************************/
 fm_status fm10000SetSFlowAttribute(fm_int sw, 

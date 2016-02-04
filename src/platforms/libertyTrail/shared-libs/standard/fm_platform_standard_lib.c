@@ -55,6 +55,7 @@
 /*****************************************************************************
  * Macros, Constants & Types
  *****************************************************************************/
+#define PROP_TXT_SIZE       256
 
 #define UNDEF_VAL          -1
 
@@ -108,12 +109,6 @@
 /* Should be at least equal to the number of switch */
 #define NUM_I2C_BUS                 12
 
-/* Max number of PCA mux supported */
-#define NUM_PCA_MUX                 16
-
-/* Max number of PCA IO supported */
-#define NUM_PCA_IO                  16
-
 /* Max number of PCA pins supported */
 #define NUM_PCA_PINS                40
 
@@ -126,6 +121,9 @@
 
 /* Specify value is not applicable or used */
 #define UINT_NOT_USED               0xFFFFFFFF
+
+/* Load flags */
+#define LF_IO_MODEL                 (1 << 0)
 
 /* Input Output configuration register value */
 #define IOC_OUTPUT                  0
@@ -210,6 +208,9 @@ typedef struct
 /* PCA I/O device configuration */
 typedef struct
 {
+    /* Load flags */
+    fm_uint         loadFlags;
+
     /* PCA device context */
     fm_pcaIoDevice  dev;
 
@@ -334,6 +335,9 @@ typedef struct
 
     /* pin usage (LINK, TRAFFIC, speed) */
     fm_uint usage;
+
+    /* individual LED brightness */
+    fm_uint brightness;
 
 } fm_subLed;
 
@@ -469,24 +473,25 @@ typedef struct
 typedef struct
 {
     /* Current I2C bus selected by fmPlatformLibSelectBus */
-    fm_uint         selectedBus;
+    fm_uint         selectedBus[FM_MAX_NUM_SWITCHES];
 
     /* I2C Device config */
+    fm_uint         numBus;
     fm_i2cCfg       i2c[NUM_I2C_BUS];
 
     /* PCA mux configuration */
     fm_uint         numPcaMux;
-    fm_pcaMux       pcaMux[NUM_PCA_MUX];
+    fm_pcaMux      *pcaMux;
 
     /* PCA IO configuration */
     fm_uint         numPcaIo;
-    fm_pcaIo        pcaIo[NUM_PCA_IO];
+    fm_pcaIo       *pcaIo;
 
     /* Number of ports supported */
     fm_uint         numResId;
 
     /* Hardware resource ID configuration */
-    fm_hwResId      hwResId[FM_NUM_HW_RES_ID];
+    fm_hwResId     *hwResId;
 
     /* Default bus selection type */
     fm_busSelType   defBusSelType;
@@ -593,9 +598,9 @@ static fm_platformStrMap pcaIoModelMap[] =
 };
 
 static fm_platformStrMap vrmModelMap[] = {
-	{ "VRM_UNKNOWN", VRM_UNKNOWN  },
-	{ "TPS40425",    VRM_TPS40425 },
-	{ "PX8847",      VRM_PX8847   },
+    { "VRM_UNKNOWN", VRM_UNKNOWN  },
+    { "TPS40425",    VRM_TPS40425 },
+    { "PX8847",      VRM_PX8847   },
 };
 
 static fm_platformStrMap intfTypeMap[] =
@@ -1025,7 +1030,7 @@ fm_status fmPlatformLibGetVrmVoltage(fm_int     sw,
  *                                                                      \lb\lb
  * Value is one of the following: PCAMUX, PCAIO.
  *                                                                      \lb\lb
- * Currently the platform shared library support PCAMUX type only.
+ * Currently the platform shared library support PCAMUX PCAIO types .
  *                                                                      \lb\lb
  * Default value is specified by the xcvrI2C.default.busSelType property.
  */
@@ -1095,6 +1100,22 @@ fm_status fmPlatformLibGetVrmVoltage(fm_int     sw,
 
 #define FM_AAK_LIB_HWRES_PORT_SUBLED_PCAIO_PIN      "api.platform.lib.config.hwResourceId.%d.portLed.%d.%d.pcaIo.pin"
 #define FM_AAT_LIB_HWRES_PORT_SUBLED_PCAIO_PIN      FM_API_ATTR_INT
+
+/** 
+ * (Optional) Specifies the individual LED brightness for 
+ * PCA9634/35 LED driver. 
+ *                                                                      \lb\lb
+ * Value is ranges from 00h to FFh where 00h => 0% duty cycle,
+ * FFh => 99.6% duty cycle.
+ *                                                                      \lb\lb
+ * Default value is 0x7fh (50% duty cycle) when this attribute
+ * is not set.
+ */
+#define FM_AAK_LIB_HWRES_PORTLED_PCAIO_BRIGHTNESS     "api.platfrom.lib.config.hwResourceId.%d.portLed.%d.pcaIo.ledBrightness"
+#define FM_AAT_LIB_HWRES_PORTLED_PCAIO_BRIGHTNESS     FM_API_ATTR_INT
+
+#define FM_AAK_LIB_HWRES_PORT_SUBLED_PCAIO_BRIGHTNESS "api.platfrom.lib.config.hwResourceId.%d.portLed.%d.%d.pcaIo.ledBrightness"
+#define FM_AAT_LIB_HWRES_PORT_SUBLED_PCAIO_BRIGHTNESS FM_API_ATTR_INT
 
 /**
  * (Optional) Specifies the LED usage.
@@ -1338,7 +1359,9 @@ static fm_status SwitchI2cWriteRead(fm_uintptr handle,
     }
     else
     {
-        FM_LOG_PRINT("i2c error=%d (sw=%d devAddr %02x)\n", status, sw, device);
+        FM_LOG_ERROR(FM_LOG_CAT_PLATFORM,
+            "I2C error accessing device 0x%x via switch %d: %s\n",
+                device, sw, fmErrorMsg(status));
     }
 
     return status;
@@ -1824,6 +1847,914 @@ static fm_bool GetTlvBool(fm_byte *tlv)
 
 
 
+/*****************************************************************************/
+/* IdxErrorMsg
+ * \ingroup intPlatform
+ *
+ * \desc            Log an error message when idx exceeds num.
+ *
+ * \param[in]       idx is the index.
+ *
+ * \param[in]       num is the max value to check for idx value.
+ *
+ * \param[in]       name is the name to display.
+ *
+ * \param[in]       tlv is an array of encoded TLV bytes.
+ *
+ * \return          NONE. 
+ *
+ *****************************************************************************/
+static void IdxErrorMsg(fm_int idx, fm_uint maxNum, fm_text name, fm_byte *tlv)
+{
+    fm_char propTxt[PROP_TXT_SIZE];
+
+    fmUtilConfigPropertyDecodeTlv(tlv, propTxt, sizeof(propTxt));
+
+    if (idx <= 0)
+    {
+        FM_LOG_ERROR(FM_LOG_CAT_PLATFORM,
+                    "\'%s\' must be after %s configuration.\n",
+                    propTxt, name);
+    }
+    else
+    {
+        FM_LOG_ERROR(FM_LOG_CAT_PLATFORM,
+                    "\'%s\' is out of range of %s %d.\n",
+                    propTxt, name, maxNum);
+        
+    }
+
+}   /* end IdxErrorMsg */
+
+
+/*****************************************************************************/
+/* CfgOrderErrorMsg
+ * \ingroup intPlatform
+ *
+ * \desc            Log an error message with decoded configuration.
+ *
+ * \param[in]       tlv is an array of encoded TLV bytes.
+ *
+ * \param[in]       format is the text string format 
+ *                  to append after the decoded config.
+ *
+ * \return          NONE. 
+ *
+ *****************************************************************************/
+static void CfgOrderErrorMsg(fm_byte *tlv, fm_int idx, fm_text format)
+{
+    fm_char propTxt[PROP_TXT_SIZE];
+    fm_char apStr[256];
+
+    fmUtilConfigPropertyDecodeTlv(tlv, propTxt, sizeof(propTxt));
+    FM_SNPRINTF_S(apStr, sizeof(apStr), format, idx);
+
+    FM_LOG_ERROR(FM_LOG_CAT_PLATFORM, "\'%s\' %s.\n", propTxt, apStr);
+
+}   /* end CfgOrderErrorMsg */
+
+
+/*****************************************************************************/
+/* LoadTlv
+ * \ingroup intPlatform
+ *
+ * \desc            Load a TLV.
+ *
+ * \param[in]       tlv is an array of encoded TLV bytes.
+ *
+ * \return          FM_OK if successful.
+ * \return          Other ''Status Codes'' codes as appropriate in case of
+ *                  failure.
+ *
+ *****************************************************************************/
+static fm_status LoadTlv(fm_byte *tlv)
+{
+    fm_uint     tlvType;
+    fm_uint     tlvLen;
+    fm_portLed *portLed;
+    fm_phyI2C  *phyI2c;
+    fm_vrmI2C  *vrmI2c;
+    fm_busSel  *xcvrI2cBus;
+    fm_xcvrIo  *xcvrIo;
+    fm_uint     bus;
+    fm_uint     idx;
+    fm_uint     led;
+    fm_uint     subLed;
+
+
+    tlvType = (tlv[0] << 8) | tlv[1];
+    tlvLen = tlv[2];
+
+    switch (tlvType) {
+    case FM_TLV_PLAT_FILE_LOCK_NAME: /* Shared with platform config */
+        CopyTlvStr(hwCfg.fileLockName,
+                sizeof(hwCfg.fileLockName),
+                tlv + 3, tlvLen);
+        break;
+    case FM_TLV_PLAT_LIB_I2C_DEVNAME:
+        bus = GetTlvInt(tlv + 3, 1);
+        /* There is no numBus config, we have to derive them */
+        if (bus >= NUM_I2C_BUS)
+        {
+            FM_LOG_ERROR(FM_LOG_CAT_PLATFORM,
+                "Max number of I2C bus is set to %d.\n",
+                NUM_I2C_BUS);
+            return FM_ERR_INVALID_ARGUMENT;
+        }
+        if (hwCfg.numBus <= bus)
+        {
+            hwCfg.numBus = bus + 1;
+            hwCfg.i2c[bus].i2cWrRdEn = TRUE;
+        }
+        CopyTlvStr(hwCfg.i2c[bus].devName,
+                sizeof(hwCfg.i2c[bus].devName),
+                tlv + 4, tlvLen - 1);
+        break;
+    case FM_TLV_PLAT_LIB_MUX_COUNT:
+        if (hwCfg.numPcaMux > 0)
+        {
+            FM_LOG_ERROR(FM_LOG_CAT_PLATFORM,
+                "numPcaMux %d has already been set to %d.\n",
+                GetTlvInt(tlv + 3, 1), hwCfg.numPcaMux);
+            return FM_ERR_INVALID_ARGUMENT;
+        }
+        hwCfg.numPcaMux = GetTlvInt(tlv + 3, 1);
+
+        hwCfg.pcaMux =
+            fmAlloc( hwCfg.numPcaMux * sizeof(fm_pcaMux) );
+
+        if (hwCfg.pcaMux == NULL)
+        {
+            hwCfg.numPcaMux = 0;
+            FM_LOG_EXIT(FM_LOG_CAT_PLATFORM, FM_ERR_NO_MEM);
+        }
+
+        for (idx = 0 ; idx < hwCfg.numPcaMux ; idx++)
+        {
+            hwCfg.pcaMux[idx].parentMuxIdx = UINT_NOT_USED;
+        }
+
+        break;
+    case FM_TLV_PLAT_LIB_MUX_MODEL:
+        idx = GetTlvInt(tlv + 3, 1);
+        if (idx >= hwCfg.numPcaMux)
+        {
+            IdxErrorMsg(idx, hwCfg.numPcaMux, "numMux", tlv);
+            return FM_ERR_INVALID_ARGUMENT;
+        }
+        hwCfg.pcaMux[idx].model = GetTlvInt(tlv + 4, 1);
+        break;
+    case FM_TLV_PLAT_LIB_MUX_BUS:
+        idx = GetTlvInt(tlv + 3, 1);
+        if (idx >= hwCfg.numPcaMux)
+        {
+            IdxErrorMsg(idx, hwCfg.numPcaMux, "numMux", tlv);
+            return FM_ERR_INVALID_ARGUMENT;
+        }
+        hwCfg.pcaMux[idx].bus = GetTlvInt(tlv + 4, 1);
+        break;
+    case FM_TLV_PLAT_LIB_MUX_ADDR:
+        idx = GetTlvInt(tlv + 3, 1);
+        if (idx >= hwCfg.numPcaMux)
+        {
+            IdxErrorMsg(idx, hwCfg.numPcaMux, "numMux", tlv);
+            return FM_ERR_INVALID_ARGUMENT;
+        }
+        hwCfg.pcaMux[idx].addr = GetTlvInt(tlv + 4, 2);
+        break;
+    case FM_TLV_PLAT_LIB_MUX_PARENT_IDX:
+        idx = GetTlvInt(tlv + 3, 1);
+        if (idx >= hwCfg.numPcaMux)
+        {
+            IdxErrorMsg(idx, hwCfg.numPcaMux, "numMux", tlv);
+            return FM_ERR_INVALID_ARGUMENT;
+        }
+        hwCfg.pcaMux[idx].parentMuxIdx =
+            GetTlvInt(tlv + 4, 1);
+        break;
+    case FM_TLV_PLAT_LIB_MUX_PARENT_VAL:
+        idx = GetTlvInt(tlv + 3, 1);
+        if (idx >= hwCfg.numPcaMux)
+        {
+            IdxErrorMsg(idx, hwCfg.numPcaMux, "numMux", tlv);
+            return FM_ERR_INVALID_ARGUMENT;
+        }
+        hwCfg.pcaMux[idx].parentMuxValue =
+            GetTlvInt(tlv + 4, 4);
+        break;
+
+    case FM_TLV_PLAT_LIB_IO_COUNT:
+        if (hwCfg.numPcaIo > 0)
+        {
+            FM_LOG_ERROR(FM_LOG_CAT_PLATFORM,
+                "numPcaIo %d has already been set to %d.\n",
+                GetTlvInt(tlv + 3, 1), hwCfg.numPcaIo);
+            return FM_ERR_INVALID_ARGUMENT;
+        }
+        hwCfg.numPcaIo = GetTlvInt(tlv + 3, 1);
+
+        hwCfg.pcaIo =
+            fmAlloc( hwCfg.numPcaIo * sizeof(fm_pcaIo) );
+
+        if (hwCfg.pcaIo == NULL)
+        {
+            hwCfg.numPcaIo = 0;
+            FM_LOG_EXIT(FM_LOG_CAT_PLATFORM, FM_ERR_NO_MEM);
+        }
+
+        for (idx = 0 ; idx < hwCfg.numPcaIo ; idx++)
+        {
+            hwCfg.pcaIo[idx].parentMuxIdx = UINT_NOT_USED;
+        }
+
+        break;
+    case FM_TLV_PLAT_LIB_IO_MODEL:
+        idx = GetTlvInt(tlv + 3, 1);
+        if (idx >= hwCfg.numPcaIo)
+        {
+            IdxErrorMsg(idx, hwCfg.numPcaIo, "numIo", tlv);
+            return FM_ERR_INVALID_ARGUMENT;
+        }
+        hwCfg.pcaIo[idx].dev.model = GetTlvInt(tlv + 4, 1);
+        switch (hwCfg.pcaIo[idx].dev.model)
+        {
+            case PCA_IO_9634:
+            case PCA_IO_9635:
+                hwCfg.pcaIo[idx].dev.ledBlinkPeriod = 5;
+                hwCfg.pcaIo[idx].dev.ledBrightness = 255;
+                break;
+            case PCA_IO_9551:
+               hwCfg.pcaIo[idx].dev.ledBlinkPeriod  = 9;
+                break;
+            default:
+                break;
+        }
+        hwCfg.pcaIo[idx].loadFlags |= LF_IO_MODEL;
+        break;
+    case FM_TLV_PLAT_LIB_IO_BUS:
+        idx = GetTlvInt(tlv + 3, 1);
+        if (idx >= hwCfg.numPcaIo)
+        {
+            IdxErrorMsg(idx, hwCfg.numPcaIo, "numIo", tlv);
+            return FM_ERR_INVALID_ARGUMENT;
+        }
+        hwCfg.pcaIo[idx].dev.bus = GetTlvInt(tlv + 4, 1);
+        break;
+    case FM_TLV_PLAT_LIB_IO_ADDR:
+        idx = GetTlvInt(tlv + 3, 1);
+        if (idx >= hwCfg.numPcaIo)
+        {
+            IdxErrorMsg(idx, hwCfg.numPcaIo, "numIo", tlv);
+            return FM_ERR_INVALID_ARGUMENT;
+        }
+        hwCfg.pcaIo[idx].dev.addr = GetTlvInt(tlv + 4, 2);
+        break;
+    case FM_TLV_PLAT_LIB_IO_PARENT_IDX:
+        idx = GetTlvInt(tlv + 3, 1);
+        if (idx >= hwCfg.numPcaIo)
+        {
+            IdxErrorMsg(idx, hwCfg.numPcaIo, "numIo", tlv);
+            return FM_ERR_INVALID_ARGUMENT;
+        }
+        hwCfg.pcaIo[idx].parentMuxIdx =
+            GetTlvInt(tlv + 4, 1);
+        break;
+    case FM_TLV_PLAT_LIB_IO_PARENT_VAL:
+        idx = GetTlvInt(tlv + 3, 1);
+        if (idx >= hwCfg.numPcaIo)
+        {
+            IdxErrorMsg(idx, hwCfg.numPcaIo, "numIo", tlv);
+            return FM_ERR_INVALID_ARGUMENT;
+        }
+        hwCfg.pcaIo[idx].parentMuxValue =
+            GetTlvInt(tlv + 4, 4);
+        break;
+
+    case FM_TLV_PLAT_LIB_IO_LED_BLINK_PER:
+        idx = GetTlvInt(tlv + 3, 1);
+        if (idx >= hwCfg.numPcaIo)
+        {
+            IdxErrorMsg(idx, hwCfg.numPcaIo, "numIo", tlv);
+            return FM_ERR_INVALID_ARGUMENT;
+        }
+
+        if (!(hwCfg.pcaIo[idx].loadFlags & LF_IO_MODEL))
+        {
+            CfgOrderErrorMsg(tlv, idx,
+                "must be before PCA IO %d model config");            
+            return FM_ERR_INVALID_ARGUMENT;
+        }
+
+        hwCfg.pcaIo[idx].dev.ledBlinkPeriod =
+            GetTlvInt(tlv + 4, 1);
+        break;
+    case FM_TLV_PLAT_LIB_IO_LED_BRIGHTNESS:
+        idx = GetTlvInt(tlv + 3, 1);
+        if (idx >= hwCfg.numPcaIo)
+        {
+            IdxErrorMsg(idx, hwCfg.numPcaIo, "numIo", tlv);
+            return FM_ERR_INVALID_ARGUMENT;
+        }
+
+        if (!(hwCfg.pcaIo[idx].loadFlags & LF_IO_MODEL))
+        {
+            CfgOrderErrorMsg(tlv, idx,
+                "must be before PCA IO %d model config");            
+            return FM_ERR_INVALID_ARGUMENT;
+        }
+
+        hwCfg.pcaIo[idx].dev.ledBrightness =
+            GetTlvInt(tlv + 4, 1);
+        break;
+    case FM_TLV_PLAT_LIB_XCVR_DEF_MODABS_PIN:
+        hwCfg.defSfppPat.modPresN =
+            GetTlvInt(tlv + 3, 1);
+        break;
+    case FM_TLV_PLAT_LIB_XCVR_DEF_RXLOS_PIN:
+        hwCfg.defSfppPat.rxLos =
+            GetTlvInt(tlv + 3, 1);
+        break;
+    case FM_TLV_PLAT_LIB_XCVR_DEF_TXDISABLE_PIN:
+        hwCfg.defSfppPat.txDisable =
+            GetTlvInt(tlv + 3, 1);
+        break;
+    case FM_TLV_PLAT_LIB_XCVR_DEF_TXFAULT_PIN:
+        hwCfg.defSfppPat.txFault =
+            GetTlvInt(tlv + 3, 1);
+        break;
+    case FM_TLV_PLAT_LIB_XCVR_DEF_MODPRESL_PIN:
+        hwCfg.defQsfpPat.modPresN =
+            GetTlvInt(tlv + 3, 1);
+        break;
+    case FM_TLV_PLAT_LIB_XCVR_DEF_INTL_PIN:
+        hwCfg.defQsfpPat.intrN =
+            GetTlvInt(tlv + 3, 1);
+        break;
+    case FM_TLV_PLAT_LIB_XCVR_DEF_LPMODE_PIN:
+        hwCfg.defQsfpPat.lpMode =
+            GetTlvInt(tlv + 3, 1);
+        break;
+    case FM_TLV_PLAT_LIB_XCVR_DEF_RESETL_PIN:
+        hwCfg.defQsfpPat.resetN =
+            GetTlvInt(tlv + 3, 1);
+        break;
+    case FM_TLV_PLAT_LIB_HWRESID_COUNT:
+        if (hwCfg.numResId > 0)
+        {
+            FM_LOG_ERROR(FM_LOG_CAT_PLATFORM,
+                "numResId %d has already been set to %d.\n",
+                GetTlvInt(tlv + 3, 1), hwCfg.numResId);
+            return FM_ERR_INVALID_ARGUMENT;
+        }
+        hwCfg.numResId = GetTlvInt(tlv + 3, 1);
+
+        hwCfg.hwResId =
+            fmAlloc( hwCfg.numResId * sizeof(fm_hwResId) );
+
+        if (hwCfg.hwResId == NULL)
+        {
+            hwCfg.numResId = 0;
+            FM_LOG_EXIT(FM_LOG_CAT_PLATFORM, FM_ERR_NO_MEM);
+        }
+        for (idx = 0; idx < hwCfg.numResId; idx++) {
+            hwCfg.hwResId[idx].xcvrI2cBusSel.parentMuxIdx =
+                UINT_NOT_USED;
+            hwCfg.hwResId[idx].xcvrStateIo.basePin = UINT_NOT_USED;
+            hwCfg.hwResId[idx].phy.parentMuxIdx = UINT_NOT_USED;
+            hwCfg.hwResId[idx].vrm.parentMuxIdx = UINT_NOT_USED;
+            for (led = 0 ; led < NUM_LED_PER_PORT ; led++)
+            {
+                portLed = &hwCfg.hwResId[idx].portLed[led];
+                portLed->ioIdx = UINT_NOT_USED;
+                for (subLed = 0 ; subLed < NUM_SUB_LED ; subLed++)
+                {
+                    portLed->subLed[subLed].pin        = UINT_NOT_USED;
+                    portLed->subLed[subLed].usage      = UINT_NOT_USED;
+                    portLed->subLed[subLed].brightness = UINT_NOT_USED;
+                }
+            }
+
+            xcvrI2cBus = &hwCfg.hwResId[idx].xcvrI2cBusSel;
+            xcvrI2cBus->busSelType = hwCfg.defBusSelType;
+            phyI2c = &hwCfg.hwResId[idx].phy;
+            phyI2c->busSelType = hwCfg.defBusSelType;                    
+            vrmI2c = &hwCfg.hwResId[idx].vrm;
+            vrmI2c->busSelType = hwCfg.defBusSelType;
+        }
+        break;
+    case FM_TLV_PLAT_LIB_HWRESID_INTF_TYPE:
+        idx = GetTlvInt(tlv + 3, 1);
+        if (idx >= hwCfg.numResId)
+        {
+            IdxErrorMsg(idx, hwCfg.numResId, "numHwResId", tlv);
+            return FM_ERR_INVALID_ARGUMENT;
+        }
+        xcvrIo = &hwCfg.hwResId[idx].xcvrStateIo;
+        xcvrIo->intfType = GetTlvInt(tlv + 4, 1);
+        break;
+    case FM_TLV_PLAT_LIB_XCVR_IDX:
+        idx = GetTlvInt(tlv + 3, 1);
+        if (idx >= hwCfg.numResId)
+        {
+            IdxErrorMsg(idx, hwCfg.numResId, "numHwResId", tlv);
+            return FM_ERR_INVALID_ARGUMENT;
+        }
+        xcvrIo = &hwCfg.hwResId[idx].xcvrStateIo;
+        xcvrIo->ioIdx = GetTlvInt(tlv + 4, 1);
+        break;
+    case FM_TLV_PLAT_LIB_XCVR_BASE_PIN:
+        idx = GetTlvInt(tlv + 3, 1);
+        if (idx >= hwCfg.numResId)
+        {
+            IdxErrorMsg(idx, hwCfg.numResId, "numHwResId", tlv);
+            return FM_ERR_INVALID_ARGUMENT;
+        }
+        xcvrIo = &hwCfg.hwResId[idx].xcvrStateIo;
+        xcvrIo->basePin = GetTlvInt(tlv + 4, 1);
+
+        /* Now calculate pin offsets only if pin pattern is defined */
+        if (xcvrIo->intfType == INTF_TYPE_SFPP) {
+            if (hwCfg.defSfppPat.modPresN != UINT_NOT_USED)
+            {
+                xcvrIo->u.sfppPin.modPresN = xcvrIo->basePin +
+                    hwCfg.defSfppPat.modPresN;
+            }
+            if (hwCfg.defSfppPat.rxLos != UINT_NOT_USED)
+            {
+                xcvrIo->u.sfppPin.rxLos = xcvrIo->basePin +
+                    hwCfg.defSfppPat.rxLos;
+            }
+            if (hwCfg.defSfppPat.txFault != UINT_NOT_USED)
+            {
+                xcvrIo->u.sfppPin.txFault = xcvrIo->basePin +
+                    hwCfg.defSfppPat.txFault;
+            }
+            if (hwCfg.defSfppPat.txDisable != UINT_NOT_USED)
+            {
+                xcvrIo->u.sfppPin.txDisable = xcvrIo->basePin +
+                    hwCfg.defSfppPat.txDisable;
+            }
+        } else if (xcvrIo->intfType == INTF_TYPE_QSFP) {
+            if (hwCfg.defQsfpPat.modPresN != UINT_NOT_USED)
+            {
+                xcvrIo->u.qsfpPin.modPresN = xcvrIo->basePin +
+                    hwCfg.defQsfpPat.modPresN;
+            }
+            if (hwCfg.defQsfpPat.intrN != UINT_NOT_USED)
+            {
+                xcvrIo->u.qsfpPin.intrN = xcvrIo->basePin +
+                    hwCfg.defQsfpPat.intrN;
+            }
+            if (hwCfg.defQsfpPat.lpMode != UINT_NOT_USED)
+            {
+                xcvrIo->u.qsfpPin.lpMode = xcvrIo->basePin +
+                    hwCfg.defQsfpPat.lpMode;
+            }
+            if (hwCfg.defQsfpPat.resetN != UINT_NOT_USED)
+            {
+                xcvrIo->u.qsfpPin.resetN = xcvrIo->basePin +
+                    hwCfg.defQsfpPat.resetN;
+            }
+        }
+        break;
+    case FM_TLV_PLAT_LIB_XCVR_MODABS_PIN:
+        idx = GetTlvInt(tlv + 3, 1);
+        if (idx >= hwCfg.numResId)
+        {
+            IdxErrorMsg(idx, hwCfg.numResId, "numHwResId", tlv);
+            return FM_ERR_INVALID_ARGUMENT;
+        }
+        xcvrIo = &hwCfg.hwResId[idx].xcvrStateIo;
+        if (xcvrIo->basePin == UINT_NOT_USED)
+        {
+            CfgOrderErrorMsg(tlv, idx,
+                "must have hwResourceId %d basePin defined first");            
+            return FM_ERR_INVALID_ARGUMENT;
+        }
+        xcvrIo->u.sfppPin.modPresN = xcvrIo->basePin + GetTlvInt(tlv + 4, 1);
+        break;
+    case FM_TLV_PLAT_LIB_XCVR_RXLOS_PIN:
+        idx = GetTlvInt(tlv + 3, 1);
+        if (idx >= hwCfg.numResId)
+        {
+            IdxErrorMsg(idx, hwCfg.numResId, "numHwResId", tlv);
+            return FM_ERR_INVALID_ARGUMENT;
+        }
+        xcvrIo = &hwCfg.hwResId[idx].xcvrStateIo;
+        if (xcvrIo->basePin == UINT_NOT_USED)
+        {
+            CfgOrderErrorMsg(tlv, idx,
+                "must have hwResourceId %d basePin defined first");            
+            return FM_ERR_INVALID_ARGUMENT;
+        }
+        xcvrIo->u.sfppPin.rxLos = xcvrIo->basePin + GetTlvInt(tlv + 4, 1);
+        break;
+    case FM_TLV_PLAT_LIB_XCVR_TXDISABLE_PIN:
+        idx = GetTlvInt(tlv + 3, 1);
+        if (idx >= hwCfg.numResId)
+        {
+            IdxErrorMsg(idx, hwCfg.numResId, "numHwResId", tlv);
+            return FM_ERR_INVALID_ARGUMENT;
+        }
+        xcvrIo = &hwCfg.hwResId[idx].xcvrStateIo;
+        if (xcvrIo->basePin == UINT_NOT_USED)
+        {
+            CfgOrderErrorMsg(tlv, idx,
+                "must have hwResourceId %d basePin defined first");            
+            return FM_ERR_INVALID_ARGUMENT;
+        }
+        xcvrIo->u.sfppPin.txDisable = xcvrIo->basePin + GetTlvInt(tlv + 4, 1);
+        break;
+    case FM_TLV_PLAT_LIB_XCVR_TXFAULT_PIN:
+        idx = GetTlvInt(tlv + 3, 1);
+        if (idx >= hwCfg.numResId)
+        {
+            IdxErrorMsg(idx, hwCfg.numResId, "numHwResId", tlv);
+            return FM_ERR_INVALID_ARGUMENT;
+        }
+        xcvrIo = &hwCfg.hwResId[idx].xcvrStateIo;
+        if (xcvrIo->basePin == UINT_NOT_USED)
+        {
+            CfgOrderErrorMsg(tlv, idx,
+                "must have hwResourceId %d basePin defined first");            
+            return FM_ERR_INVALID_ARGUMENT;
+        }
+        xcvrIo->u.sfppPin.txFault = xcvrIo->basePin + GetTlvInt(tlv + 4, 1);
+        break;
+    case FM_TLV_PLAT_LIB_XCVR_MODPRESL_PIN:
+        idx = GetTlvInt(tlv + 3, 1);
+        if (idx >= hwCfg.numResId)
+        {
+            IdxErrorMsg(idx, hwCfg.numResId, "numHwResId", tlv);
+            return FM_ERR_INVALID_ARGUMENT;
+        }
+        xcvrIo = &hwCfg.hwResId[idx].xcvrStateIo;
+        if (xcvrIo->basePin == UINT_NOT_USED)
+        {
+            CfgOrderErrorMsg(tlv, idx,
+                "must have hwResourceId %d basePin defined first");            
+            return FM_ERR_INVALID_ARGUMENT;
+        }
+        xcvrIo->u.qsfpPin.modPresN = xcvrIo->basePin + GetTlvInt(tlv + 4, 1);
+        break;
+    case FM_TLV_PLAT_LIB_XCVR_INTL_PIN:
+        idx = GetTlvInt(tlv + 3, 1);
+        if (idx >= hwCfg.numResId)
+        {
+            IdxErrorMsg(idx, hwCfg.numResId, "numHwResId", tlv);
+            return FM_ERR_INVALID_ARGUMENT;
+        }
+        xcvrIo = &hwCfg.hwResId[idx].xcvrStateIo;
+        if (xcvrIo->basePin == UINT_NOT_USED)
+        {
+            CfgOrderErrorMsg(tlv, idx,
+                "must have hwResourceId %d basePin defined first");            
+            return FM_ERR_INVALID_ARGUMENT;
+        }
+        xcvrIo->u.qsfpPin.intrN = xcvrIo->basePin + GetTlvInt(tlv + 4, 1);
+        break;
+    case FM_TLV_PLAT_LIB_XCVR_LPMODE_PIN:
+        idx = GetTlvInt(tlv + 3, 1);
+        if (idx >= hwCfg.numResId)
+        {
+            IdxErrorMsg(idx, hwCfg.numResId, "numHwResId", tlv);
+            return FM_ERR_INVALID_ARGUMENT;
+        }
+        xcvrIo = &hwCfg.hwResId[idx].xcvrStateIo;
+        if (xcvrIo->basePin == UINT_NOT_USED)
+        {
+            CfgOrderErrorMsg(tlv, idx,
+                "must have hwResourceId %d basePin defined first");            
+            return FM_ERR_INVALID_ARGUMENT;
+        }
+        xcvrIo->u.qsfpPin.lpMode = xcvrIo->basePin + GetTlvInt(tlv + 4, 1);
+        break;
+    case FM_TLV_PLAT_LIB_XCVR_RESETL_PIN:
+        idx = GetTlvInt(tlv + 3, 1);
+        if (idx >= hwCfg.numResId)
+        {
+            IdxErrorMsg(idx, hwCfg.numResId, "numHwResId", tlv);
+            return FM_ERR_INVALID_ARGUMENT;
+        }
+        xcvrIo = &hwCfg.hwResId[idx].xcvrStateIo;
+        if (xcvrIo->basePin == UINT_NOT_USED)
+        {
+            CfgOrderErrorMsg(tlv, idx,
+                "must have hwResourceId %d basePin defined first");            
+            return FM_ERR_INVALID_ARGUMENT;
+        }
+        xcvrIo->u.qsfpPin.resetN = xcvrIo->basePin + GetTlvInt(tlv + 4, 1);
+        break;
+    case FM_TLV_PLAT_LIB_XCVR_I2C_DEF_BUSSELTYPE:
+        if (hwCfg.numResId != 0)
+        {
+            CfgOrderErrorMsg(tlv, 0,
+                "must must be before hwResourceId.count config");            
+            return FM_ERR_INVALID_ARGUMENT;
+        }
+        hwCfg.defBusSelType = GetTlvInt(tlv + 3, 1);
+        break;
+    case FM_TLV_PLAT_LIB_XCVR_I2C_BUSSELTYPE:
+        idx = GetTlvInt(tlv + 3, 1);
+        if (idx >= hwCfg.numResId)
+        {
+            IdxErrorMsg(idx, hwCfg.numResId, "numHwResId", tlv);
+            return FM_ERR_INVALID_ARGUMENT;
+        }
+        xcvrI2cBus = &hwCfg.hwResId[idx].xcvrI2cBusSel;
+        xcvrI2cBus->busSelType = GetTlvInt(tlv + 4, 1);
+        break;
+    case FM_TLV_PLAT_LIB_XCVR_I2C_MUX_IDX:
+        idx = GetTlvInt(tlv + 3, 1);
+        if (idx >= hwCfg.numResId)
+        {
+            IdxErrorMsg(idx, hwCfg.numResId, "numHwResId", tlv);
+            return FM_ERR_INVALID_ARGUMENT;
+        }
+        xcvrI2cBus = &hwCfg.hwResId[idx].xcvrI2cBusSel;
+        xcvrI2cBus->parentMuxIdx = GetTlvInt(tlv + 4, 1);
+        break;
+    case FM_TLV_PLAT_LIB_XCVR_I2C_MUX_VAL:
+        idx = GetTlvInt(tlv + 3, 1);
+        if (idx >= hwCfg.numResId)
+        {
+            IdxErrorMsg(idx, hwCfg.numResId, "numHwResId", tlv);
+            return FM_ERR_INVALID_ARGUMENT;
+        }
+        xcvrI2cBus = &hwCfg.hwResId[idx].xcvrI2cBusSel;
+        xcvrI2cBus->parentMuxValue = GetTlvInt(tlv + 4, 4);
+        break;
+    case FM_TLV_PLAT_LIB_XCVR_I2C_IO_IDX:
+        idx = GetTlvInt(tlv + 3, 1);
+        if (idx >= hwCfg.numResId)
+        {
+            IdxErrorMsg(idx, hwCfg.numResId, "numHwResId", tlv);
+            return FM_ERR_INVALID_ARGUMENT;
+        }
+        xcvrI2cBus = &hwCfg.hwResId[idx].xcvrI2cBusSel;
+        xcvrI2cBus->ioIdx = GetTlvInt(tlv + 4, 1);
+        break;
+    case FM_TLV_PLAT_LIB_XCVR_I2C_IO_PIN:
+        idx = GetTlvInt(tlv + 3, 1);
+        if (idx >= hwCfg.numResId)
+        {
+            IdxErrorMsg(idx, hwCfg.numResId, "numHwResId", tlv);
+            return FM_ERR_INVALID_ARGUMENT;
+        }
+        xcvrI2cBus = &hwCfg.hwResId[idx].xcvrI2cBusSel;
+        xcvrI2cBus->ioPin = GetTlvInt(tlv + 4, 1);
+        break;
+    case FM_TLV_PLAT_LIB_XCVR_I2C_IO_PIN_POL:
+        idx = GetTlvInt(tlv + 3, 1);
+        if (idx >= hwCfg.numResId)
+        {
+            IdxErrorMsg(idx, hwCfg.numResId, "numHwResId", tlv);
+            return FM_ERR_INVALID_ARGUMENT;
+        }
+        xcvrI2cBus = &hwCfg.hwResId[idx].xcvrI2cBusSel;
+        xcvrI2cBus->ioPinPolarity = GetTlvInt(tlv + 4, 1);
+        break;
+    case FM_TLV_PLAT_LIB_PORTLED_TYPE:
+        idx = GetTlvInt(tlv + 3, 1);
+        if (idx >= hwCfg.numResId)
+        {
+            IdxErrorMsg(idx, hwCfg.numResId, "numHwResId", tlv);
+            return FM_ERR_INVALID_ARGUMENT;
+        }
+        led = GetTlvInt(tlv + 4, 1);
+        if (led >= NUM_LED_PER_PORT)
+            return FM_ERR_INVALID_ARGUMENT;
+        portLed = &hwCfg.hwResId[idx].portLed[led];
+        portLed->type = GetTlvInt(tlv + 5, 1);
+    break;
+    case FM_TLV_PLAT_LIB_PORTLED_IO_IDX:
+        idx = GetTlvInt(tlv + 3, 1);
+        if (idx >= hwCfg.numResId)
+        {
+            IdxErrorMsg(idx, hwCfg.numResId, "numHwResId", tlv);
+            return FM_ERR_INVALID_ARGUMENT;
+        }
+        led = GetTlvInt(tlv + 4, 1);
+        if (led >= NUM_LED_PER_PORT)
+            return FM_ERR_INVALID_ARGUMENT;
+        portLed = &hwCfg.hwResId[idx].portLed[led];
+        portLed->ioIdx = GetTlvInt(tlv + 5, 1);
+    break;
+    case FM_TLV_PLAT_LIB_PORTLED_IO_PIN:
+        idx = GetTlvInt(tlv + 3, 1);
+        if (idx >= hwCfg.numResId)
+        {
+            IdxErrorMsg(idx, hwCfg.numResId, "numHwResId", tlv);
+            return FM_ERR_INVALID_ARGUMENT;
+        }
+        led = GetTlvInt(tlv + 4, 1);
+        if (led >= NUM_LED_PER_PORT)
+            return FM_ERR_INVALID_ARGUMENT;
+        portLed = &hwCfg.hwResId[idx].portLed[led];
+        portLed->subLed[0].pin = GetTlvInt(tlv + 5, 1);
+    break;
+    case FM_TLV_PLAT_LIB_PORTLED_IO_LANE_PIN:
+        idx = GetTlvInt(tlv + 3, 1);
+        if (idx >= hwCfg.numResId)
+        {
+            IdxErrorMsg(idx, hwCfg.numResId, "numHwResId", tlv);
+            return FM_ERR_INVALID_ARGUMENT;
+        }
+        led = GetTlvInt(tlv + 4, 1);
+        if (led >= NUM_LED_PER_PORT)
+            return FM_ERR_INVALID_ARGUMENT;
+        portLed = &hwCfg.hwResId[idx].portLed[led];
+        subLed = GetTlvInt(tlv + 5, 1);
+        if (subLed >= NUM_SUB_LED)
+            return FM_ERR_INVALID_ARGUMENT;
+        portLed->subLed[subLed].pin = GetTlvInt(tlv + 6, 1);
+    break;
+    case FM_TLV_PLAT_LIB_PORTLED_IO_BRIGHTNESS:
+        idx = GetTlvInt(tlv + 3, 1);
+        if (idx >= hwCfg.numResId)
+        {
+            IdxErrorMsg(idx, hwCfg.numResId, "numHwResId", tlv);
+            return FM_ERR_INVALID_ARGUMENT;
+        }
+        led = GetTlvInt(tlv + 4, 1);
+        if (led >= NUM_LED_PER_PORT)
+            return FM_ERR_INVALID_ARGUMENT;
+        portLed = &hwCfg.hwResId[idx].portLed[led];
+        portLed->subLed[0].brightness = GetTlvInt(tlv + 5, 1);
+    break;
+    case FM_TLV_PLAT_LIB_PORTLED_IO_LANE_BRIGHTNESS:
+        idx = GetTlvInt(tlv + 3, 1);
+        if (idx >= hwCfg.numResId)
+        {
+            IdxErrorMsg(idx, hwCfg.numResId, "numHwResId", tlv);
+            return FM_ERR_INVALID_ARGUMENT;
+        }
+        led = GetTlvInt(tlv + 4, 1);
+        if (led >= NUM_LED_PER_PORT)
+            return FM_ERR_INVALID_ARGUMENT;
+        portLed = &hwCfg.hwResId[idx].portLed[led];
+        subLed = GetTlvInt(tlv + 5, 1);
+        if (subLed >= NUM_SUB_LED)
+            return FM_ERR_INVALID_ARGUMENT;
+        portLed->subLed[subLed].brightness = GetTlvInt(tlv + 6, 1);
+    break;
+    case FM_TLV_PLAT_LIB_PORTLED_IO_USAGE:
+        idx = GetTlvInt(tlv + 3, 1);
+        if (idx >= hwCfg.numResId)
+        {
+            IdxErrorMsg(idx, hwCfg.numResId, "numHwResId", tlv);
+            return FM_ERR_INVALID_ARGUMENT;
+        }
+        led = GetTlvInt(tlv + 4, 1);
+        if (led >= NUM_LED_PER_PORT)
+            return FM_ERR_INVALID_ARGUMENT;
+        portLed = &hwCfg.hwResId[idx].portLed[led];
+        portLed->subLed[0].usage = GetTlvInt(tlv + 5, 4);
+    break;
+    case FM_TLV_PLAT_LIB_PORTLED_IO_LANE_USAGE:
+        idx = GetTlvInt(tlv + 3, 1);
+        if (idx >= hwCfg.numResId)
+        {
+            IdxErrorMsg(idx, hwCfg.numResId, "numHwResId", tlv);
+            return FM_ERR_INVALID_ARGUMENT;
+        }
+        led = GetTlvInt(tlv + 4, 1);
+        if (led >= NUM_LED_PER_PORT)
+            return FM_ERR_INVALID_ARGUMENT;
+        portLed = &hwCfg.hwResId[idx].portLed[led];
+        subLed = GetTlvInt(tlv + 5, 1);
+        if (subLed >= NUM_SUB_LED)
+            return FM_ERR_INVALID_ARGUMENT;
+        portLed->subLed[subLed].usage = GetTlvInt(tlv + 6, 4);
+    break;
+    case FM_TLV_PLAT_LIB_HWRESID_TYPE:
+        idx = GetTlvInt(tlv + 3, 1);
+        if (idx >= hwCfg.numResId)
+        {
+            IdxErrorMsg(idx, hwCfg.numResId, "numHwResId", tlv);
+            return FM_ERR_INVALID_ARGUMENT;
+        }
+        hwCfg.hwResId[idx].type = GetTlvInt(tlv + 4, 1);
+        break;
+    case FM_TLV_PLAT_LIB_DEBUG:
+        hwCfg.debug = GetTlvInt(tlv + 3, 4);
+        break;
+    case FM_TLV_PLAT_LIB_PHY_BUSSELTYPE:
+        idx = GetTlvInt(tlv + 3, 1);
+        if (idx >= hwCfg.numResId)
+        {
+            IdxErrorMsg(idx, hwCfg.numResId, "numHwResId", tlv);
+            return FM_ERR_INVALID_ARGUMENT;
+        }
+        phyI2c = &hwCfg.hwResId[idx].phy;
+        phyI2c->busSelType = GetTlvInt(tlv + 4, 1);
+        break;
+    case FM_TLV_PLAT_LIB_PHY_MUX_IDX:
+        idx = GetTlvInt(tlv + 3, 1);
+        if (idx >= hwCfg.numResId)
+        {
+            IdxErrorMsg(idx, hwCfg.numResId, "numHwResId", tlv);
+            return FM_ERR_INVALID_ARGUMENT;
+        }
+        phyI2c = &hwCfg.hwResId[idx].phy;
+        phyI2c->parentMuxIdx = GetTlvInt(tlv + 4, 1);
+        break;
+    case FM_TLV_PLAT_LIB_PHY_MUX_VAL:
+        idx = GetTlvInt(tlv + 3, 1);
+        if (idx >= hwCfg.numResId)
+        {
+            IdxErrorMsg(idx, hwCfg.numResId, "numHwResId", tlv);
+            return FM_ERR_INVALID_ARGUMENT;
+        }
+        phyI2c = &hwCfg.hwResId[idx].phy;
+        phyI2c->parentMuxValue = GetTlvInt(tlv + 4, 4);
+        break;
+    case FM_TLV_PLAT_LIB_PHY_BUS:
+        idx = GetTlvInt(tlv + 3, 1);
+        if (idx >= hwCfg.numResId)
+        {
+            IdxErrorMsg(idx, hwCfg.numResId, "numHwResId", tlv);
+            return FM_ERR_INVALID_ARGUMENT;
+        }
+        phyI2c = &hwCfg.hwResId[idx].phy;
+        phyI2c->bus = GetTlvInt(tlv + 4, 1);
+        break;
+    case FM_TLV_PLAT_LIB_VRM_BUSSELTYPE:
+        idx = GetTlvInt(tlv + 3, 1);
+        if (idx >= hwCfg.numResId)
+        {
+            IdxErrorMsg(idx, hwCfg.numResId, "numHwResId", tlv);
+            return FM_ERR_INVALID_ARGUMENT;
+        }
+        vrmI2c = &hwCfg.hwResId[idx].vrm;
+        vrmI2c->busSelType = GetTlvInt(tlv + 4, 1);
+        break;
+    case FM_TLV_PLAT_LIB_VRM_MODEL:
+        idx = GetTlvInt(tlv + 3, 1);
+        if (idx >= hwCfg.numResId)
+        {
+            IdxErrorMsg(idx, hwCfg.numResId, "numHwResId", tlv);
+            return FM_ERR_INVALID_ARGUMENT;
+        }
+        vrmI2c = &hwCfg.hwResId[idx].vrm;
+        vrmI2c->model = GetTlvInt(tlv + 4, 1);
+        break;
+    case FM_TLV_PLAT_LIB_VRM_MUX_IDX:
+        idx = GetTlvInt(tlv + 3, 1);
+        if (idx >= hwCfg.numResId)
+        {
+            IdxErrorMsg(idx, hwCfg.numResId, "numHwResId", tlv);
+            return FM_ERR_INVALID_ARGUMENT;
+        }
+        vrmI2c = &hwCfg.hwResId[idx].vrm;
+        vrmI2c->parentMuxIdx = GetTlvInt(tlv + 4, 1);
+        break;
+    case FM_TLV_PLAT_LIB_VRM_MUX_VAL:
+        idx = GetTlvInt(tlv + 3, 1);
+        if (idx >= hwCfg.numResId)
+        {
+            IdxErrorMsg(idx, hwCfg.numResId, "numHwResId", tlv);
+            return FM_ERR_INVALID_ARGUMENT;
+        }
+        vrmI2c = &hwCfg.hwResId[idx].vrm;
+        vrmI2c->parentMuxValue = GetTlvInt(tlv + 4, 4);
+        break;
+    case FM_TLV_PLAT_LIB_VRM_MUX_ADDR:
+        idx = GetTlvInt(tlv + 3, 1);
+        if (idx >= hwCfg.numResId)
+        {
+            IdxErrorMsg(idx, hwCfg.numResId, "numHwResId", tlv);
+            return FM_ERR_INVALID_ARGUMENT;
+        }
+        vrmI2c = &hwCfg.hwResId[idx].vrm;
+        vrmI2c->addr = GetTlvInt(tlv + 4, 2);
+        break;
+    case FM_TLV_PLAT_LIB_VRM_MUX_BUS:
+        idx = GetTlvInt(tlv + 3, 1);
+        if (idx >= hwCfg.numResId)
+        {
+            IdxErrorMsg(idx, hwCfg.numResId, "numHwResId", tlv);
+            return FM_ERR_INVALID_ARGUMENT;
+        }
+        vrmI2c = &hwCfg.hwResId[idx].vrm;
+        vrmI2c->bus = GetTlvInt(tlv + 4, 1);
+        break;
+    case FM_TLV_PLAT_LIB_BUS_I2C_EN_WR_RD:
+        idx = GetTlvInt(tlv + 3, 1);
+        if (idx >= hwCfg.numBus || idx >= NUM_I2C_BUS)
+        {
+            IdxErrorMsg(idx, hwCfg.numBus, "numBus", tlv);
+            return FM_ERR_INVALID_ARGUMENT;
+        }
+        hwCfg.i2c[idx].i2cWrRdEn = GetTlvBool(tlv + 4);
+        break;
+    }
+
+    return 0;
+
+}  /* end LoadTlv */
+
+
 
 /*****************************************************************************/
 /* LoadConfig
@@ -1840,21 +2771,23 @@ static fm_status LoadConfig(void)
 {
     fm_status   status;
     fm_int      swIdx;
-	fm_portLed *portLed;
-	fm_phyI2C  *phyI2c;
-	fm_vrmI2C  *vrmI2c;
-	fm_busSel  *xcvrI2cBus;
-	fm_xcvrIo  *xcvrIo;
-	fm_uint     tlvType;
-	fm_uint     tlvLen;
-	fm_uint     bus;
-	fm_uint     idx;
-	fm_uint     led;
-	fm_uint     subLed;
+    fm_uint     tlvLen;
     fm_byte    *tlvCfg;
     fm_uint     tlvCfgLen;
     fm_byte    *tlv;
     fm_uint     processedLen;
+
+
+    hwCfg.fileLock = -1;
+
+    hwCfg.defSfppPat.modPresN = UINT_NOT_USED;
+    hwCfg.defSfppPat.rxLos = UINT_NOT_USED;
+    hwCfg.defSfppPat.txDisable = UINT_NOT_USED;
+    hwCfg.defSfppPat.txFault = UINT_NOT_USED;
+    hwCfg.defQsfpPat.modPresN = UINT_NOT_USED;
+    hwCfg.defQsfpPat.intrN = UINT_NOT_USED;
+    hwCfg.defQsfpPat.lpMode = UINT_NOT_USED;
+    hwCfg.defQsfpPat.resetN = UINT_NOT_USED;
 
     swIdx = 0;
     status = fmPlatformRequestLibTlvCfg(swIdx, &tlvCfg, &tlvCfgLen);
@@ -1867,533 +2800,21 @@ static fm_status LoadConfig(void)
     while (processedLen < tlvCfgLen)
     {
         tlv = tlvCfg + processedLen;
-        tlvType = (tlv[0] << 8) | tlv[1];
         tlvLen = tlv[2];
+
+        status = LoadTlv(tlv);
+        /* Error will log a message, continue on */
+
         processedLen += (tlvLen + 3);
 
-        switch (tlvType) {
-        case FM_TLV_PLAT_FILE_LOCK_NAME: /* Shared with platform config */
-            CopyTlvStr(hwCfg.fileLockName,
-                    sizeof(hwCfg.fileLockName),
-                    tlv + 3, tlvLen);
-            break;
-        case FM_TLV_PLAT_LIB_I2C_DEVNAME:
-            bus = GetTlvInt(tlv + 3, 1);
-            if (bus >= NUM_I2C_BUS)
-            {
-                return FM_ERR_INVALID_ARGUMENT;
-            }
-            CopyTlvStr(hwCfg.i2c[bus].devName,
-                    sizeof(hwCfg.i2c[bus].devName),
-                    tlv + 4, tlvLen - 1);
-            break;
-        case FM_TLV_PLAT_LIB_MUX_COUNT:
-            hwCfg.numPcaMux = GetTlvInt(tlv + 3, 1);
-            break;
-        case FM_TLV_PLAT_LIB_MUX_MODEL:
-            idx = GetTlvInt(tlv + 3, 1);
-            if (idx >= hwCfg.numPcaMux || idx >= NUM_PCA_MUX)
-            {
-                return FM_ERR_INVALID_ARGUMENT;
-            }
-            hwCfg.pcaMux[idx].model = GetTlvInt(tlv + 4, 1);
-            break;
-        case FM_TLV_PLAT_LIB_MUX_BUS:
-            idx = GetTlvInt(tlv + 3, 1);
-            if (idx >= hwCfg.numPcaMux || idx >= NUM_PCA_MUX)
-            {
-                return FM_ERR_INVALID_ARGUMENT;
-            }
-            hwCfg.pcaMux[idx].bus = GetTlvInt(tlv + 4, 1);
-            break;
-        case FM_TLV_PLAT_LIB_MUX_ADDR:
-            idx = GetTlvInt(tlv + 3, 1);
-            if (idx >= hwCfg.numPcaMux || idx >= NUM_PCA_MUX)
-            {
-                return FM_ERR_INVALID_ARGUMENT;
-            }
-            hwCfg.pcaMux[idx].addr = GetTlvInt(tlv + 4, 2);
-            break;
-        case FM_TLV_PLAT_LIB_MUX_PARENT_IDX:
-            idx = GetTlvInt(tlv + 3, 1);
-            if (idx >= hwCfg.numPcaMux || idx >= NUM_PCA_MUX)
-            {
-                return FM_ERR_INVALID_ARGUMENT;
-            }
-            hwCfg.pcaMux[idx].parentMuxIdx =
-                GetTlvInt(tlv + 4, 1);
-            break;
-        case FM_TLV_PLAT_LIB_MUX_PARENT_VAL:
-            idx = GetTlvInt(tlv + 3, 1);
-            if (idx >= hwCfg.numPcaMux || idx >= NUM_PCA_MUX)
-            {
-                return FM_ERR_INVALID_ARGUMENT;
-            }
-            hwCfg.pcaMux[idx].parentMuxValue =
-                GetTlvInt(tlv + 4, 4);
-            break;
-
-        case FM_TLV_PLAT_LIB_IO_COUNT:
-            hwCfg.numPcaIo = GetTlvInt(tlv + 3, 1);
-            break;
-        case FM_TLV_PLAT_LIB_IO_MODEL:
-            idx = GetTlvInt(tlv + 3, 1);
-            if (idx >= hwCfg.numPcaIo || idx >= NUM_PCA_IO)
-            {
-                return FM_ERR_INVALID_ARGUMENT;
-            }
-            hwCfg.pcaIo[idx].dev.model = GetTlvInt(tlv + 4, 1);
-            switch (hwCfg.pcaIo[idx].dev.model)
-            {
-                case PCA_IO_9634:
-                case PCA_IO_9635:
-                    hwCfg.pcaIo[idx].dev.ledBlinkPeriod = 5;
-                    hwCfg.pcaIo[idx].dev.ledBrightness = 255;
-                    break;
-                case PCA_IO_9551:
-                   hwCfg.pcaIo[idx].dev.ledBlinkPeriod  = 9;
-                    break;
-                default:
-                    break;
-            }
-            break;
-        case FM_TLV_PLAT_LIB_IO_BUS:
-            idx = GetTlvInt(tlv + 3, 1);
-            if (idx >= hwCfg.numPcaIo || idx >= NUM_PCA_IO)
-            {
-                return FM_ERR_INVALID_ARGUMENT;
-            }
-            hwCfg.pcaIo[idx].dev.bus = GetTlvInt(tlv + 4, 1);
-            break;
-        case FM_TLV_PLAT_LIB_IO_ADDR:
-            idx = GetTlvInt(tlv + 3, 1);
-            if (idx >= hwCfg.numPcaIo || idx >= NUM_PCA_IO)
-            {
-                return FM_ERR_INVALID_ARGUMENT;
-            }
-            hwCfg.pcaIo[idx].dev.addr = GetTlvInt(tlv + 4, 2);
-            break;
-        case FM_TLV_PLAT_LIB_IO_PARENT_IDX:
-            idx = GetTlvInt(tlv + 3, 1);
-            if (idx >= hwCfg.numPcaIo || idx >= NUM_PCA_IO)
-            {
-                return FM_ERR_INVALID_ARGUMENT;
-            }
-            hwCfg.pcaIo[idx].parentMuxIdx =
-                GetTlvInt(tlv + 4, 1);
-            break;
-        case FM_TLV_PLAT_LIB_IO_PARENT_VAL:
-            idx = GetTlvInt(tlv + 3, 1);
-            if (idx >= hwCfg.numPcaIo || idx >= NUM_PCA_IO)
-            {
-                return FM_ERR_INVALID_ARGUMENT;
-            }
-            hwCfg.pcaIo[idx].parentMuxValue =
-                GetTlvInt(tlv + 4, 4);
-            break;
-
-        case FM_TLV_PLAT_LIB_IO_LED_BLINK_PER:
-            idx = GetTlvInt(tlv + 3, 1);
-            if (idx >= hwCfg.numPcaIo || idx >= NUM_PCA_IO)
-            {
-                return FM_ERR_INVALID_ARGUMENT;
-            }
-            hwCfg.pcaIo[idx].dev.ledBlinkPeriod =
-                GetTlvInt(tlv + 4, 1);
-            break;
-        case FM_TLV_PLAT_LIB_IO_LED_BRIGHTNESS:
-            idx = GetTlvInt(tlv + 3, 1);
-            if (idx >= hwCfg.numPcaIo || idx >= NUM_PCA_IO)
-            {
-                return FM_ERR_INVALID_ARGUMENT;
-            }
-            hwCfg.pcaIo[idx].dev.ledBrightness =
-                GetTlvInt(tlv + 4, 1);
-            break;
-        case FM_TLV_PLAT_LIB_XCVR_DEF_MODABS_PIN:
-            hwCfg.defSfppPat.modPresN =
-                GetTlvInt(tlv + 3, 1);
-            break;
-        case FM_TLV_PLAT_LIB_XCVR_DEF_RXLOS_PIN:
-            hwCfg.defSfppPat.rxLos =
-                GetTlvInt(tlv + 3, 1);
-            break;
-        case FM_TLV_PLAT_LIB_XCVR_DEF_TXDISABLE_PIN:
-            hwCfg.defSfppPat.txDisable =
-                GetTlvInt(tlv + 3, 1);
-            break;
-        case FM_TLV_PLAT_LIB_XCVR_DEF_TXFAULT_PIN:
-            hwCfg.defSfppPat.txFault =
-                GetTlvInt(tlv + 3, 1);
-            break;
-        case FM_TLV_PLAT_LIB_XCVR_DEF_MODPRESL_PIN:
-            hwCfg.defQsfpPat.modPresN =
-                GetTlvInt(tlv + 3, 1);
-            break;
-        case FM_TLV_PLAT_LIB_XCVR_DEF_INTL_PIN:
-            hwCfg.defQsfpPat.intrN =
-                GetTlvInt(tlv + 3, 1);
-            break;
-        case FM_TLV_PLAT_LIB_XCVR_DEF_LPMODE_PIN:
-            hwCfg.defQsfpPat.lpMode =
-                GetTlvInt(tlv + 3, 1);
-            break;
-        case FM_TLV_PLAT_LIB_XCVR_DEF_RESETL_PIN:
-            hwCfg.defQsfpPat.resetN =
-                GetTlvInt(tlv + 3, 1);
-            break;
-        case FM_TLV_PLAT_LIB_HWRESID_COUNT:
-            hwCfg.numResId =
-                GetTlvInt(tlv + 3, 1);
-            break;
-        case FM_TLV_PLAT_LIB_HWRESID_INTF_TYPE:
-            idx = GetTlvInt(tlv + 3, 1);
-            if (idx >= hwCfg.numResId || idx >= FM_NUM_HW_RES_ID)
-            {
-                return FM_ERR_INVALID_ARGUMENT;
-            }
-            xcvrIo = &hwCfg.hwResId[idx].xcvrStateIo;
-            xcvrIo->intfType = GetTlvInt(tlv + 4, 1);
-            break;
-        case FM_TLV_PLAT_LIB_XCVR_IDX:
-            idx = GetTlvInt(tlv + 3, 1);
-            if (idx >= hwCfg.numResId || idx >= FM_NUM_HW_RES_ID)
-            {
-                return FM_ERR_INVALID_ARGUMENT;
-            }
-            xcvrIo = &hwCfg.hwResId[idx].xcvrStateIo;
-            xcvrIo->ioIdx = GetTlvInt(tlv + 4, 1);
-            break;
-        case FM_TLV_PLAT_LIB_XCVR_BASE_PIN:
-            idx = GetTlvInt(tlv + 3, 1);
-            if (idx >= hwCfg.numResId || idx >= FM_NUM_HW_RES_ID)
-            {
-                return FM_ERR_INVALID_ARGUMENT;
-            }
-            xcvrIo = &hwCfg.hwResId[idx].xcvrStateIo;
-            xcvrIo->basePin = GetTlvInt(tlv + 4, 1);
-
-            /* Now calculate pin offsets */
-            if (xcvrIo->intfType == INTF_TYPE_SFPP) {
-                xcvrIo->u.sfppPin.modPresN = xcvrIo->basePin +
-                    hwCfg.defSfppPat.modPresN;
-                xcvrIo->u.sfppPin.rxLos = xcvrIo->basePin +
-                    hwCfg.defSfppPat.rxLos;
-                xcvrIo->u.sfppPin.txFault = xcvrIo->basePin +
-                    hwCfg.defSfppPat.txFault;
-                xcvrIo->u.sfppPin.txDisable = xcvrIo->basePin +
-                    hwCfg.defSfppPat.txDisable;
-            } else if (xcvrIo->intfType == INTF_TYPE_QSFP) {
-                xcvrIo->u.qsfpPin.modPresN = xcvrIo->basePin +
-                    hwCfg.defQsfpPat.modPresN;
-                xcvrIo->u.qsfpPin.intrN = xcvrIo->basePin +
-                    hwCfg.defQsfpPat.intrN;
-                xcvrIo->u.qsfpPin.lpMode = xcvrIo->basePin +
-                    hwCfg.defQsfpPat.lpMode;
-                xcvrIo->u.qsfpPin.resetN = xcvrIo->basePin +
-                    hwCfg.defQsfpPat.resetN;
-            }
-            break;
-        case FM_TLV_PLAT_LIB_XCVR_MODABS_PIN:
-            idx = GetTlvInt(tlv + 3, 1);
-            if (idx >= hwCfg.numResId || idx >= FM_NUM_HW_RES_ID)
-            {
-                return FM_ERR_INVALID_ARGUMENT;
-            }
-            xcvrIo = &hwCfg.hwResId[idx].xcvrStateIo;
-            xcvrIo->u.sfppPin.modPresN = GetTlvInt(tlv + 4, 1);
-            break;
-        case FM_TLV_PLAT_LIB_XCVR_RXLOS_PIN:
-            idx = GetTlvInt(tlv + 3, 1);
-            if (idx >= hwCfg.numResId || idx >= FM_NUM_HW_RES_ID)
-            {
-                return FM_ERR_INVALID_ARGUMENT;
-            }
-            xcvrIo = &hwCfg.hwResId[idx].xcvrStateIo;
-            xcvrIo->u.sfppPin.rxLos = GetTlvInt(tlv + 4, 1);
-            break;
-        case FM_TLV_PLAT_LIB_XCVR_TXDISABLE_PIN:
-            idx = GetTlvInt(tlv + 3, 1);
-            if (idx >= hwCfg.numResId || idx >= FM_NUM_HW_RES_ID)
-            {
-                return FM_ERR_INVALID_ARGUMENT;
-            }
-            xcvrIo = &hwCfg.hwResId[idx].xcvrStateIo;
-            xcvrIo->u.sfppPin.txDisable = GetTlvInt(tlv + 4, 1);
-            break;
-        case FM_TLV_PLAT_LIB_XCVR_TXFAULT_PIN:
-            idx = GetTlvInt(tlv + 3, 1);
-            if (idx >= hwCfg.numResId || idx >= FM_NUM_HW_RES_ID)
-            {
-                return FM_ERR_INVALID_ARGUMENT;
-            }
-            xcvrIo = &hwCfg.hwResId[idx].xcvrStateIo;
-            xcvrIo->u.sfppPin.txFault = GetTlvInt(tlv + 4, 1);
-            break;
-        case FM_TLV_PLAT_LIB_XCVR_MODPRESL_PIN:
-            idx = GetTlvInt(tlv + 3, 1);
-            if (idx >= hwCfg.numResId || idx >= FM_NUM_HW_RES_ID)
-            {
-                return FM_ERR_INVALID_ARGUMENT;
-            }
-            xcvrIo = &hwCfg.hwResId[idx].xcvrStateIo;
-            xcvrIo->u.qsfpPin.modPresN = GetTlvInt(tlv + 4, 1);
-            break;
-        case FM_TLV_PLAT_LIB_XCVR_INTL_PIN:
-            idx = GetTlvInt(tlv + 3, 1);
-            if (idx >= hwCfg.numResId || idx >= FM_NUM_HW_RES_ID)
-            {
-                return FM_ERR_INVALID_ARGUMENT;
-            }
-            xcvrIo = &hwCfg.hwResId[idx].xcvrStateIo;
-            xcvrIo->u.qsfpPin.intrN = GetTlvInt(tlv + 4, 1);
-            break;
-        case FM_TLV_PLAT_LIB_XCVR_LPMODE_PIN:
-            idx = GetTlvInt(tlv + 3, 1);
-            if (idx >= hwCfg.numResId || idx >= FM_NUM_HW_RES_ID)
-            {
-                return FM_ERR_INVALID_ARGUMENT;
-            }
-            xcvrIo = &hwCfg.hwResId[idx].xcvrStateIo;
-            xcvrIo->u.qsfpPin.lpMode = GetTlvInt(tlv + 4, 1);
-            break;
-        case FM_TLV_PLAT_LIB_XCVR_RESETL_PIN:
-            idx = GetTlvInt(tlv + 3, 1);
-            if (idx >= hwCfg.numResId || idx >= FM_NUM_HW_RES_ID)
-            {
-                return FM_ERR_INVALID_ARGUMENT;
-            }
-            xcvrIo = &hwCfg.hwResId[idx].xcvrStateIo;
-            xcvrIo->u.qsfpPin.resetN = GetTlvInt(tlv + 4, 1);
-            break;
-        case FM_TLV_PLAT_LIB_XCVR_I2C_DEF_BUSSELTYPE:
-            for (idx = 0; idx < hwCfg.numResId; idx++) {
-                xcvrI2cBus = &hwCfg.hwResId[idx].xcvrI2cBusSel;
-                xcvrI2cBus->busSelType =
-                    GetTlvInt(tlv + 3, 1);
-            }
-            break;
-        case FM_TLV_PLAT_LIB_XCVR_I2_BUSSELTYPE:
-            idx = GetTlvInt(tlv + 3, 1);
-            if (idx >= hwCfg.numResId || idx >= FM_NUM_HW_RES_ID)
-            {
-                return FM_ERR_INVALID_ARGUMENT;
-            }
-            xcvrI2cBus = &hwCfg.hwResId[idx].xcvrI2cBusSel;
-            xcvrI2cBus->busSelType = GetTlvInt(tlv + 4, 1);
-            break;
-        case FM_TLV_PLAT_LIB_XCVR_MUX_IDX:
-            idx = GetTlvInt(tlv + 3, 1);
-            if (idx >= hwCfg.numResId || idx >= FM_NUM_HW_RES_ID)
-            {
-                return FM_ERR_INVALID_ARGUMENT;
-            }
-            xcvrI2cBus = &hwCfg.hwResId[idx].xcvrI2cBusSel;
-            xcvrI2cBus->parentMuxIdx = GetTlvInt(tlv + 4, 1);
-            break;
-        case FM_TLV_PLAT_LIB_XCVR_MUX_VAL:
-            idx = GetTlvInt(tlv + 3, 1);
-            if (idx >= hwCfg.numResId || idx >= FM_NUM_HW_RES_ID)
-            {
-                return FM_ERR_INVALID_ARGUMENT;
-            }
-            xcvrI2cBus = &hwCfg.hwResId[idx].xcvrI2cBusSel;
-            xcvrI2cBus->parentMuxValue = GetTlvInt(tlv + 4, 4);
-            break;
-        case FM_TLV_PLAT_LIB_PORTLED_TYPE:
-            idx = GetTlvInt(tlv + 3, 1);
-            if (idx >= hwCfg.numResId || idx >= FM_NUM_HW_RES_ID)
-            {
-                return FM_ERR_INVALID_ARGUMENT;
-            }
-            led = GetTlvInt(tlv + 4, 1);
-            if (led >= NUM_LED_PER_PORT)
-                return FM_ERR_INVALID_ARGUMENT;
-            portLed = &hwCfg.hwResId[idx].portLed[led];
-            portLed->type = GetTlvInt(tlv + 5, 1);
-        break;
-        case FM_TLV_PLAT_LIB_PORTLED_IO_IDX:
-            idx = GetTlvInt(tlv + 3, 1);
-            if (idx >= hwCfg.numResId || idx >= FM_NUM_HW_RES_ID)
-            {
-                return FM_ERR_INVALID_ARGUMENT;
-            }
-            led = GetTlvInt(tlv + 4, 1);
-            if (led >= NUM_LED_PER_PORT)
-                return FM_ERR_INVALID_ARGUMENT;
-            portLed = &hwCfg.hwResId[idx].portLed[led];
-            portLed->ioIdx = GetTlvInt(tlv + 5, 1);
-        break;
-        case FM_TLV_PLAT_LIB_PORTLED_IO_PIN:
-            idx = GetTlvInt(tlv + 3, 1);
-            if (idx >= hwCfg.numResId || idx >= FM_NUM_HW_RES_ID)
-            {
-                return FM_ERR_INVALID_ARGUMENT;
-            }
-            led = GetTlvInt(tlv + 4, 1);
-            if (led >= NUM_LED_PER_PORT)
-                return FM_ERR_INVALID_ARGUMENT;
-            portLed = &hwCfg.hwResId[idx].portLed[led];
-            portLed->subLed[0].pin = GetTlvInt(tlv + 5, 1);
-        break;
-        case FM_TLV_PLAT_LIB_PORTLED_IO_LANE_PIN:
-            idx = GetTlvInt(tlv + 3, 1);
-            if (idx >= hwCfg.numResId || idx >= FM_NUM_HW_RES_ID)
-            {
-                return FM_ERR_INVALID_ARGUMENT;
-            }
-            led = GetTlvInt(tlv + 4, 1);
-            if (led >= NUM_LED_PER_PORT)
-                return FM_ERR_INVALID_ARGUMENT;
-            portLed = &hwCfg.hwResId[idx].portLed[led];
-            subLed = GetTlvInt(tlv + 5, 1);
-            if (subLed >= NUM_SUB_LED)
-                return FM_ERR_INVALID_ARGUMENT;
-            portLed->subLed[subLed].pin = GetTlvInt(tlv + 6, 1);
-        break;
-        case FM_TLV_PLAT_LIB_PORTLED_IO_USAGE:
-            idx = GetTlvInt(tlv + 3, 1);
-            if (idx >= hwCfg.numResId || idx >= FM_NUM_HW_RES_ID)
-            {
-                return FM_ERR_INVALID_ARGUMENT;
-            }
-            led = GetTlvInt(tlv + 4, 1);
-            if (led >= NUM_LED_PER_PORT)
-                return FM_ERR_INVALID_ARGUMENT;
-            portLed = &hwCfg.hwResId[idx].portLed[led];
-            portLed->subLed[0].usage = GetTlvInt(tlv + 5, 4);
-        break;
-        case FM_TLV_PLAT_LIB_PORTLED_IO_LANE_USAGE:
-            idx = GetTlvInt(tlv + 3, 1);
-            if (idx >= hwCfg.numResId || idx >= FM_NUM_HW_RES_ID)
-            {
-                return FM_ERR_INVALID_ARGUMENT;
-            }
-            led = GetTlvInt(tlv + 4, 1);
-            if (led >= NUM_LED_PER_PORT)
-                return FM_ERR_INVALID_ARGUMENT;
-            portLed = &hwCfg.hwResId[idx].portLed[led];
-            subLed = GetTlvInt(tlv + 5, 1);
-            if (subLed >= NUM_SUB_LED)
-                return FM_ERR_INVALID_ARGUMENT;
-            portLed->subLed[subLed].usage = GetTlvInt(tlv + 6, 4);
-        break;
-        case FM_TLV_PLAT_LIB_HWRESID_TYPE:
-            idx = GetTlvInt(tlv + 3, 1);
-            if (idx >= hwCfg.numResId || idx >= FM_NUM_HW_RES_ID)
-            {
-                return FM_ERR_INVALID_ARGUMENT;
-            }
-            hwCfg.hwResId[idx].type = GetTlvInt(tlv + 4, 1);
-            break;
-        case FM_TLV_PLAT_LIB_DEBUG:
-            hwCfg.debug = GetTlvInt(tlv + 3, 4);
-            break;
-        case FM_TLV_PLAT_LIB_PHY_BUSSELTYPE:
-            idx = GetTlvInt(tlv + 3, 1);
-            if (idx >= hwCfg.numResId || idx >= FM_NUM_HW_RES_ID)
-            {
-                return FM_ERR_INVALID_ARGUMENT;
-            }
-            phyI2c = &hwCfg.hwResId[idx].phy;
-            phyI2c->busSelType = GetTlvInt(tlv + 4, 1);
-            break;
-        case FM_TLV_PLAT_LIB_PHY_MUX_IDX:
-            idx = GetTlvInt(tlv + 3, 1);
-            if (idx >= hwCfg.numResId || idx >= FM_NUM_HW_RES_ID)
-            {
-                return FM_ERR_INVALID_ARGUMENT;
-            }
-            phyI2c = &hwCfg.hwResId[idx].phy;
-            phyI2c->parentMuxIdx = GetTlvInt(tlv + 4, 1);
-            break;
-        case FM_TLV_PLAT_LIB_PHY_MUX_VAL:
-            idx = GetTlvInt(tlv + 3, 1);
-            if (idx >= hwCfg.numResId || idx >= FM_NUM_HW_RES_ID)
-            {
-                return FM_ERR_INVALID_ARGUMENT;
-            }
-            phyI2c = &hwCfg.hwResId[idx].phy;
-            phyI2c->parentMuxValue = GetTlvInt(tlv + 4, 4);
-            break;
-        case FM_TLV_PLAT_LIB_PHY_BUS:
-            idx = GetTlvInt(tlv + 3, 1);
-            if (idx >= hwCfg.numResId || idx >= FM_NUM_HW_RES_ID)
-            {
-                return FM_ERR_INVALID_ARGUMENT;
-            }
-            phyI2c = &hwCfg.hwResId[idx].phy;
-            phyI2c->bus = GetTlvInt(tlv + 4, 1);
-            break;
-        case FM_TLV_PLAT_LIB_VRM_BUSSELTYPE:
-            idx = GetTlvInt(tlv + 3, 1);
-            if (idx >= hwCfg.numResId || idx >= FM_NUM_HW_RES_ID)
-            {
-                return FM_ERR_INVALID_ARGUMENT;
-            }
-            vrmI2c = &hwCfg.hwResId[idx].vrm;
-            vrmI2c->busSelType = GetTlvInt(tlv + 4, 1);
-            break;
-        case FM_TLV_PLAT_LIB_VRM_MODEL:
-            idx = GetTlvInt(tlv + 3, 1);
-            if (idx >= hwCfg.numResId || idx >= FM_NUM_HW_RES_ID)
-            {
-                return FM_ERR_INVALID_ARGUMENT;
-            }
-            vrmI2c = &hwCfg.hwResId[idx].vrm;
-            vrmI2c->model = GetTlvInt(tlv + 4, 1);
-            break;
-        case FM_TLV_PLAT_LIB_VRM_MUX_IDX:
-            idx = GetTlvInt(tlv + 3, 1);
-            if (idx >= hwCfg.numResId || idx >= FM_NUM_HW_RES_ID)
-            {
-                return FM_ERR_INVALID_ARGUMENT;
-            }
-            vrmI2c = &hwCfg.hwResId[idx].vrm;
-            vrmI2c->parentMuxIdx = GetTlvInt(tlv + 4, 1);
-            break;
-        case FM_TLV_PLAT_LIB_VRM_MUX_VAL:
-            idx = GetTlvInt(tlv + 3, 1);
-            if (idx >= hwCfg.numResId || idx >= FM_NUM_HW_RES_ID)
-            {
-                return FM_ERR_INVALID_ARGUMENT;
-            }
-            vrmI2c = &hwCfg.hwResId[idx].vrm;
-            vrmI2c->parentMuxValue = GetTlvInt(tlv + 4, 4);
-            break;
-        case FM_TLV_PLAT_LIB_VRM_MUX_ADDR:
-            idx = GetTlvInt(tlv + 3, 1);
-            if (idx >= hwCfg.numResId || idx >= FM_NUM_HW_RES_ID)
-            {
-                return FM_ERR_INVALID_ARGUMENT;
-            }
-            vrmI2c = &hwCfg.hwResId[idx].vrm;
-            vrmI2c->addr = GetTlvInt(tlv + 4, 2);
-            break;
-        case FM_TLV_PLAT_LIB_VRM_MUX_BUS:
-            idx = GetTlvInt(tlv + 3, 1);
-            if (idx >= hwCfg.numResId || idx >= FM_NUM_HW_RES_ID)
-            {
-                return FM_ERR_INVALID_ARGUMENT;
-            }
-            vrmI2c = &hwCfg.hwResId[idx].vrm;
-            vrmI2c->bus = GetTlvInt(tlv + 4, 1);
-            break;
-        case FM_TLV_PLAT_LIB_BUS_I2C_EN_WR_RD:
-            idx = GetTlvInt(tlv + 3, 1);
-            if (idx >= NUM_I2C_BUS)
-                return FM_ERR_INVALID_ARGUMENT;
-            hwCfg.i2c[idx].i2cWrRdEn = GetTlvBool(tlv + 4);
-            break;
-        }
     }
 
     /* Release lib config to free memory */
     fmPlatformReleaseLibTlvCfg(swIdx);
 
-    return 0;
-}  /* end LoadConfig */
+    return FM_OK;
 
+}  /* end LoadConfig */
 
 
 
@@ -2446,7 +2867,7 @@ static void DumpConfig(void)
 
     PRINT_VALUE("debug", hwCfg.debug);
 
-    for (cnt = 0 ; cnt < NUM_I2C_BUS; cnt++)
+    for (cnt = 0 ; cnt < hwCfg.numBus ; cnt++)
     {
         PRINT_STR("i2cDevName[%d]", hwCfg.i2c[cnt].devName);
     }
@@ -2493,6 +2914,9 @@ static void DumpConfig(void)
     PRINT_VALUE("defQsfpPat.intrN",    hwCfg.defQsfpPat.intrN);
     PRINT_VALUE("defQsfpPat.resetN",   hwCfg.defQsfpPat.resetN);
     PRINT_VALUE("defQsfpPat.lpMode",   hwCfg.defQsfpPat.lpMode);
+    FM_LOG_PRINT("\n");
+
+    PRINT_STR("defBusSelType",BusSelTypeToStr(hwCfg.defBusSelType));
     FM_LOG_PRINT("\n");
 
     /* Number of hwResource ports supported */
@@ -2608,7 +3032,20 @@ static void DumpConfig(void)
         }
         else if (hwCfg.hwResId[cnt].type == HWRESOURCE_TYPE_PHY)
         {
+            PRINT_STR("  hwResId.%d.phy.busSelType",
+                      BusSelTypeToStr(hwCfg.hwResId[cnt].phy.busSelType));
+            /* Mux select configuration */
+            if (hwCfg.hwResId[cnt].phy.busSelType == BUS_SEL_TYPE_PCA_MUX)
+            {
+                PRINT_VAL("  hwResId.%d.phy.pcaMux.index",
+                          hwCfg.hwResId[cnt].phy.parentMuxIdx);
+                PRINT_VAL("  hwResId.%d.phy.pcaMux.value",
+                          hwCfg.hwResId[cnt].phy.parentMuxValue);
         }
+
+            PRINT_VAL("  hwResId.%d.phy.bus",
+                      hwCfg.hwResId[cnt].phy.bus);
+    }
     }
 
 }   /* end DumpConfig */
@@ -2690,7 +3127,7 @@ static fm_status SetupMuxPathRcrsv(fm_uint muxIdx,
                 {
                     /* Disable that mux */
                     data[0] = 0;
-                    if (hwCfg.debug & DBG_I2C)
+                    if (hwCfg.debug & DBG_I2C_MUX)
                     {
                         FM_LOG_PRINT("Clear Mux 0x%x\n", mux->addr);
                     }
@@ -2705,7 +3142,7 @@ static fm_status SetupMuxPathRcrsv(fm_uint muxIdx,
         }
 
         data[0] = muxValue;
-        if (hwCfg.debug & DBG_I2C)
+        if (hwCfg.debug & DBG_I2C_MUX)
         {
             FM_LOG_PRINT("Set Mux 0x%x => 0x%x\n", pcaMux->addr, muxValue);
         }
@@ -2765,7 +3202,7 @@ static fm_status SetupMuxPath(fm_uint muxIdx, fm_uint muxValue)
             {
                 i2c = &hwCfg.i2c[pcaMux->bus];
                 data[0] = 0;
-                if (hwCfg.debug & DBG_I2C)
+                if (hwCfg.debug & DBG_I2C_MUX)
                 {
                     FM_LOG_PRINT("Clear Mux 0x%x\n", pcaMux->addr);
                 }
@@ -2800,6 +3237,7 @@ static fm_status InitPca(void)
     fm_uint         led;
     fm_uint         subLed;
     fm_uint         offset;
+    fm_uint         brightness;
     fm_uint         byteIdx;
     fm_uint         bitIdx;
     fm_xcvrIo *     xcvrIo;
@@ -3023,6 +3461,19 @@ static fm_status InitPca(void)
                         }
                     }
                 }
+                else
+                {
+                    for (subLed = 0 ; subLed < NUM_SUB_LED ; subLed++)
+                    {
+                        offset     = portLed->subLed[subLed].pin;
+                        brightness = portLed->subLed[subLed].brightness;
+                        if (offset != UINT_NOT_USED &&
+                            brightness != UINT_NOT_USED)
+                        {
+                            ioDev->ledRegs.pwm[offset] = brightness;
+                        }
+                    }
+                }
             }
 
         }   /* end for (led = 0 ; led < NUM_LED_PER_PORT ; led++) */
@@ -3205,7 +3656,7 @@ fm_status GetVrmVoltageInt(fm_int     sw,
 
     FM_NOT_USED(sw);
 
-    if ( HW_RESOURCE_ID_TO_IDX(hwResourceId) >= FM_NUM_HW_RES_ID )
+    if ( HW_RESOURCE_ID_TO_IDX(hwResourceId) >= hwCfg.numResId )
     {
         status = FM_ERR_INVALID_ARGUMENT;
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
@@ -3367,88 +3818,46 @@ fm_status fmPlatformLibInit(void)
 {
     fm_i2cCfg *i2c;
     fm_status  status;
-    fm_int     bus;
+    fm_uint    bus;
     fm_uint    idx;
     fm_char    tmpStr[32];
-    fm_portLed *portLed;
-    fm_uint     led;
-    fm_uint     subLed;
 
     FM_LOG_ENTRY_NOARGS(FM_LOG_CAT_PLATFORM);
 
     memset(&hwCfg, 0, sizeof(hwCfg));
 
-    hwCfg.fileLock = -1;
-
-    for ( idx = 0 ; idx < NUM_I2C_BUS ; idx++ )
-    {
-        hwCfg.i2c[idx].i2cWrRdEn = TRUE;
-    }
-
-    for (idx = 0 ; idx < NUM_PCA_MUX ; idx++)
-    {
-        hwCfg.pcaMux[idx].parentMuxIdx = UINT_NOT_USED;
-    }
-
-    for (idx = 0 ; idx < NUM_PCA_IO ; idx++)
-    {
-        hwCfg.pcaIo[idx].parentMuxIdx = UINT_NOT_USED;
-    }
-
-    for (idx = 0 ; idx < FM_NUM_HW_RES_ID ; idx++)
-    {
-        hwCfg.hwResId[idx].xcvrI2cBusSel.parentMuxIdx =
-            UINT_NOT_USED;
-        hwCfg.hwResId[idx].phy.parentMuxIdx = UINT_NOT_USED;
-        hwCfg.hwResId[idx].vrm.parentMuxIdx = UINT_NOT_USED;
-        for (led = 0 ; led < NUM_LED_PER_PORT ; led++)
-        {
-            portLed = &hwCfg.hwResId[idx].portLed[led];
-            portLed->ioIdx = UINT_NOT_USED;
-            for (subLed = 0 ; subLed < NUM_SUB_LED ; subLed++)
-            {
-                portLed->subLed[subLed].pin   = UINT_NOT_USED;
-                portLed->subLed[subLed].usage = UINT_NOT_USED;
-            }
-        }
-    }
-
-    hwCfg.defSfppPat.modPresN = UINT_NOT_USED;
-    hwCfg.defSfppPat.rxLos = UINT_NOT_USED;
-    hwCfg.defSfppPat.txDisable = UINT_NOT_USED;
-    hwCfg.defSfppPat.txFault = UINT_NOT_USED;
-    hwCfg.defQsfpPat.modPresN = UINT_NOT_USED;
-    hwCfg.defQsfpPat.intrN = UINT_NOT_USED;
-    hwCfg.defQsfpPat.lpMode = UINT_NOT_USED;
-    hwCfg.defQsfpPat.resetN = UINT_NOT_USED;
-
     status = LoadConfig();
     FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
+
+    if (hwCfg.numBus == 0)
+    {
+        hwCfg.numBus = 1;
+    }
 
     if (strlen(hwCfg.i2c[0].devName) == 0)
     {
         /* Bus 0 is not defined, do we have another bus number (1..NUM_I2C_BUS)
-           defined. */
-        for ( idx = 1 ; idx < NUM_I2C_BUS ; idx++ )
+         * defined. */
+        for ( idx = 1 ; idx < hwCfg.numBus ; idx++ )
         {
             if ( strlen(hwCfg.i2c[idx].devName) )
             {
                 /* Found another I2C bus defined. This is the SWAG case,
-                   where the swag switch is sw 0. Set bus 0 devName to "swag"
-                   for fmPlatformLibInit. */
+                 * where the swag switch is sw 0. Set bus 0 devName to "swag"
+                 * for fmPlatformLibInit. */
                 FM_STRCPY_S(hwCfg.i2c[0].devName,
-                    sizeof(hwCfg.i2c[0].devName),
-                    "swag");
+                            sizeof(hwCfg.i2c[0].devName),
+                            "swag");
                 break;
             }
         }
 
-        if (idx >= NUM_I2C_BUS)
+        if (idx >= hwCfg.numBus)
         {
             /* No other I2C bus found, then default bus 0 to "switchI2C" */
             FM_STRCPY_S(hwCfg.i2c[0].devName,
-                sizeof(hwCfg.i2c[0].devName),
-                "switchI2C");
+                        sizeof(hwCfg.i2c[0].devName),
+                        "switchI2C");
         }
     }
 
@@ -3460,8 +3869,8 @@ fm_status fmPlatformLibInit(void)
         if (status)
         {
             FM_LOG_ERROR(FM_LOG_CAT_PLATFORM,
-                "%s: Unable to get device capabilities.\n",
-                PcaIoModelToStr(hwCfg.pcaIo[idx].dev.model));
+                         "%s: Unable to get device capabilities.\n",
+                         PcaIoModelToStr(hwCfg.pcaIo[idx].dev.model));
             return status;
         }
     }
@@ -3484,7 +3893,7 @@ fm_status fmPlatformLibInit(void)
         }
     }
 
-    for (bus = 0 ; bus < NUM_I2C_BUS ; bus++)
+    for (bus = 0 ; bus < hwCfg.numBus ; bus++)
     {
         i2c = &hwCfg.i2c[bus];
         i2c->handle = 0;
@@ -3798,10 +4207,13 @@ fm_status fmPlatformLibSelectBus(fm_int    sw,
         FM_LOG_EXIT(FM_LOG_CAT_PLATFORM, FM_OK);
     }
 
-    FM_NOT_USED(sw);
+    if (sw >= FM_MAX_NUM_SWITCHES)
+    {
+        return FM_ERR_INVALID_ARGUMENT;
+    }
 
     /* Default to 0 */
-    hwCfg.selectedBus = 0;
+    hwCfg.selectedBus[sw] = 0;
 
     if ( busType == FM_PLAT_BUS_NUMBER )
     {
@@ -3810,7 +4222,7 @@ fm_status fmPlatformLibSelectBus(fm_int    sw,
 
         if ( status == FM_OK )
         {
-            hwCfg.selectedBus = hwResourceId;
+            hwCfg.selectedBus[sw] = hwResourceId;
         }
         else
         {
@@ -3849,7 +4261,7 @@ fm_status fmPlatformLibSelectBus(fm_int    sw,
         {
             /* Means the IO is not behind a MUX and located directly on the
                main I2C branch. So use the IO bus number for bus selection */
-            hwCfg.selectedBus = hwCfg.pcaIo[idx].dev.bus;
+            hwCfg.selectedBus[sw] = hwCfg.pcaIo[idx].dev.bus;
         }
     }
     else if (busType == FM_PLAT_BUS_XCVR_EEPROM)
@@ -3862,14 +4274,18 @@ fm_status fmPlatformLibSelectBus(fm_int    sw,
         else if (hwResId->xcvrI2cBusSel.busSelType == BUS_SEL_TYPE_PCA_IO)
         {
             idx = hwResId->xcvrI2cBusSel.ioIdx;
-            muxIdx = hwCfg.pcaIo[idx].parentMuxIdx;
-            muxValue = hwCfg.pcaIo[idx].parentMuxValue;
+            /* these are set to the mux and value for the QSFP/SFP not the
+             * pcaIo devices mux because the port and the pcaIo might be on different
+             * busses. That means that for a PCA_IO device both pcaIo device and the
+             * port device location are required. */
+            muxIdx = hwResId->xcvrI2cBusSel.parentMuxIdx;
+            muxValue = hwResId->xcvrI2cBusSel.parentMuxValue;
 
             if (muxIdx == UINT_NOT_USED)
             {
                 /* Means the IO is not behind a MUX and located directly on the
                    main I2C branch. So use the IO bus number for bus selection */
-                hwCfg.selectedBus = hwCfg.pcaIo[idx].dev.bus;
+                hwCfg.selectedBus[sw] = hwCfg.pcaIo[idx].dev.bus;
             }
 
             /* Enable I2C select bit only on the one selected
@@ -3894,7 +4310,6 @@ fm_status fmPlatformLibSelectBus(fm_int    sw,
                                     bitIdx,
                                     (cnt == hwIdx) ? xcvrI2cBus->ioPinPolarity :
                                         !xcvrI2cBus->ioPinPolarity);
-
                             id = byteIdx | (ioIdx << 8);
                             /* Only update HW only when change to different byte */
                             if ((lastId != UINT_NOT_USED && (id != lastId)) ||
@@ -3908,11 +4323,17 @@ fm_status fmPlatformLibSelectBus(fm_int    sw,
 
                                 status = fmUtilPcaIoWriteRegs(&hwCfg.pcaIo[lastIoIdx].dev,
                                                               PCA_IO_REG_TYPE_OUTPUT,
-                                                              byteIdx,
+                                                              lastId & 0xff,
                                                               1);
                             }
                             lastIoIdx = ioIdx;
                             lastId = id;
+                        }
+                        else
+                        {
+                            FM_LOG_ERROR(FM_LOG_CAT_PLATFORM,
+                                         "PCA IO pin %d is out of range %u\n",
+                                         cnt, xcvrI2cBus->ioPin);
                         }
                     }
                 }
@@ -3931,7 +4352,7 @@ fm_status fmPlatformLibSelectBus(fm_int    sw,
                 /* Means the PHY is not behind a MUX and located directly on
                    the main I2C branch. So use the PHY bus number for bus
                    selection */
-                hwCfg.selectedBus = hwResId->phy.bus;
+                hwCfg.selectedBus[sw] = hwResId->phy.bus;
             }
         }
         else if (hwResId->phy.busSelType == BUS_SEL_TYPE_PCA_IO)
@@ -3944,9 +4365,9 @@ fm_status fmPlatformLibSelectBus(fm_int    sw,
         ; /* Maybe put all the mux into disabled */
     }
 
-    if ( muxIdx != UINT_NOT_USED && muxIdx < NUM_PCA_MUX )
+    if ( muxIdx != UINT_NOT_USED && muxIdx < hwCfg.numPcaMux )
     {
-        hwCfg.selectedBus = hwCfg.pcaMux[muxIdx].bus;
+        hwCfg.selectedBus[sw] = hwCfg.pcaMux[muxIdx].bus;
         status = SetupMuxPath(muxIdx, muxValue);
     }
 
@@ -3994,15 +4415,27 @@ fm_status fmPlatformLibI2cWriteRead(fm_int   sw,
     fm_status  status;
     fm_i2cCfg *i2c;
 
-    FM_NOT_USED(sw);
-
     FM_LOG_ENTRY(FM_LOG_CAT_PLATFORM,
                  "sw=%d i2cAddr=0x%x writeLen=%d readLen=%d\n",
                  sw, i2cAddr, writeLen, readLen);
 
-    if (hwCfg.selectedBus < NUM_I2C_BUS)
+    if (sw >= FM_MAX_NUM_SWITCHES)
     {
-        i2c = &hwCfg.i2c[hwCfg.selectedBus];
+        return FM_ERR_INVALID_ARGUMENT;
+    }
+
+    if (hwCfg.selectedBus[sw] < hwCfg.numBus)
+    {
+        i2c = &hwCfg.i2c[hwCfg.selectedBus[sw]];
+
+        if (!i2c->writeReadFunc)
+        {
+            FM_LOG_ERROR(FM_LOG_CAT_PLATFORM,
+                         "No I2C write-read function for switch %d bus %d\n",
+                         sw,
+                         hwCfg.selectedBus[sw]);
+            return FM_ERR_INVALID_ARGUMENT;
+        }
 
         status = TakeLock();
         FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
@@ -4072,7 +4505,7 @@ fm_status fmPlatformLibGetPortXcvrState(fm_int     sw,
     fm_uint         offset;
     fm_uint         byteIdx;
     fm_uint         bitIdx;
-    fm_bool         regSynced[NUM_PCA_IO];
+    fm_bool        *regSynced;
 
     FM_LOG_ENTRY(FM_LOG_CAT_PLATFORM, "sw=%d numPorts=0x%x\n", sw, numPorts);
 
@@ -4103,12 +4536,18 @@ fm_status fmPlatformLibGetPortXcvrState(fm_int     sw,
         FM_LOG_EXIT(FM_LOG_CAT_PLATFORM, FM_OK);
     }
 
-    /* Mark all the PCA IO input regs out of date for the code
-     * below to update the input registers only when needed */
-    FM_CLEAR(regSynced);
-
     status = TakeLock();
     FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
+
+    regSynced = fmAlloc( hwCfg.numPcaIo * sizeof(fm_bool) );
+    if (regSynced == NULL)
+    {
+        FM_LOG_EXIT(FM_LOG_CAT_PLATFORM, FM_ERR_NO_MEM);
+    }
+
+    /* Mark all the PCA IO input regs out of date for the code
+     * below to update the input registers only when needed */
+    memset(regSynced, 0, hwCfg.numPcaIo * sizeof(fm_bool));
 
     for (cnt = 0 ; cnt < (fm_uint)numPorts ; cnt++)
     {
@@ -4271,6 +4710,7 @@ fm_status fmPlatformLibGetPortXcvrState(fm_int     sw,
     }
 
 ABORT:
+    fmFree(regSynced);
     DropLock();
 
     FM_LOG_EXIT(FM_LOG_CAT_PLATFORM, status);
@@ -4478,18 +4918,24 @@ fm_status fmPlatformLibSetPortLed(fm_int     sw,
     fm_int          ledState;
     fm_byte         ledPcaState;
     fm_byte         ledout;
-    fm_bool         regSynced[NUM_PCA_IO];
+    fm_bool        *regSynced;
 
     FM_LOG_ENTRY(FM_LOG_CAT_PLATFORM, "sw=%d numHwId=%d\n", sw, numHwId);
 
     FM_NOT_USED(sw);
 
-    /* Mark all the PCA IO output regs out of date for the code
-     * below to update the registers only when needed */
-    FM_CLEAR(regSynced);
-
     status = TakeLock();
     FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
+
+    regSynced = fmAlloc( hwCfg.numPcaIo * sizeof(fm_bool) );
+    if (regSynced == NULL)
+    {
+        FM_LOG_EXIT(FM_LOG_CAT_PLATFORM, FM_ERR_NO_MEM);
+    }
+
+    /* Mark all the PCA IO input regs out of date for the code
+     * below to update the input registers only when needed */
+    memset(regSynced, 0, hwCfg.numPcaIo * sizeof(fm_bool));
 
     for (cnt = 0 ; cnt < (fm_uint)numHwId ; cnt++)
     {
@@ -4534,8 +4980,8 @@ fm_status fmPlatformLibSetPortLed(fm_int     sw,
 
             for (subLed = 0 ; subLed < NUM_SUB_LED ; subLed++)
             {
-                pin   = portLed->subLed[subLed].pin;
-                usage = portLed->subLed[subLed].usage;
+                pin        = portLed->subLed[subLed].pin;
+                usage      = portLed->subLed[subLed].usage;
 
                 if ( pin != UINT_NOT_USED )
                 {
@@ -4675,6 +5121,7 @@ fm_status fmPlatformLibSetPortLed(fm_int     sw,
     }
 
 ABORT:
+    fmFree(regSynced);
     DropLock();
 
     FM_LOG_EXIT(FM_LOG_CAT_PLATFORM, status);
@@ -4833,7 +5280,7 @@ fm_status fmPlatformLibSetVrmVoltage(fm_int     sw,
     status = TakeLock();
     FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
 
-    if ( HW_RESOURCE_ID_TO_IDX(hwResourceId) >= FM_NUM_HW_RES_ID )
+    if ( HW_RESOURCE_ID_TO_IDX(hwResourceId) >= hwCfg.numResId )
     {
         status = FM_ERR_INVALID_ARGUMENT;
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PLATFORM, status);

@@ -41,10 +41,37 @@
 
 #include <fm_sdk_fm10000_int.h>
 
-
 /*****************************************************************************
  * Macros, Constants & Types
  *****************************************************************************/
+
+#define ST(s) FM10000_AN_STATE_ ## s
+#define EV(e) FM10000_AN_EVENT_ ## e
+#define TG(g) TransitionGroup ## g
+#define FN(n) (genericFunction) n
+
+typedef void (*genericFunction)(void);
+
+/****************************************************************/
+/** \ingroup intAnStateMachine 
+ * Definition of the State Machine Transition Table values.
+ ****************************************************************/
+typedef struct _fm_smTable
+{
+    /* callback for transition or condition */
+    genericFunction         callback;
+    
+    /** current state identifier */
+    fm_int                  current;
+
+    /** event identifier */
+    fm_int                  event;
+
+    /** next state identifier */
+    fm_int                  next;
+
+} fm_smTable;
+
 
 /*****************************************************************************
  * Local function prototypes
@@ -67,6 +94,7 @@ static fm_status NotifyPortAutonegComplete( fm_smEventInfo *eventInfo, void *use
 static fm_status NotifyPortAutonegRestarted( fm_smEventInfo *eventInfo, void *userInfo );
 static fm_status DoAbilityMatch( fm_smEventInfo *eventInfo, void *userInfo );
 static fm_status StartAnPollingTimer( fm_smEventInfo *eventInfo, void *userInfo );
+static fm_status StartAnQuickPollingTimer( fm_smEventInfo *eventInfo, void *userInfo );
 static fm_status StopAnPollingTimer( fm_smEventInfo *eventInfo, void *userInfo );
 static fm_status PerformAnPortStatusValidation( fm_smEventInfo *eventInfo, void *userInfo );
 
@@ -76,74 +104,23 @@ static fm_status PerformAnPortStatusValidation( fm_smEventInfo *eventInfo, void 
 static fm_status Dummy( fm_smEventInfo *eventInfo, void *userInfo, fm_int *nextState );
 
 
-/* Declarations of transition callbacks for FM10000_CLAUSE73_AN_STATE_MACHINE */
-static fm_status Clause73StateMachineS0E0Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status Clause73StateMachineS1E0Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status Clause73StateMachineS1E1Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status Clause73StateMachineS1E11Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status Clause73StateMachineS9E0Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status Clause73StateMachineS9E1Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status Clause73StateMachineS9E7Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status Clause73StateMachineS4E0Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status Clause73StateMachineS4E1Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status Clause73StateMachineS4E11Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status Clause73StateMachineS4E7Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status Clause73StateMachineS5E0Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status Clause73StateMachineS5E1Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status Clause73StateMachineS5E11Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status Clause73StateMachineS5E7Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status Clause73StateMachineS6E0Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status Clause73StateMachineS6E1Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status Clause73StateMachineS6E11Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status Clause73StateMachineS6E12Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status Clause73StateMachineS8E0Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status Clause73StateMachineS8E1Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status Clause73StateMachineS8E11Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status Clause73StateMachineS8E7Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status Clause73StateMachineS8E12Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status Clause73StateMachineS10E0Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status Clause73StateMachineS10E1Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status Clause73StateMachineS10E11Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status Clause73StateMachineS10E13Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status Clause73StateMachineS11E0Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status Clause73StateMachineS11E1Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status Clause73StateMachineS11E11Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status Clause73StateMachineS11E14Callback( fm_smEventInfo *eventInfo, void *userInfo );
 
-/* Declarations of transition callbacks for FM10000_CLAUSE37_AN_STATE_MACHINE */
-static fm_status Clause37StateMachineS0E0Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status Clause37StateMachineS1E0Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status Clause37StateMachineS1E1Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status Clause37StateMachineS1E3Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status Clause37StateMachineS2E0Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status Clause37StateMachineS2E1Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status Clause37StateMachineS2E3Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status Clause37StateMachineS2E7Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status Clause37StateMachineS3E0Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status Clause37StateMachineS3E1Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status Clause37StateMachineS4E0Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status Clause37StateMachineS4E1Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status Clause37StateMachineS4E3Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status Clause37StateMachineS4E7Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status Clause37StateMachineS5E0Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status Clause37StateMachineS5E1Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status Clause37StateMachineS5E3Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status Clause37StateMachineS5E7Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status Clause37StateMachineS6E0Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status Clause37StateMachineS6E1Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status Clause37StateMachineS6E3Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status Clause37StateMachineS6E10Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status Clause37StateMachineS8E0Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status Clause37StateMachineS8E1Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status Clause37StateMachineS8E3Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status Clause37StateMachineS8E7Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status Clause37StateMachineS7E0Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status Clause37StateMachineS7E1Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status Clause37StateMachineS7E3Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status Clause37StateMachineS7E10Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status Clause37StateMachineS12E0Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status Clause37StateMachineS12E1Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status Clause37StateMachineS12E3Callback( fm_smEventInfo *eventInfo, void *userInfo );
+/* declaration of transition group callbacks */
+static fm_status TG(0)( fm_smEventInfo *eventInfo, void *userInfo );
+static fm_status TG(1)( fm_smEventInfo *eventInfo, void *userInfo );
+static fm_status TG(2)( fm_smEventInfo *eventInfo, void *userInfo );
+static fm_status TG(3)( fm_smEventInfo *eventInfo, void *userInfo );
+static fm_status TG(4)( fm_smEventInfo *eventInfo, void *userInfo );
+static fm_status TG(5)( fm_smEventInfo *eventInfo, void *userInfo );
+static fm_status TG(6)( fm_smEventInfo *eventInfo, void *userInfo );
+static fm_status TG(7)( fm_smEventInfo *eventInfo, void *userInfo );
+static fm_status TG(8)( fm_smEventInfo *eventInfo, void *userInfo );
+static fm_status TG(9)( fm_smEventInfo *eventInfo, void *userInfo );
+static fm_status TG(10)( fm_smEventInfo *eventInfo, void *userInfo );
+static fm_status TG(11)( fm_smEventInfo *eventInfo, void *userInfo );
+static fm_status TG(12)( fm_smEventInfo *eventInfo, void *userInfo );
+static fm_status TG(13)( fm_smEventInfo *eventInfo, void *userInfo );
+
 
 
 /*****************************************************************************
@@ -194,13 +171,106 @@ fm_text fm10000AnEventsMap[FM10000_AN_EVENT_MAX] =
  * Local Variables
  *****************************************************************************/
 
+
+static const fm_smTable fm10000Clause73SmTable[] = {
+    { FN(TG(7)) , ST(ABILITY_DETECT)  , EV(TRANSMIT_DISABLE_IND) , ST(TRANSMIT_DISABLE) },
+    { FN(TG(7)) , ST(ACK_DETECT)      , EV(TRANSMIT_DISABLE_IND) , ST(TRANSMIT_DISABLE) },
+    { FN(TG(7)) , ST(COMPLETE_ACK)    , EV(TRANSMIT_DISABLE_IND) , ST(TRANSMIT_DISABLE) },
+    { FN(TG(7)) , ST(NEXT_PAGE_WAIT)  , EV(TRANSMIT_DISABLE_IND) , ST(TRANSMIT_DISABLE) },
+    { FN(TG(7)) , ST(GOOD_CHECK)      , EV(TRANSMIT_DISABLE_IND) , ST(TRANSMIT_DISABLE) },
+    { FN(TG(8)) , ST(COMPLETE_ACK)    , EV(GOOD_CHECK_IND)       , ST(GOOD_CHECK)       },
+    { FN(TG(8)) , ST(NEXT_PAGE_WAIT)  , EV(GOOD_CHECK_IND)       , ST(GOOD_CHECK)       },
+    { FN(TG(9)) , ST(GOOD)            , EV(POLLING_TIMER_EXP_IND), ST(GOOD)             },
+    { FN(TG(10)), ST(GOOD_CHECK)      , EV(GOOD_IND)             , ST(GOOD)             },
+    { FN(TG(1)) , ST(TRANSMIT_DISABLE), EV(COMPLETE_ACK_IND)     , ST(COMPLETE_ACK)     },
+    { FN(TG(1)) , ST(ABILITY_DETECT)  , EV(COMPLETE_ACK_IND)     , ST(COMPLETE_ACK)     },
+    { FN(TG(1)) , ST(ACK_DETECT)      , EV(COMPLETE_ACK_IND)     , ST(COMPLETE_ACK)     },
+    { FN(TG(1)) , ST(NEXT_PAGE_WAIT)  , EV(COMPLETE_ACK_IND)     , ST(COMPLETE_ACK)     },
+    { FN(TG(2)) , ST(ENABLED)         , EV(STOP_REQ)             , ST(DISABLED)         },
+    { FN(TG(2)) , ST(TRANSMIT_DISABLE), EV(STOP_REQ)             , ST(DISABLED)         },
+    { FN(TG(2)) , ST(ABILITY_DETECT)  , EV(STOP_REQ)             , ST(DISABLED)         },
+    { FN(TG(2)) , ST(ACK_DETECT)      , EV(STOP_REQ)             , ST(DISABLED)         },
+    { FN(TG(2)) , ST(COMPLETE_ACK)    , EV(STOP_REQ)             , ST(DISABLED)         },
+    { FN(TG(2)) , ST(NEXT_PAGE_WAIT)  , EV(STOP_REQ)             , ST(DISABLED)         },
+    { FN(TG(2)) , ST(GOOD_CHECK)      , EV(STOP_REQ)             , ST(DISABLED)         },
+    { FN(TG(3)) , ST(ENABLED)         , EV(START_REQ)            , ST(ENABLED)          },
+    { FN(TG(3)) , ST(TRANSMIT_DISABLE), EV(START_REQ)            , ST(ENABLED)          },
+    { FN(TG(3)) , ST(ABILITY_DETECT)  , EV(START_REQ)            , ST(ENABLED)          },
+    { FN(TG(3)) , ST(ACK_DETECT)      , EV(START_REQ)            , ST(ENABLED)          },
+    { FN(TG(3)) , ST(COMPLETE_ACK)    , EV(START_REQ)            , ST(ENABLED)          },
+    { FN(TG(3)) , ST(NEXT_PAGE_WAIT)  , EV(START_REQ)            , ST(ENABLED)          },
+    { FN(TG(3)) , ST(GOOD_CHECK)      , EV(START_REQ)            , ST(ENABLED)          },
+    { FN(TG(3)) , ST(GOOD)            , EV(START_REQ)            , ST(ENABLED)          },
+    { FN(TG(11)), ST(ENABLED)         , EV(TRANSMIT_DISABLE_IND) , ST(TRANSMIT_DISABLE) },
+    { FN(TG(4)) , ST(DISABLED)        , EV(START_REQ)            , ST(ENABLED)          },
+    { FN(TG(12)), ST(GOOD)            , EV(STOP_REQ)             , ST(DISABLED)         },
+    { FN(TG(13)), ST(GOOD)            , EV(TRANSMIT_DISABLE_IND) , ST(DISABLED)         },
+    { NULL      , ST(TRANSMIT_DISABLE), EV(ABILITY_DETECT_IND)   , ST(ABILITY_DETECT)   },
+    { NULL      , ST(TRANSMIT_DISABLE), EV(ACK_DETECT_IND)       , ST(ACK_DETECT)       },
+    { NULL      , ST(ABILITY_DETECT)  , EV(ACK_DETECT_IND)       , ST(ACK_DETECT)       },
+    { NULL      , ST(COMPLETE_ACK)    , EV(ACK_DETECT_IND)       , ST(ACK_DETECT)       },
+    { NULL      , ST(COMPLETE_ACK)    , EV(NEXT_PAGE_WAIT_IND)   , ST(NEXT_PAGE_WAIT)   },
+    { NULL      , ST(NEXT_PAGE_WAIT)  , EV(ACK_DETECT_IND)       , ST(ACK_DETECT)       }
+};
+
+static const fm_smTable fm10000Clause37SmTable[] = {
+    { NULL     , ST(ENABLED)        , EV(DISABLE_LINK_OK_IND), ST(DISABLE_LINK_OK) },
+    { NULL     , ST(RESTART)        , EV(DISABLE_LINK_OK_IND), ST(DISABLE_LINK_OK) },
+    { NULL     , ST(RESTART)        , EV(ABILITY_DETECT_IND) , ST(ABILITY_DETECT)  },
+    { NULL     , ST(RESTART)        , EV(ACK_DETECT_IND)     , ST(ACK_DETECT)      },
+    { NULL     , ST(ABILITY_DETECT) , EV(DISABLE_LINK_OK_IND), ST(DISABLE_LINK_OK) },
+    { NULL     , ST(ABILITY_DETECT) , EV(ACK_DETECT_IND)     , ST(ACK_DETECT)      },
+    { NULL     , ST(ACK_DETECT)     , EV(DISABLE_LINK_OK_IND), ST(DISABLE_LINK_OK) },
+    { NULL     , ST(COMPLETE_ACK)   , EV(DISABLE_LINK_OK_IND), ST(DISABLE_LINK_OK) },
+    { NULL     , ST(COMPLETE_ACK)   , EV(ACK_DETECT_IND)     , ST(ACK_DETECT)      },
+    { NULL     , ST(COMPLETE_ACK)   , EV(NEXT_PAGE_WAIT_IND) , ST(NEXT_PAGE_WAIT)  },
+    { NULL     , ST(COMPLETE_ACK)   , EV(IDLE_DETECT_IND)    , ST(IDLE_DETECT)     },
+    { NULL     , ST(NEXT_PAGE_WAIT) , EV(DISABLE_LINK_OK_IND), ST(DISABLE_LINK_OK) },
+    { NULL     , ST(NEXT_PAGE_WAIT) , EV(ACK_DETECT_IND)     , ST(ACK_DETECT)      },
+    { NULL     , ST(LINK_OK)        , EV(DISABLE_LINK_OK_IND), ST(DISABLE_LINK_OK) },
+    { FN(TG(0)), ST(COMPLETE_ACK)   , EV(LINK_OK_IND)        , ST(LINK_OK)         },
+    { FN(TG(0)), ST(IDLE_DETECT)    , EV(LINK_OK_IND)        , ST(LINK_OK)         },
+    { FN(TG(1)), ST(RESTART)        , EV(COMPLETE_ACK_IND)   , ST(COMPLETE_ACK)    },
+    { FN(TG(1)), ST(ABILITY_DETECT) , EV(COMPLETE_ACK_IND)   , ST(COMPLETE_ACK)    },
+    { FN(TG(1)), ST(ACK_DETECT)     , EV(COMPLETE_ACK_IND)   , ST(COMPLETE_ACK)    },
+    { FN(TG(1)), ST(NEXT_PAGE_WAIT) , EV(COMPLETE_ACK_IND)   , ST(COMPLETE_ACK)    },
+    { FN(TG(2)), ST(ENABLED)        , EV(STOP_REQ)           , ST(DISABLED)        },
+    { FN(TG(2)), ST(RESTART)        , EV(STOP_REQ)           , ST(DISABLED)        },
+    { FN(TG(2)), ST(DISABLE_LINK_OK), EV(STOP_REQ)           , ST(DISABLED)        },
+    { FN(TG(2)), ST(ABILITY_DETECT) , EV(STOP_REQ)           , ST(DISABLED)        },
+    { FN(TG(2)), ST(ACK_DETECT)     , EV(STOP_REQ)           , ST(DISABLED)        },
+    { FN(TG(2)), ST(COMPLETE_ACK)   , EV(STOP_REQ)           , ST(DISABLED)        },
+    { FN(TG(2)), ST(NEXT_PAGE_WAIT) , EV(STOP_REQ)           , ST(DISABLED)        },
+    { FN(TG(2)), ST(IDLE_DETECT)    , EV(STOP_REQ)           , ST(DISABLED)        },
+    { FN(TG(2)), ST(LINK_OK)        , EV(STOP_REQ)           , ST(DISABLED)        },
+    { FN(TG(3)), ST(ENABLED)        , EV(START_REQ)          , ST(ENABLED)         },
+    { FN(TG(3)), ST(RESTART)        , EV(START_REQ)          , ST(ENABLED)         },
+    { FN(TG(3)), ST(DISABLE_LINK_OK), EV(START_REQ)          , ST(ENABLED)         },
+    { FN(TG(3)), ST(ABILITY_DETECT) , EV(START_REQ)          , ST(ENABLED)         },
+    { FN(TG(3)), ST(ACK_DETECT)     , EV(START_REQ)          , ST(ENABLED)         },
+    { FN(TG(3)), ST(COMPLETE_ACK)   , EV(START_REQ)          , ST(ENABLED)         },
+    { FN(TG(3)), ST(NEXT_PAGE_WAIT) , EV(START_REQ)          , ST(ENABLED)         },
+    { FN(TG(3)), ST(IDLE_DETECT)    , EV(START_REQ)          , ST(ENABLED)         },
+    { FN(TG(3)), ST(LINK_OK)        , EV(START_REQ)          , ST(ENABLED)         },
+    { FN(TG(4)), ST(DISABLED)       , EV(START_REQ)          , ST(ENABLED)         },
+    { FN(TG(5)), ST(ENABLED)        , EV(RESTART_IND)        , ST(RESTART)         },
+    { FN(TG(6)), ST(RESTART)        , EV(RESTART_IND)        , ST(RESTART)         },
+    { FN(TG(6)), ST(ABILITY_DETECT) , EV(RESTART_IND)        , ST(RESTART)         },
+    { FN(TG(6)), ST(ACK_DETECT)     , EV(RESTART_IND)        , ST(RESTART)         },
+    { FN(TG(6)), ST(COMPLETE_ACK)   , EV(RESTART_IND)        , ST(RESTART)         },
+    { FN(TG(6)), ST(NEXT_PAGE_WAIT) , EV(RESTART_IND)        , ST(RESTART)         },
+    { FN(TG(6)), ST(IDLE_DETECT)    , EV(RESTART_IND)        , ST(RESTART)         },
+    { FN(TG(6)), ST(LINK_OK)        , EV(RESTART_IND)        , ST(RESTART)         }
+};
+
+
+
 /*****************************************************************************
  * Local Functions
  *****************************************************************************/
 
 /*****************************************************************************/
-/** TakeRegLock
- * \ingroup intAnStateMachine 
+/* TakeRegLock
  *
  * \desc            One of the action callbacks for this state machine
  *                  category.
@@ -233,8 +303,7 @@ static fm_status TakeRegLock( fm_smEventInfo *eventInfo, void *userInfo )
 
 
 /*****************************************************************************/
-/** DropRegLock
- * \ingroup intAnStateMachine 
+/* DropRegLock
  *
  * \desc            One of the action callbacks for this state machine
  *                  category.
@@ -267,8 +336,7 @@ static fm_status DropRegLock( fm_smEventInfo *eventInfo, void *userInfo )
 
 
 /*****************************************************************************/
-/** EnableAn
- * \ingroup intAnStateMachine 
+/* EnableAn
  *
  * \desc            One of the action callbacks for this state machine
  *                  category.
@@ -301,8 +369,7 @@ static fm_status EnableAn( fm_smEventInfo *eventInfo, void *userInfo )
 
 
 /*****************************************************************************/
-/** DisableAn
- * \ingroup intAnStateMachine 
+/* DisableAn
  *
  * \desc            One of the action callbacks for this state machine
  *                  category.
@@ -335,8 +402,7 @@ static fm_status DisableAn( fm_smEventInfo *eventInfo, void *userInfo )
 
 
 /*****************************************************************************/
-/** EnableAnInterrupts
- * \ingroup intAnStateMachine 
+/* EnableAnInterrupts
  *
  * \desc            One of the action callbacks for this state machine
  *                  category.
@@ -369,8 +435,7 @@ static fm_status EnableAnInterrupts( fm_smEventInfo *eventInfo, void *userInfo )
 
 
 /*****************************************************************************/
-/** DisableAnInterrupts
- * \ingroup intAnStateMachine 
+/* DisableAnInterrupts
  *
  * \desc            One of the action callbacks for this state machine
  *                  category.
@@ -403,8 +468,7 @@ static fm_status DisableAnInterrupts( fm_smEventInfo *eventInfo, void *userInfo 
 
 
 /*****************************************************************************/
-/** ConfigureBasePage
- * \ingroup intAnStateMachine 
+/* ConfigureBasePage
  *
  * \desc            One of the action callbacks for this state machine
  *                  category.
@@ -437,8 +501,7 @@ static fm_status ConfigureBasePage( fm_smEventInfo *eventInfo, void *userInfo )
 
 
 /*****************************************************************************/
-/** ConfigureNextPages
- * \ingroup intAnStateMachine 
+/* ConfigureNextPages
  *
  * \desc            One of the action callbacks for this state machine
  *                  category.
@@ -471,8 +534,7 @@ static fm_status ConfigureNextPages( fm_smEventInfo *eventInfo, void *userInfo )
 
 
 /*****************************************************************************/
-/** NotifyApiAutonegCompleteOrFault
- * \ingroup intAnStateMachine 
+/* NotifyApiAutonegCompleteOrFault
  *
  * \desc            One of the action callbacks for this state machine
  *                  category.
@@ -505,8 +567,7 @@ static fm_status NotifyApiAutonegCompleteOrFault( fm_smEventInfo *eventInfo, voi
 
 
 /*****************************************************************************/
-/** NotifyApiAutonegFailed
- * \ingroup intAnStateMachine 
+/* NotifyApiAutonegFailed
  *
  * \desc            One of the action callbacks for this state machine
  *                  category.
@@ -539,8 +600,7 @@ static fm_status NotifyApiAutonegFailed( fm_smEventInfo *eventInfo, void *userIn
 
 
 /*****************************************************************************/
-/** NotifyApiAutonegStarted
- * \ingroup intAnStateMachine 
+/* NotifyApiAutonegStarted
  *
  * \desc            One of the action callbacks for this state machine
  *                  category.
@@ -573,8 +633,7 @@ static fm_status NotifyApiAutonegStarted( fm_smEventInfo *eventInfo, void *userI
 
 
 /*****************************************************************************/
-/** ConfigureAnTimers
- * \ingroup intAnStateMachine 
+/* ConfigureAnTimers
  *
  * \desc            One of the action callbacks for this state machine
  *                  category.
@@ -607,8 +666,7 @@ static fm_status ConfigureAnTimers( fm_smEventInfo *eventInfo, void *userInfo )
 
 
 /*****************************************************************************/
-/** NotifyPortAutonegComplete
- * \ingroup intAnStateMachine 
+/* NotifyPortAutonegComplete
  *
  * \desc            One of the action callbacks for this state machine
  *                  category.
@@ -641,8 +699,7 @@ static fm_status NotifyPortAutonegComplete( fm_smEventInfo *eventInfo, void *use
 
 
 /*****************************************************************************/
-/** NotifyPortAutonegRestarted
- * \ingroup intAnStateMachine 
+/* NotifyPortAutonegRestarted
  *
  * \desc            One of the action callbacks for this state machine
  *                  category.
@@ -675,8 +732,7 @@ static fm_status NotifyPortAutonegRestarted( fm_smEventInfo *eventInfo, void *us
 
 
 /*****************************************************************************/
-/** DoAbilityMatch
- * \ingroup intAnStateMachine 
+/* DoAbilityMatch
  *
  * \desc            One of the action callbacks for this state machine
  *                  category.
@@ -709,8 +765,7 @@ static fm_status DoAbilityMatch( fm_smEventInfo *eventInfo, void *userInfo )
 
 
 /*****************************************************************************/
-/** StartAnPollingTimer
- * \ingroup intAnStateMachine 
+/* StartAnPollingTimer
  *
  * \desc            One of the action callbacks for this state machine
  *                  category.
@@ -743,8 +798,40 @@ static fm_status StartAnPollingTimer( fm_smEventInfo *eventInfo, void *userInfo 
 
 
 /*****************************************************************************/
-/** StopAnPollingTimer
- * \ingroup intAnStateMachine 
+/* StartAnQuickPollingTimer
+ *
+ * \desc            One of the action callbacks for this state machine
+ *                  category.
+ *
+ * \param[in]       eventInfo is a pointer to a caller-allocated area
+ *                  containing the generic event descriptor.
+ * 
+ * \param[in]       userInfo is a pointer to a caller-allocated area containing
+ *                  purpose-specific event info.
+ * 
+ * \return          Caller-provided return codes.
+ * 
+ *****************************************************************************/
+static fm_status StartAnQuickPollingTimer( fm_smEventInfo *eventInfo, void *userInfo )
+{
+    fm_status status;
+    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
+
+    FM_LOG_DEBUG_V2( FM_LOG_CAT_PORT_AUTONEG,
+                     port,
+                     "Event %s occurred on port %d, executing StartAnQuickPollingTimer\n", 
+                     fm10000AnEventsMap[eventInfo->eventId],
+                     port );
+
+    status = fm10000StartAnQuickPollingTimer( eventInfo, userInfo );
+
+    return status;
+
+}   /* end StartAnQuickPollingTimer */
+
+
+/*****************************************************************************/
+/* StopAnPollingTimer
  *
  * \desc            One of the action callbacks for this state machine
  *                  category.
@@ -777,8 +864,7 @@ static fm_status StopAnPollingTimer( fm_smEventInfo *eventInfo, void *userInfo )
 
 
 /*****************************************************************************/
-/** PerformAnPortStatusValidation
- * \ingroup intAnStateMachine 
+/* PerformAnPortStatusValidation
  *
  * \desc            One of the action callbacks for this state machine
  *                  category.
@@ -811,8 +897,7 @@ static fm_status PerformAnPortStatusValidation( fm_smEventInfo *eventInfo, void 
 
 
 /*****************************************************************************/
-/** Dummy
- * \ingroup intAnStateMachine 
+/* Dummy
  *
  * \desc            One of the condition callbacks for this state machine
  *                  category.
@@ -852,17 +937,15 @@ static fm_status Dummy( fm_smEventInfo *eventInfo, void *userInfo, fm_int *nextS
 
 
 /******************************************************************************
- * Definitions of transition callbacks for FM10000_CLAUSE73_AN_STATE_MACHINE
+ * Definitions of transition group callbacks 
  *****************************************************************************/
 
+
+
 /*****************************************************************************/
-/** Clause73StateMachineS0E0Callback
- * \ingroup intAnStateMachine
+/* TransitionGroup0
  *
- * \desc            Transition callback for AN state machine type
- *                  ''FM10000_CLAUSE73_AN_STATE_MACHINE'', when event
- *                  ''FM10000_AN_EVENT_START_REQ'' occurs in state
- *                  ''FM10000_AN_STATE_DISABLED''.
+ * \desc            Transition callback for AN state machine.
  * 
  * \param[in]       eventInfo is a pointer to a caller-allocated area
  *                  containing the generic event descriptor.
@@ -873,1405 +956,19 @@ static fm_status Dummy( fm_smEventInfo *eventInfo, void *userInfo, fm_int *nextS
  * \return          See return codes from the action callback functions.
  * 
  *****************************************************************************/
-static fm_status Clause73StateMachineS0E0Callback( fm_smEventInfo *eventInfo, void *userInfo )
+static fm_status TG(0)( fm_smEventInfo *eventInfo, void *userInfo )
 {
     fm_status status = FM_OK;
     fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
 
     ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken = FALSE;
-        
-    status = TakeRegLock( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = EnableAnInterrupts( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = ConfigureBasePage( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = ConfigureAnTimers( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = EnableAn( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = DropRegLock( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-ABORT:
-    if( ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken == TRUE )
-    {
-        DropRegLock( eventInfo, userInfo );
-    }
-
-    return status;
-
-}   /* end Clause73StateMachineS0E0Callback */
-
-/*****************************************************************************/
-/** Clause73StateMachineS1E0Callback
- * \ingroup intAnStateMachine
- *
- * \desc            Transition callback for AN state machine type
- *                  ''FM10000_CLAUSE73_AN_STATE_MACHINE'', when event
- *                  ''FM10000_AN_EVENT_START_REQ'' occurs in state
- *                  ''FM10000_AN_STATE_ENABLED''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status Clause73StateMachineS1E0Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-
-    ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken = FALSE;
-        
-    status = TakeRegLock( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = DisableAnInterrupts( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = DisableAn( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = EnableAnInterrupts( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = ConfigureBasePage( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = ConfigureAnTimers( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = EnableAn( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = DropRegLock( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-ABORT:
-    if( ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken == TRUE )
-    {
-        DropRegLock( eventInfo, userInfo );
-    }
-
-    return status;
-
-}   /* end Clause73StateMachineS1E0Callback */
-
-/*****************************************************************************/
-/** Clause73StateMachineS1E1Callback
- * \ingroup intAnStateMachine
- *
- * \desc            Transition callback for AN state machine type
- *                  ''FM10000_CLAUSE73_AN_STATE_MACHINE'', when event
- *                  ''FM10000_AN_EVENT_STOP_REQ'' occurs in state
- *                  ''FM10000_AN_STATE_ENABLED''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status Clause73StateMachineS1E1Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-
-    ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken = FALSE;
-        
-    status = TakeRegLock( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = DisableAnInterrupts( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = DisableAn( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = DropRegLock( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-ABORT:
-    if( ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken == TRUE )
-    {
-        DropRegLock( eventInfo, userInfo );
-    }
-
-    return status;
-
-}   /* end Clause73StateMachineS1E1Callback */
-
-/*****************************************************************************/
-/** Clause73StateMachineS1E11Callback
- * \ingroup intAnStateMachine
- *
- * \desc            Transition callback for AN state machine type
- *                  ''FM10000_CLAUSE73_AN_STATE_MACHINE'', when event
- *                  ''FM10000_AN_EVENT_TRANSMIT_DISABLE_IND'' occurs in state
- *                  ''FM10000_AN_STATE_ENABLED''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status Clause73StateMachineS1E11Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-
-    ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken = FALSE;
-        
-    status = TakeRegLock( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = ConfigureAnTimers( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = ConfigureBasePage( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = DropRegLock( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = NotifyPortAutonegRestarted( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = NotifyApiAutonegStarted( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-ABORT:
-    if( ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken == TRUE )
-    {
-        DropRegLock( eventInfo, userInfo );
-    }
-
-    return status;
-
-}   /* end Clause73StateMachineS1E11Callback */
-
-/*****************************************************************************/
-/** Clause73StateMachineS9E0Callback
- * \ingroup intAnStateMachine
- *
- * \desc            Transition callback for AN state machine type
- *                  ''FM10000_CLAUSE73_AN_STATE_MACHINE'', when event
- *                  ''FM10000_AN_EVENT_START_REQ'' occurs in state
- *                  ''FM10000_AN_STATE_TRANSMIT_DISABLE''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status Clause73StateMachineS9E0Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-
-    ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken = FALSE;
-        
-    status = TakeRegLock( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = DisableAnInterrupts( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = DisableAn( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = EnableAnInterrupts( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = ConfigureBasePage( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = ConfigureAnTimers( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = EnableAn( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = DropRegLock( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-ABORT:
-    if( ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken == TRUE )
-    {
-        DropRegLock( eventInfo, userInfo );
-    }
-
-    return status;
-
-}   /* end Clause73StateMachineS9E0Callback */
-
-/*****************************************************************************/
-/** Clause73StateMachineS9E1Callback
- * \ingroup intAnStateMachine
- *
- * \desc            Transition callback for AN state machine type
- *                  ''FM10000_CLAUSE73_AN_STATE_MACHINE'', when event
- *                  ''FM10000_AN_EVENT_STOP_REQ'' occurs in state
- *                  ''FM10000_AN_STATE_TRANSMIT_DISABLE''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status Clause73StateMachineS9E1Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-
-    ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken = FALSE;
-        
-    status = TakeRegLock( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = DisableAnInterrupts( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = DisableAn( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = DropRegLock( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-ABORT:
-    if( ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken == TRUE )
-    {
-        DropRegLock( eventInfo, userInfo );
-    }
-
-    return status;
-
-}   /* end Clause73StateMachineS9E1Callback */
-
-/*****************************************************************************/
-/** Clause73StateMachineS9E7Callback
- * \ingroup intAnStateMachine
- *
- * \desc            Transition callback for AN state machine type
- *                  ''FM10000_CLAUSE73_AN_STATE_MACHINE'', when event
- *                  ''FM10000_AN_EVENT_COMPLETE_ACK_IND'' occurs in state
- *                  ''FM10000_AN_STATE_TRANSMIT_DISABLE''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status Clause73StateMachineS9E7Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-
-    ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken = FALSE;
-        
-    status = TakeRegLock( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = ConfigureNextPages( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = DropRegLock( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-ABORT:
-    if( ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken == TRUE )
-    {
-        DropRegLock( eventInfo, userInfo );
-    }
-
-    return status;
-
-}   /* end Clause73StateMachineS9E7Callback */
-
-/*****************************************************************************/
-/** Clause73StateMachineS4E0Callback
- * \ingroup intAnStateMachine
- *
- * \desc            Transition callback for AN state machine type
- *                  ''FM10000_CLAUSE73_AN_STATE_MACHINE'', when event
- *                  ''FM10000_AN_EVENT_START_REQ'' occurs in state
- *                  ''FM10000_AN_STATE_ABILITY_DETECT''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status Clause73StateMachineS4E0Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-
-    ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken = FALSE;
-        
-    status = TakeRegLock( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = DisableAnInterrupts( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = DisableAn( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = EnableAnInterrupts( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = ConfigureBasePage( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = ConfigureAnTimers( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = EnableAn( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = DropRegLock( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-ABORT:
-    if( ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken == TRUE )
-    {
-        DropRegLock( eventInfo, userInfo );
-    }
-
-    return status;
-
-}   /* end Clause73StateMachineS4E0Callback */
-
-/*****************************************************************************/
-/** Clause73StateMachineS4E1Callback
- * \ingroup intAnStateMachine
- *
- * \desc            Transition callback for AN state machine type
- *                  ''FM10000_CLAUSE73_AN_STATE_MACHINE'', when event
- *                  ''FM10000_AN_EVENT_STOP_REQ'' occurs in state
- *                  ''FM10000_AN_STATE_ABILITY_DETECT''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status Clause73StateMachineS4E1Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-
-    ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken = FALSE;
-        
-    status = TakeRegLock( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = DisableAnInterrupts( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = DisableAn( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = DropRegLock( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-ABORT:
-    if( ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken == TRUE )
-    {
-        DropRegLock( eventInfo, userInfo );
-    }
-
-    return status;
-
-}   /* end Clause73StateMachineS4E1Callback */
-
-/*****************************************************************************/
-/** Clause73StateMachineS4E11Callback
- * \ingroup intAnStateMachine
- *
- * \desc            Transition callback for AN state machine type
- *                  ''FM10000_CLAUSE73_AN_STATE_MACHINE'', when event
- *                  ''FM10000_AN_EVENT_TRANSMIT_DISABLE_IND'' occurs in state
- *                  ''FM10000_AN_STATE_ABILITY_DETECT''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status Clause73StateMachineS4E11Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-
-    ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken = FALSE;
-        
-    status = TakeRegLock( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = ConfigureAnTimers( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = ConfigureBasePage( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = DropRegLock( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = NotifyPortAutonegRestarted( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = NotifyApiAutonegFailed( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-ABORT:
-    if( ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken == TRUE )
-    {
-        DropRegLock( eventInfo, userInfo );
-    }
-
-    return status;
-
-}   /* end Clause73StateMachineS4E11Callback */
-
-/*****************************************************************************/
-/** Clause73StateMachineS4E7Callback
- * \ingroup intAnStateMachine
- *
- * \desc            Transition callback for AN state machine type
- *                  ''FM10000_CLAUSE73_AN_STATE_MACHINE'', when event
- *                  ''FM10000_AN_EVENT_COMPLETE_ACK_IND'' occurs in state
- *                  ''FM10000_AN_STATE_ABILITY_DETECT''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status Clause73StateMachineS4E7Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-
-    ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken = FALSE;
-        
-    status = TakeRegLock( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = ConfigureNextPages( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = DropRegLock( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-ABORT:
-    if( ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken == TRUE )
-    {
-        DropRegLock( eventInfo, userInfo );
-    }
-
-    return status;
-
-}   /* end Clause73StateMachineS4E7Callback */
-
-/*****************************************************************************/
-/** Clause73StateMachineS5E0Callback
- * \ingroup intAnStateMachine
- *
- * \desc            Transition callback for AN state machine type
- *                  ''FM10000_CLAUSE73_AN_STATE_MACHINE'', when event
- *                  ''FM10000_AN_EVENT_START_REQ'' occurs in state
- *                  ''FM10000_AN_STATE_ACK_DETECT''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status Clause73StateMachineS5E0Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-
-    ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken = FALSE;
-        
-    status = TakeRegLock( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = DisableAnInterrupts( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = DisableAn( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = EnableAnInterrupts( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = ConfigureBasePage( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = ConfigureAnTimers( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = EnableAn( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = DropRegLock( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-ABORT:
-    if( ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken == TRUE )
-    {
-        DropRegLock( eventInfo, userInfo );
-    }
-
-    return status;
-
-}   /* end Clause73StateMachineS5E0Callback */
-
-/*****************************************************************************/
-/** Clause73StateMachineS5E1Callback
- * \ingroup intAnStateMachine
- *
- * \desc            Transition callback for AN state machine type
- *                  ''FM10000_CLAUSE73_AN_STATE_MACHINE'', when event
- *                  ''FM10000_AN_EVENT_STOP_REQ'' occurs in state
- *                  ''FM10000_AN_STATE_ACK_DETECT''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status Clause73StateMachineS5E1Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-
-    ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken = FALSE;
-        
-    status = TakeRegLock( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = DisableAnInterrupts( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = DisableAn( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = DropRegLock( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-ABORT:
-    if( ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken == TRUE )
-    {
-        DropRegLock( eventInfo, userInfo );
-    }
-
-    return status;
-
-}   /* end Clause73StateMachineS5E1Callback */
-
-/*****************************************************************************/
-/** Clause73StateMachineS5E11Callback
- * \ingroup intAnStateMachine
- *
- * \desc            Transition callback for AN state machine type
- *                  ''FM10000_CLAUSE73_AN_STATE_MACHINE'', when event
- *                  ''FM10000_AN_EVENT_TRANSMIT_DISABLE_IND'' occurs in state
- *                  ''FM10000_AN_STATE_ACK_DETECT''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status Clause73StateMachineS5E11Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-
-    ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken = FALSE;
-        
-    status = TakeRegLock( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = ConfigureAnTimers( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = ConfigureBasePage( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = DropRegLock( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = NotifyPortAutonegRestarted( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = NotifyApiAutonegFailed( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-ABORT:
-    if( ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken == TRUE )
-    {
-        DropRegLock( eventInfo, userInfo );
-    }
-
-    return status;
-
-}   /* end Clause73StateMachineS5E11Callback */
-
-/*****************************************************************************/
-/** Clause73StateMachineS5E7Callback
- * \ingroup intAnStateMachine
- *
- * \desc            Transition callback for AN state machine type
- *                  ''FM10000_CLAUSE73_AN_STATE_MACHINE'', when event
- *                  ''FM10000_AN_EVENT_COMPLETE_ACK_IND'' occurs in state
- *                  ''FM10000_AN_STATE_ACK_DETECT''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status Clause73StateMachineS5E7Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-
-    ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken = FALSE;
-        
-    status = TakeRegLock( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = ConfigureNextPages( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = DropRegLock( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-ABORT:
-    if( ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken == TRUE )
-    {
-        DropRegLock( eventInfo, userInfo );
-    }
-
-    return status;
-
-}   /* end Clause73StateMachineS5E7Callback */
-
-/*****************************************************************************/
-/** Clause73StateMachineS6E0Callback
- * \ingroup intAnStateMachine
- *
- * \desc            Transition callback for AN state machine type
- *                  ''FM10000_CLAUSE73_AN_STATE_MACHINE'', when event
- *                  ''FM10000_AN_EVENT_START_REQ'' occurs in state
- *                  ''FM10000_AN_STATE_COMPLETE_ACK''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status Clause73StateMachineS6E0Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-
-    ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken = FALSE;
-        
-    status = TakeRegLock( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = DisableAnInterrupts( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = DisableAn( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = EnableAnInterrupts( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = ConfigureBasePage( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = ConfigureAnTimers( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = EnableAn( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = DropRegLock( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-ABORT:
-    if( ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken == TRUE )
-    {
-        DropRegLock( eventInfo, userInfo );
-    }
-
-    return status;
-
-}   /* end Clause73StateMachineS6E0Callback */
-
-/*****************************************************************************/
-/** Clause73StateMachineS6E1Callback
- * \ingroup intAnStateMachine
- *
- * \desc            Transition callback for AN state machine type
- *                  ''FM10000_CLAUSE73_AN_STATE_MACHINE'', when event
- *                  ''FM10000_AN_EVENT_STOP_REQ'' occurs in state
- *                  ''FM10000_AN_STATE_COMPLETE_ACK''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status Clause73StateMachineS6E1Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-
-    ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken = FALSE;
-        
-    status = TakeRegLock( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = DisableAnInterrupts( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = DisableAn( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = DropRegLock( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-ABORT:
-    if( ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken == TRUE )
-    {
-        DropRegLock( eventInfo, userInfo );
-    }
-
-    return status;
-
-}   /* end Clause73StateMachineS6E1Callback */
-
-/*****************************************************************************/
-/** Clause73StateMachineS6E11Callback
- * \ingroup intAnStateMachine
- *
- * \desc            Transition callback for AN state machine type
- *                  ''FM10000_CLAUSE73_AN_STATE_MACHINE'', when event
- *                  ''FM10000_AN_EVENT_TRANSMIT_DISABLE_IND'' occurs in state
- *                  ''FM10000_AN_STATE_COMPLETE_ACK''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status Clause73StateMachineS6E11Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-
-    ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken = FALSE;
-        
-    status = TakeRegLock( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = ConfigureAnTimers( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = ConfigureBasePage( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = DropRegLock( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = NotifyPortAutonegRestarted( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = NotifyApiAutonegFailed( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-ABORT:
-    if( ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken == TRUE )
-    {
-        DropRegLock( eventInfo, userInfo );
-    }
-
-    return status;
-
-}   /* end Clause73StateMachineS6E11Callback */
-
-/*****************************************************************************/
-/** Clause73StateMachineS6E12Callback
- * \ingroup intAnStateMachine
- *
- * \desc            Transition callback for AN state machine type
- *                  ''FM10000_CLAUSE73_AN_STATE_MACHINE'', when event
- *                  ''FM10000_AN_EVENT_GOOD_CHECK_IND'' occurs in state
- *                  ''FM10000_AN_STATE_COMPLETE_ACK''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status Clause73StateMachineS6E12Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-
-    ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken = FALSE;
-        
-    status = TakeRegLock( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = DoAbilityMatch( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = ConfigureAnTimers( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = DropRegLock( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = NotifyPortAutonegComplete( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-ABORT:
-    if( ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken == TRUE )
-    {
-        DropRegLock( eventInfo, userInfo );
-    }
-
-    return status;
-
-}   /* end Clause73StateMachineS6E12Callback */
-
-/*****************************************************************************/
-/** Clause73StateMachineS8E0Callback
- * \ingroup intAnStateMachine
- *
- * \desc            Transition callback for AN state machine type
- *                  ''FM10000_CLAUSE73_AN_STATE_MACHINE'', when event
- *                  ''FM10000_AN_EVENT_START_REQ'' occurs in state
- *                  ''FM10000_AN_STATE_NEXT_PAGE_WAIT''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status Clause73StateMachineS8E0Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-
-    ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken = FALSE;
-        
-    status = TakeRegLock( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = DisableAnInterrupts( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = DisableAn( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = EnableAnInterrupts( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = ConfigureBasePage( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = ConfigureAnTimers( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = EnableAn( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = DropRegLock( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-ABORT:
-    if( ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken == TRUE )
-    {
-        DropRegLock( eventInfo, userInfo );
-    }
-
-    return status;
-
-}   /* end Clause73StateMachineS8E0Callback */
-
-/*****************************************************************************/
-/** Clause73StateMachineS8E1Callback
- * \ingroup intAnStateMachine
- *
- * \desc            Transition callback for AN state machine type
- *                  ''FM10000_CLAUSE73_AN_STATE_MACHINE'', when event
- *                  ''FM10000_AN_EVENT_STOP_REQ'' occurs in state
- *                  ''FM10000_AN_STATE_NEXT_PAGE_WAIT''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status Clause73StateMachineS8E1Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-
-    ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken = FALSE;
-        
-    status = TakeRegLock( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = DisableAnInterrupts( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = DisableAn( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = DropRegLock( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-ABORT:
-    if( ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken == TRUE )
-    {
-        DropRegLock( eventInfo, userInfo );
-    }
-
-    return status;
-
-}   /* end Clause73StateMachineS8E1Callback */
-
-/*****************************************************************************/
-/** Clause73StateMachineS8E11Callback
- * \ingroup intAnStateMachine
- *
- * \desc            Transition callback for AN state machine type
- *                  ''FM10000_CLAUSE73_AN_STATE_MACHINE'', when event
- *                  ''FM10000_AN_EVENT_TRANSMIT_DISABLE_IND'' occurs in state
- *                  ''FM10000_AN_STATE_NEXT_PAGE_WAIT''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status Clause73StateMachineS8E11Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-
-    ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken = FALSE;
-        
-    status = TakeRegLock( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = ConfigureAnTimers( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = ConfigureBasePage( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = DropRegLock( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = NotifyPortAutonegRestarted( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = NotifyApiAutonegFailed( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-ABORT:
-    if( ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken == TRUE )
-    {
-        DropRegLock( eventInfo, userInfo );
-    }
-
-    return status;
-
-}   /* end Clause73StateMachineS8E11Callback */
-
-/*****************************************************************************/
-/** Clause73StateMachineS8E7Callback
- * \ingroup intAnStateMachine
- *
- * \desc            Transition callback for AN state machine type
- *                  ''FM10000_CLAUSE73_AN_STATE_MACHINE'', when event
- *                  ''FM10000_AN_EVENT_COMPLETE_ACK_IND'' occurs in state
- *                  ''FM10000_AN_STATE_NEXT_PAGE_WAIT''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status Clause73StateMachineS8E7Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-
-    ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken = FALSE;
-        
-    status = TakeRegLock( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = ConfigureNextPages( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = DropRegLock( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-ABORT:
-    if( ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken == TRUE )
-    {
-        DropRegLock( eventInfo, userInfo );
-    }
-
-    return status;
-
-}   /* end Clause73StateMachineS8E7Callback */
-
-/*****************************************************************************/
-/** Clause73StateMachineS8E12Callback
- * \ingroup intAnStateMachine
- *
- * \desc            Transition callback for AN state machine type
- *                  ''FM10000_CLAUSE73_AN_STATE_MACHINE'', when event
- *                  ''FM10000_AN_EVENT_GOOD_CHECK_IND'' occurs in state
- *                  ''FM10000_AN_STATE_NEXT_PAGE_WAIT''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status Clause73StateMachineS8E12Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-
-    ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken = FALSE;
-        
-    status = TakeRegLock( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = DoAbilityMatch( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = ConfigureAnTimers( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = DropRegLock( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = NotifyPortAutonegComplete( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-ABORT:
-    if( ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken == TRUE )
-    {
-        DropRegLock( eventInfo, userInfo );
-    }
-
-    return status;
-
-}   /* end Clause73StateMachineS8E12Callback */
-
-/*****************************************************************************/
-/** Clause73StateMachineS10E0Callback
- * \ingroup intAnStateMachine
- *
- * \desc            Transition callback for AN state machine type
- *                  ''FM10000_CLAUSE73_AN_STATE_MACHINE'', when event
- *                  ''FM10000_AN_EVENT_START_REQ'' occurs in state
- *                  ''FM10000_AN_STATE_GOOD_CHECK''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status Clause73StateMachineS10E0Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-
-    ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken = FALSE;
-        
-    status = TakeRegLock( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = DisableAnInterrupts( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = DisableAn( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = EnableAnInterrupts( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = ConfigureBasePage( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = ConfigureAnTimers( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = EnableAn( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = DropRegLock( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-ABORT:
-    if( ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken == TRUE )
-    {
-        DropRegLock( eventInfo, userInfo );
-    }
-
-    return status;
-
-}   /* end Clause73StateMachineS10E0Callback */
-
-/*****************************************************************************/
-/** Clause73StateMachineS10E1Callback
- * \ingroup intAnStateMachine
- *
- * \desc            Transition callback for AN state machine type
- *                  ''FM10000_CLAUSE73_AN_STATE_MACHINE'', when event
- *                  ''FM10000_AN_EVENT_STOP_REQ'' occurs in state
- *                  ''FM10000_AN_STATE_GOOD_CHECK''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status Clause73StateMachineS10E1Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-
-    ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken = FALSE;
-        
-    status = TakeRegLock( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = DisableAnInterrupts( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = DisableAn( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = DropRegLock( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-ABORT:
-    if( ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken == TRUE )
-    {
-        DropRegLock( eventInfo, userInfo );
-    }
-
-    return status;
-
-}   /* end Clause73StateMachineS10E1Callback */
-
-/*****************************************************************************/
-/** Clause73StateMachineS10E11Callback
- * \ingroup intAnStateMachine
- *
- * \desc            Transition callback for AN state machine type
- *                  ''FM10000_CLAUSE73_AN_STATE_MACHINE'', when event
- *                  ''FM10000_AN_EVENT_TRANSMIT_DISABLE_IND'' occurs in state
- *                  ''FM10000_AN_STATE_GOOD_CHECK''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status Clause73StateMachineS10E11Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-
-    ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken = FALSE;
-        
-    status = TakeRegLock( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = ConfigureAnTimers( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = ConfigureBasePage( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = DropRegLock( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = NotifyPortAutonegRestarted( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = NotifyApiAutonegFailed( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-ABORT:
-    if( ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken == TRUE )
-    {
-        DropRegLock( eventInfo, userInfo );
-    }
-
-    return status;
-
-}   /* end Clause73StateMachineS10E11Callback */
-
-/*****************************************************************************/
-/** Clause73StateMachineS10E13Callback
- * \ingroup intAnStateMachine
- *
- * \desc            Transition callback for AN state machine type
- *                  ''FM10000_CLAUSE73_AN_STATE_MACHINE'', when event
- *                  ''FM10000_AN_EVENT_GOOD_IND'' occurs in state
- *                  ''FM10000_AN_STATE_GOOD_CHECK''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status Clause73StateMachineS10E13Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-
-    ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken = FALSE;
-        
+    
     status = NotifyApiAutonegCompleteOrFault( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
+    
+    status = NotifyPortAutonegComplete( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
+
 ABORT:
     if( ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken == TRUE )
     {
@@ -2280,16 +977,14 @@ ABORT:
 
     return status;
 
-}   /* end Clause73StateMachineS10E13Callback */
+}   /* end TransitionGroup0 */
+
+
 
 /*****************************************************************************/
-/** Clause73StateMachineS11E0Callback
- * \ingroup intAnStateMachine
+/* TransitionGroup1
  *
- * \desc            Transition callback for AN state machine type
- *                  ''FM10000_CLAUSE73_AN_STATE_MACHINE'', when event
- *                  ''FM10000_AN_EVENT_START_REQ'' occurs in state
- *                  ''FM10000_AN_STATE_GOOD''.
+ * \desc            Transition callback for AN state machine.
  * 
  * \param[in]       eventInfo is a pointer to a caller-allocated area
  *                  containing the generic event descriptor.
@@ -2300,37 +995,124 @@ ABORT:
  * \return          See return codes from the action callback functions.
  * 
  *****************************************************************************/
-static fm_status Clause73StateMachineS11E0Callback( fm_smEventInfo *eventInfo, void *userInfo )
+static fm_status TG(1)( fm_smEventInfo *eventInfo, void *userInfo )
 {
     fm_status status = FM_OK;
     fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
 
     ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken = FALSE;
-        
+    
     status = TakeRegLock( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
+    
+    status = ConfigureNextPages( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
+    
+    status = DropRegLock( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
+
+ABORT:
+    if( ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken == TRUE )
+    {
+        DropRegLock( eventInfo, userInfo );
+    }
+
+    return status;
+
+}   /* end TransitionGroup1 */
+
+
+
+/*****************************************************************************/
+/* TransitionGroup2
+ *
+ * \desc            Transition callback for AN state machine.
+ * 
+ * \param[in]       eventInfo is a pointer to a caller-allocated area
+ *                  containing the generic event descriptor.
+ * 
+ * \param[in]       userInfo is a pointer to a caller-allocated area containing
+ *                  purpose-specific event info.
+ * 
+ * \return          See return codes from the action callback functions.
+ * 
+ *****************************************************************************/
+static fm_status TG(2)( fm_smEventInfo *eventInfo, void *userInfo )
+{
+    fm_status status = FM_OK;
+    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
+
+    ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken = FALSE;
+    
+    status = TakeRegLock( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
+    
     status = DisableAnInterrupts( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
+    
     status = DisableAn( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
+    
+    status = DropRegLock( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
+
+ABORT:
+    if( ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken == TRUE )
+    {
+        DropRegLock( eventInfo, userInfo );
+    }
+
+    return status;
+
+}   /* end TransitionGroup2 */
+
+
+
+/*****************************************************************************/
+/* TransitionGroup3
+ *
+ * \desc            Transition callback for AN state machine.
+ * 
+ * \param[in]       eventInfo is a pointer to a caller-allocated area
+ *                  containing the generic event descriptor.
+ * 
+ * \param[in]       userInfo is a pointer to a caller-allocated area containing
+ *                  purpose-specific event info.
+ * 
+ * \return          See return codes from the action callback functions.
+ * 
+ *****************************************************************************/
+static fm_status TG(3)( fm_smEventInfo *eventInfo, void *userInfo )
+{
+    fm_status status = FM_OK;
+    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
+
+    ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken = FALSE;
+    
+    status = TakeRegLock( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
+    
+    status = DisableAnInterrupts( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
+    
+    status = DisableAn( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
+    
     status = EnableAnInterrupts( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
+    
     status = ConfigureBasePage( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
+    
     status = ConfigureAnTimers( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
+    
     status = EnableAn( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
+    
     status = DropRegLock( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
+
 ABORT:
     if( ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken == TRUE )
     {
@@ -2339,16 +1121,14 @@ ABORT:
 
     return status;
 
-}   /* end Clause73StateMachineS11E0Callback */
+}   /* end TransitionGroup3 */
+
+
 
 /*****************************************************************************/
-/** Clause73StateMachineS11E1Callback
- * \ingroup intAnStateMachine
+/* TransitionGroup4
  *
- * \desc            Transition callback for AN state machine type
- *                  ''FM10000_CLAUSE73_AN_STATE_MACHINE'', when event
- *                  ''FM10000_AN_EVENT_STOP_REQ'' occurs in state
- *                  ''FM10000_AN_STATE_GOOD''.
+ * \desc            Transition callback for AN state machine.
  * 
  * \param[in]       eventInfo is a pointer to a caller-allocated area
  *                  containing the generic event descriptor.
@@ -2359,84 +1139,31 @@ ABORT:
  * \return          See return codes from the action callback functions.
  * 
  *****************************************************************************/
-static fm_status Clause73StateMachineS11E1Callback( fm_smEventInfo *eventInfo, void *userInfo )
+static fm_status TG(4)( fm_smEventInfo *eventInfo, void *userInfo )
 {
     fm_status status = FM_OK;
     fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
 
     ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken = FALSE;
-        
-    status = StopAnPollingTimer( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
+    
     status = TakeRegLock( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = DisableAnInterrupts( eventInfo, userInfo );
+    
+    status = EnableAnInterrupts( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = DisableAn( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = DropRegLock( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-ABORT:
-    if( ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken == TRUE )
-    {
-        DropRegLock( eventInfo, userInfo );
-    }
-
-    return status;
-
-}   /* end Clause73StateMachineS11E1Callback */
-
-/*****************************************************************************/
-/** Clause73StateMachineS11E11Callback
- * \ingroup intAnStateMachine
- *
- * \desc            Transition callback for AN state machine type
- *                  ''FM10000_CLAUSE73_AN_STATE_MACHINE'', when event
- *                  ''FM10000_AN_EVENT_TRANSMIT_DISABLE_IND'' occurs in state
- *                  ''FM10000_AN_STATE_GOOD''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status Clause73StateMachineS11E11Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-
-    ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken = FALSE;
-        
-    status = StopAnPollingTimer( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = TakeRegLock( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = ConfigureAnTimers( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
+    
     status = ConfigureBasePage( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
+    
+    status = ConfigureAnTimers( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
+    
+    status = EnableAn( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
+    
     status = DropRegLock( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = NotifyPortAutonegRestarted( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = NotifyApiAutonegFailed( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
+
 ABORT:
     if( ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken == TRUE )
     {
@@ -2445,16 +1172,14 @@ ABORT:
 
     return status;
 
-}   /* end Clause73StateMachineS11E11Callback */
+}   /* end TransitionGroup4 */
+
+
 
 /*****************************************************************************/
-/** Clause73StateMachineS11E14Callback
- * \ingroup intAnStateMachine
+/* TransitionGroup5
  *
- * \desc            Transition callback for AN state machine type
- *                  ''FM10000_CLAUSE73_AN_STATE_MACHINE'', when event
- *                  ''FM10000_AN_EVENT_POLLING_TIMER_EXP_IND'' occurs in state
- *                  ''FM10000_AN_STATE_GOOD''.
+ * \desc            Transition callback for AN state machine.
  * 
  * \param[in]       eventInfo is a pointer to a caller-allocated area
  *                  containing the generic event descriptor.
@@ -2465,19 +1190,214 @@ ABORT:
  * \return          See return codes from the action callback functions.
  * 
  *****************************************************************************/
-static fm_status Clause73StateMachineS11E14Callback( fm_smEventInfo *eventInfo, void *userInfo )
+static fm_status TG(5)( fm_smEventInfo *eventInfo, void *userInfo )
 {
     fm_status status = FM_OK;
     fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
 
     ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken = FALSE;
-        
+    
+    status = TakeRegLock( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
+    
+    status = ConfigureBasePage( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
+    
+    status = DropRegLock( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
+    
+    status = NotifyPortAutonegRestarted( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
+    
+    status = NotifyApiAutonegStarted( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
+
+ABORT:
+    if( ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken == TRUE )
+    {
+        DropRegLock( eventInfo, userInfo );
+    }
+
+    return status;
+
+}   /* end TransitionGroup5 */
+
+
+
+/*****************************************************************************/
+/* TransitionGroup6
+ *
+ * \desc            Transition callback for AN state machine.
+ * 
+ * \param[in]       eventInfo is a pointer to a caller-allocated area
+ *                  containing the generic event descriptor.
+ * 
+ * \param[in]       userInfo is a pointer to a caller-allocated area containing
+ *                  purpose-specific event info.
+ * 
+ * \return          See return codes from the action callback functions.
+ * 
+ *****************************************************************************/
+static fm_status TG(6)( fm_smEventInfo *eventInfo, void *userInfo )
+{
+    fm_status status = FM_OK;
+    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
+
+    ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken = FALSE;
+    
+    status = TakeRegLock( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
+    
+    status = ConfigureBasePage( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
+    
+    status = DropRegLock( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
+    
+    status = NotifyPortAutonegRestarted( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
+    
+    status = NotifyApiAutonegFailed( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
+
+ABORT:
+    if( ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken == TRUE )
+    {
+        DropRegLock( eventInfo, userInfo );
+    }
+
+    return status;
+
+}   /* end TransitionGroup6 */
+
+
+
+/*****************************************************************************/
+/* TransitionGroup7
+ *
+ * \desc            Transition callback for AN state machine.
+ * 
+ * \param[in]       eventInfo is a pointer to a caller-allocated area
+ *                  containing the generic event descriptor.
+ * 
+ * \param[in]       userInfo is a pointer to a caller-allocated area containing
+ *                  purpose-specific event info.
+ * 
+ * \return          See return codes from the action callback functions.
+ * 
+ *****************************************************************************/
+static fm_status TG(7)( fm_smEventInfo *eventInfo, void *userInfo )
+{
+    fm_status status = FM_OK;
+    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
+
+    ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken = FALSE;
+    
+    status = TakeRegLock( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
+    
+    status = ConfigureAnTimers( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
+    
+    status = ConfigureBasePage( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
+    
+    status = DropRegLock( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
+    
+    status = NotifyPortAutonegRestarted( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
+    
+    status = NotifyApiAutonegFailed( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
+
+ABORT:
+    if( ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken == TRUE )
+    {
+        DropRegLock( eventInfo, userInfo );
+    }
+
+    return status;
+
+}   /* end TransitionGroup7 */
+
+
+
+/*****************************************************************************/
+/* TransitionGroup8
+ *
+ * \desc            Transition callback for AN state machine.
+ * 
+ * \param[in]       eventInfo is a pointer to a caller-allocated area
+ *                  containing the generic event descriptor.
+ * 
+ * \param[in]       userInfo is a pointer to a caller-allocated area containing
+ *                  purpose-specific event info.
+ * 
+ * \return          See return codes from the action callback functions.
+ * 
+ *****************************************************************************/
+static fm_status TG(8)( fm_smEventInfo *eventInfo, void *userInfo )
+{
+    fm_status status = FM_OK;
+    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
+
+    ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken = FALSE;
+    
+    status = TakeRegLock( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
+    
+    status = DoAbilityMatch( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
+    
+    status = ConfigureAnTimers( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
+    
+    status = DropRegLock( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
+    
+    status = NotifyPortAutonegComplete( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
+
+ABORT:
+    if( ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken == TRUE )
+    {
+        DropRegLock( eventInfo, userInfo );
+    }
+
+    return status;
+
+}   /* end TransitionGroup8 */
+
+
+
+/*****************************************************************************/
+/* TransitionGroup9
+ *
+ * \desc            Transition callback for AN state machine.
+ * 
+ * \param[in]       eventInfo is a pointer to a caller-allocated area
+ *                  containing the generic event descriptor.
+ * 
+ * \param[in]       userInfo is a pointer to a caller-allocated area containing
+ *                  purpose-specific event info.
+ * 
+ * \return          See return codes from the action callback functions.
+ * 
+ *****************************************************************************/
+static fm_status TG(9)( fm_smEventInfo *eventInfo, void *userInfo )
+{
+    fm_status status = FM_OK;
+    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
+
+    ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken = FALSE;
+    
     status = StartAnPollingTimer( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
+    
     status = PerformAnPortStatusValidation( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
+
 ABORT:
     if( ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken == TRUE )
     {
@@ -2486,20 +1406,14 @@ ABORT:
 
     return status;
 
-}   /* end Clause73StateMachineS11E14Callback */
+}   /* end TransitionGroup9 */
 
-/******************************************************************************
- * Definitions of transition callbacks for FM10000_CLAUSE37_AN_STATE_MACHINE
- *****************************************************************************/
+
 
 /*****************************************************************************/
-/** Clause37StateMachineS0E0Callback
- * \ingroup intAnStateMachine
+/* TransitionGroup10
  *
- * \desc            Transition callback for AN state machine type
- *                  ''FM10000_CLAUSE37_AN_STATE_MACHINE'', when event
- *                  ''FM10000_AN_EVENT_START_REQ'' occurs in state
- *                  ''FM10000_AN_STATE_DISABLED''.
+ * \desc            Transition callback for AN state machine.
  * 
  * \param[in]       eventInfo is a pointer to a caller-allocated area
  *                  containing the generic event descriptor.
@@ -2510,187 +1424,70 @@ ABORT:
  * \return          See return codes from the action callback functions.
  * 
  *****************************************************************************/
-static fm_status Clause37StateMachineS0E0Callback( fm_smEventInfo *eventInfo, void *userInfo )
+static fm_status TG(10)( fm_smEventInfo *eventInfo, void *userInfo )
 {
     fm_status status = FM_OK;
     fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
 
     ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken = FALSE;
-        
+    
+    status = StartAnQuickPollingTimer( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
+    
+    status = NotifyApiAutonegCompleteOrFault( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
+
+ABORT:
+    if( ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken == TRUE )
+    {
+        DropRegLock( eventInfo, userInfo );
+    }
+
+    return status;
+
+}   /* end TransitionGroup10 */
+
+
+
+/*****************************************************************************/
+/* TransitionGroup11
+ *
+ * \desc            Transition callback for AN state machine.
+ * 
+ * \param[in]       eventInfo is a pointer to a caller-allocated area
+ *                  containing the generic event descriptor.
+ * 
+ * \param[in]       userInfo is a pointer to a caller-allocated area containing
+ *                  purpose-specific event info.
+ * 
+ * \return          See return codes from the action callback functions.
+ * 
+ *****************************************************************************/
+static fm_status TG(11)( fm_smEventInfo *eventInfo, void *userInfo )
+{
+    fm_status status = FM_OK;
+    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
+
+    ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken = FALSE;
+    
     status = TakeRegLock( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = EnableAnInterrupts( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = ConfigureBasePage( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
+    
     status = ConfigureAnTimers( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = EnableAn( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = DropRegLock( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-ABORT:
-    if( ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken == TRUE )
-    {
-        DropRegLock( eventInfo, userInfo );
-    }
-
-    return status;
-
-}   /* end Clause37StateMachineS0E0Callback */
-
-/*****************************************************************************/
-/** Clause37StateMachineS1E0Callback
- * \ingroup intAnStateMachine
- *
- * \desc            Transition callback for AN state machine type
- *                  ''FM10000_CLAUSE37_AN_STATE_MACHINE'', when event
- *                  ''FM10000_AN_EVENT_START_REQ'' occurs in state
- *                  ''FM10000_AN_STATE_ENABLED''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status Clause37StateMachineS1E0Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-
-    ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken = FALSE;
-        
-    status = TakeRegLock( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = DisableAnInterrupts( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = DisableAn( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = EnableAnInterrupts( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
+    
     status = ConfigureBasePage( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = ConfigureAnTimers( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = EnableAn( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
+    
     status = DropRegLock( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-ABORT:
-    if( ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken == TRUE )
-    {
-        DropRegLock( eventInfo, userInfo );
-    }
-
-    return status;
-
-}   /* end Clause37StateMachineS1E0Callback */
-
-/*****************************************************************************/
-/** Clause37StateMachineS1E1Callback
- * \ingroup intAnStateMachine
- *
- * \desc            Transition callback for AN state machine type
- *                  ''FM10000_CLAUSE37_AN_STATE_MACHINE'', when event
- *                  ''FM10000_AN_EVENT_STOP_REQ'' occurs in state
- *                  ''FM10000_AN_STATE_ENABLED''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status Clause37StateMachineS1E1Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-
-    ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken = FALSE;
-        
-    status = TakeRegLock( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = DisableAnInterrupts( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = DisableAn( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = DropRegLock( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-ABORT:
-    if( ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken == TRUE )
-    {
-        DropRegLock( eventInfo, userInfo );
-    }
-
-    return status;
-
-}   /* end Clause37StateMachineS1E1Callback */
-
-/*****************************************************************************/
-/** Clause37StateMachineS1E3Callback
- * \ingroup intAnStateMachine
- *
- * \desc            Transition callback for AN state machine type
- *                  ''FM10000_CLAUSE37_AN_STATE_MACHINE'', when event
- *                  ''FM10000_AN_EVENT_RESTART_IND'' occurs in state
- *                  ''FM10000_AN_STATE_ENABLED''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status Clause37StateMachineS1E3Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-
-    ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken = FALSE;
-        
-    status = TakeRegLock( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = ConfigureBasePage( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = DropRegLock( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
+    
     status = NotifyPortAutonegRestarted( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
+    
     status = NotifyApiAutonegStarted( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
+
 ABORT:
     if( ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken == TRUE )
     {
@@ -2699,16 +1496,14 @@ ABORT:
 
     return status;
 
-}   /* end Clause37StateMachineS1E3Callback */
+}   /* end TransitionGroup11 */
+
+
 
 /*****************************************************************************/
-/** Clause37StateMachineS2E0Callback
- * \ingroup intAnStateMachine
+/* TransitionGroup12
  *
- * \desc            Transition callback for AN state machine type
- *                  ''FM10000_CLAUSE37_AN_STATE_MACHINE'', when event
- *                  ''FM10000_AN_EVENT_START_REQ'' occurs in state
- *                  ''FM10000_AN_STATE_RESTART''.
+ * \desc            Transition callback for AN state machine.
  * 
  * \param[in]       eventInfo is a pointer to a caller-allocated area
  *                  containing the generic event descriptor.
@@ -2719,134 +1514,85 @@ ABORT:
  * \return          See return codes from the action callback functions.
  * 
  *****************************************************************************/
-static fm_status Clause37StateMachineS2E0Callback( fm_smEventInfo *eventInfo, void *userInfo )
+static fm_status TG(12)( fm_smEventInfo *eventInfo, void *userInfo )
 {
     fm_status status = FM_OK;
     fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
 
     ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken = FALSE;
-        
+    
+    status = StopAnPollingTimer( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
+    
     status = TakeRegLock( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
+    
     status = DisableAnInterrupts( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
+    
     status = DisableAn( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = EnableAnInterrupts( eventInfo, userInfo );
+    
+    status = DropRegLock( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = ConfigureBasePage( eventInfo, userInfo );
+
+ABORT:
+    if( ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken == TRUE )
+    {
+        DropRegLock( eventInfo, userInfo );
+    }
+
+    return status;
+
+}   /* end TransitionGroup12 */
+
+
+
+/*****************************************************************************/
+/* TransitionGroup13
+ *
+ * \desc            Transition callback for AN state machine.
+ * 
+ * \param[in]       eventInfo is a pointer to a caller-allocated area
+ *                  containing the generic event descriptor.
+ * 
+ * \param[in]       userInfo is a pointer to a caller-allocated area containing
+ *                  purpose-specific event info.
+ * 
+ * \return          See return codes from the action callback functions.
+ * 
+ *****************************************************************************/
+static fm_status TG(13)( fm_smEventInfo *eventInfo, void *userInfo )
+{
+    fm_status status = FM_OK;
+    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
+
+    ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken = FALSE;
+    
+    status = StopAnPollingTimer( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
+    
+    status = TakeRegLock( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
+    
+    status = DisableAn( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
+    
     status = ConfigureAnTimers( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = EnableAn( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = DropRegLock( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-ABORT:
-    if( ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken == TRUE )
-    {
-        DropRegLock( eventInfo, userInfo );
-    }
-
-    return status;
-
-}   /* end Clause37StateMachineS2E0Callback */
-
-/*****************************************************************************/
-/** Clause37StateMachineS2E1Callback
- * \ingroup intAnStateMachine
- *
- * \desc            Transition callback for AN state machine type
- *                  ''FM10000_CLAUSE37_AN_STATE_MACHINE'', when event
- *                  ''FM10000_AN_EVENT_STOP_REQ'' occurs in state
- *                  ''FM10000_AN_STATE_RESTART''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status Clause37StateMachineS2E1Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-
-    ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken = FALSE;
-        
-    status = TakeRegLock( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = DisableAnInterrupts( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = DisableAn( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = DropRegLock( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-ABORT:
-    if( ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken == TRUE )
-    {
-        DropRegLock( eventInfo, userInfo );
-    }
-
-    return status;
-
-}   /* end Clause37StateMachineS2E1Callback */
-
-/*****************************************************************************/
-/** Clause37StateMachineS2E3Callback
- * \ingroup intAnStateMachine
- *
- * \desc            Transition callback for AN state machine type
- *                  ''FM10000_CLAUSE37_AN_STATE_MACHINE'', when event
- *                  ''FM10000_AN_EVENT_RESTART_IND'' occurs in state
- *                  ''FM10000_AN_STATE_RESTART''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status Clause37StateMachineS2E3Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-
-    ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken = FALSE;
-        
-    status = TakeRegLock( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
+    
     status = ConfigureBasePage( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
+    
     status = DropRegLock( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
+    
     status = NotifyPortAutonegRestarted( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
+    
     status = NotifyApiAutonegFailed( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
+
 ABORT:
     if( ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken == TRUE )
     {
@@ -2855,1307 +1601,8 @@ ABORT:
 
     return status;
 
-}   /* end Clause37StateMachineS2E3Callback */
+}   /* end TransitionGroup13 */
 
-/*****************************************************************************/
-/** Clause37StateMachineS2E7Callback
- * \ingroup intAnStateMachine
- *
- * \desc            Transition callback for AN state machine type
- *                  ''FM10000_CLAUSE37_AN_STATE_MACHINE'', when event
- *                  ''FM10000_AN_EVENT_COMPLETE_ACK_IND'' occurs in state
- *                  ''FM10000_AN_STATE_RESTART''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status Clause37StateMachineS2E7Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-
-    ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken = FALSE;
-        
-    status = TakeRegLock( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = ConfigureNextPages( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = DropRegLock( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-ABORT:
-    if( ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken == TRUE )
-    {
-        DropRegLock( eventInfo, userInfo );
-    }
-
-    return status;
-
-}   /* end Clause37StateMachineS2E7Callback */
-
-/*****************************************************************************/
-/** Clause37StateMachineS3E0Callback
- * \ingroup intAnStateMachine
- *
- * \desc            Transition callback for AN state machine type
- *                  ''FM10000_CLAUSE37_AN_STATE_MACHINE'', when event
- *                  ''FM10000_AN_EVENT_START_REQ'' occurs in state
- *                  ''FM10000_AN_STATE_DISABLE_LINK_OK''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status Clause37StateMachineS3E0Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-
-    ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken = FALSE;
-        
-    status = TakeRegLock( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = DisableAnInterrupts( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = DisableAn( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = EnableAnInterrupts( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = ConfigureBasePage( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = ConfigureAnTimers( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = EnableAn( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = DropRegLock( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-ABORT:
-    if( ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken == TRUE )
-    {
-        DropRegLock( eventInfo, userInfo );
-    }
-
-    return status;
-
-}   /* end Clause37StateMachineS3E0Callback */
-
-/*****************************************************************************/
-/** Clause37StateMachineS3E1Callback
- * \ingroup intAnStateMachine
- *
- * \desc            Transition callback for AN state machine type
- *                  ''FM10000_CLAUSE37_AN_STATE_MACHINE'', when event
- *                  ''FM10000_AN_EVENT_STOP_REQ'' occurs in state
- *                  ''FM10000_AN_STATE_DISABLE_LINK_OK''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status Clause37StateMachineS3E1Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-
-    ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken = FALSE;
-        
-    status = TakeRegLock( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = DisableAnInterrupts( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = DisableAn( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = DropRegLock( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-ABORT:
-    if( ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken == TRUE )
-    {
-        DropRegLock( eventInfo, userInfo );
-    }
-
-    return status;
-
-}   /* end Clause37StateMachineS3E1Callback */
-
-/*****************************************************************************/
-/** Clause37StateMachineS4E0Callback
- * \ingroup intAnStateMachine
- *
- * \desc            Transition callback for AN state machine type
- *                  ''FM10000_CLAUSE37_AN_STATE_MACHINE'', when event
- *                  ''FM10000_AN_EVENT_START_REQ'' occurs in state
- *                  ''FM10000_AN_STATE_ABILITY_DETECT''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status Clause37StateMachineS4E0Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-
-    ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken = FALSE;
-        
-    status = TakeRegLock( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = DisableAnInterrupts( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = DisableAn( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = EnableAnInterrupts( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = ConfigureBasePage( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = ConfigureAnTimers( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = EnableAn( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = DropRegLock( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-ABORT:
-    if( ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken == TRUE )
-    {
-        DropRegLock( eventInfo, userInfo );
-    }
-
-    return status;
-
-}   /* end Clause37StateMachineS4E0Callback */
-
-/*****************************************************************************/
-/** Clause37StateMachineS4E1Callback
- * \ingroup intAnStateMachine
- *
- * \desc            Transition callback for AN state machine type
- *                  ''FM10000_CLAUSE37_AN_STATE_MACHINE'', when event
- *                  ''FM10000_AN_EVENT_STOP_REQ'' occurs in state
- *                  ''FM10000_AN_STATE_ABILITY_DETECT''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status Clause37StateMachineS4E1Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-
-    ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken = FALSE;
-        
-    status = TakeRegLock( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = DisableAnInterrupts( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = DisableAn( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = DropRegLock( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-ABORT:
-    if( ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken == TRUE )
-    {
-        DropRegLock( eventInfo, userInfo );
-    }
-
-    return status;
-
-}   /* end Clause37StateMachineS4E1Callback */
-
-/*****************************************************************************/
-/** Clause37StateMachineS4E3Callback
- * \ingroup intAnStateMachine
- *
- * \desc            Transition callback for AN state machine type
- *                  ''FM10000_CLAUSE37_AN_STATE_MACHINE'', when event
- *                  ''FM10000_AN_EVENT_RESTART_IND'' occurs in state
- *                  ''FM10000_AN_STATE_ABILITY_DETECT''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status Clause37StateMachineS4E3Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-
-    ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken = FALSE;
-        
-    status = TakeRegLock( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = ConfigureBasePage( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = DropRegLock( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = NotifyPortAutonegRestarted( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = NotifyApiAutonegFailed( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-ABORT:
-    if( ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken == TRUE )
-    {
-        DropRegLock( eventInfo, userInfo );
-    }
-
-    return status;
-
-}   /* end Clause37StateMachineS4E3Callback */
-
-/*****************************************************************************/
-/** Clause37StateMachineS4E7Callback
- * \ingroup intAnStateMachine
- *
- * \desc            Transition callback for AN state machine type
- *                  ''FM10000_CLAUSE37_AN_STATE_MACHINE'', when event
- *                  ''FM10000_AN_EVENT_COMPLETE_ACK_IND'' occurs in state
- *                  ''FM10000_AN_STATE_ABILITY_DETECT''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status Clause37StateMachineS4E7Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-
-    ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken = FALSE;
-        
-    status = TakeRegLock( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = ConfigureNextPages( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = DropRegLock( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-ABORT:
-    if( ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken == TRUE )
-    {
-        DropRegLock( eventInfo, userInfo );
-    }
-
-    return status;
-
-}   /* end Clause37StateMachineS4E7Callback */
-
-/*****************************************************************************/
-/** Clause37StateMachineS5E0Callback
- * \ingroup intAnStateMachine
- *
- * \desc            Transition callback for AN state machine type
- *                  ''FM10000_CLAUSE37_AN_STATE_MACHINE'', when event
- *                  ''FM10000_AN_EVENT_START_REQ'' occurs in state
- *                  ''FM10000_AN_STATE_ACK_DETECT''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status Clause37StateMachineS5E0Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-
-    ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken = FALSE;
-        
-    status = TakeRegLock( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = DisableAnInterrupts( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = DisableAn( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = EnableAnInterrupts( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = ConfigureBasePage( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = ConfigureAnTimers( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = EnableAn( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = DropRegLock( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-ABORT:
-    if( ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken == TRUE )
-    {
-        DropRegLock( eventInfo, userInfo );
-    }
-
-    return status;
-
-}   /* end Clause37StateMachineS5E0Callback */
-
-/*****************************************************************************/
-/** Clause37StateMachineS5E1Callback
- * \ingroup intAnStateMachine
- *
- * \desc            Transition callback for AN state machine type
- *                  ''FM10000_CLAUSE37_AN_STATE_MACHINE'', when event
- *                  ''FM10000_AN_EVENT_STOP_REQ'' occurs in state
- *                  ''FM10000_AN_STATE_ACK_DETECT''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status Clause37StateMachineS5E1Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-
-    ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken = FALSE;
-        
-    status = TakeRegLock( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = DisableAnInterrupts( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = DisableAn( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = DropRegLock( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-ABORT:
-    if( ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken == TRUE )
-    {
-        DropRegLock( eventInfo, userInfo );
-    }
-
-    return status;
-
-}   /* end Clause37StateMachineS5E1Callback */
-
-/*****************************************************************************/
-/** Clause37StateMachineS5E3Callback
- * \ingroup intAnStateMachine
- *
- * \desc            Transition callback for AN state machine type
- *                  ''FM10000_CLAUSE37_AN_STATE_MACHINE'', when event
- *                  ''FM10000_AN_EVENT_RESTART_IND'' occurs in state
- *                  ''FM10000_AN_STATE_ACK_DETECT''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status Clause37StateMachineS5E3Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-
-    ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken = FALSE;
-        
-    status = TakeRegLock( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = ConfigureBasePage( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = DropRegLock( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = NotifyPortAutonegRestarted( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = NotifyApiAutonegFailed( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-ABORT:
-    if( ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken == TRUE )
-    {
-        DropRegLock( eventInfo, userInfo );
-    }
-
-    return status;
-
-}   /* end Clause37StateMachineS5E3Callback */
-
-/*****************************************************************************/
-/** Clause37StateMachineS5E7Callback
- * \ingroup intAnStateMachine
- *
- * \desc            Transition callback for AN state machine type
- *                  ''FM10000_CLAUSE37_AN_STATE_MACHINE'', when event
- *                  ''FM10000_AN_EVENT_COMPLETE_ACK_IND'' occurs in state
- *                  ''FM10000_AN_STATE_ACK_DETECT''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status Clause37StateMachineS5E7Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-
-    ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken = FALSE;
-        
-    status = TakeRegLock( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = ConfigureNextPages( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = DropRegLock( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-ABORT:
-    if( ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken == TRUE )
-    {
-        DropRegLock( eventInfo, userInfo );
-    }
-
-    return status;
-
-}   /* end Clause37StateMachineS5E7Callback */
-
-/*****************************************************************************/
-/** Clause37StateMachineS6E0Callback
- * \ingroup intAnStateMachine
- *
- * \desc            Transition callback for AN state machine type
- *                  ''FM10000_CLAUSE37_AN_STATE_MACHINE'', when event
- *                  ''FM10000_AN_EVENT_START_REQ'' occurs in state
- *                  ''FM10000_AN_STATE_COMPLETE_ACK''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status Clause37StateMachineS6E0Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-
-    ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken = FALSE;
-        
-    status = TakeRegLock( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = DisableAnInterrupts( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = DisableAn( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = EnableAnInterrupts( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = ConfigureBasePage( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = ConfigureAnTimers( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = EnableAn( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = DropRegLock( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-ABORT:
-    if( ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken == TRUE )
-    {
-        DropRegLock( eventInfo, userInfo );
-    }
-
-    return status;
-
-}   /* end Clause37StateMachineS6E0Callback */
-
-/*****************************************************************************/
-/** Clause37StateMachineS6E1Callback
- * \ingroup intAnStateMachine
- *
- * \desc            Transition callback for AN state machine type
- *                  ''FM10000_CLAUSE37_AN_STATE_MACHINE'', when event
- *                  ''FM10000_AN_EVENT_STOP_REQ'' occurs in state
- *                  ''FM10000_AN_STATE_COMPLETE_ACK''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status Clause37StateMachineS6E1Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-
-    ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken = FALSE;
-        
-    status = TakeRegLock( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = DisableAnInterrupts( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = DisableAn( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = DropRegLock( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-ABORT:
-    if( ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken == TRUE )
-    {
-        DropRegLock( eventInfo, userInfo );
-    }
-
-    return status;
-
-}   /* end Clause37StateMachineS6E1Callback */
-
-/*****************************************************************************/
-/** Clause37StateMachineS6E3Callback
- * \ingroup intAnStateMachine
- *
- * \desc            Transition callback for AN state machine type
- *                  ''FM10000_CLAUSE37_AN_STATE_MACHINE'', when event
- *                  ''FM10000_AN_EVENT_RESTART_IND'' occurs in state
- *                  ''FM10000_AN_STATE_COMPLETE_ACK''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status Clause37StateMachineS6E3Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-
-    ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken = FALSE;
-        
-    status = TakeRegLock( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = ConfigureBasePage( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = DropRegLock( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = NotifyPortAutonegRestarted( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = NotifyApiAutonegFailed( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-ABORT:
-    if( ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken == TRUE )
-    {
-        DropRegLock( eventInfo, userInfo );
-    }
-
-    return status;
-
-}   /* end Clause37StateMachineS6E3Callback */
-
-/*****************************************************************************/
-/** Clause37StateMachineS6E10Callback
- * \ingroup intAnStateMachine
- *
- * \desc            Transition callback for AN state machine type
- *                  ''FM10000_CLAUSE37_AN_STATE_MACHINE'', when event
- *                  ''FM10000_AN_EVENT_LINK_OK_IND'' occurs in state
- *                  ''FM10000_AN_STATE_COMPLETE_ACK''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status Clause37StateMachineS6E10Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-
-    ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken = FALSE;
-        
-    status = NotifyApiAutonegCompleteOrFault( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = NotifyPortAutonegComplete( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-ABORT:
-    if( ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken == TRUE )
-    {
-        DropRegLock( eventInfo, userInfo );
-    }
-
-    return status;
-
-}   /* end Clause37StateMachineS6E10Callback */
-
-/*****************************************************************************/
-/** Clause37StateMachineS8E0Callback
- * \ingroup intAnStateMachine
- *
- * \desc            Transition callback for AN state machine type
- *                  ''FM10000_CLAUSE37_AN_STATE_MACHINE'', when event
- *                  ''FM10000_AN_EVENT_START_REQ'' occurs in state
- *                  ''FM10000_AN_STATE_NEXT_PAGE_WAIT''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status Clause37StateMachineS8E0Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-
-    ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken = FALSE;
-        
-    status = TakeRegLock( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = DisableAnInterrupts( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = DisableAn( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = EnableAnInterrupts( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = ConfigureBasePage( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = ConfigureAnTimers( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = EnableAn( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = DropRegLock( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-ABORT:
-    if( ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken == TRUE )
-    {
-        DropRegLock( eventInfo, userInfo );
-    }
-
-    return status;
-
-}   /* end Clause37StateMachineS8E0Callback */
-
-/*****************************************************************************/
-/** Clause37StateMachineS8E1Callback
- * \ingroup intAnStateMachine
- *
- * \desc            Transition callback for AN state machine type
- *                  ''FM10000_CLAUSE37_AN_STATE_MACHINE'', when event
- *                  ''FM10000_AN_EVENT_STOP_REQ'' occurs in state
- *                  ''FM10000_AN_STATE_NEXT_PAGE_WAIT''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status Clause37StateMachineS8E1Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-
-    ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken = FALSE;
-        
-    status = TakeRegLock( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = DisableAnInterrupts( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = DisableAn( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = DropRegLock( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-ABORT:
-    if( ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken == TRUE )
-    {
-        DropRegLock( eventInfo, userInfo );
-    }
-
-    return status;
-
-}   /* end Clause37StateMachineS8E1Callback */
-
-/*****************************************************************************/
-/** Clause37StateMachineS8E3Callback
- * \ingroup intAnStateMachine
- *
- * \desc            Transition callback for AN state machine type
- *                  ''FM10000_CLAUSE37_AN_STATE_MACHINE'', when event
- *                  ''FM10000_AN_EVENT_RESTART_IND'' occurs in state
- *                  ''FM10000_AN_STATE_NEXT_PAGE_WAIT''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status Clause37StateMachineS8E3Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-
-    ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken = FALSE;
-        
-    status = TakeRegLock( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = ConfigureBasePage( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = DropRegLock( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = NotifyPortAutonegRestarted( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = NotifyApiAutonegFailed( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-ABORT:
-    if( ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken == TRUE )
-    {
-        DropRegLock( eventInfo, userInfo );
-    }
-
-    return status;
-
-}   /* end Clause37StateMachineS8E3Callback */
-
-/*****************************************************************************/
-/** Clause37StateMachineS8E7Callback
- * \ingroup intAnStateMachine
- *
- * \desc            Transition callback for AN state machine type
- *                  ''FM10000_CLAUSE37_AN_STATE_MACHINE'', when event
- *                  ''FM10000_AN_EVENT_COMPLETE_ACK_IND'' occurs in state
- *                  ''FM10000_AN_STATE_NEXT_PAGE_WAIT''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status Clause37StateMachineS8E7Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-
-    ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken = FALSE;
-        
-    status = TakeRegLock( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = ConfigureNextPages( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = DropRegLock( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-ABORT:
-    if( ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken == TRUE )
-    {
-        DropRegLock( eventInfo, userInfo );
-    }
-
-    return status;
-
-}   /* end Clause37StateMachineS8E7Callback */
-
-/*****************************************************************************/
-/** Clause37StateMachineS7E0Callback
- * \ingroup intAnStateMachine
- *
- * \desc            Transition callback for AN state machine type
- *                  ''FM10000_CLAUSE37_AN_STATE_MACHINE'', when event
- *                  ''FM10000_AN_EVENT_START_REQ'' occurs in state
- *                  ''FM10000_AN_STATE_IDLE_DETECT''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status Clause37StateMachineS7E0Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-
-    ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken = FALSE;
-        
-    status = TakeRegLock( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = DisableAnInterrupts( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = DisableAn( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = EnableAnInterrupts( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = ConfigureBasePage( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = ConfigureAnTimers( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = EnableAn( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = DropRegLock( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-ABORT:
-    if( ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken == TRUE )
-    {
-        DropRegLock( eventInfo, userInfo );
-    }
-
-    return status;
-
-}   /* end Clause37StateMachineS7E0Callback */
-
-/*****************************************************************************/
-/** Clause37StateMachineS7E1Callback
- * \ingroup intAnStateMachine
- *
- * \desc            Transition callback for AN state machine type
- *                  ''FM10000_CLAUSE37_AN_STATE_MACHINE'', when event
- *                  ''FM10000_AN_EVENT_STOP_REQ'' occurs in state
- *                  ''FM10000_AN_STATE_IDLE_DETECT''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status Clause37StateMachineS7E1Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-
-    ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken = FALSE;
-        
-    status = TakeRegLock( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = DisableAnInterrupts( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = DisableAn( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = DropRegLock( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-ABORT:
-    if( ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken == TRUE )
-    {
-        DropRegLock( eventInfo, userInfo );
-    }
-
-    return status;
-
-}   /* end Clause37StateMachineS7E1Callback */
-
-/*****************************************************************************/
-/** Clause37StateMachineS7E3Callback
- * \ingroup intAnStateMachine
- *
- * \desc            Transition callback for AN state machine type
- *                  ''FM10000_CLAUSE37_AN_STATE_MACHINE'', when event
- *                  ''FM10000_AN_EVENT_RESTART_IND'' occurs in state
- *                  ''FM10000_AN_STATE_IDLE_DETECT''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status Clause37StateMachineS7E3Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-
-    ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken = FALSE;
-        
-    status = TakeRegLock( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = ConfigureBasePage( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = DropRegLock( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = NotifyPortAutonegRestarted( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = NotifyApiAutonegFailed( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-ABORT:
-    if( ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken == TRUE )
-    {
-        DropRegLock( eventInfo, userInfo );
-    }
-
-    return status;
-
-}   /* end Clause37StateMachineS7E3Callback */
-
-/*****************************************************************************/
-/** Clause37StateMachineS7E10Callback
- * \ingroup intAnStateMachine
- *
- * \desc            Transition callback for AN state machine type
- *                  ''FM10000_CLAUSE37_AN_STATE_MACHINE'', when event
- *                  ''FM10000_AN_EVENT_LINK_OK_IND'' occurs in state
- *                  ''FM10000_AN_STATE_IDLE_DETECT''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status Clause37StateMachineS7E10Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-
-    ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken = FALSE;
-        
-    status = NotifyApiAutonegCompleteOrFault( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = NotifyPortAutonegComplete( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-ABORT:
-    if( ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken == TRUE )
-    {
-        DropRegLock( eventInfo, userInfo );
-    }
-
-    return status;
-
-}   /* end Clause37StateMachineS7E10Callback */
-
-/*****************************************************************************/
-/** Clause37StateMachineS12E0Callback
- * \ingroup intAnStateMachine
- *
- * \desc            Transition callback for AN state machine type
- *                  ''FM10000_CLAUSE37_AN_STATE_MACHINE'', when event
- *                  ''FM10000_AN_EVENT_START_REQ'' occurs in state
- *                  ''FM10000_AN_STATE_LINK_OK''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status Clause37StateMachineS12E0Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-
-    ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken = FALSE;
-        
-    status = TakeRegLock( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = DisableAnInterrupts( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = DisableAn( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = EnableAnInterrupts( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = ConfigureBasePage( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = ConfigureAnTimers( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = EnableAn( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = DropRegLock( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-ABORT:
-    if( ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken == TRUE )
-    {
-        DropRegLock( eventInfo, userInfo );
-    }
-
-    return status;
-
-}   /* end Clause37StateMachineS12E0Callback */
-
-/*****************************************************************************/
-/** Clause37StateMachineS12E1Callback
- * \ingroup intAnStateMachine
- *
- * \desc            Transition callback for AN state machine type
- *                  ''FM10000_CLAUSE37_AN_STATE_MACHINE'', when event
- *                  ''FM10000_AN_EVENT_STOP_REQ'' occurs in state
- *                  ''FM10000_AN_STATE_LINK_OK''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status Clause37StateMachineS12E1Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-
-    ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken = FALSE;
-        
-    status = TakeRegLock( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = DisableAnInterrupts( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = DisableAn( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = DropRegLock( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-ABORT:
-    if( ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken == TRUE )
-    {
-        DropRegLock( eventInfo, userInfo );
-    }
-
-    return status;
-
-}   /* end Clause37StateMachineS12E1Callback */
-
-/*****************************************************************************/
-/** Clause37StateMachineS12E3Callback
- * \ingroup intAnStateMachine
- *
- * \desc            Transition callback for AN state machine type
- *                  ''FM10000_CLAUSE37_AN_STATE_MACHINE'', when event
- *                  ''FM10000_AN_EVENT_RESTART_IND'' occurs in state
- *                  ''FM10000_AN_STATE_LINK_OK''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status Clause37StateMachineS12E3Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-
-    ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken = FALSE;
-        
-    status = TakeRegLock( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = ConfigureBasePage( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = DropRegLock( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = NotifyPortAutonegRestarted( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-    status = NotifyApiAutonegFailed( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT_AUTONEG, port, status );
-            
-ABORT:
-    if( ( ( fm10000_portSmEventInfo * )userInfo )->regLockTaken == TRUE )
-    {
-        DropRegLock( eventInfo, userInfo );
-    }
-
-    return status;
-
-}   /* end Clause37StateMachineS12E3Callback */
 
 
 /*****************************************************************************
@@ -4164,8 +1611,7 @@ ABORT:
 
 
 /*****************************************************************************/
-/** fm10000RegisterClause73AnStateMachine
- * \ingroup intAnStateMachine
+/* fm10000RegisterClause73AnStateMachine
  *
  * \desc            This function registers with the Generic State Machine
  *                  Engine state machine type ''FM10000_CLAUSE73_AN_STATE_MACHINE''.
@@ -4183,7 +1629,7 @@ ABORT:
  *****************************************************************************/
 fm_status fm10000RegisterClause73AnStateMachine( void )
 {
-    fm_int      i;
+    fm_uint     i;
     fm_status   status;
     fm_smTransitionEntry  stt[FM10000_AN_STATE_MAX][FM10000_AN_EVENT_MAX];
     fm_smTransitionEntry *dynstt[FM10000_AN_STATE_MAX];
@@ -4196,389 +1642,41 @@ fm_status fm10000RegisterClause73AnStateMachine( void )
 
     /* clear out the temporary state transition table */
     FM_MEMSET_S( stt, sizeof(stt), 0, sizeof(stt));
+ 
+    for (i = 0 ; 
+         i < (sizeof(fm10000Clause73SmTable) / sizeof(fm_smTable)); 
+         i++)
+    {
+        stt[fm10000Clause73SmTable[i].current]
+           [fm10000Clause73SmTable[i].event].used = TRUE;
 
-    /* transition for state=AN_STATE_DISABLED(0), event=AN_EVENT_START_REQ(0) */
-    stt[FM10000_AN_STATE_DISABLED]
-       [FM10000_AN_EVENT_START_REQ].used = TRUE;
-    stt[FM10000_AN_STATE_DISABLED]
-       [FM10000_AN_EVENT_START_REQ].nextState = FM10000_AN_STATE_ENABLED;
-    stt[FM10000_AN_STATE_DISABLED]
-       [FM10000_AN_EVENT_START_REQ].conditionCallback = NULL;
-    stt[FM10000_AN_STATE_DISABLED]
-       [FM10000_AN_EVENT_START_REQ].transitionCallback = Clause73StateMachineS0E0Callback;
+        stt[fm10000Clause73SmTable[i].current]
+           [fm10000Clause73SmTable[i].event].nextState = 
+               fm10000Clause73SmTable[i].next;
 
-    /* transition for state=AN_STATE_ENABLED(1), event=AN_EVENT_START_REQ(0) */
-    stt[FM10000_AN_STATE_ENABLED]
-       [FM10000_AN_EVENT_START_REQ].used = TRUE;
-    stt[FM10000_AN_STATE_ENABLED]
-       [FM10000_AN_EVENT_START_REQ].nextState = FM10000_AN_STATE_ENABLED;
-    stt[FM10000_AN_STATE_ENABLED]
-       [FM10000_AN_EVENT_START_REQ].conditionCallback = NULL;
-    stt[FM10000_AN_STATE_ENABLED]
-       [FM10000_AN_EVENT_START_REQ].transitionCallback = Clause73StateMachineS1E0Callback;
+        if (fm10000Clause73SmTable[i].next == FM_STATE_UNSPECIFIED)
+        {
+            stt[fm10000Clause73SmTable[i].current]
+               [fm10000Clause73SmTable[i].event].conditionCallback = 
+                   (fm_smConditionCallback) fm10000Clause73SmTable[i].callback;
 
-    /* transition for state=AN_STATE_ENABLED(1), event=AN_EVENT_STOP_REQ(1) */
-    stt[FM10000_AN_STATE_ENABLED]
-       [FM10000_AN_EVENT_STOP_REQ].used = TRUE;
-    stt[FM10000_AN_STATE_ENABLED]
-       [FM10000_AN_EVENT_STOP_REQ].nextState = FM10000_AN_STATE_DISABLED;
-    stt[FM10000_AN_STATE_ENABLED]
-       [FM10000_AN_EVENT_STOP_REQ].conditionCallback = NULL;
-    stt[FM10000_AN_STATE_ENABLED]
-       [FM10000_AN_EVENT_STOP_REQ].transitionCallback = Clause73StateMachineS1E1Callback;
+            stt[fm10000Clause73SmTable[i].current]
+               [fm10000Clause73SmTable[i].event].transitionCallback = NULL;
+        }
+        else
+        {
+            stt[fm10000Clause73SmTable[i].current]
+               [fm10000Clause73SmTable[i].event].conditionCallback = NULL;
 
-    /* transition for state=AN_STATE_ENABLED(1), event=AN_EVENT_TRANSMIT_DISABLE_IND(11) */
-    stt[FM10000_AN_STATE_ENABLED]
-       [FM10000_AN_EVENT_TRANSMIT_DISABLE_IND].used = TRUE;
-    stt[FM10000_AN_STATE_ENABLED]
-       [FM10000_AN_EVENT_TRANSMIT_DISABLE_IND].nextState = FM10000_AN_STATE_TRANSMIT_DISABLE;
-    stt[FM10000_AN_STATE_ENABLED]
-       [FM10000_AN_EVENT_TRANSMIT_DISABLE_IND].conditionCallback = NULL;
-    stt[FM10000_AN_STATE_ENABLED]
-       [FM10000_AN_EVENT_TRANSMIT_DISABLE_IND].transitionCallback = Clause73StateMachineS1E11Callback;
+            stt[fm10000Clause73SmTable[i].current]
+               [fm10000Clause73SmTable[i].event].transitionCallback = 
+                   (fm_smTransitionCallback) fm10000Clause73SmTable[i].callback;
+        }
 
-    /* transition for state=AN_STATE_TRANSMIT_DISABLE(9), event=AN_EVENT_START_REQ(0) */
-    stt[FM10000_AN_STATE_TRANSMIT_DISABLE]
-       [FM10000_AN_EVENT_START_REQ].used = TRUE;
-    stt[FM10000_AN_STATE_TRANSMIT_DISABLE]
-       [FM10000_AN_EVENT_START_REQ].nextState = FM10000_AN_STATE_ENABLED;
-    stt[FM10000_AN_STATE_TRANSMIT_DISABLE]
-       [FM10000_AN_EVENT_START_REQ].conditionCallback = NULL;
-    stt[FM10000_AN_STATE_TRANSMIT_DISABLE]
-       [FM10000_AN_EVENT_START_REQ].transitionCallback = Clause73StateMachineS9E0Callback;
-
-    /* transition for state=AN_STATE_TRANSMIT_DISABLE(9), event=AN_EVENT_STOP_REQ(1) */
-    stt[FM10000_AN_STATE_TRANSMIT_DISABLE]
-       [FM10000_AN_EVENT_STOP_REQ].used = TRUE;
-    stt[FM10000_AN_STATE_TRANSMIT_DISABLE]
-       [FM10000_AN_EVENT_STOP_REQ].nextState = FM10000_AN_STATE_DISABLED;
-    stt[FM10000_AN_STATE_TRANSMIT_DISABLE]
-       [FM10000_AN_EVENT_STOP_REQ].conditionCallback = NULL;
-    stt[FM10000_AN_STATE_TRANSMIT_DISABLE]
-       [FM10000_AN_EVENT_STOP_REQ].transitionCallback = Clause73StateMachineS9E1Callback;
-
-    /* transition for state=AN_STATE_TRANSMIT_DISABLE(9), event=AN_EVENT_ABILITY_DETECT_IND(5) */
-    stt[FM10000_AN_STATE_TRANSMIT_DISABLE]
-       [FM10000_AN_EVENT_ABILITY_DETECT_IND].used = TRUE;
-    stt[FM10000_AN_STATE_TRANSMIT_DISABLE]
-       [FM10000_AN_EVENT_ABILITY_DETECT_IND].nextState = FM10000_AN_STATE_ABILITY_DETECT;
-    stt[FM10000_AN_STATE_TRANSMIT_DISABLE]
-       [FM10000_AN_EVENT_ABILITY_DETECT_IND].conditionCallback = NULL;
-    stt[FM10000_AN_STATE_TRANSMIT_DISABLE]
-       [FM10000_AN_EVENT_ABILITY_DETECT_IND].transitionCallback = NULL;
-
-    /* transition for state=AN_STATE_TRANSMIT_DISABLE(9), event=AN_EVENT_ACK_DETECT_IND(6) */
-    stt[FM10000_AN_STATE_TRANSMIT_DISABLE]
-       [FM10000_AN_EVENT_ACK_DETECT_IND].used = TRUE;
-    stt[FM10000_AN_STATE_TRANSMIT_DISABLE]
-       [FM10000_AN_EVENT_ACK_DETECT_IND].nextState = FM10000_AN_STATE_ACK_DETECT;
-    stt[FM10000_AN_STATE_TRANSMIT_DISABLE]
-       [FM10000_AN_EVENT_ACK_DETECT_IND].conditionCallback = NULL;
-    stt[FM10000_AN_STATE_TRANSMIT_DISABLE]
-       [FM10000_AN_EVENT_ACK_DETECT_IND].transitionCallback = NULL;
-
-    /* transition for state=AN_STATE_TRANSMIT_DISABLE(9), event=AN_EVENT_COMPLETE_ACK_IND(7) */
-    stt[FM10000_AN_STATE_TRANSMIT_DISABLE]
-       [FM10000_AN_EVENT_COMPLETE_ACK_IND].used = TRUE;
-    stt[FM10000_AN_STATE_TRANSMIT_DISABLE]
-       [FM10000_AN_EVENT_COMPLETE_ACK_IND].nextState = FM10000_AN_STATE_COMPLETE_ACK;
-    stt[FM10000_AN_STATE_TRANSMIT_DISABLE]
-       [FM10000_AN_EVENT_COMPLETE_ACK_IND].conditionCallback = NULL;
-    stt[FM10000_AN_STATE_TRANSMIT_DISABLE]
-       [FM10000_AN_EVENT_COMPLETE_ACK_IND].transitionCallback = Clause73StateMachineS9E7Callback;
-
-    /* transition for state=AN_STATE_ABILITY_DETECT(4), event=AN_EVENT_START_REQ(0) */
-    stt[FM10000_AN_STATE_ABILITY_DETECT]
-       [FM10000_AN_EVENT_START_REQ].used = TRUE;
-    stt[FM10000_AN_STATE_ABILITY_DETECT]
-       [FM10000_AN_EVENT_START_REQ].nextState = FM10000_AN_STATE_ENABLED;
-    stt[FM10000_AN_STATE_ABILITY_DETECT]
-       [FM10000_AN_EVENT_START_REQ].conditionCallback = NULL;
-    stt[FM10000_AN_STATE_ABILITY_DETECT]
-       [FM10000_AN_EVENT_START_REQ].transitionCallback = Clause73StateMachineS4E0Callback;
-
-    /* transition for state=AN_STATE_ABILITY_DETECT(4), event=AN_EVENT_STOP_REQ(1) */
-    stt[FM10000_AN_STATE_ABILITY_DETECT]
-       [FM10000_AN_EVENT_STOP_REQ].used = TRUE;
-    stt[FM10000_AN_STATE_ABILITY_DETECT]
-       [FM10000_AN_EVENT_STOP_REQ].nextState = FM10000_AN_STATE_DISABLED;
-    stt[FM10000_AN_STATE_ABILITY_DETECT]
-       [FM10000_AN_EVENT_STOP_REQ].conditionCallback = NULL;
-    stt[FM10000_AN_STATE_ABILITY_DETECT]
-       [FM10000_AN_EVENT_STOP_REQ].transitionCallback = Clause73StateMachineS4E1Callback;
-
-    /* transition for state=AN_STATE_ABILITY_DETECT(4), event=AN_EVENT_TRANSMIT_DISABLE_IND(11) */
-    stt[FM10000_AN_STATE_ABILITY_DETECT]
-       [FM10000_AN_EVENT_TRANSMIT_DISABLE_IND].used = TRUE;
-    stt[FM10000_AN_STATE_ABILITY_DETECT]
-       [FM10000_AN_EVENT_TRANSMIT_DISABLE_IND].nextState = FM10000_AN_STATE_TRANSMIT_DISABLE;
-    stt[FM10000_AN_STATE_ABILITY_DETECT]
-       [FM10000_AN_EVENT_TRANSMIT_DISABLE_IND].conditionCallback = NULL;
-    stt[FM10000_AN_STATE_ABILITY_DETECT]
-       [FM10000_AN_EVENT_TRANSMIT_DISABLE_IND].transitionCallback = Clause73StateMachineS4E11Callback;
-
-    /* transition for state=AN_STATE_ABILITY_DETECT(4), event=AN_EVENT_ACK_DETECT_IND(6) */
-    stt[FM10000_AN_STATE_ABILITY_DETECT]
-       [FM10000_AN_EVENT_ACK_DETECT_IND].used = TRUE;
-    stt[FM10000_AN_STATE_ABILITY_DETECT]
-       [FM10000_AN_EVENT_ACK_DETECT_IND].nextState = FM10000_AN_STATE_ACK_DETECT;
-    stt[FM10000_AN_STATE_ABILITY_DETECT]
-       [FM10000_AN_EVENT_ACK_DETECT_IND].conditionCallback = NULL;
-    stt[FM10000_AN_STATE_ABILITY_DETECT]
-       [FM10000_AN_EVENT_ACK_DETECT_IND].transitionCallback = NULL;
-
-    /* transition for state=AN_STATE_ABILITY_DETECT(4), event=AN_EVENT_COMPLETE_ACK_IND(7) */
-    stt[FM10000_AN_STATE_ABILITY_DETECT]
-       [FM10000_AN_EVENT_COMPLETE_ACK_IND].used = TRUE;
-    stt[FM10000_AN_STATE_ABILITY_DETECT]
-       [FM10000_AN_EVENT_COMPLETE_ACK_IND].nextState = FM10000_AN_STATE_COMPLETE_ACK;
-    stt[FM10000_AN_STATE_ABILITY_DETECT]
-       [FM10000_AN_EVENT_COMPLETE_ACK_IND].conditionCallback = NULL;
-    stt[FM10000_AN_STATE_ABILITY_DETECT]
-       [FM10000_AN_EVENT_COMPLETE_ACK_IND].transitionCallback = Clause73StateMachineS4E7Callback;
-
-    /* transition for state=AN_STATE_ACK_DETECT(5), event=AN_EVENT_START_REQ(0) */
-    stt[FM10000_AN_STATE_ACK_DETECT]
-       [FM10000_AN_EVENT_START_REQ].used = TRUE;
-    stt[FM10000_AN_STATE_ACK_DETECT]
-       [FM10000_AN_EVENT_START_REQ].nextState = FM10000_AN_STATE_ENABLED;
-    stt[FM10000_AN_STATE_ACK_DETECT]
-       [FM10000_AN_EVENT_START_REQ].conditionCallback = NULL;
-    stt[FM10000_AN_STATE_ACK_DETECT]
-       [FM10000_AN_EVENT_START_REQ].transitionCallback = Clause73StateMachineS5E0Callback;
-
-    /* transition for state=AN_STATE_ACK_DETECT(5), event=AN_EVENT_STOP_REQ(1) */
-    stt[FM10000_AN_STATE_ACK_DETECT]
-       [FM10000_AN_EVENT_STOP_REQ].used = TRUE;
-    stt[FM10000_AN_STATE_ACK_DETECT]
-       [FM10000_AN_EVENT_STOP_REQ].nextState = FM10000_AN_STATE_DISABLED;
-    stt[FM10000_AN_STATE_ACK_DETECT]
-       [FM10000_AN_EVENT_STOP_REQ].conditionCallback = NULL;
-    stt[FM10000_AN_STATE_ACK_DETECT]
-       [FM10000_AN_EVENT_STOP_REQ].transitionCallback = Clause73StateMachineS5E1Callback;
-
-    /* transition for state=AN_STATE_ACK_DETECT(5), event=AN_EVENT_TRANSMIT_DISABLE_IND(11) */
-    stt[FM10000_AN_STATE_ACK_DETECT]
-       [FM10000_AN_EVENT_TRANSMIT_DISABLE_IND].used = TRUE;
-    stt[FM10000_AN_STATE_ACK_DETECT]
-       [FM10000_AN_EVENT_TRANSMIT_DISABLE_IND].nextState = FM10000_AN_STATE_TRANSMIT_DISABLE;
-    stt[FM10000_AN_STATE_ACK_DETECT]
-       [FM10000_AN_EVENT_TRANSMIT_DISABLE_IND].conditionCallback = NULL;
-    stt[FM10000_AN_STATE_ACK_DETECT]
-       [FM10000_AN_EVENT_TRANSMIT_DISABLE_IND].transitionCallback = Clause73StateMachineS5E11Callback;
-
-    /* transition for state=AN_STATE_ACK_DETECT(5), event=AN_EVENT_COMPLETE_ACK_IND(7) */
-    stt[FM10000_AN_STATE_ACK_DETECT]
-       [FM10000_AN_EVENT_COMPLETE_ACK_IND].used = TRUE;
-    stt[FM10000_AN_STATE_ACK_DETECT]
-       [FM10000_AN_EVENT_COMPLETE_ACK_IND].nextState = FM10000_AN_STATE_COMPLETE_ACK;
-    stt[FM10000_AN_STATE_ACK_DETECT]
-       [FM10000_AN_EVENT_COMPLETE_ACK_IND].conditionCallback = NULL;
-    stt[FM10000_AN_STATE_ACK_DETECT]
-       [FM10000_AN_EVENT_COMPLETE_ACK_IND].transitionCallback = Clause73StateMachineS5E7Callback;
-
-    /* transition for state=AN_STATE_COMPLETE_ACK(6), event=AN_EVENT_START_REQ(0) */
-    stt[FM10000_AN_STATE_COMPLETE_ACK]
-       [FM10000_AN_EVENT_START_REQ].used = TRUE;
-    stt[FM10000_AN_STATE_COMPLETE_ACK]
-       [FM10000_AN_EVENT_START_REQ].nextState = FM10000_AN_STATE_ENABLED;
-    stt[FM10000_AN_STATE_COMPLETE_ACK]
-       [FM10000_AN_EVENT_START_REQ].conditionCallback = NULL;
-    stt[FM10000_AN_STATE_COMPLETE_ACK]
-       [FM10000_AN_EVENT_START_REQ].transitionCallback = Clause73StateMachineS6E0Callback;
-
-    /* transition for state=AN_STATE_COMPLETE_ACK(6), event=AN_EVENT_STOP_REQ(1) */
-    stt[FM10000_AN_STATE_COMPLETE_ACK]
-       [FM10000_AN_EVENT_STOP_REQ].used = TRUE;
-    stt[FM10000_AN_STATE_COMPLETE_ACK]
-       [FM10000_AN_EVENT_STOP_REQ].nextState = FM10000_AN_STATE_DISABLED;
-    stt[FM10000_AN_STATE_COMPLETE_ACK]
-       [FM10000_AN_EVENT_STOP_REQ].conditionCallback = NULL;
-    stt[FM10000_AN_STATE_COMPLETE_ACK]
-       [FM10000_AN_EVENT_STOP_REQ].transitionCallback = Clause73StateMachineS6E1Callback;
-
-    /* transition for state=AN_STATE_COMPLETE_ACK(6), event=AN_EVENT_TRANSMIT_DISABLE_IND(11) */
-    stt[FM10000_AN_STATE_COMPLETE_ACK]
-       [FM10000_AN_EVENT_TRANSMIT_DISABLE_IND].used = TRUE;
-    stt[FM10000_AN_STATE_COMPLETE_ACK]
-       [FM10000_AN_EVENT_TRANSMIT_DISABLE_IND].nextState = FM10000_AN_STATE_TRANSMIT_DISABLE;
-    stt[FM10000_AN_STATE_COMPLETE_ACK]
-       [FM10000_AN_EVENT_TRANSMIT_DISABLE_IND].conditionCallback = NULL;
-    stt[FM10000_AN_STATE_COMPLETE_ACK]
-       [FM10000_AN_EVENT_TRANSMIT_DISABLE_IND].transitionCallback = Clause73StateMachineS6E11Callback;
-
-    /* transition for state=AN_STATE_COMPLETE_ACK(6), event=AN_EVENT_ACK_DETECT_IND(6) */
-    stt[FM10000_AN_STATE_COMPLETE_ACK]
-       [FM10000_AN_EVENT_ACK_DETECT_IND].used = TRUE;
-    stt[FM10000_AN_STATE_COMPLETE_ACK]
-       [FM10000_AN_EVENT_ACK_DETECT_IND].nextState = FM10000_AN_STATE_ACK_DETECT;
-    stt[FM10000_AN_STATE_COMPLETE_ACK]
-       [FM10000_AN_EVENT_ACK_DETECT_IND].conditionCallback = NULL;
-    stt[FM10000_AN_STATE_COMPLETE_ACK]
-       [FM10000_AN_EVENT_ACK_DETECT_IND].transitionCallback = NULL;
-
-    /* transition for state=AN_STATE_COMPLETE_ACK(6), event=AN_EVENT_NEXT_PAGE_WAIT_IND(8) */
-    stt[FM10000_AN_STATE_COMPLETE_ACK]
-       [FM10000_AN_EVENT_NEXT_PAGE_WAIT_IND].used = TRUE;
-    stt[FM10000_AN_STATE_COMPLETE_ACK]
-       [FM10000_AN_EVENT_NEXT_PAGE_WAIT_IND].nextState = FM10000_AN_STATE_NEXT_PAGE_WAIT;
-    stt[FM10000_AN_STATE_COMPLETE_ACK]
-       [FM10000_AN_EVENT_NEXT_PAGE_WAIT_IND].conditionCallback = NULL;
-    stt[FM10000_AN_STATE_COMPLETE_ACK]
-       [FM10000_AN_EVENT_NEXT_PAGE_WAIT_IND].transitionCallback = NULL;
-
-    /* transition for state=AN_STATE_COMPLETE_ACK(6), event=AN_EVENT_GOOD_CHECK_IND(12) */
-    stt[FM10000_AN_STATE_COMPLETE_ACK]
-       [FM10000_AN_EVENT_GOOD_CHECK_IND].used = TRUE;
-    stt[FM10000_AN_STATE_COMPLETE_ACK]
-       [FM10000_AN_EVENT_GOOD_CHECK_IND].nextState = FM10000_AN_STATE_GOOD_CHECK;
-    stt[FM10000_AN_STATE_COMPLETE_ACK]
-       [FM10000_AN_EVENT_GOOD_CHECK_IND].conditionCallback = NULL;
-    stt[FM10000_AN_STATE_COMPLETE_ACK]
-       [FM10000_AN_EVENT_GOOD_CHECK_IND].transitionCallback = Clause73StateMachineS6E12Callback;
-
-    /* transition for state=AN_STATE_NEXT_PAGE_WAIT(8), event=AN_EVENT_START_REQ(0) */
-    stt[FM10000_AN_STATE_NEXT_PAGE_WAIT]
-       [FM10000_AN_EVENT_START_REQ].used = TRUE;
-    stt[FM10000_AN_STATE_NEXT_PAGE_WAIT]
-       [FM10000_AN_EVENT_START_REQ].nextState = FM10000_AN_STATE_ENABLED;
-    stt[FM10000_AN_STATE_NEXT_PAGE_WAIT]
-       [FM10000_AN_EVENT_START_REQ].conditionCallback = NULL;
-    stt[FM10000_AN_STATE_NEXT_PAGE_WAIT]
-       [FM10000_AN_EVENT_START_REQ].transitionCallback = Clause73StateMachineS8E0Callback;
-
-    /* transition for state=AN_STATE_NEXT_PAGE_WAIT(8), event=AN_EVENT_STOP_REQ(1) */
-    stt[FM10000_AN_STATE_NEXT_PAGE_WAIT]
-       [FM10000_AN_EVENT_STOP_REQ].used = TRUE;
-    stt[FM10000_AN_STATE_NEXT_PAGE_WAIT]
-       [FM10000_AN_EVENT_STOP_REQ].nextState = FM10000_AN_STATE_DISABLED;
-    stt[FM10000_AN_STATE_NEXT_PAGE_WAIT]
-       [FM10000_AN_EVENT_STOP_REQ].conditionCallback = NULL;
-    stt[FM10000_AN_STATE_NEXT_PAGE_WAIT]
-       [FM10000_AN_EVENT_STOP_REQ].transitionCallback = Clause73StateMachineS8E1Callback;
-
-    /* transition for state=AN_STATE_NEXT_PAGE_WAIT(8), event=AN_EVENT_TRANSMIT_DISABLE_IND(11) */
-    stt[FM10000_AN_STATE_NEXT_PAGE_WAIT]
-       [FM10000_AN_EVENT_TRANSMIT_DISABLE_IND].used = TRUE;
-    stt[FM10000_AN_STATE_NEXT_PAGE_WAIT]
-       [FM10000_AN_EVENT_TRANSMIT_DISABLE_IND].nextState = FM10000_AN_STATE_TRANSMIT_DISABLE;
-    stt[FM10000_AN_STATE_NEXT_PAGE_WAIT]
-       [FM10000_AN_EVENT_TRANSMIT_DISABLE_IND].conditionCallback = NULL;
-    stt[FM10000_AN_STATE_NEXT_PAGE_WAIT]
-       [FM10000_AN_EVENT_TRANSMIT_DISABLE_IND].transitionCallback = Clause73StateMachineS8E11Callback;
-
-    /* transition for state=AN_STATE_NEXT_PAGE_WAIT(8), event=AN_EVENT_ACK_DETECT_IND(6) */
-    stt[FM10000_AN_STATE_NEXT_PAGE_WAIT]
-       [FM10000_AN_EVENT_ACK_DETECT_IND].used = TRUE;
-    stt[FM10000_AN_STATE_NEXT_PAGE_WAIT]
-       [FM10000_AN_EVENT_ACK_DETECT_IND].nextState = FM10000_AN_STATE_ACK_DETECT;
-    stt[FM10000_AN_STATE_NEXT_PAGE_WAIT]
-       [FM10000_AN_EVENT_ACK_DETECT_IND].conditionCallback = NULL;
-    stt[FM10000_AN_STATE_NEXT_PAGE_WAIT]
-       [FM10000_AN_EVENT_ACK_DETECT_IND].transitionCallback = NULL;
-
-    /* transition for state=AN_STATE_NEXT_PAGE_WAIT(8), event=AN_EVENT_COMPLETE_ACK_IND(7) */
-    stt[FM10000_AN_STATE_NEXT_PAGE_WAIT]
-       [FM10000_AN_EVENT_COMPLETE_ACK_IND].used = TRUE;
-    stt[FM10000_AN_STATE_NEXT_PAGE_WAIT]
-       [FM10000_AN_EVENT_COMPLETE_ACK_IND].nextState = FM10000_AN_STATE_COMPLETE_ACK;
-    stt[FM10000_AN_STATE_NEXT_PAGE_WAIT]
-       [FM10000_AN_EVENT_COMPLETE_ACK_IND].conditionCallback = NULL;
-    stt[FM10000_AN_STATE_NEXT_PAGE_WAIT]
-       [FM10000_AN_EVENT_COMPLETE_ACK_IND].transitionCallback = Clause73StateMachineS8E7Callback;
-
-    /* transition for state=AN_STATE_NEXT_PAGE_WAIT(8), event=AN_EVENT_GOOD_CHECK_IND(12) */
-    stt[FM10000_AN_STATE_NEXT_PAGE_WAIT]
-       [FM10000_AN_EVENT_GOOD_CHECK_IND].used = TRUE;
-    stt[FM10000_AN_STATE_NEXT_PAGE_WAIT]
-       [FM10000_AN_EVENT_GOOD_CHECK_IND].nextState = FM10000_AN_STATE_GOOD_CHECK;
-    stt[FM10000_AN_STATE_NEXT_PAGE_WAIT]
-       [FM10000_AN_EVENT_GOOD_CHECK_IND].conditionCallback = NULL;
-    stt[FM10000_AN_STATE_NEXT_PAGE_WAIT]
-       [FM10000_AN_EVENT_GOOD_CHECK_IND].transitionCallback = Clause73StateMachineS8E12Callback;
-
-    /* transition for state=AN_STATE_GOOD_CHECK(10), event=AN_EVENT_START_REQ(0) */
-    stt[FM10000_AN_STATE_GOOD_CHECK]
-       [FM10000_AN_EVENT_START_REQ].used = TRUE;
-    stt[FM10000_AN_STATE_GOOD_CHECK]
-       [FM10000_AN_EVENT_START_REQ].nextState = FM10000_AN_STATE_ENABLED;
-    stt[FM10000_AN_STATE_GOOD_CHECK]
-       [FM10000_AN_EVENT_START_REQ].conditionCallback = NULL;
-    stt[FM10000_AN_STATE_GOOD_CHECK]
-       [FM10000_AN_EVENT_START_REQ].transitionCallback = Clause73StateMachineS10E0Callback;
-
-    /* transition for state=AN_STATE_GOOD_CHECK(10), event=AN_EVENT_STOP_REQ(1) */
-    stt[FM10000_AN_STATE_GOOD_CHECK]
-       [FM10000_AN_EVENT_STOP_REQ].used = TRUE;
-    stt[FM10000_AN_STATE_GOOD_CHECK]
-       [FM10000_AN_EVENT_STOP_REQ].nextState = FM10000_AN_STATE_DISABLED;
-    stt[FM10000_AN_STATE_GOOD_CHECK]
-       [FM10000_AN_EVENT_STOP_REQ].conditionCallback = NULL;
-    stt[FM10000_AN_STATE_GOOD_CHECK]
-       [FM10000_AN_EVENT_STOP_REQ].transitionCallback = Clause73StateMachineS10E1Callback;
-
-    /* transition for state=AN_STATE_GOOD_CHECK(10), event=AN_EVENT_TRANSMIT_DISABLE_IND(11) */
-    stt[FM10000_AN_STATE_GOOD_CHECK]
-       [FM10000_AN_EVENT_TRANSMIT_DISABLE_IND].used = TRUE;
-    stt[FM10000_AN_STATE_GOOD_CHECK]
-       [FM10000_AN_EVENT_TRANSMIT_DISABLE_IND].nextState = FM10000_AN_STATE_TRANSMIT_DISABLE;
-    stt[FM10000_AN_STATE_GOOD_CHECK]
-       [FM10000_AN_EVENT_TRANSMIT_DISABLE_IND].conditionCallback = NULL;
-    stt[FM10000_AN_STATE_GOOD_CHECK]
-       [FM10000_AN_EVENT_TRANSMIT_DISABLE_IND].transitionCallback = Clause73StateMachineS10E11Callback;
-
-    /* transition for state=AN_STATE_GOOD_CHECK(10), event=AN_EVENT_GOOD_IND(13) */
-    stt[FM10000_AN_STATE_GOOD_CHECK]
-       [FM10000_AN_EVENT_GOOD_IND].used = TRUE;
-    stt[FM10000_AN_STATE_GOOD_CHECK]
-       [FM10000_AN_EVENT_GOOD_IND].nextState = FM10000_AN_STATE_GOOD;
-    stt[FM10000_AN_STATE_GOOD_CHECK]
-       [FM10000_AN_EVENT_GOOD_IND].conditionCallback = NULL;
-    stt[FM10000_AN_STATE_GOOD_CHECK]
-       [FM10000_AN_EVENT_GOOD_IND].transitionCallback = Clause73StateMachineS10E13Callback;
-
-    /* transition for state=AN_STATE_GOOD(11), event=AN_EVENT_START_REQ(0) */
-    stt[FM10000_AN_STATE_GOOD]
-       [FM10000_AN_EVENT_START_REQ].used = TRUE;
-    stt[FM10000_AN_STATE_GOOD]
-       [FM10000_AN_EVENT_START_REQ].nextState = FM10000_AN_STATE_ENABLED;
-    stt[FM10000_AN_STATE_GOOD]
-       [FM10000_AN_EVENT_START_REQ].conditionCallback = NULL;
-    stt[FM10000_AN_STATE_GOOD]
-       [FM10000_AN_EVENT_START_REQ].transitionCallback = Clause73StateMachineS11E0Callback;
-
-    /* transition for state=AN_STATE_GOOD(11), event=AN_EVENT_STOP_REQ(1) */
-    stt[FM10000_AN_STATE_GOOD]
-       [FM10000_AN_EVENT_STOP_REQ].used = TRUE;
-    stt[FM10000_AN_STATE_GOOD]
-       [FM10000_AN_EVENT_STOP_REQ].nextState = FM10000_AN_STATE_DISABLED;
-    stt[FM10000_AN_STATE_GOOD]
-       [FM10000_AN_EVENT_STOP_REQ].conditionCallback = NULL;
-    stt[FM10000_AN_STATE_GOOD]
-       [FM10000_AN_EVENT_STOP_REQ].transitionCallback = Clause73StateMachineS11E1Callback;
-
-    /* transition for state=AN_STATE_GOOD(11), event=AN_EVENT_TRANSMIT_DISABLE_IND(11) */
-    stt[FM10000_AN_STATE_GOOD]
-       [FM10000_AN_EVENT_TRANSMIT_DISABLE_IND].used = TRUE;
-    stt[FM10000_AN_STATE_GOOD]
-       [FM10000_AN_EVENT_TRANSMIT_DISABLE_IND].nextState = FM10000_AN_STATE_DISABLED;
-    stt[FM10000_AN_STATE_GOOD]
-       [FM10000_AN_EVENT_TRANSMIT_DISABLE_IND].conditionCallback = NULL;
-    stt[FM10000_AN_STATE_GOOD]
-       [FM10000_AN_EVENT_TRANSMIT_DISABLE_IND].transitionCallback = Clause73StateMachineS11E11Callback;
-
-    /* transition for state=AN_STATE_GOOD(11), event=AN_EVENT_POLLING_TIMER_EXP_IND(14) */
-    stt[FM10000_AN_STATE_GOOD]
-       [FM10000_AN_EVENT_POLLING_TIMER_EXP_IND].used = TRUE;
-    stt[FM10000_AN_STATE_GOOD]
-       [FM10000_AN_EVENT_POLLING_TIMER_EXP_IND].nextState = FM10000_AN_STATE_GOOD;
-    stt[FM10000_AN_STATE_GOOD]
-       [FM10000_AN_EVENT_POLLING_TIMER_EXP_IND].conditionCallback = NULL;
-    stt[FM10000_AN_STATE_GOOD]
-       [FM10000_AN_EVENT_POLLING_TIMER_EXP_IND].transitionCallback = Clause73StateMachineS11E14Callback;
-
+    }
+    
     /* fill out the state transition table for this state machine type */
-    for (i = 0 ; i < FM10000_AN_STATE_MAX  ; i++)
+    for (i = 0 ; i < FM10000_AN_STATE_MAX ; i++)
     {
         dynstt[i] = &stt[i][0];
     }
@@ -4596,8 +1694,7 @@ fm_status fm10000RegisterClause73AnStateMachine( void )
 
 
 /*****************************************************************************/
-/** fm10000RegisterClause37AnStateMachine
- * \ingroup intAnStateMachine
+/* fm10000RegisterClause37AnStateMachine
  *
  * \desc            This function registers with the Generic State Machine
  *                  Engine state machine type ''FM10000_CLAUSE37_AN_STATE_MACHINE''.
@@ -4615,7 +1712,7 @@ fm_status fm10000RegisterClause73AnStateMachine( void )
  *****************************************************************************/
 fm_status fm10000RegisterClause37AnStateMachine( void )
 {
-    fm_int      i;
+    fm_uint     i;
     fm_status   status;
     fm_smTransitionEntry  stt[FM10000_AN_STATE_MAX][FM10000_AN_EVENT_MAX];
     fm_smTransitionEntry *dynstt[FM10000_AN_STATE_MAX];
@@ -4628,549 +1725,41 @@ fm_status fm10000RegisterClause37AnStateMachine( void )
 
     /* clear out the temporary state transition table */
     FM_MEMSET_S( stt, sizeof(stt), 0, sizeof(stt));
+ 
+    for (i = 0 ; 
+         i < (sizeof(fm10000Clause37SmTable) / sizeof(fm_smTable)); 
+         i++)
+    {
+        stt[fm10000Clause37SmTable[i].current]
+           [fm10000Clause37SmTable[i].event].used = TRUE;
 
-    /* transition for state=AN_STATE_DISABLED(0), event=AN_EVENT_START_REQ(0) */
-    stt[FM10000_AN_STATE_DISABLED]
-       [FM10000_AN_EVENT_START_REQ].used = TRUE;
-    stt[FM10000_AN_STATE_DISABLED]
-       [FM10000_AN_EVENT_START_REQ].nextState = FM10000_AN_STATE_ENABLED;
-    stt[FM10000_AN_STATE_DISABLED]
-       [FM10000_AN_EVENT_START_REQ].conditionCallback = NULL;
-    stt[FM10000_AN_STATE_DISABLED]
-       [FM10000_AN_EVENT_START_REQ].transitionCallback = Clause37StateMachineS0E0Callback;
+        stt[fm10000Clause37SmTable[i].current]
+           [fm10000Clause37SmTable[i].event].nextState = 
+               fm10000Clause37SmTable[i].next;
 
-    /* transition for state=AN_STATE_ENABLED(1), event=AN_EVENT_START_REQ(0) */
-    stt[FM10000_AN_STATE_ENABLED]
-       [FM10000_AN_EVENT_START_REQ].used = TRUE;
-    stt[FM10000_AN_STATE_ENABLED]
-       [FM10000_AN_EVENT_START_REQ].nextState = FM10000_AN_STATE_ENABLED;
-    stt[FM10000_AN_STATE_ENABLED]
-       [FM10000_AN_EVENT_START_REQ].conditionCallback = NULL;
-    stt[FM10000_AN_STATE_ENABLED]
-       [FM10000_AN_EVENT_START_REQ].transitionCallback = Clause37StateMachineS1E0Callback;
+        if (fm10000Clause37SmTable[i].next == FM_STATE_UNSPECIFIED)
+        {
+            stt[fm10000Clause37SmTable[i].current]
+               [fm10000Clause37SmTable[i].event].conditionCallback = 
+                   (fm_smConditionCallback) fm10000Clause37SmTable[i].callback;
 
-    /* transition for state=AN_STATE_ENABLED(1), event=AN_EVENT_STOP_REQ(1) */
-    stt[FM10000_AN_STATE_ENABLED]
-       [FM10000_AN_EVENT_STOP_REQ].used = TRUE;
-    stt[FM10000_AN_STATE_ENABLED]
-       [FM10000_AN_EVENT_STOP_REQ].nextState = FM10000_AN_STATE_DISABLED;
-    stt[FM10000_AN_STATE_ENABLED]
-       [FM10000_AN_EVENT_STOP_REQ].conditionCallback = NULL;
-    stt[FM10000_AN_STATE_ENABLED]
-       [FM10000_AN_EVENT_STOP_REQ].transitionCallback = Clause37StateMachineS1E1Callback;
+            stt[fm10000Clause37SmTable[i].current]
+               [fm10000Clause37SmTable[i].event].transitionCallback = NULL;
+        }
+        else
+        {
+            stt[fm10000Clause37SmTable[i].current]
+               [fm10000Clause37SmTable[i].event].conditionCallback = NULL;
 
-    /* transition for state=AN_STATE_ENABLED(1), event=AN_EVENT_RESTART_IND(3) */
-    stt[FM10000_AN_STATE_ENABLED]
-       [FM10000_AN_EVENT_RESTART_IND].used = TRUE;
-    stt[FM10000_AN_STATE_ENABLED]
-       [FM10000_AN_EVENT_RESTART_IND].nextState = FM10000_AN_STATE_RESTART;
-    stt[FM10000_AN_STATE_ENABLED]
-       [FM10000_AN_EVENT_RESTART_IND].conditionCallback = NULL;
-    stt[FM10000_AN_STATE_ENABLED]
-       [FM10000_AN_EVENT_RESTART_IND].transitionCallback = Clause37StateMachineS1E3Callback;
+            stt[fm10000Clause37SmTable[i].current]
+               [fm10000Clause37SmTable[i].event].transitionCallback = 
+                   (fm_smTransitionCallback) fm10000Clause37SmTable[i].callback;
+        }
 
-    /* transition for state=AN_STATE_ENABLED(1), event=AN_EVENT_DISABLE_LINK_OK_IND(4) */
-    stt[FM10000_AN_STATE_ENABLED]
-       [FM10000_AN_EVENT_DISABLE_LINK_OK_IND].used = TRUE;
-    stt[FM10000_AN_STATE_ENABLED]
-       [FM10000_AN_EVENT_DISABLE_LINK_OK_IND].nextState = FM10000_AN_STATE_DISABLE_LINK_OK;
-    stt[FM10000_AN_STATE_ENABLED]
-       [FM10000_AN_EVENT_DISABLE_LINK_OK_IND].conditionCallback = NULL;
-    stt[FM10000_AN_STATE_ENABLED]
-       [FM10000_AN_EVENT_DISABLE_LINK_OK_IND].transitionCallback = NULL;
-
-    /* transition for state=AN_STATE_RESTART(2), event=AN_EVENT_START_REQ(0) */
-    stt[FM10000_AN_STATE_RESTART]
-       [FM10000_AN_EVENT_START_REQ].used = TRUE;
-    stt[FM10000_AN_STATE_RESTART]
-       [FM10000_AN_EVENT_START_REQ].nextState = FM10000_AN_STATE_ENABLED;
-    stt[FM10000_AN_STATE_RESTART]
-       [FM10000_AN_EVENT_START_REQ].conditionCallback = NULL;
-    stt[FM10000_AN_STATE_RESTART]
-       [FM10000_AN_EVENT_START_REQ].transitionCallback = Clause37StateMachineS2E0Callback;
-
-    /* transition for state=AN_STATE_RESTART(2), event=AN_EVENT_STOP_REQ(1) */
-    stt[FM10000_AN_STATE_RESTART]
-       [FM10000_AN_EVENT_STOP_REQ].used = TRUE;
-    stt[FM10000_AN_STATE_RESTART]
-       [FM10000_AN_EVENT_STOP_REQ].nextState = FM10000_AN_STATE_DISABLED;
-    stt[FM10000_AN_STATE_RESTART]
-       [FM10000_AN_EVENT_STOP_REQ].conditionCallback = NULL;
-    stt[FM10000_AN_STATE_RESTART]
-       [FM10000_AN_EVENT_STOP_REQ].transitionCallback = Clause37StateMachineS2E1Callback;
-
-    /* transition for state=AN_STATE_RESTART(2), event=AN_EVENT_RESTART_IND(3) */
-    stt[FM10000_AN_STATE_RESTART]
-       [FM10000_AN_EVENT_RESTART_IND].used = TRUE;
-    stt[FM10000_AN_STATE_RESTART]
-       [FM10000_AN_EVENT_RESTART_IND].nextState = FM10000_AN_STATE_RESTART;
-    stt[FM10000_AN_STATE_RESTART]
-       [FM10000_AN_EVENT_RESTART_IND].conditionCallback = NULL;
-    stt[FM10000_AN_STATE_RESTART]
-       [FM10000_AN_EVENT_RESTART_IND].transitionCallback = Clause37StateMachineS2E3Callback;
-
-    /* transition for state=AN_STATE_RESTART(2), event=AN_EVENT_DISABLE_LINK_OK_IND(4) */
-    stt[FM10000_AN_STATE_RESTART]
-       [FM10000_AN_EVENT_DISABLE_LINK_OK_IND].used = TRUE;
-    stt[FM10000_AN_STATE_RESTART]
-       [FM10000_AN_EVENT_DISABLE_LINK_OK_IND].nextState = FM10000_AN_STATE_DISABLE_LINK_OK;
-    stt[FM10000_AN_STATE_RESTART]
-       [FM10000_AN_EVENT_DISABLE_LINK_OK_IND].conditionCallback = NULL;
-    stt[FM10000_AN_STATE_RESTART]
-       [FM10000_AN_EVENT_DISABLE_LINK_OK_IND].transitionCallback = NULL;
-
-    /* transition for state=AN_STATE_RESTART(2), event=AN_EVENT_ABILITY_DETECT_IND(5) */
-    stt[FM10000_AN_STATE_RESTART]
-       [FM10000_AN_EVENT_ABILITY_DETECT_IND].used = TRUE;
-    stt[FM10000_AN_STATE_RESTART]
-       [FM10000_AN_EVENT_ABILITY_DETECT_IND].nextState = FM10000_AN_STATE_ABILITY_DETECT;
-    stt[FM10000_AN_STATE_RESTART]
-       [FM10000_AN_EVENT_ABILITY_DETECT_IND].conditionCallback = NULL;
-    stt[FM10000_AN_STATE_RESTART]
-       [FM10000_AN_EVENT_ABILITY_DETECT_IND].transitionCallback = NULL;
-
-    /* transition for state=AN_STATE_RESTART(2), event=AN_EVENT_ACK_DETECT_IND(6) */
-    stt[FM10000_AN_STATE_RESTART]
-       [FM10000_AN_EVENT_ACK_DETECT_IND].used = TRUE;
-    stt[FM10000_AN_STATE_RESTART]
-       [FM10000_AN_EVENT_ACK_DETECT_IND].nextState = FM10000_AN_STATE_ACK_DETECT;
-    stt[FM10000_AN_STATE_RESTART]
-       [FM10000_AN_EVENT_ACK_DETECT_IND].conditionCallback = NULL;
-    stt[FM10000_AN_STATE_RESTART]
-       [FM10000_AN_EVENT_ACK_DETECT_IND].transitionCallback = NULL;
-
-    /* transition for state=AN_STATE_RESTART(2), event=AN_EVENT_COMPLETE_ACK_IND(7) */
-    stt[FM10000_AN_STATE_RESTART]
-       [FM10000_AN_EVENT_COMPLETE_ACK_IND].used = TRUE;
-    stt[FM10000_AN_STATE_RESTART]
-       [FM10000_AN_EVENT_COMPLETE_ACK_IND].nextState = FM10000_AN_STATE_COMPLETE_ACK;
-    stt[FM10000_AN_STATE_RESTART]
-       [FM10000_AN_EVENT_COMPLETE_ACK_IND].conditionCallback = NULL;
-    stt[FM10000_AN_STATE_RESTART]
-       [FM10000_AN_EVENT_COMPLETE_ACK_IND].transitionCallback = Clause37StateMachineS2E7Callback;
-
-    /* transition for state=AN_STATE_DISABLE_LINK_OK(3), event=AN_EVENT_START_REQ(0) */
-    stt[FM10000_AN_STATE_DISABLE_LINK_OK]
-       [FM10000_AN_EVENT_START_REQ].used = TRUE;
-    stt[FM10000_AN_STATE_DISABLE_LINK_OK]
-       [FM10000_AN_EVENT_START_REQ].nextState = FM10000_AN_STATE_ENABLED;
-    stt[FM10000_AN_STATE_DISABLE_LINK_OK]
-       [FM10000_AN_EVENT_START_REQ].conditionCallback = NULL;
-    stt[FM10000_AN_STATE_DISABLE_LINK_OK]
-       [FM10000_AN_EVENT_START_REQ].transitionCallback = Clause37StateMachineS3E0Callback;
-
-    /* transition for state=AN_STATE_DISABLE_LINK_OK(3), event=AN_EVENT_STOP_REQ(1) */
-    stt[FM10000_AN_STATE_DISABLE_LINK_OK]
-       [FM10000_AN_EVENT_STOP_REQ].used = TRUE;
-    stt[FM10000_AN_STATE_DISABLE_LINK_OK]
-       [FM10000_AN_EVENT_STOP_REQ].nextState = FM10000_AN_STATE_DISABLED;
-    stt[FM10000_AN_STATE_DISABLE_LINK_OK]
-       [FM10000_AN_EVENT_STOP_REQ].conditionCallback = NULL;
-    stt[FM10000_AN_STATE_DISABLE_LINK_OK]
-       [FM10000_AN_EVENT_STOP_REQ].transitionCallback = Clause37StateMachineS3E1Callback;
-
-    /* transition for state=AN_STATE_DISABLE_LINK_OK(3), event=AN_EVENT_RESTART_IND(3) */
-    stt[FM10000_AN_STATE_DISABLE_LINK_OK]
-       [FM10000_AN_EVENT_RESTART_IND].used = TRUE;
-    stt[FM10000_AN_STATE_DISABLE_LINK_OK]
-       [FM10000_AN_EVENT_RESTART_IND].nextState = FM10000_AN_STATE_DISABLE_LINK_OK;
-    stt[FM10000_AN_STATE_DISABLE_LINK_OK]
-       [FM10000_AN_EVENT_RESTART_IND].conditionCallback = NULL;
-    stt[FM10000_AN_STATE_DISABLE_LINK_OK]
-       [FM10000_AN_EVENT_RESTART_IND].transitionCallback = NULL;
-
-    /* transition for state=AN_STATE_DISABLE_LINK_OK(3), event=AN_EVENT_ABILITY_DETECT_IND(5) */
-    stt[FM10000_AN_STATE_DISABLE_LINK_OK]
-       [FM10000_AN_EVENT_ABILITY_DETECT_IND].used = TRUE;
-    stt[FM10000_AN_STATE_DISABLE_LINK_OK]
-       [FM10000_AN_EVENT_ABILITY_DETECT_IND].nextState = FM10000_AN_STATE_DISABLE_LINK_OK;
-    stt[FM10000_AN_STATE_DISABLE_LINK_OK]
-       [FM10000_AN_EVENT_ABILITY_DETECT_IND].conditionCallback = NULL;
-    stt[FM10000_AN_STATE_DISABLE_LINK_OK]
-       [FM10000_AN_EVENT_ABILITY_DETECT_IND].transitionCallback = NULL;
-
-    /* transition for state=AN_STATE_DISABLE_LINK_OK(3), event=AN_EVENT_ACK_DETECT_IND(6) */
-    stt[FM10000_AN_STATE_DISABLE_LINK_OK]
-       [FM10000_AN_EVENT_ACK_DETECT_IND].used = TRUE;
-    stt[FM10000_AN_STATE_DISABLE_LINK_OK]
-       [FM10000_AN_EVENT_ACK_DETECT_IND].nextState = FM10000_AN_STATE_DISABLE_LINK_OK;
-    stt[FM10000_AN_STATE_DISABLE_LINK_OK]
-       [FM10000_AN_EVENT_ACK_DETECT_IND].conditionCallback = NULL;
-    stt[FM10000_AN_STATE_DISABLE_LINK_OK]
-       [FM10000_AN_EVENT_ACK_DETECT_IND].transitionCallback = NULL;
-
-    /* transition for state=AN_STATE_DISABLE_LINK_OK(3), event=AN_EVENT_COMPLETE_ACK_IND(7) */
-    stt[FM10000_AN_STATE_DISABLE_LINK_OK]
-       [FM10000_AN_EVENT_COMPLETE_ACK_IND].used = TRUE;
-    stt[FM10000_AN_STATE_DISABLE_LINK_OK]
-       [FM10000_AN_EVENT_COMPLETE_ACK_IND].nextState = FM10000_AN_STATE_DISABLE_LINK_OK;
-    stt[FM10000_AN_STATE_DISABLE_LINK_OK]
-       [FM10000_AN_EVENT_COMPLETE_ACK_IND].conditionCallback = NULL;
-    stt[FM10000_AN_STATE_DISABLE_LINK_OK]
-       [FM10000_AN_EVENT_COMPLETE_ACK_IND].transitionCallback = NULL;
-
-    /* transition for state=AN_STATE_DISABLE_LINK_OK(3), event=AN_EVENT_NEXT_PAGE_WAIT_IND(8) */
-    stt[FM10000_AN_STATE_DISABLE_LINK_OK]
-       [FM10000_AN_EVENT_NEXT_PAGE_WAIT_IND].used = TRUE;
-    stt[FM10000_AN_STATE_DISABLE_LINK_OK]
-       [FM10000_AN_EVENT_NEXT_PAGE_WAIT_IND].nextState = FM10000_AN_STATE_DISABLE_LINK_OK;
-    stt[FM10000_AN_STATE_DISABLE_LINK_OK]
-       [FM10000_AN_EVENT_NEXT_PAGE_WAIT_IND].conditionCallback = NULL;
-    stt[FM10000_AN_STATE_DISABLE_LINK_OK]
-       [FM10000_AN_EVENT_NEXT_PAGE_WAIT_IND].transitionCallback = NULL;
-
-    /* transition for state=AN_STATE_DISABLE_LINK_OK(3), event=AN_EVENT_IDLE_DETECT_IND(9) */
-    stt[FM10000_AN_STATE_DISABLE_LINK_OK]
-       [FM10000_AN_EVENT_IDLE_DETECT_IND].used = TRUE;
-    stt[FM10000_AN_STATE_DISABLE_LINK_OK]
-       [FM10000_AN_EVENT_IDLE_DETECT_IND].nextState = FM10000_AN_STATE_DISABLE_LINK_OK;
-    stt[FM10000_AN_STATE_DISABLE_LINK_OK]
-       [FM10000_AN_EVENT_IDLE_DETECT_IND].conditionCallback = NULL;
-    stt[FM10000_AN_STATE_DISABLE_LINK_OK]
-       [FM10000_AN_EVENT_IDLE_DETECT_IND].transitionCallback = NULL;
-
-    /* transition for state=AN_STATE_DISABLE_LINK_OK(3), event=AN_EVENT_LINK_OK_IND(10) */
-    stt[FM10000_AN_STATE_DISABLE_LINK_OK]
-       [FM10000_AN_EVENT_LINK_OK_IND].used = TRUE;
-    stt[FM10000_AN_STATE_DISABLE_LINK_OK]
-       [FM10000_AN_EVENT_LINK_OK_IND].nextState = FM10000_AN_STATE_DISABLE_LINK_OK;
-    stt[FM10000_AN_STATE_DISABLE_LINK_OK]
-       [FM10000_AN_EVENT_LINK_OK_IND].conditionCallback = NULL;
-    stt[FM10000_AN_STATE_DISABLE_LINK_OK]
-       [FM10000_AN_EVENT_LINK_OK_IND].transitionCallback = NULL;
-
-    /* transition for state=AN_STATE_ABILITY_DETECT(4), event=AN_EVENT_START_REQ(0) */
-    stt[FM10000_AN_STATE_ABILITY_DETECT]
-       [FM10000_AN_EVENT_START_REQ].used = TRUE;
-    stt[FM10000_AN_STATE_ABILITY_DETECT]
-       [FM10000_AN_EVENT_START_REQ].nextState = FM10000_AN_STATE_ENABLED;
-    stt[FM10000_AN_STATE_ABILITY_DETECT]
-       [FM10000_AN_EVENT_START_REQ].conditionCallback = NULL;
-    stt[FM10000_AN_STATE_ABILITY_DETECT]
-       [FM10000_AN_EVENT_START_REQ].transitionCallback = Clause37StateMachineS4E0Callback;
-
-    /* transition for state=AN_STATE_ABILITY_DETECT(4), event=AN_EVENT_STOP_REQ(1) */
-    stt[FM10000_AN_STATE_ABILITY_DETECT]
-       [FM10000_AN_EVENT_STOP_REQ].used = TRUE;
-    stt[FM10000_AN_STATE_ABILITY_DETECT]
-       [FM10000_AN_EVENT_STOP_REQ].nextState = FM10000_AN_STATE_DISABLED;
-    stt[FM10000_AN_STATE_ABILITY_DETECT]
-       [FM10000_AN_EVENT_STOP_REQ].conditionCallback = NULL;
-    stt[FM10000_AN_STATE_ABILITY_DETECT]
-       [FM10000_AN_EVENT_STOP_REQ].transitionCallback = Clause37StateMachineS4E1Callback;
-
-    /* transition for state=AN_STATE_ABILITY_DETECT(4), event=AN_EVENT_RESTART_IND(3) */
-    stt[FM10000_AN_STATE_ABILITY_DETECT]
-       [FM10000_AN_EVENT_RESTART_IND].used = TRUE;
-    stt[FM10000_AN_STATE_ABILITY_DETECT]
-       [FM10000_AN_EVENT_RESTART_IND].nextState = FM10000_AN_STATE_RESTART;
-    stt[FM10000_AN_STATE_ABILITY_DETECT]
-       [FM10000_AN_EVENT_RESTART_IND].conditionCallback = NULL;
-    stt[FM10000_AN_STATE_ABILITY_DETECT]
-       [FM10000_AN_EVENT_RESTART_IND].transitionCallback = Clause37StateMachineS4E3Callback;
-
-    /* transition for state=AN_STATE_ABILITY_DETECT(4), event=AN_EVENT_DISABLE_LINK_OK_IND(4) */
-    stt[FM10000_AN_STATE_ABILITY_DETECT]
-       [FM10000_AN_EVENT_DISABLE_LINK_OK_IND].used = TRUE;
-    stt[FM10000_AN_STATE_ABILITY_DETECT]
-       [FM10000_AN_EVENT_DISABLE_LINK_OK_IND].nextState = FM10000_AN_STATE_DISABLE_LINK_OK;
-    stt[FM10000_AN_STATE_ABILITY_DETECT]
-       [FM10000_AN_EVENT_DISABLE_LINK_OK_IND].conditionCallback = NULL;
-    stt[FM10000_AN_STATE_ABILITY_DETECT]
-       [FM10000_AN_EVENT_DISABLE_LINK_OK_IND].transitionCallback = NULL;
-
-    /* transition for state=AN_STATE_ABILITY_DETECT(4), event=AN_EVENT_ACK_DETECT_IND(6) */
-    stt[FM10000_AN_STATE_ABILITY_DETECT]
-       [FM10000_AN_EVENT_ACK_DETECT_IND].used = TRUE;
-    stt[FM10000_AN_STATE_ABILITY_DETECT]
-       [FM10000_AN_EVENT_ACK_DETECT_IND].nextState = FM10000_AN_STATE_ACK_DETECT;
-    stt[FM10000_AN_STATE_ABILITY_DETECT]
-       [FM10000_AN_EVENT_ACK_DETECT_IND].conditionCallback = NULL;
-    stt[FM10000_AN_STATE_ABILITY_DETECT]
-       [FM10000_AN_EVENT_ACK_DETECT_IND].transitionCallback = NULL;
-
-    /* transition for state=AN_STATE_ABILITY_DETECT(4), event=AN_EVENT_COMPLETE_ACK_IND(7) */
-    stt[FM10000_AN_STATE_ABILITY_DETECT]
-       [FM10000_AN_EVENT_COMPLETE_ACK_IND].used = TRUE;
-    stt[FM10000_AN_STATE_ABILITY_DETECT]
-       [FM10000_AN_EVENT_COMPLETE_ACK_IND].nextState = FM10000_AN_STATE_COMPLETE_ACK;
-    stt[FM10000_AN_STATE_ABILITY_DETECT]
-       [FM10000_AN_EVENT_COMPLETE_ACK_IND].conditionCallback = NULL;
-    stt[FM10000_AN_STATE_ABILITY_DETECT]
-       [FM10000_AN_EVENT_COMPLETE_ACK_IND].transitionCallback = Clause37StateMachineS4E7Callback;
-
-    /* transition for state=AN_STATE_ACK_DETECT(5), event=AN_EVENT_START_REQ(0) */
-    stt[FM10000_AN_STATE_ACK_DETECT]
-       [FM10000_AN_EVENT_START_REQ].used = TRUE;
-    stt[FM10000_AN_STATE_ACK_DETECT]
-       [FM10000_AN_EVENT_START_REQ].nextState = FM10000_AN_STATE_ENABLED;
-    stt[FM10000_AN_STATE_ACK_DETECT]
-       [FM10000_AN_EVENT_START_REQ].conditionCallback = NULL;
-    stt[FM10000_AN_STATE_ACK_DETECT]
-       [FM10000_AN_EVENT_START_REQ].transitionCallback = Clause37StateMachineS5E0Callback;
-
-    /* transition for state=AN_STATE_ACK_DETECT(5), event=AN_EVENT_STOP_REQ(1) */
-    stt[FM10000_AN_STATE_ACK_DETECT]
-       [FM10000_AN_EVENT_STOP_REQ].used = TRUE;
-    stt[FM10000_AN_STATE_ACK_DETECT]
-       [FM10000_AN_EVENT_STOP_REQ].nextState = FM10000_AN_STATE_DISABLED;
-    stt[FM10000_AN_STATE_ACK_DETECT]
-       [FM10000_AN_EVENT_STOP_REQ].conditionCallback = NULL;
-    stt[FM10000_AN_STATE_ACK_DETECT]
-       [FM10000_AN_EVENT_STOP_REQ].transitionCallback = Clause37StateMachineS5E1Callback;
-
-    /* transition for state=AN_STATE_ACK_DETECT(5), event=AN_EVENT_RESTART_IND(3) */
-    stt[FM10000_AN_STATE_ACK_DETECT]
-       [FM10000_AN_EVENT_RESTART_IND].used = TRUE;
-    stt[FM10000_AN_STATE_ACK_DETECT]
-       [FM10000_AN_EVENT_RESTART_IND].nextState = FM10000_AN_STATE_RESTART;
-    stt[FM10000_AN_STATE_ACK_DETECT]
-       [FM10000_AN_EVENT_RESTART_IND].conditionCallback = NULL;
-    stt[FM10000_AN_STATE_ACK_DETECT]
-       [FM10000_AN_EVENT_RESTART_IND].transitionCallback = Clause37StateMachineS5E3Callback;
-
-    /* transition for state=AN_STATE_ACK_DETECT(5), event=AN_EVENT_DISABLE_LINK_OK_IND(4) */
-    stt[FM10000_AN_STATE_ACK_DETECT]
-       [FM10000_AN_EVENT_DISABLE_LINK_OK_IND].used = TRUE;
-    stt[FM10000_AN_STATE_ACK_DETECT]
-       [FM10000_AN_EVENT_DISABLE_LINK_OK_IND].nextState = FM10000_AN_STATE_DISABLE_LINK_OK;
-    stt[FM10000_AN_STATE_ACK_DETECT]
-       [FM10000_AN_EVENT_DISABLE_LINK_OK_IND].conditionCallback = NULL;
-    stt[FM10000_AN_STATE_ACK_DETECT]
-       [FM10000_AN_EVENT_DISABLE_LINK_OK_IND].transitionCallback = NULL;
-
-    /* transition for state=AN_STATE_ACK_DETECT(5), event=AN_EVENT_COMPLETE_ACK_IND(7) */
-    stt[FM10000_AN_STATE_ACK_DETECT]
-       [FM10000_AN_EVENT_COMPLETE_ACK_IND].used = TRUE;
-    stt[FM10000_AN_STATE_ACK_DETECT]
-       [FM10000_AN_EVENT_COMPLETE_ACK_IND].nextState = FM10000_AN_STATE_COMPLETE_ACK;
-    stt[FM10000_AN_STATE_ACK_DETECT]
-       [FM10000_AN_EVENT_COMPLETE_ACK_IND].conditionCallback = NULL;
-    stt[FM10000_AN_STATE_ACK_DETECT]
-       [FM10000_AN_EVENT_COMPLETE_ACK_IND].transitionCallback = Clause37StateMachineS5E7Callback;
-
-    /* transition for state=AN_STATE_COMPLETE_ACK(6), event=AN_EVENT_START_REQ(0) */
-    stt[FM10000_AN_STATE_COMPLETE_ACK]
-       [FM10000_AN_EVENT_START_REQ].used = TRUE;
-    stt[FM10000_AN_STATE_COMPLETE_ACK]
-       [FM10000_AN_EVENT_START_REQ].nextState = FM10000_AN_STATE_ENABLED;
-    stt[FM10000_AN_STATE_COMPLETE_ACK]
-       [FM10000_AN_EVENT_START_REQ].conditionCallback = NULL;
-    stt[FM10000_AN_STATE_COMPLETE_ACK]
-       [FM10000_AN_EVENT_START_REQ].transitionCallback = Clause37StateMachineS6E0Callback;
-
-    /* transition for state=AN_STATE_COMPLETE_ACK(6), event=AN_EVENT_STOP_REQ(1) */
-    stt[FM10000_AN_STATE_COMPLETE_ACK]
-       [FM10000_AN_EVENT_STOP_REQ].used = TRUE;
-    stt[FM10000_AN_STATE_COMPLETE_ACK]
-       [FM10000_AN_EVENT_STOP_REQ].nextState = FM10000_AN_STATE_DISABLED;
-    stt[FM10000_AN_STATE_COMPLETE_ACK]
-       [FM10000_AN_EVENT_STOP_REQ].conditionCallback = NULL;
-    stt[FM10000_AN_STATE_COMPLETE_ACK]
-       [FM10000_AN_EVENT_STOP_REQ].transitionCallback = Clause37StateMachineS6E1Callback;
-
-    /* transition for state=AN_STATE_COMPLETE_ACK(6), event=AN_EVENT_RESTART_IND(3) */
-    stt[FM10000_AN_STATE_COMPLETE_ACK]
-       [FM10000_AN_EVENT_RESTART_IND].used = TRUE;
-    stt[FM10000_AN_STATE_COMPLETE_ACK]
-       [FM10000_AN_EVENT_RESTART_IND].nextState = FM10000_AN_STATE_RESTART;
-    stt[FM10000_AN_STATE_COMPLETE_ACK]
-       [FM10000_AN_EVENT_RESTART_IND].conditionCallback = NULL;
-    stt[FM10000_AN_STATE_COMPLETE_ACK]
-       [FM10000_AN_EVENT_RESTART_IND].transitionCallback = Clause37StateMachineS6E3Callback;
-
-    /* transition for state=AN_STATE_COMPLETE_ACK(6), event=AN_EVENT_DISABLE_LINK_OK_IND(4) */
-    stt[FM10000_AN_STATE_COMPLETE_ACK]
-       [FM10000_AN_EVENT_DISABLE_LINK_OK_IND].used = TRUE;
-    stt[FM10000_AN_STATE_COMPLETE_ACK]
-       [FM10000_AN_EVENT_DISABLE_LINK_OK_IND].nextState = FM10000_AN_STATE_DISABLE_LINK_OK;
-    stt[FM10000_AN_STATE_COMPLETE_ACK]
-       [FM10000_AN_EVENT_DISABLE_LINK_OK_IND].conditionCallback = NULL;
-    stt[FM10000_AN_STATE_COMPLETE_ACK]
-       [FM10000_AN_EVENT_DISABLE_LINK_OK_IND].transitionCallback = NULL;
-
-    /* transition for state=AN_STATE_COMPLETE_ACK(6), event=AN_EVENT_ACK_DETECT_IND(6) */
-    stt[FM10000_AN_STATE_COMPLETE_ACK]
-       [FM10000_AN_EVENT_ACK_DETECT_IND].used = TRUE;
-    stt[FM10000_AN_STATE_COMPLETE_ACK]
-       [FM10000_AN_EVENT_ACK_DETECT_IND].nextState = FM10000_AN_STATE_ACK_DETECT;
-    stt[FM10000_AN_STATE_COMPLETE_ACK]
-       [FM10000_AN_EVENT_ACK_DETECT_IND].conditionCallback = NULL;
-    stt[FM10000_AN_STATE_COMPLETE_ACK]
-       [FM10000_AN_EVENT_ACK_DETECT_IND].transitionCallback = NULL;
-
-    /* transition for state=AN_STATE_COMPLETE_ACK(6), event=AN_EVENT_NEXT_PAGE_WAIT_IND(8) */
-    stt[FM10000_AN_STATE_COMPLETE_ACK]
-       [FM10000_AN_EVENT_NEXT_PAGE_WAIT_IND].used = TRUE;
-    stt[FM10000_AN_STATE_COMPLETE_ACK]
-       [FM10000_AN_EVENT_NEXT_PAGE_WAIT_IND].nextState = FM10000_AN_STATE_NEXT_PAGE_WAIT;
-    stt[FM10000_AN_STATE_COMPLETE_ACK]
-       [FM10000_AN_EVENT_NEXT_PAGE_WAIT_IND].conditionCallback = NULL;
-    stt[FM10000_AN_STATE_COMPLETE_ACK]
-       [FM10000_AN_EVENT_NEXT_PAGE_WAIT_IND].transitionCallback = NULL;
-
-    /* transition for state=AN_STATE_COMPLETE_ACK(6), event=AN_EVENT_IDLE_DETECT_IND(9) */
-    stt[FM10000_AN_STATE_COMPLETE_ACK]
-       [FM10000_AN_EVENT_IDLE_DETECT_IND].used = TRUE;
-    stt[FM10000_AN_STATE_COMPLETE_ACK]
-       [FM10000_AN_EVENT_IDLE_DETECT_IND].nextState = FM10000_AN_STATE_IDLE_DETECT;
-    stt[FM10000_AN_STATE_COMPLETE_ACK]
-       [FM10000_AN_EVENT_IDLE_DETECT_IND].conditionCallback = NULL;
-    stt[FM10000_AN_STATE_COMPLETE_ACK]
-       [FM10000_AN_EVENT_IDLE_DETECT_IND].transitionCallback = NULL;
-
-    /* transition for state=AN_STATE_COMPLETE_ACK(6), event=AN_EVENT_LINK_OK_IND(10) */
-    stt[FM10000_AN_STATE_COMPLETE_ACK]
-       [FM10000_AN_EVENT_LINK_OK_IND].used = TRUE;
-    stt[FM10000_AN_STATE_COMPLETE_ACK]
-       [FM10000_AN_EVENT_LINK_OK_IND].nextState = FM10000_AN_STATE_LINK_OK;
-    stt[FM10000_AN_STATE_COMPLETE_ACK]
-       [FM10000_AN_EVENT_LINK_OK_IND].conditionCallback = NULL;
-    stt[FM10000_AN_STATE_COMPLETE_ACK]
-       [FM10000_AN_EVENT_LINK_OK_IND].transitionCallback = Clause37StateMachineS6E10Callback;
-
-    /* transition for state=AN_STATE_NEXT_PAGE_WAIT(8), event=AN_EVENT_START_REQ(0) */
-    stt[FM10000_AN_STATE_NEXT_PAGE_WAIT]
-       [FM10000_AN_EVENT_START_REQ].used = TRUE;
-    stt[FM10000_AN_STATE_NEXT_PAGE_WAIT]
-       [FM10000_AN_EVENT_START_REQ].nextState = FM10000_AN_STATE_ENABLED;
-    stt[FM10000_AN_STATE_NEXT_PAGE_WAIT]
-       [FM10000_AN_EVENT_START_REQ].conditionCallback = NULL;
-    stt[FM10000_AN_STATE_NEXT_PAGE_WAIT]
-       [FM10000_AN_EVENT_START_REQ].transitionCallback = Clause37StateMachineS8E0Callback;
-
-    /* transition for state=AN_STATE_NEXT_PAGE_WAIT(8), event=AN_EVENT_STOP_REQ(1) */
-    stt[FM10000_AN_STATE_NEXT_PAGE_WAIT]
-       [FM10000_AN_EVENT_STOP_REQ].used = TRUE;
-    stt[FM10000_AN_STATE_NEXT_PAGE_WAIT]
-       [FM10000_AN_EVENT_STOP_REQ].nextState = FM10000_AN_STATE_DISABLED;
-    stt[FM10000_AN_STATE_NEXT_PAGE_WAIT]
-       [FM10000_AN_EVENT_STOP_REQ].conditionCallback = NULL;
-    stt[FM10000_AN_STATE_NEXT_PAGE_WAIT]
-       [FM10000_AN_EVENT_STOP_REQ].transitionCallback = Clause37StateMachineS8E1Callback;
-
-    /* transition for state=AN_STATE_NEXT_PAGE_WAIT(8), event=AN_EVENT_RESTART_IND(3) */
-    stt[FM10000_AN_STATE_NEXT_PAGE_WAIT]
-       [FM10000_AN_EVENT_RESTART_IND].used = TRUE;
-    stt[FM10000_AN_STATE_NEXT_PAGE_WAIT]
-       [FM10000_AN_EVENT_RESTART_IND].nextState = FM10000_AN_STATE_RESTART;
-    stt[FM10000_AN_STATE_NEXT_PAGE_WAIT]
-       [FM10000_AN_EVENT_RESTART_IND].conditionCallback = NULL;
-    stt[FM10000_AN_STATE_NEXT_PAGE_WAIT]
-       [FM10000_AN_EVENT_RESTART_IND].transitionCallback = Clause37StateMachineS8E3Callback;
-
-    /* transition for state=AN_STATE_NEXT_PAGE_WAIT(8), event=AN_EVENT_DISABLE_LINK_OK_IND(4) */
-    stt[FM10000_AN_STATE_NEXT_PAGE_WAIT]
-       [FM10000_AN_EVENT_DISABLE_LINK_OK_IND].used = TRUE;
-    stt[FM10000_AN_STATE_NEXT_PAGE_WAIT]
-       [FM10000_AN_EVENT_DISABLE_LINK_OK_IND].nextState = FM10000_AN_STATE_DISABLE_LINK_OK;
-    stt[FM10000_AN_STATE_NEXT_PAGE_WAIT]
-       [FM10000_AN_EVENT_DISABLE_LINK_OK_IND].conditionCallback = NULL;
-    stt[FM10000_AN_STATE_NEXT_PAGE_WAIT]
-       [FM10000_AN_EVENT_DISABLE_LINK_OK_IND].transitionCallback = NULL;
-
-    /* transition for state=AN_STATE_NEXT_PAGE_WAIT(8), event=AN_EVENT_ACK_DETECT_IND(6) */
-    stt[FM10000_AN_STATE_NEXT_PAGE_WAIT]
-       [FM10000_AN_EVENT_ACK_DETECT_IND].used = TRUE;
-    stt[FM10000_AN_STATE_NEXT_PAGE_WAIT]
-       [FM10000_AN_EVENT_ACK_DETECT_IND].nextState = FM10000_AN_STATE_ACK_DETECT;
-    stt[FM10000_AN_STATE_NEXT_PAGE_WAIT]
-       [FM10000_AN_EVENT_ACK_DETECT_IND].conditionCallback = NULL;
-    stt[FM10000_AN_STATE_NEXT_PAGE_WAIT]
-       [FM10000_AN_EVENT_ACK_DETECT_IND].transitionCallback = NULL;
-
-    /* transition for state=AN_STATE_NEXT_PAGE_WAIT(8), event=AN_EVENT_COMPLETE_ACK_IND(7) */
-    stt[FM10000_AN_STATE_NEXT_PAGE_WAIT]
-       [FM10000_AN_EVENT_COMPLETE_ACK_IND].used = TRUE;
-    stt[FM10000_AN_STATE_NEXT_PAGE_WAIT]
-       [FM10000_AN_EVENT_COMPLETE_ACK_IND].nextState = FM10000_AN_STATE_COMPLETE_ACK;
-    stt[FM10000_AN_STATE_NEXT_PAGE_WAIT]
-       [FM10000_AN_EVENT_COMPLETE_ACK_IND].conditionCallback = NULL;
-    stt[FM10000_AN_STATE_NEXT_PAGE_WAIT]
-       [FM10000_AN_EVENT_COMPLETE_ACK_IND].transitionCallback = Clause37StateMachineS8E7Callback;
-
-    /* transition for state=AN_STATE_IDLE_DETECT(7), event=AN_EVENT_START_REQ(0) */
-    stt[FM10000_AN_STATE_IDLE_DETECT]
-       [FM10000_AN_EVENT_START_REQ].used = TRUE;
-    stt[FM10000_AN_STATE_IDLE_DETECT]
-       [FM10000_AN_EVENT_START_REQ].nextState = FM10000_AN_STATE_ENABLED;
-    stt[FM10000_AN_STATE_IDLE_DETECT]
-       [FM10000_AN_EVENT_START_REQ].conditionCallback = NULL;
-    stt[FM10000_AN_STATE_IDLE_DETECT]
-       [FM10000_AN_EVENT_START_REQ].transitionCallback = Clause37StateMachineS7E0Callback;
-
-    /* transition for state=AN_STATE_IDLE_DETECT(7), event=AN_EVENT_STOP_REQ(1) */
-    stt[FM10000_AN_STATE_IDLE_DETECT]
-       [FM10000_AN_EVENT_STOP_REQ].used = TRUE;
-    stt[FM10000_AN_STATE_IDLE_DETECT]
-       [FM10000_AN_EVENT_STOP_REQ].nextState = FM10000_AN_STATE_DISABLED;
-    stt[FM10000_AN_STATE_IDLE_DETECT]
-       [FM10000_AN_EVENT_STOP_REQ].conditionCallback = NULL;
-    stt[FM10000_AN_STATE_IDLE_DETECT]
-       [FM10000_AN_EVENT_STOP_REQ].transitionCallback = Clause37StateMachineS7E1Callback;
-
-    /* transition for state=AN_STATE_IDLE_DETECT(7), event=AN_EVENT_RESTART_IND(3) */
-    stt[FM10000_AN_STATE_IDLE_DETECT]
-       [FM10000_AN_EVENT_RESTART_IND].used = TRUE;
-    stt[FM10000_AN_STATE_IDLE_DETECT]
-       [FM10000_AN_EVENT_RESTART_IND].nextState = FM10000_AN_STATE_RESTART;
-    stt[FM10000_AN_STATE_IDLE_DETECT]
-       [FM10000_AN_EVENT_RESTART_IND].conditionCallback = NULL;
-    stt[FM10000_AN_STATE_IDLE_DETECT]
-       [FM10000_AN_EVENT_RESTART_IND].transitionCallback = Clause37StateMachineS7E3Callback;
-
-    /* transition for state=AN_STATE_IDLE_DETECT(7), event=AN_EVENT_LINK_OK_IND(10) */
-    stt[FM10000_AN_STATE_IDLE_DETECT]
-       [FM10000_AN_EVENT_LINK_OK_IND].used = TRUE;
-    stt[FM10000_AN_STATE_IDLE_DETECT]
-       [FM10000_AN_EVENT_LINK_OK_IND].nextState = FM10000_AN_STATE_LINK_OK;
-    stt[FM10000_AN_STATE_IDLE_DETECT]
-       [FM10000_AN_EVENT_LINK_OK_IND].conditionCallback = NULL;
-    stt[FM10000_AN_STATE_IDLE_DETECT]
-       [FM10000_AN_EVENT_LINK_OK_IND].transitionCallback = Clause37StateMachineS7E10Callback;
-
-    /* transition for state=AN_STATE_LINK_OK(12), event=AN_EVENT_START_REQ(0) */
-    stt[FM10000_AN_STATE_LINK_OK]
-       [FM10000_AN_EVENT_START_REQ].used = TRUE;
-    stt[FM10000_AN_STATE_LINK_OK]
-       [FM10000_AN_EVENT_START_REQ].nextState = FM10000_AN_STATE_ENABLED;
-    stt[FM10000_AN_STATE_LINK_OK]
-       [FM10000_AN_EVENT_START_REQ].conditionCallback = NULL;
-    stt[FM10000_AN_STATE_LINK_OK]
-       [FM10000_AN_EVENT_START_REQ].transitionCallback = Clause37StateMachineS12E0Callback;
-
-    /* transition for state=AN_STATE_LINK_OK(12), event=AN_EVENT_STOP_REQ(1) */
-    stt[FM10000_AN_STATE_LINK_OK]
-       [FM10000_AN_EVENT_STOP_REQ].used = TRUE;
-    stt[FM10000_AN_STATE_LINK_OK]
-       [FM10000_AN_EVENT_STOP_REQ].nextState = FM10000_AN_STATE_DISABLED;
-    stt[FM10000_AN_STATE_LINK_OK]
-       [FM10000_AN_EVENT_STOP_REQ].conditionCallback = NULL;
-    stt[FM10000_AN_STATE_LINK_OK]
-       [FM10000_AN_EVENT_STOP_REQ].transitionCallback = Clause37StateMachineS12E1Callback;
-
-    /* transition for state=AN_STATE_LINK_OK(12), event=AN_EVENT_RESTART_IND(3) */
-    stt[FM10000_AN_STATE_LINK_OK]
-       [FM10000_AN_EVENT_RESTART_IND].used = TRUE;
-    stt[FM10000_AN_STATE_LINK_OK]
-       [FM10000_AN_EVENT_RESTART_IND].nextState = FM10000_AN_STATE_RESTART;
-    stt[FM10000_AN_STATE_LINK_OK]
-       [FM10000_AN_EVENT_RESTART_IND].conditionCallback = NULL;
-    stt[FM10000_AN_STATE_LINK_OK]
-       [FM10000_AN_EVENT_RESTART_IND].transitionCallback = Clause37StateMachineS12E3Callback;
-
-    /* transition for state=AN_STATE_LINK_OK(12), event=AN_EVENT_DISABLE_LINK_OK_IND(4) */
-    stt[FM10000_AN_STATE_LINK_OK]
-       [FM10000_AN_EVENT_DISABLE_LINK_OK_IND].used = TRUE;
-    stt[FM10000_AN_STATE_LINK_OK]
-       [FM10000_AN_EVENT_DISABLE_LINK_OK_IND].nextState = FM10000_AN_STATE_DISABLE_LINK_OK;
-    stt[FM10000_AN_STATE_LINK_OK]
-       [FM10000_AN_EVENT_DISABLE_LINK_OK_IND].conditionCallback = NULL;
-    stt[FM10000_AN_STATE_LINK_OK]
-       [FM10000_AN_EVENT_DISABLE_LINK_OK_IND].transitionCallback = NULL;
-
+    }
+    
     /* fill out the state transition table for this state machine type */
-    for (i = 0 ; i < FM10000_AN_STATE_MAX  ; i++)
+    for (i = 0 ; i < FM10000_AN_STATE_MAX ; i++)
     {
         dynstt[i] = &stt[i][0];
     }

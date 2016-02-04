@@ -201,12 +201,16 @@ enum _fm_addressTypes
 };  /* end enum _fm_addressTypes */
 
 
-/**************************************************/
+/****************************************************************************/
 /** \ingroup typeStruct
  *  Represents an entry in the MAC Address Table.
- *  Used as an argument to ''fmAddAddress'', 
- *  ''fmDeleteAddress'', ''fmGetAddress'' and others.
- **************************************************/
+ *  Used as an argument to ''fmAddAddress'', ''fmDeleteAddress'',
+ *  ''fmGetAddress'', and others.
+ *                                                                      \lb\lb
+ *  Note that new fields are occasionally added to this structure.
+ *  To ensure forward compatibility, use ''FM_CLEAR'' or FM_MEMSET_S
+ *  (or memset) to zero the structure before initializing its fields.
+ ****************************************************************************/
 typedef struct _fm_macAddressEntry
 {
     /** The MAC address.
@@ -226,7 +230,7 @@ typedef struct _fm_macAddressEntry
      *  \chips  FM6000 */
     fm_uint16  vlanID2;
 
-    /** See 'MA Table Entry Types'.
+    /** Address type. See 'MA Table Entry Types'.
      *
      *  \chips  FM2000, FM3000, FM4000, FM6000, FM10000 */
     fm_uint16  type;
@@ -250,8 +254,12 @@ typedef struct _fm_macAddressEntry
     fm_uint32  destMask;
 
     /** Destination logical port. On FM2000 and FM3000/FM4000 devices, this
-     *  field is only used when destMask is ''FM_DESTMASK_UNUSED''. On
-     *  FM6000 and FM10000 devices, this field is used unconditionally.
+     *  field is only used when destMask is ''FM_DESTMASK_UNUSED''.
+     *  
+     *  On FM6000 devices this field is used unconditionally.
+     *  
+     *  On FM10000 devices, this field is ignored when the isTunnelEntry
+     *  field is set to FM_ENABLED.
      *
      *  \chips  FM2000, FM3000, FM4000, FM6000, FM10000 */
     fm_int     port;
@@ -276,7 +284,26 @@ typedef struct _fm_macAddressEntry
      *  using TRILL enabled ports.
      *  
      *  \chips  FM6000 */
-    fm_bool    remoteMac;
+    fm_bool     remoteMac;
+
+    /** Whether to extract the GloRT from a Tunnel Rule specified using the
+     *  tunnelGrp and tunnelRule fields. If set to FM_DISABLED, the port is
+     *  used.
+     *                                                                  \lb\lb
+     *  It is recommended to use it with ''FM_ADDRESS_SECURE_STATIC'' type.
+     *
+     *  \chips  FM10000 */
+    fm_bool     isTunnelEntry;
+
+    /** Tunnel group of entry. Valid when isTunnelEntry is set to FM_ENABLED.
+     *
+     *  \chips  FM10000 */
+    fm_int      tunnelGrp;
+
+    /** Tunnel rule of entry. Valid when isTunnelEntry is set to FM_ENABLED.
+     *
+     *  \chips  FM10000 */
+    fm_int      tunnelRule;
 
 } fm_macAddressEntry;
 
@@ -313,6 +340,11 @@ typedef struct _fm_flushParams
      *
      *  \chips  FM6000 */
     fm_bool  remoteMac;
+
+    /** Flush static MACs along with the dynamic MACs.
+     *
+     *  \chips  FM10000 */
+    fm_bool  statics;
 
 } fm_flushParams;
 

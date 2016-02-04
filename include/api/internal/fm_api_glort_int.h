@@ -42,23 +42,26 @@
  **************************************************/
 typedef struct
 {
-    /* Base address for CPU glort range. */
+    /* Base address for CPU GloRT range. */
     fm_uint32   cpuBase;
 
-    /* CAM mask for CPU glort range. */
+    /* CAM mask for CPU GloRT range. */
     fm_uint32   cpuMask;
 
-    /* Base address for special glort range. */
+    /* Base address for special GloRT range. */
     fm_uint32   specialBase;
 
-    /* CAM mask for special glort range. */
+    /* CAM mask for special GloRT range. */
     fm_uint32   specialMask;
 
-    /* Number of glorts in special glort range. */
+    /* Number of GloRTs in special GloRT range. */
     fm_int      specialSize;
 
-    /* Number of glorts expressed as a power of two. */
+    /* Number of GloRTs expressed as a power of two. */
     fm_int      specialALength;
+
+    /* Base address for tunnel GloRT range. */
+    fm_uint32   tunnelBase;
 
 } fm_glortInfo;
 
@@ -109,6 +112,11 @@ typedef enum
      *
      *  \chips  FM10000 */
     FM_GLORT_TYPE_PEP,
+
+    /** A GloRT range available for tunneling.
+     *
+     *  \chips  FM10000 */
+    FM_GLORT_TYPE_TUNNEL,
 
     /* ----  Add new entries above this line.  ---- */
 

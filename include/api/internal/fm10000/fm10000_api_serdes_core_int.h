@@ -58,6 +58,10 @@
 #define FM10000_SERDES_REG_0B_b_BIT_18           18
 #define FM10000_SERDES_REG_0B_b_BIT_19           19
 #define FM10000_SERDES_REG_0C               0x0C
+#define FM10000_SERDES_REG_0C_l_FIELD_1             24
+#define FM10000_SERDES_REG_0C_h_FIELD_1             25
+#define FM10000_SERDES_REG_0C_b_BIT_26         26
+#define FM10000_SERDES_REG_0C_b_BIT_31            31
 #define FM10000_SERDES_REG_25               0x25
 #define FM10000_SERDES_REG_FD               0xFD
 #define FM10000_SERDES_REG_FF               0xFF
@@ -271,6 +275,14 @@
 #define FM10000_SPICO_REG_16                    0x16
 #define FM10000_SPICO_REG_16_b_BIT_18              18
 #define FM10000_SPICO_REG_16_b_BIT_19              19
+#define FM10000_SPICO_REG_16_l_FIELD_1          20
+#define FM10000_SPICO_REG_16_h_FIELD_1          21
+#define FM10000_SPICO_REG_16_b_BIT_22      22
+#define FM10000_SPICO_REG_16_b_BIT_23         23
+#define FM10000_SPICO_REG_16_l_FIELD_2          24
+#define FM10000_SPICO_REG_16_h_FIELD_2          25
+#define FM10000_SPICO_REG_16_b_BIT_26      26
+#define FM10000_SPICO_REG_16_b_BIT_27         27
 #define FM10000_SPICO_REG_17                    0x17
 #define FM10000_SPICO_REG_18                    0x18
 #define FM10000_SPICO_REG_19                    0x19
@@ -302,6 +314,10 @@
 
 
 #define FM10000_SERDES_DFE_PARAM_DFE_STATUS_REG     (0x0b << 8)
+
+
+#define FM10000_SERDES_VALIDATION_TIMER_MIN      60
+#define FM10000_SERDES_VALIDATION_TIMER_MAX      3600
 
 
 #endif

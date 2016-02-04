@@ -5,7 +5,7 @@
  * Creation Date:   2007
  * Description:     Structures and functions for dealing with ACL policers.
  *
- * Copyright (c) 2007 - 2014, Intel Corporation
+ * Copyright (c) 2007 - 2015, Intel Corporation
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -29,7 +29,7 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
+ *****************************************************************************/
 
 #include <fm_sdk_int.h>
 
@@ -795,8 +795,7 @@ fm_status fmUpdatePolicer(fm_int sw, fm_int policer)
 
     if (value == NULL || err == FM_ERR_NOT_FOUND)
     {
-        err = FM_ERR_INVALID_POLICER;
-        FM_API_ABORT(err);
+        FM_API_ABORT(FM_ERR_INVALID_POLICER);
     }
 
     FM_API_CALL_FAMILY(err,

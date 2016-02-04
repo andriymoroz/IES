@@ -121,6 +121,7 @@ static fm_status FindBestIndex(fm_int              sw,
     fm_bool                     isDynamic;
     fm_bool                     isStatic;
     fm_bool                     isMoved;
+    fm_tunnelGlortUser          glortUser;
     
     FM_LOG_ENTRY_VERBOSE( FM_LOG_CAT_ADDR,
                           "sw=%d entry=%p<%012llx:%d => %d, type=%d>\n",
@@ -224,7 +225,29 @@ static fm_status FindBestIndex(fm_int              sw,
                         isDynamic = TRUE;
                         
                         /* Note if it is on a different port. */
-                        isMoved = (cachePtr->port != entry->port);
+                        if (entry->isTunnelEntry)
+                        {
+                            err = fm10000GetTunnelAttribute(sw,
+                                                            entry->tunnelGrp,
+                                                            entry->tunnelRule,
+                                                            FM_TUNNEL_GLORT_USER,
+                                                            &glortUser);
+                            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_ADDR, err);
+
+                            /* Only accept glortUser that doesn't make use of the user
+                             * field. */
+                            if ( (glortUser.userMask != 0) ||
+                                 (glortUser.glortMask != 0xFFFF) )
+                            {
+                                err = FM_ERR_UNSUPPORTED;
+                                FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_ADDR, err);
+                            }
+                                isMoved = (cachePtr->glort != (fm_uint32) glortUser.glort);
+                            }
+                        else
+                        {
+                            isMoved = (cachePtr->port != entry->port);
+                        }
                         
                     }   /* end if (isStatic) */
                     break;
@@ -565,12 +588,17 @@ static fm_status ValidateAddressFields(fm_macAddressEntry * entry)
  *                  address.
  * \return          FM_ERR_USE_MCAST_FUNCTIONS if an attempt was made to
  *                  add a MAC address to a multicast group.
+ * \return          FM_ERR_TUNNEL_INVALID_ENTRY if the entry specified when
+ *                  using isTunnelEntry is not valid.
+ * \return          FM_ERR_UNSUPPORTED if the retrieved tunnel entry GloRT
+ *                  makes use of user field.
  *
  *****************************************************************************/
 fm_status fm10000AddAddress(fm_int sw, fm_macAddressEntry *entry)
 {
     fm_uint32       trigger;
     fm_status       err;
+    fm_tunnelGlortUser glortUser;
 
     FM_LOG_ENTRY(FM_LOG_CAT_ADDR,
                  "sw=%d "
@@ -587,9 +615,29 @@ fm_status fm10000AddAddress(fm_int sw, fm_macAddressEntry *entry)
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_ADDR, err);
 
     /* Validate port number. */
-    err = fmValidateAddressPort(sw, entry->port);
-    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_ADDR, err);
+    if (!(entry->isTunnelEntry))
+    {
+        err = fmValidateAddressPort(sw, entry->port);
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_ADDR, err);
+    }
+    else
+    {
+        err = fm10000GetTunnelAttribute(sw,
+                                        entry->tunnelGrp,
+                                        entry->tunnelRule,
+                                        FM_TUNNEL_GLORT_USER,
+                                        &glortUser);
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_ADDR, err);
 
+        /* Only accept glortUser that doesn't make use of the user
+         * field. */
+        if ( (glortUser.userMask != 0) ||
+             (glortUser.glortMask != 0xFFFF) )
+        {
+            err = FM_ERR_UNSUPPORTED;
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_ADDR, err);
+        }
+    }
     /* Select trigger identifier to use. */
     err = fm10000AssignMacTrigger(sw, entry, &trigger);
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_ADDR, err);
@@ -633,6 +681,10 @@ ABORT:
  * \return          FM_OK if successful.
  * \return          FM_ERR_ADDR_BANK_FULL if there is no room in the MA table
  *                  for the specified address.
+ * \return          FM_ERR_TUNNEL_INVALID_ENTRY if the entry specified when
+ *                  using isTunnelEntry is not valid.
+ * \return          FM_ERR_UNSUPPORTED if the retrieved tunnel entry GloRT
+ *                  makes use of user field.
  *
  *****************************************************************************/
 fm_status fm10000AddMacTableEntry(fm_int               sw,
@@ -646,7 +698,6 @@ fm_status fm10000AddMacTableEntry(fm_int               sw,
     fm_internalMacAddrEntry newEntry;
 
     fm_switch *     switchPtr;
-    fm10000_switch *switchExt;
     fm_uint16       indexes[FM10000_MAC_ADDR_BANK_COUNT];
     fm_int          bestIndex;
     fm_uint32       dupMask;
@@ -659,6 +710,7 @@ fm_status fm10000AddMacTableEntry(fm_int               sw,
     fm_int          i;
     fm_int          reason;
     fm_status       err;
+    fm_tunnelGlortUser glortUser;
 
     FM_LOG_ENTRY(FM_LOG_CAT_ADDR,
                  "sw=%d macAddress=%012llx vlanID=%u type=%s "
@@ -674,7 +726,6 @@ fm_status fm10000AddMacTableEntry(fm_int               sw,
                  (void *) *outEvent);
  
     switchPtr = GET_SWITCH_PTR(sw);
-    switchExt = switchPtr->extension;
     
     /**************************************************
      * Assign trigger if we don't have one.
@@ -776,6 +827,35 @@ fm_status fm10000AddMacTableEntry(fm_int               sw,
     newEntry.addrType   = entry->type;
     newEntry.secure     = isSecure;
 
+    if (entry->isTunnelEntry)
+    {
+        newEntry.isTunnelEntry = TRUE;
+        err = fm10000GetTunnelAttribute(sw,
+                                        entry->tunnelGrp,
+                                        entry->tunnelRule,
+                                        FM_TUNNEL_GLORT_USER,
+                                        &glortUser);
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_ADDR, err);
+
+        /* Only accept glortUser that doesn't make use of the user
+         * field. */
+        if ( (glortUser.userMask != 0) ||
+             (glortUser.glortMask != 0xFFFF) )
+        {
+            err = FM_ERR_UNSUPPORTED;
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_ADDR, err);
+        }
+        newEntry.glort = (fm_uint32) glortUser.glort;
+        newEntry.tunnelGrp = entry->tunnelGrp;
+        newEntry.tunnelRule = entry->tunnelRule;
+    }
+    else
+    {
+        newEntry.isTunnelEntry = FALSE;
+        err = fmGetLogicalPortGlort(sw, entry->port, &newEntry.glort);
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_ADDR, err);
+    }
+
     if (FM_IS_ADDR_TYPE_STATIC(entry->type))
     {
         newEntry.state = FM_MAC_ENTRY_STATE_LOCKED;
@@ -804,6 +884,9 @@ fm_status fm10000AddMacTableEntry(fm_int               sw,
         /* Check the basic 3-tuple. */
         oldEntry.macAddress == newEntry.macAddress &&
         oldEntry.vlanID     == newEntry.vlanID &&
+        /* If the old entry is a Tunnel Entry, port field is irrelevant */
+        oldEntry.isTunnelEntry == FM_DISABLED &&
+        newEntry.isTunnelEntry == FM_DISABLED &&
         oldEntry.port       == newEntry.port &&
         /* Check these two for insurance. */
         oldEntry.addrType   == newEntry.addrType &&
@@ -1020,6 +1103,10 @@ ABORT:
  * \return          FM_OK if successful.
  * \return          FM_ERR_ADDR_BANK_FULL if there is no room in the MA table
  *                  for the specified address.
+ * \return          FM_ERR_TUNNEL_INVALID_ENTRY if the entry specified when
+ *                  using isTunnelEntry is not valid.
+ * \return          FM_ERR_UNSUPPORTED if the retrieved GloRT makes use of user
+ *                  field.
  *
  *****************************************************************************/
 fm_status fm10000AssignTableEntry(fm_int              sw,
@@ -1311,8 +1398,6 @@ ABORT:
  * \param[in]       sw is the switch number.
  *
  * \param[in]       entry points to the MA Table entry structure.
- * 
- * \param[in]       port is the logical port number to be converted.
  *
  * \param[out]      words points to the buffer where the resulting 4 words
  *                  are to be placed.
@@ -1325,11 +1410,8 @@ ABORT:
  *****************************************************************************/
 fm_status fm10000ConvertEntryToWords(fm_int                   sw,
                                      fm_internalMacAddrEntry *entry,
-                                     fm_int                   port,
                                      fm_uint32 *              words)
 {
-    fm_switch * switchPtr;
-    fm_uint32   glort;
     fm_status   status;
 
     FM_LOG_ENTRY_VERBOSE(FM_LOG_CAT_ADDR,
@@ -1338,10 +1420,9 @@ fm_status fm10000ConvertEntryToWords(fm_int                   sw,
                          (void *) entry,
                          (entry ? entry->macAddress : 0),
                          (entry ? entry->vlanID : 0),
-                         port,
+                         (entry ? entry->glort : 0),
                          (void *) words);
 
-    switchPtr = GET_SWITCH_PTR(sw);
     status = FM_OK;
 
     if (entry == NULL || words == NULL)
@@ -1369,16 +1450,7 @@ fm_status fm10000ConvertEntryToWords(fm_int                   sw,
             FM_ARRAY_SET_BIT(words, FM10000_MA_TABLE, secure, 1);
         }
 
-        if (port != -1)
-        {
-            status = fmGetLogicalPortGlort(sw, port, &glort);
-            if (status != FM_OK)
-            {
-                goto ABORT;
-            }
-
-            FM_ARRAY_SET_FIELD(words, FM10000_MA_TABLE, glort, glort);
-        }
+        FM_ARRAY_SET_FIELD(words, FM10000_MA_TABLE, glort, entry->glort);
 
         if (entry->trigger != FM_DEFAULT_TRIGGER)
         {
@@ -1481,12 +1553,19 @@ fm_status fm10000FillInUserEntryFromTable(fm_int                   sw,
 
     FM_CLEAR(*entry);
     
-    entry->destMask   = FM_DESTMASK_UNUSED;
-    entry->age        = (tblentry->state == FM_MAC_ENTRY_STATE_YOUNG) ? 1 : 0;
-    entry->vlanID     = tblentry->vlanID;
-    entry->macAddress = tblentry->macAddress;
-    entry->port       = tblentry->port;
-    entry->type       = tblentry->addrType;
+    entry->destMask      = FM_DESTMASK_UNUSED;
+    entry->age           = (tblentry->state == FM_MAC_ENTRY_STATE_YOUNG) ? 1 : 0;
+    entry->vlanID        = tblentry->vlanID;
+    entry->macAddress    = tblentry->macAddress;
+    entry->port          = tblentry->port;
+    entry->type          = tblentry->addrType;
+    entry->isTunnelEntry = tblentry->isTunnelEntry;
+
+    if (entry->isTunnelEntry)
+    {
+        entry->tunnelGrp     = tblentry->tunnelGrp;
+        entry->tunnelRule    = tblentry->tunnelRule;
+    }
 
     FM_LOG_DEBUG(FM_LOG_CAT_ADDR,
                  "macAddress=%012llx vlanID=%u port=%d type=%s(%u) age=%d\n",
@@ -2135,7 +2214,7 @@ fm_status fm10000WriteEntryAtIndex(fm_int                   sw,
 
     switchPtr = GET_SWITCH_PTR(sw);
 
-    retVal = fm10000ConvertEntryToWords(sw, entry, entry->port, words);
+    retVal = fm10000ConvertEntryToWords(sw, entry, words);
 
     if (retVal  == FM_OK)
     {
@@ -2207,7 +2286,7 @@ fm_status fm10000WriteSmacEntry(fm_int                    sw,
 
     switchPtr = GET_SWITCH_PTR(sw);
 
-    retVal = fm10000ConvertEntryToWords(sw, entry, entry->port, words);
+    retVal = fm10000ConvertEntryToWords(sw, entry, words);
 
     if (retVal == FM_OK)
     {

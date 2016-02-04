@@ -42,7 +42,6 @@
 #ifndef __FM_FM10000_API_PORT_STATE_MACHINES_H
 #define __FM_FM10000_API_PORT_STATE_MACHINES_H
 
-
 /* declaration of the port-level state machine types */
 #define FM10000_AN_PORT_STATE_MACHINE 102
 #define FM10000_BASIC_PORT_STATE_MACHINE 100
@@ -160,7 +159,6 @@ fm_status fm10000ConfigureDfe( fm_smEventInfo *eventInfo, void *userInfo );
 fm_status fm10000LinkPortToLanes( fm_smEventInfo *eventInfo, void *userInfo );
 fm_status fm10000UnlinkPortFromLanes( fm_smEventInfo *eventInfo, void *userInfo );
 fm_status fm10000UpdatePcieModeAndSpeed( fm_smEventInfo *eventInfo, void *userInfo );
-fm_status fm10000UpdatePcieLanePolarity( fm_smEventInfo *eventInfo, void *userInfo );
 fm_status fm10000UpdatePcieLaneReversal( fm_smEventInfo *eventInfo, void *userInfo );
 fm_status fm10000EnablePcieInterrupts( fm_smEventInfo *eventInfo, void *userInfo );
 fm_status fm10000DisablePcieInterrupts( fm_smEventInfo *eventInfo, void *userInfo );

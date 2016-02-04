@@ -29,7 +29,7 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
+ *****************************************************************************/
 
 #ifndef __FM_FM10000_GENERIC_PTI_H
 #define __FM_FM10000_GENERIC_PTI_H
@@ -46,5 +46,5 @@ fm_status fm10000PTIReceive(fm_int      sw,
                             fm_int      length,
                             fm_int *    dataLength);
 
-#endif /*   FM_FM10000_GENERIC_PTI_H */
+#endif /* FM_FM10000_GENERIC_PTI_H */
 

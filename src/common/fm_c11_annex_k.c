@@ -10,7 +10,7 @@
  *                 constraints would require complete implementation of
  *                 printf/scanf-style parsing.
  *
- * Copyright (c) 2012 - 2015, Intel Corporation
+ * Copyright (c) 2012 - 2016, Intel Corporation
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -481,7 +481,11 @@ fm_int fmVsnprintf_s(char *s, rsize_t n, const char *format, va_list arg)
         return -EINVAL;
     }
 
+#if defined(__KLOCWORK__)
+    retval = vsnprintf_s(s, n, format, arg);
+#else
     retval = vsnprintf(s, n, format, arg);
+#endif
 
     return retval;
 

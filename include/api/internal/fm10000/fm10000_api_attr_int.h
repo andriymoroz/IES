@@ -5,7 +5,7 @@
  * Creation Date:   May 13th, 2013
  * Description:     Header file for high level attributes of a switch
  *
- * Copyright (c) 2005 - 2014, Intel Corporation
+ * Copyright (c) 2013 - 2015, Intel Corporation
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -29,7 +29,7 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
+ *****************************************************************************/
 
 #ifndef __FM_FM10000_API_ATTR_INT_H
 #define __FM_FM10000_API_ATTR_INT_H
@@ -39,12 +39,22 @@
  * Macros, Constants & Types
  *****************************************************************************/
 
-/* FM10000_SERDES_DEFAULT_SPICO_FW allows to define which FW is used as
- * default FW.
- * valid values are 
- * 0: use fm10000_serdes_spico_code_prd1 as default
- * 1: use fm10000_serdes_spico_code_prd2 as default */
-#define FM10000_SERDES_DEFAULT_SPICO_FW     0
+/* FM10000_SERDES_DEFAULT_SPICO_FW specifies which SPICO firmware version
+ * is the default.
+ * Valid values are:
+ * 0: use fm10000_serdes_spico_code_prd1 as default.
+ * 1: use fm10000_serdes_spico_code_prd2 as default. */
+#define FM10000_SERDES_DEFAULT_SPICO_FW         1
+
+/** Deep Inspection profile index used for inner/outer MAC address filtering
+ *  (See ''FM_SWITCH_PARSER_DI_CFG'' switch attribute).
+ *  \ingroup  constSystem */
+#define FM10000_MAILBOX_MAC_FILTER_DI_PROFILE   3
+
+/** Deep Inspection profile index for ''FM_FLOW_MATCH_TCP_FLAGS''.
+ *  (See the ''FM_SWITCH_PARSER_DI_CFG'' switch attribute.)
+ *  \ingroup  constSystem */
+#define FM10000_FLOW_DI_PROFILE                 4
 
 typedef enum
 {
@@ -78,5 +88,7 @@ fm_status fm10000SetMplsEtherType(fm_int sw, fm_int index, fm_uint16 etherType);
 fm_status fm10000InitSwitchAttributes(fm_int sw);
 
 fm_status fm10000InitHashing(fm_int sw);
+
+fm_status fm10000EnableSwitchMacFiltering(fm_int sw);
 
 #endif /* __FM_FM10000_API_ATTR_INT_H */

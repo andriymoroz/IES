@@ -5,7 +5,7 @@
  * Creation Date:   August 5, 2013
  * Description:     Contains constants and functions used to support trigger.
  *
- * Copyright (c) 2007 - 2015, Intel Corporation
+ * Copyright (c) 2007 - 2016, Intel Corporation
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -29,7 +29,7 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
+ *****************************************************************************/
 
 #ifndef __FM_FM10000_API_NEXTHOP_H
 #define __FM_FM10000_API_NEXTHOP_H
@@ -130,6 +130,11 @@ typedef enum
      *
      *  \chips FM10000 */
     FM_NEXTHOP_TYPE_VN_TUNNEL,
+
+    /** Logical Port (GLORT) next-hop entry.
+     *
+     *  \chips FM10000 */
+    FM_NEXTHOP_TYPE_LOGICAL_PORT,
 
     /** UNPUBLISHED: For internal use only. */
     FM_NEXTHOP_TYPE_MAX
@@ -360,6 +365,46 @@ typedef struct _fm_rawWideNextHop
 
 /**************************************************/
 /** \ingroup typeStruct
+ *  Logical port next-hop data structure.
+ *  Referenced by ''fm_ecmpNextHopData'' when the
+ *  next-hop type is ''FM_NEXTHOP_TYPE_LOGICAL_PORT''.
+**************************************************/
+typedef struct _fm_portNextHop
+{
+     /** Logical port number. */
+     fm_int    logicalPort;
+
+     /** TRUE for the frame to be treated as routed, FALSE otherwise.
+      *
+      * Note that setting this field to TRUE is only relevant for IP frames.
+      * In that case, the ingress IP frame that hits the ACL (or Flow) is
+      * always 'routed' to the targeted logical port, irrespective of its
+      * DMAC (router MAC or not), vlan (routable or not), and port (routable
+      * or not). Modified routed fields are: SMAC (to router MAC) and TTL
+      * (decremented). DMAC is left as in original frame. Non-IP frames are
+      * simply switched to the logical port. */
+     fm_bool   routed;
+
+     /** MTU index to use when routed flag is set to TRUE. */
+     fm_int    mtuIndex;
+
+     /** Router Id to use when routed flag is set to TRUE. 
+      *
+      *  ''FM_ROUTER_ID_NO_REPLACEMENT'' is used to specify that the
+      *  pipeline's Router ID derived from mapper should be retained. If
+      *  RouterId is between 1 and 14, then this new RouterID means virtual
+      *  router ID and replaces the one derived from the mapper. Value
+      *  ''FM_PHYSICAL_ROUTER'' means to replace to physical router. */
+     fm_int    routerId;
+
+     /** Egress VLAN ID to use when routed flag is set to TRUE.*/
+     fm_uint16 vlan;
+
+} fm_portNextHop;
+
+
+/**************************************************/
+/** \ingroup typeStruct
  *  Referenced by ''fm_ecmpNextHop'', provides the
  *  specific information about a next hop entry.
 **************************************************/
@@ -402,6 +447,12 @@ typedef union _fm_ecmpNextHopData
       *
       *  \chips FM10000 */
      fm_vnTunnelNextHop  vnTunnel;
+
+
+     /** Logical Port next-hop.
+      *
+      *  \chips FM10000 */
+     fm_portNextHop  port;
 
 } fm_ecmpNextHopData;
 

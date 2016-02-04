@@ -6,7 +6,7 @@
  * Description:     Contains FM10000 specific implementations for the
  *                  replication API.
  *
- * Copyright (c) 2007 - 2014, Intel Corporation
+ * Copyright (c) 2007 - 2016, Intel Corporation
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -30,7 +30,7 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
+ *****************************************************************************/
 
 #include <fm_sdk_fm10000_int.h>
 
@@ -107,7 +107,6 @@ static fm_status MoveListenersToReplicationGroup(fm_int                sw,
 
     switchPtr        = GET_SWITCH_PTR(sw);
     err              = FM_OK;
-    listenerCount    = 0;
     mcastLogicalPort = mcastGroup->logicalPort;
 
     /* Get the number of listeners to move */
@@ -251,7 +250,6 @@ static fm_status RemoveListenersFromReplicationGroup(fm_int                sw,
 
     switchPtr        = GET_SWITCH_PTR(sw);
     err              = FM_OK;
-    listenerCount    = 0;
     logicalPort      = mcastGroup->logicalPort;
 
     /* Get the number of listeners to move */

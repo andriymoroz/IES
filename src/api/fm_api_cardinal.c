@@ -5,7 +5,7 @@
  * Creation Date:   October 22, 2011
  * Description:     Cardinal port support functions.
  *
- * Copyright (c) 2011 - 2014, Intel Corporation
+ * Copyright (c) 2011 - 2016, Intel Corporation
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -29,7 +29,7 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
+ *****************************************************************************/
 
 #include <fm_sdk_int.h>
 
@@ -40,7 +40,9 @@
     #define COMPLAIN(str, ...) { }
 #endif
 
-#ifdef __KLOCWORK__
+/* Value to be returned by the function version of GET_LOGICAL_PORT if
+ * there is a bounds error. It is intentionally illegal. */
+#if defined(__KLOCWORK__)
     #define INVALID_PORT    0
 #else
     #define INVALID_PORT    -1
@@ -355,7 +357,6 @@ fm_status fmBitArrayToPortList(fm_int        sw,
     switchPtr = GET_SWITCH_PTR(sw);
 
     *numPorts = 0;
-    err = FM_OK;
 
     for (bitNo = 0 ; ; ++bitNo)
     {

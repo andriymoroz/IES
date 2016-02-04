@@ -80,12 +80,6 @@
  * +-----------------------+-------+-------------------------------+
  */
 
-/* Calculate PF glort value using min value from glort range.
-   This assumes that first 128 glorts are used for VFs and VMDq. */
-#define CALCULATE_PF_GLORT_VALUE(min_glort_value) \
-    (min_glort_value + 128)
- 
-
 #define GET_MAILBOX_INFO(sw) \
     &((fm_switch *)(GET_SWITCH_PTR( sw )))->mailboxInfo;
 
@@ -95,12 +89,20 @@
     (sw) : ( ((fm_switch *)(GET_SWITCH_PTR( sw )))->swag )
 
 /* Bit defines for configurable fields */
+#define FM_MAILBOX_BITS_l_0_7                                      0
+#define FM_MAILBOX_BITS_h_0_7                                      15
 #define FM_MAILBOX_BITS_l_0_15                                     0
 #define FM_MAILBOX_BITS_h_0_15                                     15
-#define FM_MAILBOX_BITS_l_16_31                                    16
-#define FM_MAILBOX_BITS_h_16_31                                    31
 #define FM_MAILBOX_BITS_l_0_31                                     0
 #define FM_MAILBOX_BITS_h_0_31                                     31
+#define FM_MAILBOX_BITS_l_8_15                                     8
+#define FM_MAILBOX_BITS_h_8_15                                     15
+#define FM_MAILBOX_BITS_l_16_23                                    16
+#define FM_MAILBOX_BITS_h_16_23                                    23
+#define FM_MAILBOX_BITS_l_16_31                                    16
+#define FM_MAILBOX_BITS_h_16_31                                    31
+#define FM_MAILBOX_BITS_l_24_31                                    24
+#define FM_MAILBOX_BITS_h_24_31                                    31
 
 /* Mailbox control header field bit definitions.  */
 #define FM_MAILBOX_SM_CONTROL_HEADER_l_VERSION                     12
@@ -197,61 +199,83 @@
 #define FM_MAILBOX_SRV_CONFIG_l_VALUE                             16
 #define FM_MAILBOX_SRV_CONFIG_h_VALUE                             31
 
-/* fm_hostSrvCreateFlowTable */
-#define FM_MAILBOX_SRV_CREATE_FLOW_TABLE_l_TABLE_TYPE             0
-#define FM_MAILBOX_SRV_CREATE_FLOW_TABLE_h_TABLE_TYPE             3
-#define FM_MAILBOX_SRV_CREATE_FLOW_TABLE_l_RESERVED               4
-#define FM_MAILBOX_SRV_CREATE_FLOW_TABLE_h_RESERVED               31
-#define FM_MAILBOX_SRV_CREATE_FLOW_TABLE_l_TABLE_INDEX            0
-#define FM_MAILBOX_SRV_CREATE_FLOW_TABLE_h_TABLE_INDEX            31
-#define FM_MAILBOX_SRV_CREATE_FLOW_TABLE_l_FLOW_COND_BITMASK_LOW  0
-#define FM_MAILBOX_SRV_CREATE_FLOW_TABLE_h_FLOW_COND_BITMASK_LOW  31
-#define FM_MAILBOX_SRV_CREATE_FLOW_TABLE_l_FLOW_COND_BITMASK_UP   0
-#define FM_MAILBOX_SRV_CREATE_FLOW_TABLE_h_FLOW_COND_BITMASK_UP   31
+/* fm_hostSrvCreateTable */
+#define FM_MAILBOX_SRV_CREATE_TABLE_l_TABLE_INDEX                 0
+#define FM_MAILBOX_SRV_CREATE_TABLE_h_TABLE_INDEX                 31
+#define FM_MAILBOX_SRV_CREATE_TABLE_l_TABLE_TYPE                  0
+#define FM_MAILBOX_SRV_CREATE_TABLE_h_TABLE_TYPE                  31
+#define FM_MAILBOX_SRV_CREATE_TABLE_l_NUM_OF_ACT                  0
+#define FM_MAILBOX_SRV_CREATE_TABLE_h_NUM_OF_ACT                  7
+#define FM_MAILBOX_SRV_CREATE_TABLE_l_FLAGS                       8
+#define FM_MAILBOX_SRV_CREATE_TABLE_h_FLAGS                       15
+#define FM_MAILBOX_SRV_CREATE_TABLE_l_NUM_OF_ENTR                 0
+#define FM_MAILBOX_SRV_CREATE_TABLE_h_NUM_OF_ENTR                 31
+#define FM_MAILBOX_SRV_CREATE_TABLE_l_COND_BITMASK                0
+#define FM_MAILBOX_SRV_CREATE_TABLE_h_COND_BITMASK                31
+#define FM_MAILBOX_SRV_CREATE_TABLE_l_ACTION_BITMASK              0
+#define FM_MAILBOX_SRV_CREATE_TABLE_h_ACTION_BITMASK              31
 
-/* fm_hostSrvDeleteFlowTable */
-#define FM_MAILBOX_SRV_DELETE_FLOW_TABLE_l_TABLE_INDEX            0
-#define FM_MAILBOX_SRV_DELETE_FLOW_TABLE_h_TABLE_INDEX            23
-#define FM_MAILBOX_SRV_DELETE_FLOW_TABLE_l_TABLE_TYPE             24
-#define FM_MAILBOX_SRV_DELETE_FLOW_TABLE_h_TABLE_TYPE             31
+/* fm_hostSrvTable */
+#define FM_MAILBOX_SRV_TABLE_l_TABLE_INDEX                        0
+#define FM_MAILBOX_SRV_TABLE_h_TABLE_INDEX                        31
 
-/* fm_hostSrvUpdateFlow */
-#define FM_MAILBOX_SRV_UPDATE_FLOW_l_PRIORITY                     0
-#define FM_MAILBOX_SRV_UPDATE_FLOW_h_PRIORITY                     15
-#define FM_MAILBOX_SRV_UPDATE_FLOW_l_RESERVED                     16
-#define FM_MAILBOX_SRV_UPDATE_FLOW_h_RESERVED                     31
-#define FM_MAILBOX_SRV_UPDATE_FLOW_l_TABLE_INDEX                  0
-#define FM_MAILBOX_SRV_UPDATE_FLOW_h_TABLE_INDEX                  31
-#define FM_MAILBOX_SRV_UPDATE_FLOW_l_FLOW_ID                      0
-#define FM_MAILBOX_SRV_UPDATE_FLOW_h_FLOW_ID                      31
-#define FM_MAILBOX_SRV_UPDATE_FLOW_l_FLOW_COND_BITMASK_LOW        0
-#define FM_MAILBOX_SRV_UPDATE_FLOW_h_FLOW_COND_BITMASK_LOW        31
-#define FM_MAILBOX_SRV_UPDATE_FLOW_l_FLOW_COND_BITMASK_UP         0
-#define FM_MAILBOX_SRV_UPDATE_FLOW_h_FLOW_COND_BITMASK_UP         31
-#define FM_MAILBOX_SRV_UPDATE_FLOW_l_FLOW_ACTION_BITMASK_LOW      0
-#define FM_MAILBOX_SRV_UPDATE_FLOW_h_FLOW_ACTION_BITMASK_LOW      31
-#define FM_MAILBOX_SRV_UPDATE_FLOW_l_FLOW_ACTION_BITMASK_UP       0
-#define FM_MAILBOX_SRV_UPDATE_FLOW_h_FLOW_ACTION_BITMASK_UP       31
+/* fm_hostSrvFlowTableRange */
+#define FM_MAILBOX_SRV_TABLE_RANGE_l_FIRST_INDEX                  0
+#define FM_MAILBOX_SRV_TABLE_RANGE_h_FIRST_INDEX                  31
+#define FM_MAILBOX_SRV_TABLE_RANGE_l_LAST_INDEX                   0
+#define FM_MAILBOX_SRV_TABLE_RANGE_h_LAST_INDEX                   31
 
-/* fm_hostSrvFlowState */
-#define FM_MAILBOX_SRV_FLOW_STATE_l_TABLE_INDEX                   0
-#define FM_MAILBOX_SRV_FLOW_STATE_h_TABLE_INDEX                   31
-#define FM_MAILBOX_SRV_FLOW_STATE_l_FLOW_ID                       0
-#define FM_MAILBOX_SRV_FLOW_STATE_h_FLOW_ID                       31
-#define FM_MAILBOX_SRV_FLOW_STATE_l_FLOW_STATE                    0
-#define FM_MAILBOX_SRV_FLOW_STATE_h_FLOW_STATE                    3
-#define FM_MAILBOX_SRV_FLOW_STATE_l_RESERVED                      4
-#define FM_MAILBOX_SRV_FLOW_STATE_h_RESERVED                      31
+/* Fields for GET_TABLES response. */
+#define FM_MAILBOX_SRV_GET_TABLES_l_TABLE_INDEX                   0
+#define FM_MAILBOX_SRV_GET_TABLES_h_TABLE_INDEX                   31
+#define FM_MAILBOX_SRV_GET_TABLES_l_TABLE_TYPE                    0
+#define FM_MAILBOX_SRV_GET_TABLES_h_TABLE_TYPE                    31
+#define FM_MAILBOX_SRV_GET_TABLES_l_NUM_OF_ACT                    0
+#define FM_MAILBOX_SRV_GET_TABLES_h_NUM_OF_ACT                    7
+#define FM_MAILBOX_SRV_GET_TABLES_l_FLAGS                         8
+#define FM_MAILBOX_SRV_GET_TABLES_h_FLAGS                         15
+#define FM_MAILBOX_SRV_GET_TABLES_l_MAX_NUM_OF_ENTR               0
+#define FM_MAILBOX_SRV_GET_TABLES_h_MAX_NUM_OF_ENTR               31
+#define FM_MAILBOX_SRV_GET_TABLES_l_NUM_OF_EMPTY_ENTR             0
+#define FM_MAILBOX_SRV_GET_TABLES_h_NUM_OF_EMPTY_ENTR             31
+#define FM_MAILBOX_SRV_GET_TABLES_l_COND_BITMASK                  0
+#define FM_MAILBOX_SRV_GET_TABLES_h_COND_BITMASK                  31
+#define FM_MAILBOX_SRV_GET_TABLES_l_ACT_BITMASK                   0
+#define FM_MAILBOX_SRV_GET_TABLES_h_ACT_BITMASK                   31
+
+/* fm_hostSrvFlowEntry */
+#define FM_MAILBOX_SRV_FLOW_ENTRY_l_TABLE_INDEX                   0
+#define FM_MAILBOX_SRV_FLOW_ENTRY_h_TABLE_INDEX                   31
+#define FM_MAILBOX_SRV_FLOW_ENTRY_l_FLOW_ID                       0
+#define FM_MAILBOX_SRV_FLOW_ENTRY_h_FLOW_ID                       31
+#define FM_MAILBOX_SRV_FLOW_ENTRY_l_PRIORITY                      0
+#define FM_MAILBOX_SRV_FLOW_ENTRY_h_PRIORITY                      31
+#define FM_MAILBOX_SRV_FLOW_ENTRY_l_GLORT                         0
+#define FM_MAILBOX_SRV_FLOW_ENTRY_h_GLORT                         15
+#define FM_MAILBOX_SRV_FLOW_ENTRY_l_COND_BITMASK                  0
+#define FM_MAILBOX_SRV_FLOW_ENTRY_h_COND_BITMASK                  31
+#define FM_MAILBOX_SRV_FLOW_ENTRY_l_ACT_BITMASK                   0
+#define FM_MAILBOX_SRV_FLOW_ENTRY_h_ACT_BITMASK                   31
 
 /* fm_hostSrvFlowHandle */
+#define FM_MAILBOX_SRV_FLOW_HANDLE_l_TABLE_INDEX                  0
+#define FM_MAILBOX_SRV_FLOW_HANDLE_h_TABLE_INDEX                  31
 #define FM_MAILBOX_SRV_FLOW_HANDLE_l_FLOW_ID                      0
 #define FM_MAILBOX_SRV_FLOW_HANDLE_h_FLOW_ID                      31
 
-/* fm_hostSrvDeleteFlow */
-#define FM_MAILBOX_SRV_DELETE_FLOW_l_TABLE_INDEX                   0
-#define FM_MAILBOX_SRV_DELETE_FLOW_h_TABLE_INDEX                   31
-#define FM_MAILBOX_SRV_DELETE_FLOW_l_FLOW_ID                       0
-#define FM_MAILBOX_SRV_DELETE_FLOW_h_FLOW_ID                       31
+/* fm_hostSrvFlowRange */
+#define FM_MAILBOX_SRV_FLOW_RANGE_l_TABLE_INDEX                   0
+#define FM_MAILBOX_SRV_FLOW_RANGE_h_TABLE_INDEX                   31
+#define FM_MAILBOX_SRV_FLOW_RANGE_l_FIRST_FLOW_ID                 0
+#define FM_MAILBOX_SRV_FLOW_RANGE_h_FIRST_FLOW_ID                 31
+#define FM_MAILBOX_SRV_FLOW_RANGE_l_LAST_FLOW_ID                  0
+#define FM_MAILBOX_SRV_FLOW_RANGE_h_LAST_FLOW_ID                  31
+
+/* fm_hostSrvNoOfVfs. */
+#define FM_MAILBOX_SRV_NO_OF_VFS_l_GLORT                          0
+#define FM_MAILBOX_SRV_NO_OF_VFS_h_GLORT                          15
+#define FM_MAILBOX_SRV_NO_OF_VFS_l_NO_OF_VFS                      16
+#define FM_MAILBOX_SRV_NO_OF_VFS_h_NO_OF_VFS                      31
 
 /* fm_hostSrv1588 */
 #define FM_MAILBOX_SRV_1588_l_TMP                                  0
@@ -330,8 +354,12 @@
                                  FM_UPDATE_CTRL_HDR_VERSION | \
                                  FM_UPDATE_CTRL_HDR_ERROR )
 
-/* Start of message is bit 0 from transaction header flags area */
-#define FM_MAILBOX_MESSAGE_HEADER_b_START_OF_MESSAGE           0
+/* Flag indicating transaction header. */
+#define FM_MAILBOX_HEADER_TRANSACTION_FLAG (1 << 0)
+/* Flag indicating start of message. */
+#define FM_MAILBOX_HEADER_START_OF_MESSAGE (1 << 1)
+/* Flag indicating end of message. */
+#define FM_MAILBOX_HEADER_END_OF_MESSAGE   (1 << 2)
 
 /* Mailbox control header error types used in control header. */
 #define FM_MAILBOX_ERR_TYPE_NONE                0
@@ -342,9 +370,6 @@
 
 /* MAC secure flag is bit 0 from fm_hostSrvMACUpdate flag area. */
 #define FM_HOST_SRV_MAC_UPDATE_b_MAC_SECURE                    0
-
-/* Flow ID indticating that new flow will be added via HNI Services. */
-#define FM_MAILBOX_FLOW_ID_ADD_NEW                             0xFFFF
 
 /* Action types for filtering inner/outer MAC adresses */
 #define FM_HOST_SRV_INN_OUT_MAC_ACTION_TYPE_ADD                0
@@ -364,30 +389,38 @@
 #define FM_MAILBOX_MAC_FILTER_ACL                              24000000
 
 /* Length of mailbox message entry in bits */
-#define FM_MAILBOX_QUEUE_ENTRY_BIT_LENGTH  32
+#define FM_MBX_ENTRY_BIT_LENGTH  32
 
 /* Length of mailbox message entry in bytes */
-#define FM_MAILBOX_QUEUE_ENTRY_BYTE_LENGTH 4
+#define FM_MBX_ENTRY_BYTE_LENGTH 4
+
+/* Flags indicating who wants to create given flow table. Tables created on
+ * driver demand are VF-accessible ones. */
+#define FM_MAILBOX_USER_TABLE                                   (1 << 0)
+#define FM_MAILBOX_DRIVER_TABLE                                 (1 << 1)
 
 /* Mailbox message argument sizes in bytes used in argument headers. */
-#define FM_HOST_SRV_ERR_TYPE_SIZE               (7 * FM_MAILBOX_QUEUE_ENTRY_BYTE_LENGTH)
-#define FM_HOST_SRV_LPORT_MAP_TYPE_SIZE         (1 * FM_MAILBOX_QUEUE_ENTRY_BYTE_LENGTH)
-#define FM_HOST_SRV_XCAST_MODE_TYPE_SIZE        (1 * FM_MAILBOX_QUEUE_ENTRY_BYTE_LENGTH)
-#define FM_HOST_SRV_MAC_UPDATE_TYPE_SIZE        (3 * FM_MAILBOX_QUEUE_ENTRY_BYTE_LENGTH)
-#define FM_HOST_SRV_CONFIG_TYPE_SIZE            (1 * FM_MAILBOX_QUEUE_ENTRY_BYTE_LENGTH)
-#define FM_HOST_SRV_CREATE_FLOW_TABLE_TYPE_SIZE (4 * FM_MAILBOX_QUEUE_ENTRY_BYTE_LENGTH)
-#define FM_HOST_SRV_DELETE_FLOW_TABLE_TYPE_SIZE (1 * FM_MAILBOX_QUEUE_ENTRY_BYTE_LENGTH)
-#define FM_HOST_SRV_DELETE_FLOW_TYPE_SIZE       (2 * FM_MAILBOX_QUEUE_ENTRY_BYTE_LENGTH)
-#define FM_HOST_SRV_FLOW_HANDLE_TYPE_SIZE       (1 * FM_MAILBOX_QUEUE_ENTRY_BYTE_LENGTH)
-#define FM_HOST_SRV_FLOW_STATE_TYPE_SIZE        (3 * FM_MAILBOX_QUEUE_ENTRY_BYTE_LENGTH)
-#define FM_HOST_SRV_GET_1588_INFO_TYPE_SIZE     (1 * FM_MAILBOX_QUEUE_ENTRY_BYTE_LENGTH)
-#define FM_HOST_SRV_TEST_MESSAGE_TYPE_SIZE      (1 * FM_MAILBOX_QUEUE_ENTRY_BYTE_LENGTH)
-#define FM_HOST_SRV_PORT_TYPE_SIZE              (1 * FM_MAILBOX_QUEUE_ENTRY_BYTE_LENGTH)
-#define FM_HOST_SRV_UPDATE_PVID_TYPE_SIZE       (1 * FM_MAILBOX_QUEUE_ENTRY_BYTE_LENGTH)
-#define FM_HOST_SRV_PACKET_TIMESTAMP_TYPE_SIZE  (5 * FM_MAILBOX_QUEUE_ENTRY_BYTE_LENGTH)
-#define FM_HOST_SRV_TMSTAMP_MODE_RESP_TYPE_SIZE (1 * FM_MAILBOX_QUEUE_ENTRY_BYTE_LENGTH)
-#define FM_HOST_SRV_MASTER_CLK_OFFSET_TYPE_SIZE (2 * FM_MAILBOX_QUEUE_ENTRY_BYTE_LENGTH)
-#define FM_HOST_SRV_INN_OUT_MAC_TYPE_SIZE       (9 * FM_MAILBOX_QUEUE_ENTRY_BYTE_LENGTH)
+#define FM_HOST_SRV_ERR_TYPE_SIZE               (7 * FM_MBX_ENTRY_BYTE_LENGTH)
+#define FM_HOST_SRV_LPORT_MAP_TYPE_SIZE         (1 * FM_MBX_ENTRY_BYTE_LENGTH)
+#define FM_HOST_SRV_XCAST_MODE_TYPE_SIZE        (1 * FM_MBX_ENTRY_BYTE_LENGTH)
+#define FM_HOST_SRV_MAC_UPDATE_TYPE_SIZE        (3 * FM_MBX_ENTRY_BYTE_LENGTH)
+#define FM_HOST_SRV_CONFIG_TYPE_SIZE            (1 * FM_MBX_ENTRY_BYTE_LENGTH)
+#define FM_HOST_SRV_CREATE_TABLE_TYPE_SIZE      (8 * FM_MBX_ENTRY_BYTE_LENGTH)
+#define FM_HOST_SRV_TABLE_TYPE_SIZE             (1 * FM_MBX_ENTRY_BYTE_LENGTH)
+#define FM_HOST_SRV_FLOW_TABLE_RANGE_TYPE_SIZE  (2 * FM_MBX_ENTRY_BYTE_LENGTH)
+#define FM_HOST_SRV_GET_TABLES_TYPE_SIZE        (9 * FM_MBX_ENTRY_BYTE_LENGTH)
+#define FM_HOST_SRV_FLOW_ENTRY_TYPE_SIZE        (8 * FM_MBX_ENTRY_BYTE_LENGTH)
+#define FM_HOST_SRV_FLOW_HANDLE_TYPE_SIZE       (1 * FM_MBX_ENTRY_BYTE_LENGTH)
+#define FM_HOST_SRV_FLOW_RANGE_TYPE_SIZE        (3 * FM_MBX_ENTRY_BYTE_LENGTH)
+#define FM_HOST_SRV_NO_OF_VFS_TYPE_SIZE         (1 * FM_MBX_ENTRY_BYTE_LENGTH)
+#define FM_HOST_SRV_GET_1588_INFO_TYPE_SIZE     (1 * FM_MBX_ENTRY_BYTE_LENGTH)
+#define FM_HOST_SRV_TEST_MESSAGE_TYPE_SIZE      (1 * FM_MBX_ENTRY_BYTE_LENGTH)
+#define FM_HOST_SRV_PORT_TYPE_SIZE              (1 * FM_MBX_ENTRY_BYTE_LENGTH)
+#define FM_HOST_SRV_UPDATE_PVID_TYPE_SIZE       (1 * FM_MBX_ENTRY_BYTE_LENGTH)
+#define FM_HOST_SRV_PACKET_TIMESTAMP_TYPE_SIZE  (5 * FM_MBX_ENTRY_BYTE_LENGTH)
+#define FM_HOST_SRV_TMSTAMP_MODE_RESP_TYPE_SIZE (1 * FM_MBX_ENTRY_BYTE_LENGTH)
+#define FM_HOST_SRV_MASTER_CLK_OFFSET_TYPE_SIZE (2 * FM_MBX_ENTRY_BYTE_LENGTH)
+#define FM_HOST_SRV_INN_OUT_MAC_TYPE_SIZE       (9 * FM_MBX_ENTRY_BYTE_LENGTH)
 
 
 /* Mailbox message IDs. Used in transaction headers. */
@@ -420,20 +453,26 @@ typedef enum _fm_mailboxMessageId
     /* ID for the UPDATE_PVID message. */
     FM_MAILBOX_MSG_UPDATE_PVID_ID = 0x400,
 
-    /* ID for the CREATE_FLOW_TABLE message. */
-    FM_MAILBOX_MSG_CREATE_FLOW_TABLE_ID = 0x501,
+    /* ID for the GET_TABLES message. */
+    FM_MAILBOX_MSG_GET_TABLES_ID = 0x501,
 
-    /* ID for the DELETE_FLOW_TABLE message. */
-    FM_MAILBOX_MSG_DELETE_FLOW_TABLE_ID = 0x502,
+    /* ID for the SET_RULES message. */
+    FM_MAILBOX_MSG_SET_RULES_ID = 0x504,
 
-    /* ID for the UPDATE_FLOW message. */
-    FM_MAILBOX_MSG_UPDATE_FLOW_ID = 0x503,
+    /* ID for the GET_RULES message. */
+    FM_MAILBOX_MSG_GET_RULES_ID = 0x505,
 
-    /* ID for the DELETE_FLOW message. */
-    FM_MAILBOX_MSG_DELETE_FLOW_ID = 0x504,
+    /* ID for the DEL_RULES message. */
+    FM_MAILBOX_MSG_DEL_RULES_ID = 0x506,
 
-    /* ID for the SET_FLOW_STATE message. */
-    FM_MAILBOX_MSG_SET_FLOW_STATE_ID = 0x505,
+    /* ID for the CREATE_TABLE message. */
+    FM_MAILBOX_MSG_CREATE_TABLE_ID = 0x507,
+
+    /* ID for the DESTROY_TABLE message. */
+    FM_MAILBOX_MSG_DESTROY_TABLE_ID = 0x508,
+
+    /* ID for the SET_NO_OF_VFS message. */
+    FM_MAILBOX_MSG_SET_NO_OF_VFS_ID = 0x509,
 
     /* ID for the GET_HW_PLATFORM message. */
     FM_MAILBOX_MSG_GET_HW_PLATFORM_ID = 0x601,
@@ -476,29 +515,27 @@ typedef enum _fm_mailboxMessageArgumentType
      * Used with fm_hostSrvConfig argument. */
     FM_HOST_SRV_REQUEST_CONFIG_TYPE = 0x0005,
 
-    /* Argument type for request message for CREATE_FLOW_TABLE service.
-     * Used with fm_hostSrvCreateFlowTable argument. */
-    FM_HOST_SRV_CREATE_FLOW_TABLE_TYPE = 0x0006,
+    /* Argument type for request message for DESTROY_TABLE service.
+     * Used with fm_hostSrvTable argument. */
+    FM_HOST_SRV_TABLE_TYPE = 0x0006,
 
-    /* Argument type for request message for DELETE_FLOW_TABLE service.
-     * Used with fm_hostSrvDeleteFlowTable argument. */
-    FM_HOST_SRV_DELETE_FLOW_TABLE_TYPE = 0x0007,
+    /* Argument type for request message for CREATE_TABLE service.
+     * Used with fm_hostSrvCreateTable argument. */
+    FM_HOST_SRV_CREATE_TABLE_TYPE = 0x0007,
 
-    /* Argument type for request message for UPDATE_FLOW service.
-     * Used with fm_hostSrvUpdateFlow argument. */
-    FM_HOST_SRV_UPDATE_FLOW_TYPE = 0x0008,
+    /* Argument type for response message for GET_TABLES service. */
+    FM_HOST_SRV_TABLE_LIST_TYPE = 0x0008,
 
-    /* Argument type for request message for SET_FLOW_STATE service.
-     * Used with fm_hostSrvFlowState argument. */
-    FM_HOST_SRV_SET_FLOW_STATE_TYPE = 0x0009,
+    /* Argument type for request message for SET_RULES service. Also used as an
+     * argument type for response message for GET_RULES. */
+    FM_HOST_SRV_FLOW_ENTRY_TYPE = 0x0009,
 
-    /* Argument type for response message for UPDATE_FLOW service.
+    /* Argument type for request message for DEL_RULES service.
      * Used with fm_hostSrvFlowHandle argument. */
-    FM_HOST_SRV_HANDLE_FLOW_TYPE = 0x000a,
+    FM_HOST_SRV_FLOW_HANDLE_TYPE = 0x000a,
 
-    /* Argument type for request message for DELETE_FLOW service.
-     * Used with fm_hostSrvDeleteFlow argument. */
-    FM_HOST_SRV_DELETE_FLOW_TYPE = 0x000b,
+    /* Argument type for response message for GET_RULES service. */
+    FM_HOST_SRV_FLOW_RANGE_TYPE = 0x000b,
 
     /* Argument type for request message for LPORT_CREATE and 
      * LPORT_DELETE services. Used with fm_hostSrvPort argument. */
@@ -526,7 +563,13 @@ typedef enum _fm_mailboxMessageArgumentType
 
     /* Argument type for request message for MASTER_CLK_OFFSET
      * service. Used with fm_hostSrvMasterClkOffset argument. */
-    FM_HOST_SRV_MASTER_CLK_OFFSET_TYPE = 0x0014
+    FM_HOST_SRV_MASTER_CLK_OFFSET_TYPE = 0x0014,
+
+    /* Argument type for request message for SET_NO_OF_VFS service. */
+    FM_HOST_SRV_NO_OF_VFS_TYPE = 0x00015,
+
+    /* Argument type for request message for GET_TABLES service. */
+    FM_HOST_SRV_FLOW_TABLE_RANGE_TYPE = 0x0016,
 
 } fm_mailboxMessageArgumentType;
 
@@ -580,6 +623,20 @@ typedef enum _fm_filterMacTunnelType
     FM_MAILBOX_TUNNEL_TYPE_MAX       /* Must be last */
 
 } fm_filterMacTunnelType;
+
+/* Mailbox table type modes for CREATE_TABLE and GET_TABLES requests. */
+typedef enum _fm_mailboxTableType
+{
+    /* FFU TCAM flow table. */
+    FM_MBX_TCAM_TABLE = 1,
+
+    /* Tunnel Engine 0 flow table. */
+    FM_MBX_TE_A_TABLE = 2,
+
+    /* Tunnel Engine 1 flow table. */
+    FM_MBX_TE_B_TABLE = 3
+
+} fm_mailboxTableType;
 
 /* Mailbox control header structure to manage request/response queues. */
 typedef struct _fm_mailboxControlHeader
@@ -756,111 +813,127 @@ typedef struct _fm_hostSrvConfig
 } fm_hostSrvConfig;
 
 
-/* Mailbox structure used as an argument for CREATE_FLOW_TABLE message. */
-typedef struct _fm_hostSrvCreateFlowTable
+/* Mailbox structure used as an argument for CREATE_TABLE message. */
+typedef struct _fm_hostSrvCreateTable
 {
-    /* Flow table type. Supported types are:
-     *
-     * - FM_FLOW_TCAM_TABLE
-     * - FM_FLOW_BST_TABLE
-     * - FM_FLOW_TE_TABLE. */
-    fm_uint16 tableType;
-
-    /* Flow table index. */
-    fm_uint32 tableIndex;
-
-    /* Lower bytes of flow condition mask. */
-    fm_uint32 flowConditionBitmaskLower;
-
-    /* Upper bytes of flow condition mask. */
-    fm_uint32 flowConditionBitmaskUpper;
-
-} fm_hostSrvCreateFlowTable;
-
-
-/* Mailbox structure used as an argument for DELETE_FLOW_TABLE message. */
-typedef struct _fm_hostSrvDeleteFlowTable
-{
-    /* Flow table index. */
-    fm_uint32 tableIndex;
+    /* Match table index provided by driver. Note, that this in NOT the same
+     * index as the one using when creating flow table.
+     */
+    fm_uint32 matchTableIndex;
 
     /* Flow table type. Supported types are:
      *
-     * - FM_FLOW_TCAM_TABLE
-     * - FM_FLOW_BST_TABLE
-     * - FM_FLOW_TE_TABLE. */
-    fm_uint16 tableType;
+     * - FM_MBX_TCAM_TABLE
+     * - FM_MBX_TE_A_TABLE
+     * - FM_MBX_TE_B_TABLE. */
+    fm_uint32 tableType;
 
-} fm_hostSrvDeleteFlowTable;
+    /* Number of actions to be supported. */
+    fm_byte numOfAct;
 
+    /* Flags field. */
+    fm_byte flags;
 
-/* Mailbox structure used as an argument for UPDATE_FLOW message. */
-typedef struct _fm_hostSrvUpdateFlow
+    /* Max number of entries. */
+    fm_uint32 numOfEntr;
+
+    /* Condition bitmask. */
+    fm_flowCondition condition;
+
+    /* Action bitmask. */
+    fm_flowAction action;
+
+} fm_hostSrvCreateTable;
+
+/* Mailbox structure used as an argument for DESTROY_TABLE message. */
+typedef struct _fm_hostSrvTable
 {
+    /* Match table index provided by driver. Note, that this in NOT the same
+     * index as the one using when creating flow table.
+     */
+    fm_uint32 matchTableIndex;
+
+} fm_hostSrvTable;
+
+/* Mailbox structure used as an argument for GET_TABLES message. */
+typedef struct _fm_hostSrvFlowTableRange
+{
+    /* First flow table index to be returned. */
+    fm_uint32 firstFlowTableIndex;
+
+    /* Last flow table index to be returned. */
+    fm_uint32 lastFlowTableIndex;
+
+} fm_hostSrvFlowTableRange;
+
+/* Mailbox structure used as an argument for SET_RULES and GET_RULES messages.*/
+typedef struct _fm_hostSrvFlowEntry
+{
+    /* Match flow table index provided by driver. */
+    fm_uint32 matchTableIndex;
+
+    /* Match flow ID provided by driver. Note, that this in NOT the same
+     * ID as the one returned when adding a flow.
+     */
+    fm_uint32 matchFlowId;
+
     /* Flow priority field. */
-    fm_uint16 priority;
+    fm_uint32 priority;
 
-    /* Flow table index. */
-    fm_uint32 tableIndex;
-
-    /* Flow ID:
-     *
-     * - When addding new flow, this value must be 0xFFFF.
-     * - When updating an existing flow, this value must be set to ID of the flow. */
-    fm_uint32 flowID;
+    /* Glort value indicating who request flow (PF/VF). */
+    fm_uint16 glort;
 
     /* Flow condition mask */
-    fm_flowCondition        condition;
+    fm_flowCondition condition;
 
     /* Flow action mask. */
-    fm_flowAction           action;
+    fm_flowAction action;
 
     /* Flow values set according to read arguments. */
-    fm_flowValue            flowVal;
+    fm_flowValue flowVal;
 
     /* Flow params set according to read arguments. */
-    fm_flowParam            flowParam;
+    fm_flowParam flowParam;
 
-} fm_hostSrvUpdateFlow;
+} fm_hostSrvFlowEntry;
 
-
-/* Mailbox structure used as an argument for SET_FLOW_STATE message. */
-typedef struct _fm_hostSrvFlowState
-{
-    /* Flow table index. */
-    fm_uint32 tableIndex;
-
-    /* Flow ID. */
-    fm_uint32 flowID;
-
-    /* Flow state. Supported values are:
-     *
-     * - FM_FLOW_STATE_STANDBY
-     * - FM_FLOW_STATE_ENABLED. */
-    fm_uint16 flowState;
-
-} fm_hostSrvFlowState;
-
-
-/* Mailbox structure used as a return type for UPDATE_FLOW message. */
+/* Mailbox structure used as an argument for DEL_RULES message. */
 typedef struct _fm_hostSrvFlowHandle
 {
-    /* Flow ID. */
-    fm_uint32 flowID;
+    /* Match flow table index provided by driver. */
+    fm_uint32 matchTableIndex;
+
+    /* Match flow ID provided by driver. */
+    fm_uint32 matchFlowId;
 
 } fm_hostSrvFlowHandle;
 
-
-/* Mailbox structure used as an argument for DELETE_FLOW message. */
-typedef struct _fm_hostSrvDeleteFlow
+/* Mailbox structure used as an argument for GET_RULES message. */
+typedef struct _fm_hostSrvFlowRange
 {
-    /* Flow table index. */
-    fm_uint32 tableIndex;
+    /* Match table index provided by driver. Note, that this in NOT the same
+     * index as the one using when creating flow table.
+     */
+    fm_uint32 matchTableIndex;
 
-    /* Flow ID. */
-    fm_uint32 flowID;
+    /* First flow ID to be returned. */
+    fm_uint32 firstFlowId;
 
-} fm_hostSrvDeleteFlow;
+    /* Last flow ID to be returned. */
+    fm_uint32 lastFlowId;
+
+} fm_hostSrvFlowRange;
+
+/* Mailbox structure used as an argument for SET_NO_OF_VFS message. */
+typedef struct _fm_hostSrvNoOfVfs
+{
+    /* Glort value indicating PF. */
+    fm_uint16 glort;
+
+    /* Number of VFs. */
+    fm_uint16 noOfVfs;
+
+} fm_hostSrvNoOfVfs;
 
 /* Mailbox structure used as a return type for UPDATE_PVID message. */
 typedef struct _fm_hostSrvUpdatePvid
@@ -872,7 +945,6 @@ typedef struct _fm_hostSrvUpdatePvid
     fm_uint16 pvid;
 
 } fm_hostSrvUpdatePvid;
-
 
 /* Mailbox structure used as a return type for 
  * DELIVER_PACKET_TIMESTAMP message. */
@@ -968,16 +1040,22 @@ typedef struct _fm_hostSrvInnOutMac
 typedef struct _fm_mailboxResources
 {
     /* A tree holding MAC addresses. 
-     * Entries would include {key == MAC_VLAN, value == NULL} pairs. */
+     * Entries would include {key = MAC_VLAN, value = NULL} pairs. */
     fm_tree mailboxMacResource;
 
-    /* A tree holding flow tables and IDs. 
-     * Entries would include {key == FLOWID_FLOWTABLE, value == NULL} pairs. */
-    fm_tree mailboxFlowResource;
-
-    /* A tree holding flow tables.
-     * Entries would include {key = FLOW_TABLE, value = TABLE_TYPE } pairs. */
+    /* A tree holding flow tables. This tree would be used for PF glorts.
+     * Entries would include
+     * {key = MATCH_FLOW_TABLE_INDEX, value = fm_mailboxFlowTable} pairs.
+     */
     fm_tree mailboxFlowTableResource;
+
+    /* A tree holding internal flow tables and IDs for VF glorts as keys.
+     * Values are match flow table indexes to proper cleanup both VF and PF
+     * trees when deleting VF rule.
+     * Entries would include
+     * {key == FLOWID_FLOWTABLE, value == MATCH_FLOW_TABLE} pairs
+    .*/
+    fm_tree mailboxFlowMap;
 
     /* A tree holding inner + outer MAC filtering structures. */
     fm_customTree innOutMacResource;
@@ -987,6 +1065,12 @@ typedef struct _fm_mailboxResources
 
     /* Inner/Outer Mac filtering entries counter per virtual port. */
     fm_int innerOuterMacEntriesAdded;
+
+    /* Flow entries counter per virtual port. */
+    fm_int flowEntriesAdded;
+
+    /* Number of VFs. This field will be used only for PFs. */
+    fm_int noOfVfs;
 
 } fm_mailboxResources;
 
@@ -1004,6 +1088,36 @@ typedef struct _fm_mailboxMcastMacVni
     fm_int mcastGroup;
 
 } fm_mailboxMcastMacVni;
+
+/* Structure to track flow tables created on match interface demand. */
+typedef struct _fm_mailboxFlowTable
+{
+    /* Internal flow table index. */
+    fm_int tableIndex;
+
+    /* Match flow table index. */
+    fm_uint32 matchTableIndex;
+
+    /* Action bitmask. */
+    fm_flowAction action;
+
+    /* Flags bitmask. */
+    fm_byte flags;
+
+    /* A tree mapping match flow IDs and internal ones within flow table.
+     * Entries would include
+     * {key = MATCH_FLOW_ID, value = (key of INTERNAL_FLOW_ID and GLORT)}
+     * pairs.
+     */
+    fm_tree matchFlowIdMap;
+
+    /* A tree reverse mapping than previous one.
+     * Entries would include {key =INTERNAL_FLOW_ID, value = MATCH_FLOW_ID}
+     * pairs.
+     */
+    fm_tree internalFlowIdMap;
+
+} fm_mailboxFlowTable;
 
 /* Holds the state of mailbox related information. */
 typedef struct _fm_mailboxInfo
@@ -1030,6 +1144,10 @@ typedef struct _fm_mailboxInfo
 
     /* Mcast group number created to manage multicast flooding for HNI services */
     fm_int mcastGroupForMcastFlood;
+
+    /* Indicates if switch configuration is set for filtering 
+     * INNER/OUTER MAC addresses. */
+    fm_bool innerOuterMacConfigurationSet;
 
     /* Id of ACL created for inner/outer mac filtering purpose. */
     fm_int aclIdForMacFiltering;
@@ -1059,10 +1177,10 @@ typedef struct _fm_mailboxInfo
     /* Indicates which acl rule are currently used or free. */
     fm_bitArray innOutMacRuleInUse;
 
-    /* Maximum numer MAC entries that can be added on driver demand per PEP.*/
+    /* Maximum number MAC entries that can be added on driver demand per PEP.*/
     fm_int maxMacEntriesToAddPerPep;
 
-    /* Maximum numer Inner/Outer Mac filtering entries entries
+    /* Maximum number Inner/Outer Mac filtering entries
      * that can be added on driver demand per PEP.*/
     fm_int maxInnerOuterMacEntriesToAddPerPep;
 
@@ -1070,9 +1188,13 @@ typedef struct _fm_mailboxInfo
      * per virtual port. */
     fm_int maxMacEntriesToAddPerPort;
 
-    /* Maximum numer Inner/Outer Mac filtering entries entries
+    /* Maximum number Inner/Outer Mac filtering entries
      * that can be added on driver demand per virtual port. */
     fm_int maxInnerOuterMacEntriesToAddPerPort;
+
+    /* Maximum number of flow entries
+     * that can be added on driver demand per VF. */
+    fm_int maxFlowEntriesToAddPerVf;
 
     /* MAC entries counter per PEP. */
     fm_int *macEntriesAdded;
@@ -1123,30 +1245,40 @@ fm_status fmConfigReqProcess(fm_int                   sw,
                              fm_mailboxControlHeader *ctrlHdr,
                              fm_mailboxMessageHeader *pfTrHdr);
 
-fm_status fmCreateFlowTableProcess(fm_int                   sw,
-                                   fm_int                   pepNb,
-                                   fm_mailboxControlHeader *ctrlHdr,
-                                   fm_mailboxMessageHeader *pfTrHdr);
+fm_status fmCreateTableProcess(fm_int                   sw,
+                               fm_int                   pepNb,
+                               fm_mailboxControlHeader *ctrlHdr,
+                               fm_mailboxMessageHeader *pfTrHdr);
 
-fm_status fmDeleteFlowTableProcess(fm_int                   sw,
-                                   fm_int                   pepNb,
-                                   fm_mailboxControlHeader *ctrlHdr,
-                                   fm_mailboxMessageHeader *pfTrHdr);
-
-fm_status fmUpdateFlowProcess(fm_int                   sw,
-                              fm_int                   pepNb,
-                              fm_mailboxControlHeader *ctrlHdr,
-                              fm_mailboxMessageHeader *pfTrHdr);
-
-fm_status fmDeleteFlowProcess(fm_int                   sw,
-                              fm_int                   pepNb,
-                              fm_mailboxControlHeader *ctrlHdr,
-                              fm_mailboxMessageHeader *pfTrHdr);
-
-fm_status fmSetFlowStateProcess(fm_int                   sw,
+fm_status fmDestroyTableProcess(fm_int                   sw,
                                 fm_int                   pepNb,
                                 fm_mailboxControlHeader *ctrlHdr,
                                 fm_mailboxMessageHeader *pfTrHdr);
+
+fm_status fmGetTablesProcess(fm_int                   sw,
+                             fm_int                   pepNb,
+                             fm_mailboxControlHeader *ctrlHdr,
+                             fm_mailboxMessageHeader *pfTrHdr);
+
+fm_status fmSetRulesProcess(fm_int                   sw,
+                            fm_int                   pepNb,
+                            fm_mailboxControlHeader *ctrlHdr,
+                            fm_mailboxMessageHeader *pfTrHdr);
+
+fm_status fmGetRulesProcess(fm_int                   sw,
+                            fm_int                   pepNb,
+                            fm_mailboxControlHeader *ctrlHdr,
+                            fm_mailboxMessageHeader *pfTrHdr);
+
+fm_status fmDelRulesProcess(fm_int                   sw,
+                            fm_int                   pepNb,
+                            fm_mailboxControlHeader *ctrlHdr,
+                            fm_mailboxMessageHeader *pfTrHdr);
+
+fm_status fmSetNoOfVfsProcess(fm_int                   sw,
+                              fm_int                   pepNb,
+                              fm_mailboxControlHeader *ctrlHdr,
+                              fm_mailboxMessageHeader *pfTrHdr);
 
 fm_status fmSetTimestampModeProcess(fm_int                   sw,
                                     fm_int                   pepNb,
@@ -1203,6 +1335,8 @@ fm_status fmMasterClkOffsetProcess(fm_int                   sw,
                                    fm_int                   pepNb,
                                    fm_mailboxControlHeader *ctrlHdr,
                                    fm_mailboxMessageHeader *pfTrHdr);
+
+void fmFreeMailboxResources(void *value);
 
 void fmFreeMcastMacVni(void *key, void *value);
 

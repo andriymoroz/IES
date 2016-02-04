@@ -30,7 +30,7 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
+ *****************************************************************************/
 
 #include <fm_sdk_fm10000_int.h>
 
@@ -53,8 +53,11 @@ portmask.maskWord[0] = dest & 0xFFFFFFFF;                      \
 portmask.maskWord[1] = (dest >> 32) & 0xFFFF;                      \
 portmask.maskWord[2] = 0;
 
+#define LISTENER_VLAN_SIZE 16
+#define LISTENER_VLAN_MASK 0xffff
+
 #define GET_LISTENER_KEY(port, vlan) \
-    ( ( ( (fm_uint64) port ) << 12 ) | ( (fm_uint64) vlan ) )
+    ( ( ( (fm_uint64) port ) << LISTENER_VLAN_SIZE) | ( (fm_uint64) vlan ) )
 
 /* The value is approximately 10th of the time required to 
  * flush all memory segments when all segments are to be egressed on 
@@ -536,7 +539,7 @@ static fm_status ValidateMTableConsistency(fm_int sw)
                             entryFromList = entry;
                             numFound++;
                         }
-                        entryListNode = entryListNode->next;
+                        entryListNode = entryListNode->nextPtr;
                     }
 
                     if (numFound != 1)
@@ -571,7 +574,7 @@ static fm_status ValidateMTableConsistency(fm_int sw)
                         {
                             sameEntryFound = TRUE;
                         }
-                        entryListPerLenIndexNode = entryListPerLenIndexNode->next;
+                        entryListPerLenIndexNode = entryListPerLenIndexNode->nextPtr;
                     }
                 
                     if (!sameEntryFound)
@@ -609,7 +612,7 @@ static fm_status ValidateMTableConsistency(fm_int sw)
                     {
                         entryListCount++;
                     }
-                    entryListNode = entryListNode->next;
+                    entryListNode = entryListNode->nextPtr;
                 }
 
             }
@@ -636,7 +639,7 @@ static fm_status ValidateMTableConsistency(fm_int sw)
                 {
                     entryListPerLenIndexCount++;
                 }
-                entryListPerLenIndexNode = entryListPerLenIndexNode->next;
+                entryListPerLenIndexNode = entryListPerLenIndexNode->nextPtr;
             }
 
         }
@@ -738,7 +741,7 @@ static void FreeEntryUsageList(void *value)
         fmFree(node->data);
 
         oldNode = node;
-        node = node->next;
+        node = node->nextPtr;
 
         fmFree(oldNode);
     }
@@ -800,7 +803,7 @@ static void FreeEntryListPerLenIndex(void *value)
            in FreeEntryUsageList since its data object is used here. */
 
         oldNode = node;
-        node = node->next;
+        node = node->nextPtr;
 
         fmFree(oldNode);
     }
@@ -921,7 +924,7 @@ static fm_status RemoveListenerEntry(fm10000_mtableInfo *info,
 
 
 /*****************************************************************************/
-/** InserListenerEntry
+/** InsertListenerEntry
  * \ingroup intMulticast
  *
  * \desc            Inserts a new listener at the end of the linked list and
@@ -1004,7 +1007,7 @@ static fm_status InsertListenerEntry( fm10000_mtableInfo *info,
 
     FM_LOG_EXIT(FM_LOG_CAT_MULTICAST,  FM_OK );
 
-}   /* end InserListenerEntry */
+}   /* end InsertListenerEntry */
 
 
 
@@ -1192,8 +1195,8 @@ static fm_status MarkMulticastIndexUsed(fm10000_mtableInfo *info, fm_int index)
  *                  caller doesn't wish to get this counter )
  *
  * \return          FM_OK if successful
- * \return          FM_ERR_NOT_FOUND if (the mcastGroup, port) pair was not
- *                  found
+ * \return          FM_FAIL if the number of listeners is negative.
+ *
  *****************************************************************************/
 static fm_status GetListenersCount( fm10000_mtableInfo *info,
                                     fm_int             repliGroup,
@@ -1216,10 +1219,20 @@ static fm_status GetListenersCount( fm10000_mtableInfo *info,
         if ( active != NULL )
         {
             *active = counters->active;
+
+            if (*active < 0)
+            {
+                FM_LOG_EXIT(FM_LOG_CAT_MULTICAST, FM_FAIL);
+            }
         }
         if ( total != NULL )
         {
             *total  = counters->total;
+
+            if (*total < 0)
+            {
+                FM_LOG_EXIT(FM_LOG_CAT_MULTICAST, FM_FAIL);
+            }
         }
     }
     else if ( err == FM_ERR_NOT_FOUND )
@@ -1261,15 +1274,17 @@ static fm_status GetListenersCount( fm10000_mtableInfo *info,
  *
  * \param[in]       physPort is the physical port for which to get the count
  *
- * \param[out]      active points to user-allocated storage where the number
+ * \param[in]       active points to user-allocated storage where the number
  *                  of active listeners is going to be passed (NULL if the
  *                  caller doesn't wish to set this counter )
  *
- * \param[out]      total points to user-allocated storage where the number
- *                  of total listeners is going to be returned (NULL if the
+ * \param[in]       total points to user-allocated storage where the number
+ *                  of total listeners is going to be passed (NULL if the
  *                  caller doesn't wish to set this counter )
  *
  * \return          FM_OK if successful
+ * \return          FM_ERR_INVALID_ARGUMENT if a negative number of listeners
+ *                  is passed.
  *
  *****************************************************************************/
 static fm_status SetListenersCount( fm10000_mtableInfo *info,
@@ -1290,6 +1305,17 @@ static fm_status SetListenersCount( fm10000_mtableInfo *info,
 
     /* the key is a combination of the port and the group index */
     key = ( repliGroup | (fm_uint64)physPort << 32 );
+
+    if ( (active != NULL) && (*active < 0) )
+    {
+        FM_LOG_EXIT(FM_LOG_CAT_MULTICAST, FM_ERR_INVALID_ARGUMENT);
+    }
+
+    if ( (total != NULL) && (*total < 0) )
+    {
+        FM_LOG_EXIT(FM_LOG_CAT_MULTICAST, FM_ERR_INVALID_ARGUMENT);
+    }
+
     err = fmTreeFind( &info->listenersCount, key, (void **)&counters );
 
     /* was this (repliGroup, port) pair already in the tree? */
@@ -3097,7 +3123,7 @@ static fm_status AddToEntryListForListener(fm10000_mtableInfo *info,
             FM_LOG_EXIT(FM_LOG_CAT_MULTICAST,  FM_OK );
         }
 
-        entryListNode = entryListNode->next;
+        entryListNode = entryListNode->nextPtr;
     }
 
     /***************************************************
@@ -3223,7 +3249,7 @@ static fm_status ModifyEntryListForListener(fm10000_mtableInfo *info,
                      entry->repliGroup,
                      entry->vlanEntryIndex,
                      entry->lenTableIndex,
-                     (void *)entryListNode->next);
+                     (void *)entryListNode->nextPtr);
 
         if ( entry->repliGroup     == repliGroup &&
              entry->vlanEntryIndex == oldVlanIndex && 
@@ -3240,7 +3266,7 @@ static fm_status ModifyEntryListForListener(fm10000_mtableInfo *info,
             FM_LOG_EXIT(FM_LOG_CAT_MULTICAST,  err );
         }
 
-        entryListNode = entryListNode->next;
+        entryListNode = entryListNode->nextPtr;
     }
 
     /***************************************************
@@ -3312,7 +3338,7 @@ fm_status ModifyEntryListLenIndex(fm10000_mtableInfo *info,
             FM_LOG_EXIT(FM_LOG_CAT_MULTICAST, FM_ERR_INVALID_ARGUMENT);
         }
         entry->lenTableIndex = newLenTableIndex;
-        entryListPerLenIndexNode = entryListPerLenIndexNode->next;
+        entryListPerLenIndexNode = entryListPerLenIndexNode->nextPtr;
     }
 
     FM_LOG_EXIT(FM_LOG_CAT_MULTICAST, FM_OK);
@@ -3432,7 +3458,7 @@ fm_status GetVlanIndexEntry(fm10000_mtableInfo *info,
                          entry->lenTableIndex );
         }
 
-        entryListNode = entryListNode->next;
+        entryListNode = entryListNode->nextPtr;
     }
 
     if (numFound != 1)
@@ -3618,7 +3644,7 @@ static fm_status DeleteFromEntryListForListener(fm10000_mtableInfo *info,
                         FM_LOG_EXIT(FM_LOG_CAT_MULTICAST, err);
 
                     }
-                    entryListPerLenIndexNode = entryListPerLenIndexNode->next;
+                    entryListPerLenIndexNode = entryListPerLenIndexNode->nextPtr;
                 }
             }
             else
@@ -3667,7 +3693,7 @@ static fm_status DeleteFromEntryListForListener(fm10000_mtableInfo *info,
 
         }
 
-        entryListNode = entryListNode->next;
+        entryListNode = entryListNode->nextPtr;
     }
 
     /***************************************************
@@ -4064,7 +4090,7 @@ static fm_status MTableDeleteListener(fm_int    sw,
     FM_LOG_DEBUG(FM_LOG_CAT_MULTICAST,
                  "For dest table index %" FM_FORMAT_64 "u, "
                  "multicast lenTable index %u, "
-                 "multicast vlan index %u mcastMask 0x%04x%08x\n ",
+                 "multicast vlan index %u mcastMask 0x%04x%08x\n",
                  (fm_uint64) mcastIndex,
                  lenTableIdx,
                  finalVlanIndex,
@@ -5014,7 +5040,7 @@ fm_status fm10000MTableUpdateListenerState(fm_int sw,
          * (port, stID) pair.
          **************************************************/
 
-        key = ((physPort << 12) | vlan);
+        key = ((physPort << LISTENER_VLAN_SIZE) | vlan);
 
         err = fmTreeFind(&info->entryList,
                          key,
@@ -5030,7 +5056,7 @@ fm_status fm10000MTableUpdateListenerState(fm_int sw,
             continue;
         }
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MULTICAST, err);
-        
+
         fmTreeIterInit(&treeIter, dglortTree);
 
         while ((err = fmTreeIterNext(&treeIter,
@@ -5065,7 +5091,7 @@ fm_status fm10000MTableUpdateListenerState(fm_int sw,
                 lenTableIndex  = entry->lenTableIndex;
                 repliGroup     = entry->repliGroup;
                 mcastGroup     = entry->mcastGroup;
-                
+
                 /* get the multicast group info */
                 err = fmTreeFind(&switchPtr->mcastPortTree,
                                  mcastGroup,
@@ -5077,7 +5103,7 @@ fm_status fm10000MTableUpdateListenerState(fm_int sw,
                        (mcastGroupInfo->bypassEgressSTPCheck) ) )
                 {
                     /* save next node to continue from */
-                    nextNode = entryListNode->next;
+                    nextNode = entryListNode->nextPtr;
 
                     err = fmMapPhysicalPortToLogical(switchPtr, physPort, &listener.port);
                     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MULTICAST, err);
@@ -5124,7 +5150,7 @@ fm_status fm10000MTableUpdateListenerState(fm_int sw,
                           (mcastGroupInfo->bypassEgressSTPCheck == 0) )
                 {
                     /* save next node to continue from */
-                    nextNode = entryListNode->next;
+                    nextNode = entryListNode->nextPtr;
                     
                     err = MTableDeleteListener(sw,
                                                mcastGroup,
@@ -5155,7 +5181,7 @@ fm_status fm10000MTableUpdateListenerState(fm_int sw,
                 }
                 else
                 {
-                    entryListNode = entryListNode->next;
+                    entryListNode = entryListNode->nextPtr;
                 }
 
             }   /* end for (entryListNode = entryList->head ; entryListNode ; ) */
@@ -5563,7 +5589,9 @@ fm_status fm10000DbgDumpMulticastVlanTable(fm_int sw)
         {
             if (entryList->head)
             {
-                FM_LOG_PRINT("Port %lld, Vlan %lld:\n    ", (key >> 12), (key & 0xfff));
+                FM_LOG_PRINT("Port %lld, Vlan %lld:\n    ",
+                             (key >> LISTENER_VLAN_SIZE),
+                             (key & LISTENER_VLAN_MASK));
                 
                 for (entryListNode = entryList->head ; entryListNode ; )
                 {
@@ -5575,7 +5603,7 @@ fm_status fm10000DbgDumpMulticastVlanTable(fm_int sw)
                                  entry->repliGroup,
                                  entry->mcastGroup);
                     
-                    entryListNode = entryListNode->next;
+                    entryListNode = entryListNode->nextPtr;
                 }
                 
                 FM_LOG_PRINT("\n");
@@ -5583,8 +5611,8 @@ fm_status fm10000DbgDumpMulticastVlanTable(fm_int sw)
             else
             {
                 FM_LOG_PRINT("Port %lld, Vlan %lld found without any entryList\n", 
-                             key >> 12,
-                             key & 0xfff);
+                             key >> LISTENER_VLAN_SIZE,
+                             key & LISTENER_VLAN_MASK);
             }
         }
     }
@@ -5612,7 +5640,7 @@ fm_status fm10000DbgDumpMulticastVlanTable(fm_int sw)
                              entry->repliGroup,
                              entry->mcastGroup);
 
-                entryListPerLenIndexNode = entryListPerLenIndexNode->next;
+                entryListPerLenIndexNode = entryListPerLenIndexNode->nextPtr;
             }
 
             FM_LOG_PRINT("\n");

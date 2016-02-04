@@ -84,6 +84,12 @@
 #define FM10000_SERDES_CONFIG_DELAY            20000
 
 
+#define FM10000_SERDES_ERROR_POWERDOWN_DELAY    200
+
+
+#define FM10000_SERDES_ERROR_POWERUP_DELAY      500000
+
+
 #define FM10000_SERDES_PLL_CAL_CNT_THRESHOLD    200
 
 
@@ -129,7 +135,7 @@
 
 
 
-#define FM10000_SERDES_DFE_STOP_TUNING_TIMEOUT  200000
+#define FM10000_SERDES_DFE_STOP_TUNING_TIMEOUT  5000
 
 
 #define FM10000_SERDES_DFE_DFAULT_DEBOUNCE_TIME 100
@@ -183,10 +189,10 @@
 #define FM10000_SERDES_KR_WAIT_SIGNAL_OK_MAX_CYCLES     500
 
 
-#define MF10000_SERDES_INTR_THROTLE_MAX_INC         4
-#define MF10000_SERDES_INTR_THROTLE_COUNT_MAX       32
-#define MF10000_SERDES_INTR_THROTLE_THRESH_HI       20
-#define MF10000_SERDES_INTR_THROTLE_THRESH_LO       10
+#define FM10000_SERDES_INTR_THROTTLE_MAX_INC        4
+#define FM10000_SERDES_INTR_THROTTLE_COUNT_MAX      32
+#define FM10000_SERDES_INTR_THROTTLE_THRESH_HI      20
+#define FM10000_SERDES_INTR_THROTTLE_THRESH_LO      10
 
 
 
@@ -471,7 +477,7 @@ typedef enum
 
 
 
-#define FM10000_SERDES_SM_HISTORY_SIZE      16
+#define FM10000_SERDES_SM_HISTORY_SIZE      24
 #define FM10000_SERDES_SM_RECORD_SIZE       sizeof(int)
 
 #define FM10000_SERDES_DFE_SM_HISTORY_SIZE  16
@@ -544,6 +550,10 @@ struct _fm10000_serdes
 
     fm_status                       (*SerdesGetEyeDiagram)(fm_int sw, fm_int serdes, fm_eyeDiagramSample *pSampleTable);
 
+    fm_status                       (*SerdesReadExt)(fm_int sw,fm_int serdes, fm_uint regAddr, fm_uint32 *pValue);
+
+    fm_status                       (*SbusReadExt)(fm_int sw, fm_bool eplRing, fm_uint sbusAddr,fm_uint sbusReg, fm_uint32 *pValue);
+
 
 
 
@@ -581,6 +591,10 @@ struct _fm10000_serdes
     fm_status                       (*dbgSetLoopback)(fm_int sw, fm_int serdes, fm_text loopbackStr);
 
     fm_status                       (*dbgInjectErrors)(fm_int sw, fm_int serdes, fm10000SerdesSelect serdesSel, fm_uint numErrors);
+
+    fm_status                       (*dbgSerDesRegInjectError)(fm_int sw, fm_int serDes, fm_int regAddr, fm_uint32 value);
+
+    fm_status                       (*dbgSbmRegInjectError)(fm_int sw, fm_int regAddr, fm_uint32 value);
 
     fm_status                       (*dbgReadSbusRegister)(fm_int sw, fm_int serdes, fm_int devRegId, fm_uint32 *pValue);
 
@@ -966,6 +980,9 @@ struct  _fm10000_lane
     fm_timerHandle              timerHandle;
 
 
+    fm_timerHandle              timerHandleErrorValidation;
+
+
     fm_uint32                   serdesInterruptMask;
 
 
@@ -1053,6 +1070,24 @@ struct  _fm10000_lane
     fm10000SerdesRxTerm         rxTermination;
 
 
+    fm_bool                     serdesErrorActionPending;
+
+
+    fm_bool                     sbmErrorActionPending;
+
+
+    fm_bool                     serdesErrorActionInprog;
+
+
+    fm_bool                     sbmErrorActionInprog;
+
+
+    fm_bool                     powerDownPending;
+
+
+    fm_bool                     powerUpPending;
+
+
 
     void                       *pEyeDiagExt;
 
@@ -1070,6 +1105,25 @@ struct  _fm10000_lane
 
 
     fm_uint32                   serdesRestoredCnt;
+
+
+    fm_uint32                   serdesUErrValidateCnt;
+
+
+    fm_uint32                   serdesUErrActionCnt;
+
+
+    fm_uint32                   sbmUErrValidateCnt;
+
+
+    fm_uint32                   sbmUErrActionCnt;
+
+
+    fm_uint32                   rsrvd1;
+
+
+    fm_uint32                   rsrvd2;
+
 };
 
 fm_status fm10000SerdesInitMappingTable(fm_int sw);
@@ -1113,6 +1167,8 @@ fm_status fm10000SerdesSpicoWrOnlyInt(fm_int      sw,
                                       fm_int      serdes,
                                       fm_uint     intNum,
                                       fm_uint32   param);
+fm_status fm10000GetSbmAssocSerDes(fm_int  sw,
+                                   fm_int *pSerDes);
 fm_status fm10000SbmSpicoInt(fm_int         sw,
                              fm_serdesRing  ring,
                              fm_int         sbusAddr,
@@ -1157,13 +1213,19 @@ fm_status fm10000SwapImageDoCrc(fm_int          sw,
                                 fm_int          swapCrcCode);
 fm_status fm10000SerdesResetSpico(fm_int sw,
                                   fm_int serDes);
-fm_status fm10000SerdesSpicoSetup(fm_int sw,
-                                  fm_int serDes);
+fm_status fm10000SerdesSpicoSetup(fm_int  sw,
+                                  fm_int  serDes,
+                                  fm_bool softReset,
+                                  fm_bool forceUpload);
+fm_status fm10000SmbSpicoSetup(fm_int  sw, fm_bool forceUpload);
 fm_status fm10000SerdesSpicoSaveImageParam(const fm_uint16 *pRomImg,
-                                           fm_int           numWords);
-fm_status fm10000SerdesSpicoSaveImageParamV2(const fm_uint16 *pRomImg,
-                                             fm_int           numWords,
-                                             fm_uint32        serdesFwVersionBuildId);
+                                           fm_int           numWords,
+                                           fm_uint32        serdesFwVersionBuildId);
+fm_status fm10000SbmSpicoSaveImageParam(const fm_uint16 *pRomImg,
+                                        fm_int           numWords,
+                                        const fm_uint16 *pSwapImg,
+                                        fm_int           swapNumWords,
+                                        fm_uint32        sbmFwVersionBuildId);
 fm_status fm10000SerdesCheckId(fm_int   sw,
                                fm_int   serDes,
                                fm_bool *pValidId);
@@ -1373,6 +1435,13 @@ fm_status fm10000DbgSerdesInjectErrors(fm_int sw,
                                        fm_int serdes,
                                        fm_int serdesSel,
                                        fm_uint numErrors);
+fm_status fm10000DbgSerdesRegisterInjectError(fm_int    sw,
+                                              fm_int    serDes,
+                                              fm_int    regAddr,
+                                              fm_uint32 value);
+fm_status fm10000DbgSbmRegisterInjectError(fm_int    sw,
+                                           fm_int    regAddr,
+                                           fm_uint32 value);
 fm_status fm10000DbgReadSBusRegister(fm_int     sw,
                                      fm_int     sbusDevID,
                                      fm_int     devRegID,
@@ -1483,6 +1552,15 @@ fm_status fm10000SerdesGetEyeHeight(fm_int  sw,
                                     fm_int  serDes,
                                     fm_int *pEyeScore,
                                     fm_int *pHeightmV);
+fm_status fm10000SerdesReadExt(fm_int     sw,
+                               fm_int     serdes,
+                               fm_uint    regAddr,
+                               fm_uint32 *pValue);
+fm_status fm10000SbusReadExt(fm_int     sw,
+                             fm_bool    eplRing,
+                             fm_uint    sbusAddr,
+                             fm_uint    sbusReg,
+                             fm_uint32 *pValue);
 fm_status fm10000SerdesGetEyeScore(fm_int     sw,
                                    fm_int     serDes,
                                    fm_uint32 *pEyeScore);

@@ -5,7 +5,7 @@
  * Creation Date:   December 13, 2013
  * Description:     FM10000 QoS API functions
  *
- * Copyright (c) 2013 - 2015, Intel Corporation
+ * Copyright (c) 2013 - 2016, Intel Corporation
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -49,6 +49,9 @@
 
 /* The maximum index of  traffic class - based on a platform define */
 #define FM10000_QOS_MAX_TC       (FM_MAX_TRAFFIC_CLASSES - 1)
+
+/* The minimum index of  traffic class */
+#define FM10000_QOS_MIN_TC       0
 
 /* The maximum index of  DSCP priorities -  based on platform define */
 #define FM10000_QOS_MAX_DSCP     (FM_MAX_DSCP_PRIORITIES - 1)
@@ -104,6 +107,9 @@
 #define FM10000_QOS_SCHED_IFGPENALTY_MAX_VAL            255
 #define FM10000_QOS_SHARED_SOFT_DROP_WM_JITTER_MAX_VAL  7
 #define FM10000_QOS_SWITCH_IFG_PENALTY_MAX_VAL          0xFF
+
+#define FM10000_QOS_QUEUE_DRR_Q_UNIT                    167772
+
 
 /***************************************************************************/
 /* Convert from bytes to segments.
@@ -518,6 +524,20 @@ static fm_status ESchedGroupBuildActiveConfigDataStruct(fm_int  sw,
 
 static fm_status CheckGlobalWm(fm_int    sw,
                                fm_uint32 globalWm);
+
+static fm_status ESchedInit(fm_int sw,
+                            fm_int physPort,
+                            fm_bool qosQueueEnabled);
+
+static fm_status EschedQosQueueConfig(fm_int sw,
+                                      fm_int physPort,
+                                      fm_int attr,
+                                      fm_qosQueueParam *param);
+
+static fm_status TxLimiterRegConfig(fm_int sw,
+                                    fm_int physPort,
+                                    fm_int sg,
+                                    fm_uint64 bw);
 
 /*****************************************************************************
  * Local Functions
@@ -1721,7 +1741,6 @@ static fm_status GetWmParamsLossless(fm_int         sw,
 
     /* API attributes related variable */
     fm_int                  desiredPauseBufferBytes;
-    fm_uint32               desiredTxTcHogBytes;
 
     /* Variables to temporarily store calculations */
     fm_uint32               segLimit;
@@ -1740,8 +1759,6 @@ static fm_status GetWmParamsLossless(fm_int         sw,
 
     /* Get API attributes */
     desiredPauseBufferBytes = GET_FM10000_PROPERTY()->cmPauseBufferBytes;
-
-    desiredTxTcHogBytes = GET_FM10000_PROPERTY()->cmTxTcHogBytes;
 
     /* Get bitmask of ouase enabled for lossless smp */
     err = fm10000GetSMPPauseState(sw, smpPauseEn);
@@ -1913,9 +1930,11 @@ static fm_status GetWmParamsLossless(fm_int         sw,
     FM10000_QOS_LOG_INFO("CM_RX_SMP_HOG_WM", segLimit);
 
     /*************************************************************************/
-    /* CM_TX_TC_HOG_WM */
-    segLimit = desiredTxTcHogBytes / BYTES_PER_SMP_SEG;
+    /* Set registers that aren't specified, disabled */
 
+    /*************************************************************************/
+    /* CM_TX_TC_HOG_WM */
+  
     FM10000_QOS_LOG_INFO("CM_TX_TC_HOG_WM", segLimit);
 
     for (cpi = 0 ; cpi < switchPtr->numCardinalPorts ; cpi++)
@@ -1928,14 +1947,9 @@ static fm_status GetWmParamsLossless(fm_int         sw,
             FM_SET_FIELD(wpm->cmTxTcHogWm[physPort][i],
                     FM10000_CM_TX_TC_HOG_WM,
                     watermark, 
-                    segLimit);
+                    0x7fff);
         }
     }
-
-    /*************************************************************************/
-    /* Set registers that aren't specified, disabled */
-
-    /*************************************************************************/
 
     /*************************************************************************/
     /* CM_RXMP_SOFT_DROP_WM */
@@ -2047,6 +2061,9 @@ static fm_status GetWmParamsLossyLossless(fm_int            sw,
     fm_uint32               sizeInBytes;
     fm_uint32               globalThisSmpLossy;
     fm_uint32               globalThisSmpLossless;
+    fm_uint32               swPriIdx;
+    fm_uint32               tcIdx;
+    fm_uint32               targetSmp;
     fm_status               err;
 
     FM_LOG_ENTRY(FM_LOG_CAT_QOS, 
@@ -2120,84 +2137,80 @@ static fm_status GetWmParamsLossyLossless(fm_int            sw,
     if (defaultMaps)
     {
         /* Set default mapping if specified */
-        err = SetDefaultMaps(FM10000_QOS_SMP_LOSSLESS, wpm);
+        err = SetDefaultMaps(FM10000_QOS_SMP_LOSSY, wpm);
     }
-    else //    if (defaultMaps)
+    else
     {
-        /* Non default mapping specifed,need to contine merge configuration */
-        fm_uint32 swPriIdx;
-        fm_uint32 tcIdx;
-        fm_uint32 targetSmp;
-
         /* Read mapping from registers - store results in wpm */
         err = ReadCmRegMaps(sw, wpm);
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_QOS, err);
+    }
 
-        /* Go through settings indexed by switch priority */
-        for (swPriIdx = 0 ; swPriIdx <= FM10000_QOS_MAX_SW_PRI ; swPriIdx++)
+    /* Continue configuration merge */
+    /* Go through settings indexed by switch priority */
+    for (swPriIdx = 0 ; swPriIdx <= FM10000_QOS_MAX_SW_PRI ; swPriIdx++)
+    {
+        fm_uint32 trafficClass;
+
+        /* Get traffic class */
+        trafficClass = 
+            (fm_uint32)FM_GET_UNNAMED_FIELD64(wpm->cmSwPriTcMap,
+                      (swPriIdx * FM10000_CM_APPLY_SWITCH_PRI_TO_TC_s_tc),
+                      FM10000_CM_APPLY_SWITCH_PRI_TO_TC_s_tc);
+
+        /* Get target SMP */
+        targetSmp = FM_GET_UNNAMED_FIELD(wpm->cmTcSmpMap, trafficClass, 1);
+
+        /* Get lossless settings if SMP mapped to it */
+        if (targetSmp == FM10000_QOS_SMP_LOSSLESS)
         {
-            fm_uint32 trafficClass;
+            /* CM_SHARED_WM */
+            wpm->cmSharedWm[swPriIdx] = 
+                wpmLossless->cmSharedWm[swPriIdx];
 
-            /* Get traffic class */
-            trafficClass = 
-                (fm_uint32)FM_GET_UNNAMED_FIELD64(wpm->cmSwPriTcMap,
-                          (swPriIdx * FM10000_CM_APPLY_SWITCH_PRI_TO_TC_s_tc),
-                          FM10000_CM_APPLY_SWITCH_PRI_TO_TC_s_tc);
+            /* CM_SOFTDROP_WM */
+            wpm->cmSoftDropWm[swPriIdx] = 
+                wpmLossless->cmSoftDropWm[swPriIdx];
 
-            /* Get target SMP */
-            targetSmp = FM_GET_UNNAMED_FIELD(wpm->cmTcSmpMap, trafficClass, 1);
+            /* CM_SOFTDROP_CFG */
+            wpm->cmApplySoftDropCfg[swPriIdx] = 
+                wpmLossless->cmSoftDropWm[swPriIdx];
 
-            /* Get lossless settings if SMP mapped to it */
-            if (targetSmp == FM10000_QOS_SMP_LOSSLESS)
+            for (cpi = 0 ; cpi < switchPtr->numCardinalPorts ; cpi++)
             {
-                /* CM_SHARED_WM */
-                wpm->cmSharedWm[swPriIdx] = 
-                    wpmLossless->cmSharedWm[swPriIdx];
+                err = fmMapCardinalPortInternal(switchPtr, cpi, &logPort, 
+                                                &physPort);
+                FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_QOS, err);
 
-                /* CM_SOFTDROP_WM */
-                wpm->cmSoftDropWm[swPriIdx] = 
-                    wpmLossless->cmSoftDropWm[swPriIdx];
-
-                /* CM_SOFTDROP_CFG */
-                wpm->cmApplySoftDropCfg[swPriIdx] = 
-                    wpmLossless->cmSoftDropWm[swPriIdx];
-
-                for (cpi = 0 ; cpi < switchPtr->numCardinalPorts ; cpi++)
-                {
-                    err = fmMapCardinalPortInternal(switchPtr, cpi, &logPort, 
-                                                    &physPort);
-                    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_QOS, err);
-
-                    /* CM_APPLY_TX_SOFTDROP_CFG */
-                    wpm->cmApplyTxSoftDropCfg[physPort][swPriIdx] = 
-                        wpmLossless->cmApplyTxSoftDropCfg[physPort][swPriIdx];
-                }
+                /* CM_APPLY_TX_SOFTDROP_CFG */
+                wpm->cmApplyTxSoftDropCfg[physPort][swPriIdx] = 
+                    wpmLossless->cmApplyTxSoftDropCfg[physPort][swPriIdx];
             }
         }
+    }
 
-        /* Go through settings indexed by traffic classes */
-        for (tcIdx = 0 ; tcIdx <= FM10000_QOS_MAX_TC ; tcIdx++)
+    /* Go through settings indexed by traffic classes */
+    for (tcIdx = 0 ; tcIdx <= FM10000_QOS_MAX_TC ; tcIdx++)
+    {
+        /* Get target SMP */
+        targetSmp = FM_GET_UNNAMED_FIELD(wpm->cmTcSmpMap, tcIdx, 1);
+
+        /* Get lossless settings if SMP mapped to it */
+        if (targetSmp == FM10000_QOS_SMP_LOSSLESS)
         {
-            /* Get target SMP */
-            targetSmp = FM_GET_UNNAMED_FIELD(wpm->cmTcSmpMap, tcIdx, 1);
-
-            /* Get lossless settings if SMP mapped to it */
-            if (targetSmp == FM10000_QOS_SMP_LOSSLESS)
+            for (cpi = 0 ; cpi < switchPtr->numCardinalPorts ; cpi++)
             {
-                for (cpi = 0 ; cpi < switchPtr->numCardinalPorts ; cpi++)
-                {
-                    err = fmMapCardinalPortInternal(switchPtr, cpi, &logPort, 
-                                                    &physPort);
-                    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_QOS, err);
-        
-                    /* CM_TX_TC_HOG_WM */
-                    wpm->cmTxTcHogWm[physPort][tcIdx] = 
-                        wpmLossless->cmTxTcHogWm[physPort][tcIdx];
-        
-                    /* CM_TX_TC_PRIVATE_WM */
-                    wpm->cmTxTcPrivateWm[physPort][tcIdx] = 
-                        wpmLossless->cmTxTcPrivateWm[physPort][tcIdx];
-                }
+                err = fmMapCardinalPortInternal(switchPtr, cpi, &logPort, 
+                                                &physPort);
+                FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_QOS, err);
+    
+                /* CM_TX_TC_HOG_WM */
+                wpm->cmTxTcHogWm[physPort][tcIdx] = 
+                    wpmLossless->cmTxTcHogWm[physPort][tcIdx];
+    
+                /* CM_TX_TC_PRIVATE_WM */
+                wpm->cmTxTcPrivateWm[physPort][tcIdx] = 
+                    wpmLossless->cmTxTcPrivateWm[physPort][tcIdx];
             }
         }
     }
@@ -4132,6 +4145,737 @@ static fm_status ESchedGroupBuildActiveConfigDataStruct(fm_int  sw,
 
 
 /*****************************************************************************/
+/** ESchedInit
+ * \ingroup intQos
+ *
+ * \desc            Initialize egress scheduler to the init values specifc 
+ *                  for scheduler configuration methods.
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \param[in]       port is logical port whose egress scheduler configuration to
+ *                  be verified
+ *
+ * \param[in]       qosQueueEnabled indicates if qosQueue configuration methods 
+ *                  are enabled.
+ *
+ * \return          FM_OK if successful.
+ *
+ *****************************************************************************/
+static fm_status ESchedInit(fm_int sw,
+                            fm_int port,
+                            fm_bool qosQueueEnabled)
+{
+    fm_switch *    switchPtr;
+    fm10000_switch *switchExt;
+    fm10000_eschedConfigPerPort *eschedPtr;
+    fm10000_port*  portExt;
+    fm_uint32      regValue;
+    fm_int         i;
+    fm_int         qid;
+    fm_int         physPort; 
+    fm_status      err            = FM_OK;
+    fm_bool        regLockTaken   = FALSE;
+    
+    FM_LOG_ENTRY( FM_LOG_CAT_QOS,
+                  "sw=%d, physPort=%d, qosQueueEnabled=%d\n",
+                  sw, 
+                  port,
+                  qosQueueEnabled);
+
+    /* Get switch pointer*/
+    switchPtr = GET_SWITCH_PTR(sw);
+    /* Get switch extension */
+    switchExt = GET_SWITCH_EXT(sw);
+
+    err = fmMapLogicalPortToPhysical(switchPtr, port, &physPort);
+    if (err != FM_OK)
+    {
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_QOS, err);
+    }
+
+    FM_FLAG_TAKE_REG_LOCK(sw);
+
+    /* Shaper - disable shaping for all groups */
+    for (i = 0 ; i < FM_MAX_TRAFFIC_CLASSES ; i++)
+    {
+        err = TxLimiterRegConfig(sw,
+                                 physPort,
+                                 i,
+                                 FM_QOS_SHAPING_GROUP_RATE_DEFAULT);
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_QOS, err);
+    }
+    
+    /* FM10000_SCHED_ESCHED_CFG_1*/
+    regValue = 0;
+    if (qosQueueEnabled)
+    {
+        FM_SET_FIELD(regValue,
+                     FM10000_SCHED_ESCHED_CFG_1,
+                     PrioritySetBoundary,
+                     0x0);
+    }
+    else
+    {
+        FM_SET_FIELD(regValue,
+                     FM10000_SCHED_ESCHED_CFG_1,
+                     PrioritySetBoundary,
+                     0xFF);
+    }
+    
+    FM_SET_FIELD(regValue,
+                 FM10000_SCHED_ESCHED_CFG_1,
+                 TcGroupBoundary,
+                 0xFF);
+
+    err = switchPtr->WriteUINT32(sw, 
+                                 FM10000_SCHED_ESCHED_CFG_1(physPort), 
+                                 regValue); 
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_QOS, err);
+
+    /* FM10000_SCHED_ESCHED_CFG_2 */
+    regValue = 0;
+    if (qosQueueEnabled)
+    {
+        FM_SET_FIELD(regValue,
+                     FM10000_SCHED_ESCHED_CFG_2,
+                     StrictPriority,
+                     0x0);
+
+        FM_SET_FIELD(regValue,
+                     FM10000_SCHED_ESCHED_CFG_2,
+                     TcEnable,
+                     0x0);
+    }
+    else
+    {
+        FM_SET_FIELD(regValue,
+                     FM10000_SCHED_ESCHED_CFG_2,
+                     StrictPriority,
+                     0xFF);
+
+        FM_SET_FIELD(regValue,
+                     FM10000_SCHED_ESCHED_CFG_2,
+                     TcEnable,
+                     0xFF);
+    }
+    
+    err = switchPtr->WriteUINT32(sw, 
+                                 FM10000_SCHED_ESCHED_CFG_2(physPort), 
+                                 regValue); 
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_QOS, err);
+
+    /* FM10000_SCHED_MONITOR_DRR_CFG_PERPORT */
+    regValue = 0;
+    FM_SET_FIELD(regValue,
+                 FM10000_SCHED_MONITOR_DRR_CFG_PERPORT,
+                 groupBoundary,
+                 0xFF);
+    if (qosQueueEnabled)
+    {
+        FM_SET_FIELD(regValue,
+                     FM10000_SCHED_MONITOR_DRR_CFG_PERPORT,
+                     zeroLength,
+                     0x0);
+    }
+    else
+    {
+        FM_SET_FIELD(regValue,
+                     FM10000_SCHED_MONITOR_DRR_CFG_PERPORT,
+                     zeroLength,
+                     0xFF);
+    }
+    err = switchPtr->WriteUINT32(sw, 
+                                FM10000_SCHED_MONITOR_DRR_CFG_PERPORT(physPort),
+                                regValue); 
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_QOS, err);
+
+    /* FM10000_SCHED_MONITOR_DRR_Q_PERQ */
+    regValue = 0;
+    qid = physPort * FM_MAX_TRAFFIC_CLASSES;
+
+    for (i = 0 ; i < FM_MAX_TRAFFIC_CLASSES ; i++)
+    {
+        FM_SET_FIELD(regValue,
+                     FM10000_SCHED_MONITOR_DRR_Q_PERQ,
+                     q,
+                     0x0);
+
+        err = switchPtr->WriteUINT32(sw, 
+                                     FM10000_SCHED_MONITOR_DRR_Q_PERQ(qid + i), 
+                                     regValue); 
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_QOS, err);
+    }
+
+    FM_FLAG_DROP_REG_LOCK(sw);
+
+    /* Update configuration method flag*/
+    eschedPtr = &( switchExt->eschedConfig[ physPort ] );
+    eschedPtr->qosQueueEnabled = qosQueueEnabled;
+
+    if ( qosQueueEnabled )
+    {
+        /* Get port extension */
+        portExt = GET_PORT_EXT(sw, port);
+        /* Initialize queue parametrs */        
+        eschedPtr->qosQueuesConfig.freeQoSQueueBw = (fm_uint16)portExt->speed;
+        eschedPtr->qosQueuesConfig.numQoSQueues = 0;
+        eschedPtr->qosQueuesConfig.tcMask = 0;
+        for (i = 0 ; i < FM_MAX_TRAFFIC_CLASSES ; i++)
+        {
+            eschedPtr->qosQueuesConfig.qosQueuesParams[i].minBw = 0;
+            eschedPtr->qosQueuesConfig.qosQueuesParams[i].tc = -1;
+            eschedPtr->qosQueuesConfig.qosQueuesParams[i].queueId = -1;
+        }
+    }
+    else
+    {
+        err =  ESchedGroupRetrieveActiveConfig(sw,
+                                               physPort);
+    }
+
+ABORT:
+    if (regLockTaken)
+    {
+        FM_FLAG_DROP_REG_LOCK(sw);
+    }
+    
+    FM_LOG_EXIT(FM_LOG_CAT_QOS, err)
+
+}   /* end ESchedInit */
+
+
+
+
+/*****************************************************************************/
+/** EschedQosQueueConfig
+ * \ingroup intQos
+ *
+ * \desc            Configure qos queue 
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \param[in]       physPort is port on which queue will be configured
+ *
+ * \param[in]       attr is the attribute to configure
+ *
+ * \param[in]       param points to a ''fm_qosQueueParam'' structure containing
+ *                  parameters of the requested queue.
+ *
+ * \return          FM_OK if successful.
+ *
+ *****************************************************************************/
+static fm_status EschedQosQueueConfig(fm_int sw,
+                                      fm_int physPort,
+                                      fm_int attr,
+                                      fm_qosQueueParam *param)
+{
+    fm_switch *switchPtr;
+    fm10000_switch  *switchExt;
+    fm10000_port *  portExt;
+    fm10000_eschedConfigPerPort *eschedPtr;
+    fm_uint32 regValue;
+    fm_int logPort;
+    fm_uint32 minBw;
+    fm_uint64 maxBw;
+    fm_int qid;
+    fm_status  err;
+    fm_bool regLockTaken;
+
+    FM_LOG_ENTRY(FM_LOG_CAT_QOS,
+                 "sw=%d physPort=%d attr=%d param=%p\n",
+                 sw,
+                 physPort,
+                 attr,
+                 (void*)param);
+
+    /* Initialize varables */
+    err = FM_OK;
+    regLockTaken = FALSE;
+
+    /* Get switch pointer*/
+    switchPtr = GET_SWITCH_PTR(sw);
+
+    /* Get switch extension */
+    switchExt = GET_SWITCH_EXT(sw);
+    eschedPtr = &( switchExt->eschedConfig[ physPort ] );
+
+    if (param == NULL)
+    {
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_QOS, FM_ERR_INVALID_ARGUMENT);
+    }
+
+    if (eschedPtr == NULL)
+    {
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_QOS, FM_ERR_INVALID_ARGUMENT);
+    }
+
+    /* Set scheduler bw (percentage of port rate ) */
+    err = fmMapPhysicalPortToLogical(switchPtr, physPort, &logPort);
+    if (err != FM_OK)
+    {
+        FM_LOG_EXIT(FM_LOG_CAT_QOS, err);
+    }
+
+    portExt = GET_PORT_EXT(sw, logPort);
+    minBw = (param->minBw * 100) / portExt->speed;
+
+    /* Set shaper bw */
+    if (param->maxBw == FM_QOS_QUEUE_MAX_BW_DEFAULT)
+    {
+        maxBw = FM_QOS_SHAPING_GROUP_RATE_DEFAULT;
+    }
+    else
+    {
+        maxBw = 1e6 * (fm_uint64)(param->maxBw);
+    }
+
+    /* Get qid for scheduler configuration */
+    qid = param->tc + physPort * FM_MAX_TRAFFIC_CLASSES;
+    
+    FM_FLAG_TAKE_REG_LOCK(sw);
+
+    if (attr == FM10000_QOS_ADD_QUEUE) 
+    {
+        /* Config limiter */
+        err = TxLimiterRegConfig(sw,
+                                 physPort,
+                                 param->tc,
+                                 maxBw);
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_QOS, err);
+
+        /* Set egress scheduler weight */
+        regValue = 0;
+        FM_SET_FIELD(regValue,
+                     FM10000_SCHED_MONITOR_DRR_Q_PERQ,
+                     q,
+                     FM10000_QOS_QUEUE_DRR_Q_UNIT * minBw);
+
+        err = switchPtr->WriteUINT32(sw, 
+                                     FM10000_SCHED_MONITOR_DRR_Q_PERQ(qid), 
+                                     regValue); 
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_QOS, err);
+
+        err = switchPtr->ReadUINT32(sw, 
+                                    FM10000_SCHED_ESCHED_CFG_2(physPort), 
+                                    &regValue); 
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_QOS, err);
+
+        /* Set TC */
+        eschedPtr->qosQueuesConfig.tcMask |= (1<<param->tc);
+
+        FM_SET_FIELD(regValue,
+                     FM10000_SCHED_ESCHED_CFG_2,
+                     TcEnable,
+                     eschedPtr->qosQueuesConfig.tcMask);
+        
+        err = switchPtr->WriteUINT32(sw, 
+                                     FM10000_SCHED_ESCHED_CFG_2(physPort), 
+                                     regValue); 
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_QOS, err);
+
+        /* Set free bandwidth */
+        eschedPtr->qosQueuesConfig.freeQoSQueueBw -= param->minBw;
+        /* Set queue Id (starting from 0) */
+        param->queueId = eschedPtr->qosQueuesConfig.numQoSQueues;
+        /* Copy queue params */
+        FM_MEMCPY_S( &eschedPtr->qosQueuesConfig.qosQueuesParams[param->queueId],
+                     sizeof(fm_qosQueueParam),
+                     param,
+                     sizeof(fm_qosQueueParam) );
+        eschedPtr->qosQueuesConfig.numQoSQueues++;
+        
+    }
+    else if (attr == FM10000_QOS_SET_QUEUE_MIN_BW) 
+    {
+        /* Configure scheduler */
+        regValue = 0;
+        FM_SET_FIELD(regValue,
+                     FM10000_SCHED_MONITOR_DRR_Q_PERQ,
+                     q,
+                     FM10000_QOS_QUEUE_DRR_Q_UNIT * minBw);
+
+        err = switchPtr->WriteUINT32(sw, 
+                                     FM10000_SCHED_MONITOR_DRR_Q_PERQ(qid), 
+                                     regValue); 
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_QOS, err);
+
+        /* Update free bandwidth */
+        eschedPtr->qosQueuesConfig.freeQoSQueueBw += 
+           eschedPtr->qosQueuesConfig.qosQueuesParams[param->queueId].minBw;
+        eschedPtr->qosQueuesConfig.freeQoSQueueBw -= param->minBw;
+        /* Set queue Bw */
+        eschedPtr->qosQueuesConfig.qosQueuesParams[param->queueId].minBw = 
+                                                               param->minBw;
+        
+    }
+    else if (attr == FM10000_QOS_SET_QUEUE_MAX_BW) 
+    {
+        /* Configure limiter */
+        err = TxLimiterRegConfig(
+                  sw,
+                  physPort,
+                  eschedPtr->qosQueuesConfig.qosQueuesParams[param->queueId].tc,
+                  maxBw);
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_QOS, err);
+        /* Set queue Bw */
+        eschedPtr->qosQueuesConfig.qosQueuesParams[param->queueId].maxBw = 
+                                                               param->maxBw;
+    }
+    else if (attr == FM10000_QOS_SET_QUEUE_TRAFFIC_CLASS)
+    {
+        /* Configure-update limiter */    
+        err = TxLimiterRegConfig(
+              sw,
+              physPort,
+              param->tc,
+              (fm_uint64)(1e6 * eschedPtr->qosQueuesConfig.qosQueuesParams[param->queueId].maxBw));
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_QOS, err);
+
+        err = TxLimiterRegConfig(
+                 sw,
+                 physPort,
+                 eschedPtr->qosQueuesConfig.qosQueuesParams[param->queueId].tc,
+                 FM_QOS_SHAPING_GROUP_RATE_DEFAULT);
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_QOS, err);
+ 
+        /* Configure-update scheduler */
+        regValue = 0;
+        FM_SET_FIELD(regValue,
+                     FM10000_SCHED_MONITOR_DRR_Q_PERQ,
+                     q,
+                     FM10000_QOS_QUEUE_DRR_Q_UNIT * minBw);
+        err = switchPtr->WriteUINT32(sw, 
+                                     FM10000_SCHED_MONITOR_DRR_Q_PERQ(qid), 
+                                     regValue); 
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_QOS, err);
+
+        regValue = 0;
+        qid = eschedPtr->qosQueuesConfig.qosQueuesParams[param->queueId].tc + 
+              physPort * FM_MAX_TRAFFIC_CLASSES;
+        err = switchPtr->WriteUINT32(sw, 
+                                     FM10000_SCHED_MONITOR_DRR_Q_PERQ(qid), 
+                                     regValue); 
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_QOS, err);
+
+        err = switchPtr->ReadUINT32(sw, 
+                                    FM10000_SCHED_ESCHED_CFG_2(physPort), 
+                                    &regValue); 
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_QOS, err);
+
+        /* Update TC in use */
+        eschedPtr->qosQueuesConfig.tcMask |= (1<<param->tc);
+        eschedPtr->qosQueuesConfig.tcMask ^= 
+             (1<<eschedPtr->qosQueuesConfig.qosQueuesParams[param->queueId].tc);
+
+        FM_SET_FIELD(regValue,
+                     FM10000_SCHED_ESCHED_CFG_2,
+                     TcEnable,
+                     eschedPtr->qosQueuesConfig.tcMask);
+        
+        err = switchPtr->WriteUINT32(sw, 
+                                     FM10000_SCHED_ESCHED_CFG_2(physPort), 
+                                     regValue); 
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_QOS, err);
+
+        /* Update configuration: */
+      
+        /* Set new queue TC */
+        eschedPtr->qosQueuesConfig.qosQueuesParams[param->queueId].tc =
+                                                              param->tc;
+                                                              
+    }
+    else if (attr == FM10000_QOS_DEL_QUEUE)
+    {
+        /* Configure limiter */    
+        TxLimiterRegConfig(sw,
+                           physPort,
+                           param->tc,
+                           FM_QOS_SHAPING_GROUP_RATE_DEFAULT);
+
+        /* Configure scheduler */
+        regValue = 0;
+        err = switchPtr->WriteUINT32(sw, 
+                                     FM10000_SCHED_MONITOR_DRR_Q_PERQ(qid), 
+                                     regValue); 
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_QOS, err);
+
+        err = switchPtr->ReadUINT32(sw, 
+                                    FM10000_SCHED_ESCHED_CFG_2(physPort), 
+                                    &regValue); 
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_QOS, err);
+
+        /* Update TC */
+        eschedPtr->qosQueuesConfig.tcMask ^= (1<<param->tc);
+
+        FM_SET_FIELD(regValue,
+                     FM10000_SCHED_ESCHED_CFG_2,
+                     TcEnable,
+                     eschedPtr->qosQueuesConfig.tcMask);
+        
+        err = switchPtr->WriteUINT32(sw, 
+                                     FM10000_SCHED_ESCHED_CFG_2(physPort), 
+                                     regValue); 
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_QOS, err);
+
+        /* Update free bandwidth */
+        eschedPtr->qosQueuesConfig.freeQoSQueueBw += param->minBw;
+        /* Update numQoSQueues */
+        eschedPtr->qosQueuesConfig.numQoSQueues--;
+        /* Initialize  queue */
+        eschedPtr->qosQueuesConfig.qosQueuesParams[param->queueId].minBw = 
+                                                    FM_QOS_QUEUE_MIN_BW_DEFAULT;
+        eschedPtr->qosQueuesConfig.qosQueuesParams[param->queueId].maxBw = 
+                                                    FM_QOS_QUEUE_MAX_BW_DEFAULT;
+        eschedPtr->qosQueuesConfig.qosQueuesParams[param->queueId].queueId = 
+                                                    FM_QOS_QUEUE_ID_DEFAULT;
+        eschedPtr->qosQueuesConfig.qosQueuesParams[param->queueId].tc = 
+                                                    FM_QOS_QUEUE_TC_DEFAULT;
+    }
+
+ABORT:
+    if (regLockTaken)
+    {
+        FM_FLAG_DROP_REG_LOCK(sw);
+    }
+    
+    FM_LOG_EXIT(FM_LOG_CAT_QOS, err)
+
+}
+
+
+
+
+/*****************************************************************************/
+/** EschedQosQueueParamVerify
+ * \ingroup intQos
+ *
+ * \desc            Verify new qos queue parameters
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \param[in]       port is logical port on which queue needs to be verified
+ *
+ * \param[in]       eschedPtr points to a structure containing scheduler 
+ *                  configuration.
+ *
+ * \param[in]       param points to a ''fm_qosQueueParam'' structure containing
+ *                  parameters to be verified.
+ *
+ * \return          FM_OK if successful.
+ *
+ *****************************************************************************/
+static fm_status EschedNewQosQueueParamVerify(
+                                         fm_int sw,
+                                         fm_int port,
+                                         fm10000_eschedConfigPerPort *eschedPtr,
+                                         fm_qosQueueParam *param)
+{
+    fm_status       err;
+    fm10000_port *  portExt;
+
+    FM_LOG_ENTRY(FM_LOG_CAT_QOS,
+                 "sw=%d port=%d param=%p\n",
+                 sw,
+                 port,
+                 (void*)param);
+
+    err = FM_OK;
+
+    /* Check input */
+    if (param == NULL)
+    {
+        err = FM_ERR_INVALID_VALUE;
+        FM_LOG_EXIT(FM_LOG_CAT_QOS, err)
+    }
+
+    /* Check TC */
+    if ( (param->tc < FM10000_QOS_MIN_TC) ||
+         (param->tc > FM10000_QOS_MAX_TC) )
+    {
+        FM_LOG_DEBUG(FM_LOG_CAT_QOS,
+                     "Incorrect TC (tc=%d) specified in QoS queue for port=%d\n",
+                     param->tc,
+                     port);
+                     
+        err = FM_ERR_INVALID_VALUE;
+        FM_LOG_EXIT(FM_LOG_CAT_QOS, err)
+    }
+
+    /* Verify Bw */
+    portExt = GET_PORT_EXT(sw, port);
+
+    if (param->minBw > portExt->speed)
+    {
+        FM_LOG_DEBUG(FM_LOG_CAT_QOS,
+                     "Incorrect minBw (%d) specified in QoS queue for port=%d\n",
+                     param->minBw,
+                     port);
+                     
+        err = FM_ERR_INVALID_VALUE;
+        FM_LOG_EXIT(FM_LOG_CAT_QOS, err)
+    }
+
+    if (param->maxBw != FM_QOS_QUEUE_MAX_BW_DEFAULT)
+    {
+        if ( (param->maxBw > portExt->speed) ||
+             (param->maxBw == 0 ) ||
+             (param->maxBw < param->minBw ) )
+        {
+            FM_LOG_DEBUG(FM_LOG_CAT_QOS,
+                         "Incorrect maxBw (%d) specified in QoS queue for port=%d\n",
+                         param->maxBw,
+                         port);
+                         
+            err = FM_ERR_INVALID_VALUE;
+            FM_LOG_EXIT(FM_LOG_CAT_QOS, err)
+        }
+    }
+
+    /* Return error when the mode incorrect */
+    if (!eschedPtr->qosQueueEnabled)
+    {
+        FM_LOG_DEBUG(FM_LOG_CAT_QOS,
+                     "QoS Queue mode is not enabled for port=%d\n",
+                     port);
+        err = FM_ERR_UNSUPPORTED;
+        FM_LOG_EXIT(FM_LOG_CAT_QOS, err)
+    }
+
+    /* Check if nof queue is max  */
+    if (eschedPtr->qosQueuesConfig.numQoSQueues >= FM10000_MAX_TRAFFIC_CLASS)
+    {
+        FM_LOG_DEBUG(FM_LOG_CAT_QOS,
+                     "Max QoS queues already created on port=%d\n",
+                     port);
+        err = FM_ERR_NO_FREE_RESOURCES;
+        FM_LOG_EXIT(FM_LOG_CAT_QOS, err)
+    }
+
+    /* Check if enough drr scheduler bandwidth on the port */
+    if (eschedPtr->qosQueuesConfig.freeQoSQueueBw < param->minBw)
+    {
+        FM_LOG_DEBUG(FM_LOG_CAT_QOS,
+                     "Not enough Bw left (%d) for new Qos queue Bw requested (%d) on port=%d\n",
+                     eschedPtr->qosQueuesConfig.freeQoSQueueBw,
+                     param->minBw,
+                     port);
+        err = FM_ERR_NO_FREE_RESOURCES;
+        FM_LOG_EXIT(FM_LOG_CAT_QOS, err)
+    }
+
+    /* Check if Traffic class are free */
+    if ( eschedPtr->qosQueuesConfig.tcMask & (1<<param->tc) )
+    {
+        FM_LOG_DEBUG(FM_LOG_CAT_QOS,
+                     "QoS queue with specified TC (%d) already exists on port=%d\n",
+                     param->tc,
+                     port);
+        err = FM_ERR_NO_FREE_RESOURCES;
+        FM_LOG_EXIT(FM_LOG_CAT_QOS, err)
+    }
+
+    FM_LOG_EXIT(FM_LOG_CAT_QOS, err)
+
+}   /* end EschedQosQueueParamVerify */
+
+
+
+
+/*****************************************************************************/
+/** TxLimiterRegConfig
+ * \ingroup intQos
+ *
+ * \desc            Configure TX Limiter, assuming register lock is taken. 
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \param[in]       physPort is port on which queue will be configured
+ *
+ * \param[in]       sg is the shaping group to configure
+ *
+ * \param[in]       bw is shaper bandwidth to configure given in bits per second
+ *
+ * \return          FM_OK if successful.
+ *
+ *****************************************************************************/
+static fm_status TxLimiterRegConfig(fm_int sw,
+                                    fm_int physPort,
+                                    fm_int sg,
+                                    fm_uint64 bw)
+{
+    fm_status err;
+    fm_uint32 regValue;
+    fm_uint32 val;
+    fm_switch *switchPtr;
+    fm_float  rate;
+    fm_float  fhMhz;
+
+    FM_LOG_ENTRY(FM_LOG_CAT_QOS,
+                 "sw=%d physPort=%d sg=%d bw=%lld\n",
+                 sw,
+                 physPort,
+                 sg,
+                 bw);
+
+    err = FM_OK;
+
+    /* Get switch pointer*/
+    switchPtr = GET_SWITCH_PTR(sw);
+
+    err = switchPtr->ReadUINT32(sw, 
+                                FM10000_TX_RATE_LIM_CFG(physPort, sg), 
+                                &regValue);    
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_QOS, err);    
+
+    if (bw == FM_QOS_SHAPING_GROUP_RATE_DEFAULT)    
+    {
+        /* Defaut - disable shaping */
+        FM_SET_FIELD(regValue,
+                     FM10000_TX_RATE_LIM_CFG,                     
+                     RateUnit,                      
+                     FM10000_QOS_SHAPING_GROUP_RATE_UNIT_MAX_VAL);        
+
+        FM_SET_FIELD(regValue,                      
+                     FM10000_TX_RATE_LIM_CFG,                     
+                     RateFrac,                      
+                     FM10000_QOS_SHAPING_GROUP_RATE_FRAC_MAX_VAL);    
+    }    
+    else    
+    {
+        /* Calculate rateUnit and rateFraction - assuming bw was validated */
+        err = fmComputeFHClockFreq(sw, &fhMhz);        
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_QOS, err);        
+        rate = (((bw >> 3) / (fhMhz * 1e6)) * 48);        
+        val = (fm_uint32) trunc(rate);        
+        FM_SET_FIELD(regValue, 
+                     FM10000_TX_RATE_LIM_CFG,                     
+                     RateUnit, 
+                     val);                     
+        rate -= trunc(rate);        
+        rate /= 1.0 / 256;        
+        val = (fm_uint32) round(rate);        
+        FM_SET_FIELD(regValue, 
+                     FM10000_TX_RATE_LIM_CFG,                     
+                     RateFrac, 
+                     val);    
+     }    
+
+     /* Write the register */    
+     err = switchPtr->WriteUINT32(sw, 
+                                  FM10000_TX_RATE_LIM_CFG(physPort, sg), 
+                                  regValue);    
+     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_QOS, err);
+
+ABORT:
+    FM_LOG_EXIT(FM_LOG_CAT_QOS, err)
+
+}
+
+
+
+
+/*****************************************************************************/
 /** CheckGlobalWm
  * \ingroup intQos
  *
@@ -4827,6 +5571,11 @@ fm_status fm10000SetPortQOS(fm_int sw,
             break;
 
         case FM_QOS_APPLY_NEW_SCHED:
+            /* Verify mode */
+            if (switchExt->eschedConfig[physPort].qosQueueEnabled)
+            {
+                FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_QOS, FM_ERR_UNSUPPORTED);
+            }
             /* Verify new scheduller configuration */
             err = ESchedGroupVerifyConfig(sw, physPort);
             FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_QOS, err);
@@ -4835,6 +5584,12 @@ fm_status fm10000SetPortQOS(fm_int sw,
             break;
 
         case FM_QOS_NUM_SCHED_GROUPS:
+            /* Verify mode */
+            if (switchExt->eschedConfig[physPort].qosQueueEnabled)
+            {
+                err = FM_ERR_UNSUPPORTED;
+                break;
+            }
             /* Verify number of groups */
             val = *( (fm_uint32 *) value );
             FM10000_QOS_ABORT_ON_EXCEED(val, 
@@ -4852,6 +5607,12 @@ fm_status fm10000SetPortQOS(fm_int sw,
             break;
 
         case FM_QOS_SCHED_GROUP_STRICT:
+            /* Verify mode */
+            if (switchExt->eschedConfig[physPort].qosQueueEnabled)
+            {
+                err = FM_ERR_UNSUPPORTED;
+                break;
+            }
             /* Verify index */
             FM10000_QOS_ABORT_ON_EXCEED_OR_LESS_0(
                    index, 
@@ -4870,6 +5631,12 @@ fm_status fm10000SetPortQOS(fm_int sw,
             break;
 
         case FM_QOS_SCHED_GROUP_WEIGHT:
+            /* Verify mode */
+            if (switchExt->eschedConfig[physPort].qosQueueEnabled)
+            {
+                err = FM_ERR_UNSUPPORTED;
+                break;
+            }
             /* Verify index */
             FM10000_QOS_ABORT_ON_EXCEED_OR_LESS_0(
                    index, 
@@ -4888,6 +5655,12 @@ fm_status fm10000SetPortQOS(fm_int sw,
             break;
 
         case FM_QOS_SCHED_GROUP_TCBOUNDARY_A:
+            /* Verify mode */
+            if (switchExt->eschedConfig[physPort].qosQueueEnabled)
+            {
+                err = FM_ERR_UNSUPPORTED;
+                break;
+            }
             /* Verify index */
             FM10000_QOS_ABORT_ON_EXCEED_OR_LESS_0(
                    index, 
@@ -4906,6 +5679,12 @@ fm_status fm10000SetPortQOS(fm_int sw,
             break;
 
         case FM_QOS_SCHED_GROUP_TCBOUNDARY_B:
+            /* Verify mode */
+            if (switchExt->eschedConfig[physPort].qosQueueEnabled)
+            {
+                err = FM_ERR_UNSUPPORTED;
+                break;
+            }
             /* Verify index */
             FM10000_QOS_ABORT_ON_EXCEED_OR_LESS_0(
                    index, 
@@ -4942,6 +5721,17 @@ fm_status fm10000SetPortQOS(fm_int sw,
                 err = switchPtr->WriteUINT64(sw, addr, regValue64);
                 FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_QOS, err);
             }
+            break;
+
+        case FM_QOS_QUEUE:
+            /* Verify input value  */
+            FM10000_QOS_ABORT_ON_EXCEED(*( (fm_bool *) value ),
+                                        FM_ENABLED, 
+                                        err, 
+                                        FM_ERR_INVALID_ARGUMENT);
+            /* Apply new config and initialize config regs */
+            err = ESchedInit(sw, port, *( (fm_bool *) value ));
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_QOS, err);
             break;
 
         default:
@@ -5415,11 +6205,23 @@ fm_status fm10000GetPortQOS(fm_int sw,
             break;
 
         case FM_QOS_RETRIEVE_ACTIVE_SCHED:
+            /* Verify mode */
+            if (switchExt->eschedConfig[physPort].qosQueueEnabled)
+            {
+                err = FM_ERR_UNSUPPORTED;
+                break;
+            }
             /* Get active Egress scheduler configuration */
             err = ESchedGroupRetrieveActiveConfig(sw, physPort);
             break;
 
         case FM_QOS_NUM_SCHED_GROUPS:
+            /* Verify mode */
+            if (switchExt->eschedConfig[physPort].qosQueueEnabled)
+            {
+                err = FM_ERR_UNSUPPORTED;
+                break;
+            }
             /* Verify active configuration */
             if (switchExt->eschedConfig[physPort].numGroupsActive == 0)
             {
@@ -5432,6 +6234,12 @@ fm_status fm10000GetPortQOS(fm_int sw,
             break;
 
         case FM_QOS_SCHED_GROUP_STRICT:
+            /* Verify mode */
+            if (switchExt->eschedConfig[physPort].qosQueueEnabled)
+            {
+                err = FM_ERR_UNSUPPORTED;
+                break;
+            }
             /* Verify active configuration */
             if (switchExt->eschedConfig[physPort].numGroupsActive == 0)
             {
@@ -5452,6 +6260,12 @@ fm_status fm10000GetPortQOS(fm_int sw,
             break;
 
         case FM_QOS_SCHED_GROUP_WEIGHT:
+            /* Verify mode */
+            if (switchExt->eschedConfig[physPort].qosQueueEnabled)
+            {
+                err = FM_ERR_UNSUPPORTED;
+                break;
+            }
             /* Verify active configuration */
             if (switchExt->eschedConfig[physPort].numGroupsActive == 0)
             {
@@ -5472,6 +6286,12 @@ fm_status fm10000GetPortQOS(fm_int sw,
             break;
 
         case FM_QOS_SCHED_GROUP_TCBOUNDARY_A:
+            /* Verify mode */
+            if (switchExt->eschedConfig[physPort].qosQueueEnabled)
+            {
+                err = FM_ERR_UNSUPPORTED;
+                break;
+            }
             /* Verify active configuration */
             if (switchExt->eschedConfig[physPort].numGroupsActive == 0)
             {
@@ -5492,6 +6312,12 @@ fm_status fm10000GetPortQOS(fm_int sw,
             break;
 
         case FM_QOS_SCHED_GROUP_TCBOUNDARY_B:
+            /* Verify mode */
+            if (switchExt->eschedConfig[physPort].qosQueueEnabled)
+            {
+                err = FM_ERR_UNSUPPORTED;
+                break;
+            }
             /* Verify active configuration */
             if (switchExt->eschedConfig[physPort].numGroupsActive == 0)
             {
@@ -5541,6 +6367,24 @@ fm_status fm10000GetPortQOS(fm_int sw,
                             FM_GET_FIELD(regValue,
                                          FM10000_SCHED_MONITOR_DRR_CFG_PERPORT,
                                          zeroLength);
+            break;
+
+        case FM_QOS_QUEUE:
+            /* Get the requested value */
+            ( *( (fm_bool *) value ) ) = 
+                            switchExt->eschedConfig[physPort].qosQueueEnabled;
+            break;
+
+        case FM_QOS_QUEUE_FREE_BW:
+            /* Verify mode */
+            if (!switchExt->eschedConfig[physPort].qosQueueEnabled)
+            {
+                err = FM_ERR_UNSUPPORTED;
+                break;
+            }
+            /* Get the requested value */
+            ( *( (fm_uint32 *) value ) ) = 
+                        switchExt->eschedConfig->qosQueuesConfig.freeQoSQueueBw;
             break;
 
         default:
@@ -5813,6 +6657,13 @@ fm_status fm10000SetSwitchQOS(fm_int sw,
             /* Write the register */
             err = switchPtr->WriteUINT32(sw, addr, regValue); 
             FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_QOS, err);
+            FM_FLAG_DROP_REG_LOCK(sw);
+            /* Recalculate watermarks */
+            if( switchPtr->autoPauseMode )
+            {    
+                err = SetAutoPauseMode(sw, 0, switchPtr->autoPauseMode);
+                FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_QOS, err);
+            }            
             break;
 
         case FM_QOS_SHARED_SOFT_DROP_WM:
@@ -5932,6 +6783,13 @@ fm_status fm10000SetSwitchQOS(fm_int sw,
             /* Write the register - Sweeper module */
             err = switchPtr->WriteUINT64(sw, addr, regValue64);
             FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_QOS, err);
+            FM_FLAG_DROP_REG_LOCK(sw);
+            /* Recalculate watermarks */
+            if( switchPtr->autoPauseMode )
+            {    
+                err = SetAutoPauseMode(sw, 0, switchPtr->autoPauseMode);
+                FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_QOS, err);
+            }            
             break;
 
         case FM_QOS_TRAP_CLASS_SWPRI_MAP:
@@ -6708,87 +7566,88 @@ ABORT:
  *****************************************************************************/
 fm_status fm10000InitializeCM(fm_int sw)
 {
-    fm_status           err;
-    fm_int              i;
-    fm_uint32           rv;
-    fm_uint32           refDiv;
-    fm_uint32           outDiv;
-    fm_uint32           fbDiv4;
-    fm_uint32           fbDiv255;
-    fm_switch *         switchPtr;
-    fm10000_switch *    switchExt;
-    fm_bool             regLockTaken;
-    fm_uint32           rvMult[4] = {0,0,0,0};
-
-    FM_LOG_ENTRY(FM_LOG_CAT_QOS, "sw=%d\n", sw);
-
-    err       = FM_OK;
-    regLockTaken = FALSE;
-    switchPtr = GET_SWITCH_PTR(sw);
-    switchExt = GET_SWITCH_EXT(sw);
-
-    FM_FLAG_TAKE_REG_LOCK(sw);
-
-    /* Clear CM_PAUSE_RCV_STATE which is not covered during BIST memory init */
-    for (i = 0; i < FM10000_CM_PAUSE_RCV_STATE_ENTRIES; i++)
-    {
-        err = switchPtr->WriteUINT32Mult(sw, 
-                                         FM10000_CM_PAUSE_RCV_STATE(i, 0), 
-                                         FM10000_CM_PAUSE_RCV_STATE_WIDTH,  
-                                         rvMult);
-    }
-
-    /* Set the global watermark to a conservative value until initialized by
-     * QOS API. 
-     * wm = maxNumSegs - maxInFlightSegs - 256 */
-    rv = FM10000_MAX_MEMORY_SEGMENTS - 
-         (FM10000_NUM_PORTS * (FM10000_MAX_FRAME_SIZE / FM10000_SEGMENT_SIZE)) -
-        FM10000_QOS_NUM_RESERVED_SEGS;
-
-    err = switchPtr->WriteUINT32(sw, FM10000_CM_GLOBAL_WM(), rv);
-    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_QOS, err);
-
-    /* Set PAUSE base frequency */
-    err = switchPtr->ReadUINT32(sw, FM10000_PLL_FABRIC_CTRL(), &rv);
-    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_QOS, err);
+        fm_status           err;
+        fm_int              i;
+        fm_uint32           rv;
+        fm_uint32           refDiv;
+        fm_uint32           outDiv;
+        fm_uint32           fbDiv4;
+        fm_uint32           fbDiv255;
+        fm_switch *         switchPtr;
+        fm10000_switch *    switchExt;
+        fm_bool             regLockTaken;
+        fm_uint32           rvMult[4] = {0,0,0,0};
     
-    refDiv = FM_GET_FIELD(rv, FM10000_PLL_FABRIC_CTRL, RefDiv);
-    fbDiv4 = FM_GET_BIT(rv, FM10000_PLL_FABRIC_CTRL, FbDiv4);
-    fbDiv255 = FM_GET_FIELD(rv, FM10000_PLL_FABRIC_CTRL, FbDiv255);
-    outDiv = FM_GET_FIELD(rv, FM10000_PLL_FABRIC_CTRL, OutDiv);
-
-    rv = 0;
-    FM_SET_FIELD(rv, 
-                 FM10000_CM_PAUSE_BASE_FREQ, 
-                 M, 
-                 (fbDiv255 * (2 * (fbDiv4 + 1) )) );
-
-    FM_SET_FIELD(rv, 
-                 FM10000_CM_PAUSE_BASE_FREQ, 
-                 N, 
-                 (refDiv * outDiv) );
+        FM_LOG_ENTRY(FM_LOG_CAT_QOS, "sw=%d\n", sw);
     
-    err = switchPtr->WriteUINT32(sw, FM10000_CM_PAUSE_BASE_FREQ(), rv);
-    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_QOS, err);
-
-    /* Enable CM Sweepers */
-    err = switchPtr->ReadUINT32(sw, FM10000_CM_GLOBAL_CFG(), &rv);
-    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_QOS, err);
-
-    FM_SET_BIT(rv, FM10000_CM_GLOBAL_CFG, WmSweeperEnable, 1);
-    FM_SET_BIT(rv, FM10000_CM_GLOBAL_CFG, PauseGenSweeperEnable, 1);
-    FM_SET_BIT(rv, FM10000_CM_GLOBAL_CFG, PauseRecSweeperEnable, 1);
-    FM_SET_FIELD(rv, FM10000_CM_GLOBAL_CFG, NumSweeperPorts, FM10000_NUM_PORTS);
-
-    err = switchPtr->WriteUINT32(sw, FM10000_CM_GLOBAL_CFG(), rv);
-
-ABORT:
-    if (regLockTaken)
-    {
-        DROP_REG_LOCK(sw);
-    }
-
-    FM_LOG_EXIT(FM_LOG_CAT_QOS, err);
+        err       = FM_OK;
+        regLockTaken = FALSE;
+        switchPtr = GET_SWITCH_PTR(sw);
+        switchExt = GET_SWITCH_EXT(sw);
+    
+        FM_FLAG_TAKE_REG_LOCK(sw);
+    
+        /* Clear CM_PAUSE_RCV_STATE which is not covered during BIST memory init */
+        for (i = 0; i < FM10000_CM_PAUSE_RCV_STATE_ENTRIES; i++)
+        {
+            err = switchPtr->WriteUINT32Mult(sw, 
+                                             FM10000_CM_PAUSE_RCV_STATE(i, 0), 
+                                             FM10000_CM_PAUSE_RCV_STATE_WIDTH,  
+                                             rvMult);
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_QOS, err);
+        }
+    
+        /* Set the global watermark to a conservative value until initialized by
+         * QOS API. 
+         * wm = maxNumSegs - maxInFlightSegs - 256 */
+        rv = FM10000_MAX_MEMORY_SEGMENTS - 
+             (FM10000_NUM_PORTS * (FM10000_MAX_FRAME_SIZE / FM10000_SEGMENT_SIZE)) -
+            FM10000_QOS_NUM_RESERVED_SEGS;
+    
+        err = switchPtr->WriteUINT32(sw, FM10000_CM_GLOBAL_WM(), rv);
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_QOS, err);
+    
+        /* Set PAUSE base frequency */
+        err = switchPtr->ReadUINT32(sw, FM10000_PLL_FABRIC_CTRL(), &rv);
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_QOS, err);
+        
+        refDiv = FM_GET_FIELD(rv, FM10000_PLL_FABRIC_CTRL, RefDiv);
+        fbDiv4 = FM_GET_BIT(rv, FM10000_PLL_FABRIC_CTRL, FbDiv4);
+        fbDiv255 = FM_GET_FIELD(rv, FM10000_PLL_FABRIC_CTRL, FbDiv255);
+        outDiv = FM_GET_FIELD(rv, FM10000_PLL_FABRIC_CTRL, OutDiv);
+    
+        rv = 0;
+        FM_SET_FIELD(rv, 
+                     FM10000_CM_PAUSE_BASE_FREQ, 
+                     M, 
+                     (fbDiv255 * (2 * (fbDiv4 + 1) )) );
+    
+        FM_SET_FIELD(rv, 
+                     FM10000_CM_PAUSE_BASE_FREQ, 
+                     N, 
+                     (refDiv * outDiv) );
+        
+        err = switchPtr->WriteUINT32(sw, FM10000_CM_PAUSE_BASE_FREQ(), rv);
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_QOS, err);
+    
+        /* Enable CM Sweepers */
+        err = switchPtr->ReadUINT32(sw, FM10000_CM_GLOBAL_CFG(), &rv);
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_QOS, err);
+    
+        FM_SET_BIT(rv, FM10000_CM_GLOBAL_CFG, WmSweeperEnable, 1);
+        FM_SET_BIT(rv, FM10000_CM_GLOBAL_CFG, PauseGenSweeperEnable, 1);
+        FM_SET_BIT(rv, FM10000_CM_GLOBAL_CFG, PauseRecSweeperEnable, 1);
+        FM_SET_FIELD(rv, FM10000_CM_GLOBAL_CFG, NumSweeperPorts, FM10000_NUM_PORTS);
+    
+        err = switchPtr->WriteUINT32(sw, FM10000_CM_GLOBAL_CFG(), rv);
+    
+    ABORT:
+        if (regLockTaken)
+        {
+            DROP_REG_LOCK(sw);
+        }
+    
+        FM_LOG_EXIT(FM_LOG_CAT_QOS, err);
 
 }   /* end fm10000InitializeCM */
 
@@ -7005,6 +7864,515 @@ fm_status fm10000QOSPriorityMapperFreeResources(fm_int sw)
     FM_LOG_EXIT(FM_LOG_CAT_QOS, status);
 
 }   /* end fm10000QOSPriorityMapperFreeResources */
+
+
+
+
+/*****************************************************************************/
+/** fm10000AddQueueQOS
+ * \ingroup intQos
+ *
+ * \desc            Creates qos queue for specified port.
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \param[in]       port is the port on which to operate.
+ *
+ * \param[in]       param points to a ''fm_qosQueueParam'' structure containing
+ *                  parameters of the requested queue.
+ *
+ * \return          FM_OK if successful.
+ * \return          FM_ERR_INVALID_SWITCH if sw is invalid.
+ * \return          FM_ERR_INVALID_PORT if port is invalid.
+ * \return          FM_ERR_INVALID_ARGUMENT if any argument is invalid.
+ * \return          FM_ERR_NO_FREE_RESOURCES if no resources avialable.
+ *
+ *****************************************************************************/
+fm_status fm10000AddQueueQOS(fm_int sw,
+                             fm_int port,
+                             fm_qosQueueParam *param)
+{
+    fm_switch *switchPtr;
+    fm10000_switch  * switchExt;
+    fm10000_eschedConfigPerPort *eschedPtr;
+    fm_int physPort;
+    fm_status  err;
+
+    FM_LOG_ENTRY(FM_LOG_CAT_QOS,
+                 "sw=%d port=%d param=%p\n",
+                 sw,
+                 port,
+                 (void*)param);
+
+    err = FM_OK;
+
+    /* Get the switch pointers */
+    switchPtr = GET_SWITCH_PTR(sw);
+    switchExt = GET_SWITCH_EXT(sw);
+
+    /* Map logical port to physical*/
+    err = fmMapLogicalPortToPhysical(switchPtr, port, &physPort);
+    if (err != FM_OK)
+    {
+        FM_LOG_EXIT(FM_LOG_CAT_QOS, err);
+    }
+
+    /* Get pointer to esched configuration  */
+    eschedPtr = &( switchExt->eschedConfig[ physPort ] );
+
+    /* General queue parameters verification */
+    err = EschedNewQosQueueParamVerify(sw, port, eschedPtr, param);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_QOS, err);
+
+    /* Configure new queue */
+    FM_LOG_INFO(FM_LOG_CAT_QOS, 
+                "Adding new qos queue on port %d: TC=%d, %d < Bw[Mb/s] < %d \n",
+                port,
+                param->tc,
+                param->minBw,
+                param->maxBw);
+
+    err = EschedQosQueueConfig(sw, physPort, FM10000_QOS_ADD_QUEUE, param);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_QOS, err);
+
+ABORT:
+    FM_LOG_EXIT(FM_LOG_CAT_QOS, err);
+
+}   /* end fm10000AddQueueQOS */
+
+
+
+
+/*****************************************************************************/
+/** fm10000DeleteQueueQOS
+ * \ingroup intQos
+ *
+ * \desc            Deletes qos queue for specified port.
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \param[in]       port is the port on which to operate.
+ *
+ * \param[in]       queueId is the queue Id (unique for the port).
+ *
+ * \return          FM_OK if successful.
+ * \return          FM_ERR_INVALID_SWITCH if sw is invalid.
+ * \return          FM_ERR_INVALID_PORT if port is invalid.
+ * \return          FM_ERR_NOT_FOUND if the queue was not found.
+ * \return          FM_ERR_INVALID_ARGUMENT if any argument is invalid.
+ *
+ *****************************************************************************/
+fm_status fm10000DeleteQueueQOS(fm_int sw,
+                                fm_int port,
+                                fm_int queueId)
+{
+    fm_switch * switchPtr;
+    fm10000_switch  * switchExt;
+    fm10000_eschedConfigPerPort *eschedPtr;
+    fm_int physPort;
+    fm_status  err;
+
+    FM_LOG_ENTRY(FM_LOG_CAT_QOS,
+                 "sw=%d port=%d queueId=%d\n",
+                 sw,
+                 port,
+                 queueId);
+                 
+    err = FM_OK;
+
+    /* Get the switch pointers */
+    switchPtr = GET_SWITCH_PTR(sw);
+    switchExt = GET_SWITCH_EXT(sw);
+
+    /* Map logical port to physical*/
+    err = fmMapLogicalPortToPhysical(switchPtr, port, &physPort);
+    if (err != FM_OK)
+    {    
+        FM_LOG_EXIT(FM_LOG_CAT_QOS, err);
+    }
+
+    /* Get pointer to esched configuration  */
+    eschedPtr = &( switchExt->eschedConfig[ physPort ] );
+
+    /* Return error when the mode incorrect */
+    if (!eschedPtr->qosQueueEnabled)
+    {
+        err = FM_ERR_UNSUPPORTED;
+        FM_LOG_EXIT(FM_LOG_CAT_QOS, err)
+    }
+
+    /* Check if nof queue is zero  */
+    if (eschedPtr->qosQueuesConfig.numQoSQueues == 0)
+    {
+        err = FM_ERR_NOT_FOUND;
+        FM_LOG_EXIT(FM_LOG_CAT_QOS, err)
+    }
+
+    /* Check if queue exists  */
+    if (eschedPtr->qosQueuesConfig.qosQueuesParams[queueId].queueId == 
+                                                     FM_QOS_QUEUE_ID_DEFAULT)
+    {
+        err = FM_ERR_NOT_FOUND;
+        FM_LOG_EXIT(FM_LOG_CAT_QOS, err)
+    }
+
+    /* Delete the queue, update the configuration  */
+    err = EschedQosQueueConfig(sw, 
+                          physPort, 
+                          FM10000_QOS_DEL_QUEUE, 
+                         &eschedPtr->qosQueuesConfig.qosQueuesParams[queueId]);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_QOS, err);
+
+ABORT:
+    FM_LOG_EXIT(FM_LOG_CAT_QOS, err);
+
+}   /* end fm10000DeleteQueueQOS */
+
+
+
+
+/*****************************************************************************/
+/** fm10000SetAttributeQueueQOS
+ * \ingroup intQos
+ *
+ * \desc            Set a QoS queue's attribute.
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \param[in]       port is the port on which to operate.
+ *
+ * \param[in]       queueId is the queue Id.
+ *
+ * \param[in]       attr is the QoS queue attribute (see ''fm_qosQueueAttr'')
+ *                  to set.
+ *
+ * \param[in]       value points to the attribute value to set.
+ *
+ * \return          FM_OK if successful.
+ * \return          FM_ERR_INVALID_SWITCH if sw is invalid.
+ * \return          FM_ERR_INVALID_PORT if port is invalid.
+ * \return          FM_ERR_INVALID_ATTRIB if attr is invalid.
+ * \return          FM_ERR_INVALID_ARGUMENT if queueId or value is invalid.
+ *
+ *****************************************************************************/
+fm_status fm10000SetAttributeQueueQOS(fm_int sw,
+                                      fm_int port,
+                                      fm_int queueId, 
+                                      fm_int attr, 
+                                      void  *value)
+{
+    fm_switch *switchPtr;
+    fm10000_switch  * switchExt;
+    fm10000_eschedConfigPerPort *eschedPtr;
+    fm_int          physPort;
+    fm_qosQueueParam param;
+    fm_uint32 val;
+    fm_status  err;
+
+    FM_LOG_ENTRY(FM_LOG_CAT_QOS,
+                 "sw=%d port=%d queueId=%d attr=%d value=%p\n",
+                 sw,
+                 port,
+                 queueId,
+                 attr,
+                 value);
+
+    err = FM_OK;
+    
+    /* Get the switch pointers */
+    switchPtr = GET_SWITCH_PTR(sw);
+    switchExt = GET_SWITCH_EXT(sw);
+
+    /* Map logical port to physical*/
+    err = fmMapLogicalPortToPhysical(switchPtr, port, &physPort);
+    if (err != FM_OK)
+    {    
+        FM_LOG_EXIT(FM_LOG_CAT_QOS, err);
+    }
+
+    /* Get pointer to esched configuration  */
+    eschedPtr = &( switchExt->eschedConfig[ physPort ] );
+
+    /* Return error when the mode incorrect */
+    if (!eschedPtr->qosQueueEnabled)
+    {
+        err = FM_ERR_UNSUPPORTED;
+        FM_LOG_EXIT(FM_LOG_CAT_QOS, err)
+    }
+
+    /* Check if nof queue is zero  */
+    if (eschedPtr->qosQueuesConfig.numQoSQueues == 0)
+    {
+        err = FM_ERR_NOT_FOUND;
+        FM_LOG_EXIT(FM_LOG_CAT_QOS, err)
+    }
+
+    /* Check if queue exists  */
+    if (eschedPtr->qosQueuesConfig.qosQueuesParams[queueId].queueId == 
+                                                     FM_QOS_QUEUE_ID_DEFAULT)
+    {
+        err = FM_ERR_NOT_FOUND;
+        FM_LOG_EXIT(FM_LOG_CAT_QOS, err)
+    }
+
+    /* Update the queue, update the configuration  */
+    param.queueId = queueId;
+
+    switch (attr)
+    {
+        case FM_QOS_QUEUE_MIN_BW:
+            val = *(fm_uint32 *) value;
+            param.minBw = val;
+            /* Configure queue */
+            err = EschedQosQueueConfig(sw, 
+                                  physPort, 
+                                  FM10000_QOS_SET_QUEUE_MIN_BW, 
+                                  &param);
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_QOS, err);
+            
+        break;
+
+        case FM_QOS_QUEUE_MAX_BW:
+            val = *(fm_uint32 *) value;
+            param.maxBw = val;
+            /* Configure queue */
+            err = EschedQosQueueConfig(sw, 
+                                  physPort, 
+                                  FM10000_QOS_SET_QUEUE_MAX_BW, 
+                                  &param);
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_QOS, err);
+            
+        break;
+
+        case FM_QOS_QUEUE_TRAFFIC_CLASS:
+            val = *(fm_uint32 *) value;
+            FM10000_QOS_ABORT_ON_EXCEED(val, 
+                                        FM10000_QOS_MAX_TC, 
+                                        err, 
+                                        FM_ERR_INVALID_VALUE);
+            param.tc = (fm_int)val;
+            /* Configure queue */
+            err = EschedQosQueueConfig(sw, 
+                                  physPort, 
+                                  FM10000_QOS_SET_QUEUE_TRAFFIC_CLASS, 
+                                  &param);
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_QOS, err);
+            
+        break;
+
+        default:
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_QOS, FM_ERR_INVALID_ATTRIB);
+    }
+
+ABORT:
+    FM_LOG_EXIT(FM_LOG_CAT_QOS, err);
+
+}   /* end fm10000SetAttributeQueueQOS */
+
+
+
+
+/*****************************************************************************/
+/** fm10000GetAttributeQueueQOS
+ * \ingroup intQos
+ *
+ * \desc            Get a QoS queue's attribute.
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \param[in]       port is the port on which to operate.
+ *
+ * \param[in]       queueId is the queue Id.
+ *
+ * \param[in]       attr is the QoS queue attribute (see ''fm_qosQueueAttr'')
+ *                  to set.
+ *
+ * \param[in]       value points to the attribute value to get.
+ *
+ * \return          FM_OK if successful.
+ * \return          FM_ERR_INVALID_SWITCH if sw is invalid.
+ * \return          FM_ERR_INVALID_PORT if port is invalid.
+ * \return          FM_ERR_INVALID_ATTRIB if attr is invalid.
+ * \return          FM_ERR_INVALID_ARGUMENT if queueId or value is invalid.
+ *
+ *****************************************************************************/
+fm_status fm10000GetAttributeQueueQOS(fm_int sw,
+                                      fm_int port,
+                                      fm_int queueId, 
+                                      fm_int attr, 
+                                      void  *value)
+{
+    fm_switch *switchPtr;
+    fm10000_switch  * switchExt;
+    fm10000_eschedConfigPerPort *eschedPtr;
+    fm_int          physPort;
+    fm_status  err;
+
+    FM_LOG_ENTRY(FM_LOG_CAT_QOS,
+                 "sw=%d port=%d queueId=%d attr=%d value=%p\n",
+                 sw,
+                 port,
+                 queueId,
+                 attr,
+                 value);
+
+    err = FM_OK;
+    
+    /* Get the switch pointers */
+    switchPtr = GET_SWITCH_PTR(sw);
+    switchExt = GET_SWITCH_EXT(sw);
+
+    /* Map logical port to physical*/
+    err = fmMapLogicalPortToPhysical(switchPtr, port, &physPort);
+    if (err != FM_OK)
+    {    
+        FM_LOG_EXIT(FM_LOG_CAT_QOS, err);
+    }
+
+    /* Get pointer to esched configuration  */
+    eschedPtr = &( switchExt->eschedConfig[ physPort ] );
+
+    /* Return error when the mode incorrect */
+    if (!eschedPtr->qosQueueEnabled)
+    {
+        err = FM_ERR_UNSUPPORTED;
+        FM_LOG_EXIT(FM_LOG_CAT_QOS, err)
+    }
+
+    /* Check if nof queue is zero  */
+    if (eschedPtr->qosQueuesConfig.numQoSQueues == 0)
+    {
+        err = FM_ERR_NOT_FOUND;
+        FM_LOG_EXIT(FM_LOG_CAT_QOS, err)
+    }
+
+    /* Check if queueId in valid range is zero  */
+    if ((queueId < 0) || (queueId >= FM_MAX_TRAFFIC_CLASSES))
+    {
+        err = FM_ERR_INVALID_ARGUMENT;
+        FM_LOG_EXIT(FM_LOG_CAT_QOS, err)
+    }
+
+    /* Check if queueId is non default (queue was added)  */
+    if (eschedPtr->qosQueuesConfig.qosQueuesParams[queueId].queueId == 
+                                                FM_QOS_QUEUE_ID_DEFAULT)
+    {
+        err = FM_ERR_NOT_FOUND;
+        FM_LOG_EXIT(FM_LOG_CAT_QOS, err)
+    }
+
+    switch (attr)
+    {
+        case FM_QOS_QUEUE_MIN_BW:
+            *( (fm_uint32 *) value ) = 
+                eschedPtr->qosQueuesConfig.qosQueuesParams[queueId].minBw;
+            break;
+        
+        case FM_QOS_QUEUE_MAX_BW:
+            *( (fm_uint32 *) value ) = 
+                eschedPtr->qosQueuesConfig.qosQueuesParams[queueId].maxBw;
+            break;
+
+        case FM_QOS_QUEUE_TRAFFIC_CLASS:
+            *( (fm_int *) value ) = 
+                (fm_int)eschedPtr->qosQueuesConfig.qosQueuesParams[queueId].tc;
+            break;
+
+        default:
+            err = FM_ERR_INVALID_ATTRIB;
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_QOS, err);
+    }
+
+ABORT:
+    FM_LOG_EXIT(FM_LOG_CAT_QOS, err);
+
+}   /* end fm10000GetAttributeQueueQOS */
+
+
+
+
+/*****************************************************************************/
+/** fm10000DbgDumpQueueQOS
+ * \ingroup intDiagQos
+ *
+ * \desc            Dumps QOS queues parameters
+ *
+ * \param[in]       sw is the switch number to operate on.
+ *
+ * \return          FM_OK if successful.
+ *
+ *****************************************************************************/
+fm_status fm10000DbgDumpQueueQOS(fm_int sw)
+{
+
+    fm_status                       err;
+    fm_switch *                     switchPtr;
+    fm10000_switch *                switchExt;
+    fm10000_eschedConfigPerPort *   eschedPtr;
+    fm_int                          physPort;
+    fm_int                          logPort;
+    fm_int                          cpi;
+    fm_int                          qId;
+
+    FM_LOG_ENTRY(FM_LOG_CAT_QOS, "sw=%d \n", sw);
+
+    err = FM_OK;
+
+    /* Get the switch pointers */
+    switchPtr = GET_SWITCH_PTR(sw);
+    switchExt = GET_SWITCH_EXT(sw);
+
+    FM_LOG_PRINT(" QOS queues for sw=%d:\n", sw);
+    FM_LOG_PRINT("+------+----+----+-------------+-------------+\n");
+    FM_LOG_PRINT("| Port | ID | TC | minBw[Mb/s] | maxBw[Mb/s] |\n");
+    FM_LOG_PRINT("+------+----+----+-------------+-------------+\n");
+
+    for ( cpi = 0 ; cpi < switchPtr->numCardinalPorts ; cpi++ )
+    {
+        err = fmMapCardinalPortInternal(switchPtr, cpi, &logPort, &physPort);
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_QOS, err);
+
+        /* Get pointer to esched configuration  */
+        eschedPtr = &( switchExt->eschedConfig[ physPort ] );
+
+        if (eschedPtr->qosQueueEnabled)
+        {
+            if ( eschedPtr->qosQueuesConfig.numQoSQueues == 0 )
+            {
+                FM_LOG_PRINT("|  %2d  |                 -                   |\n",
+                             logPort);
+                FM_LOG_PRINT("+------+----+----+-------------+-------------+\n");
+            }
+            else
+            {
+                for (qId = 0;
+                      qId < eschedPtr->qosQueuesConfig.numQoSQueues;
+                      qId++)
+                {
+                    FM_LOG_PRINT("|  %2d  | %2d | %2d |   %6d    |   %6d    |\n",
+                       logPort,
+                       eschedPtr->qosQueuesConfig.qosQueuesParams[qId].queueId,
+                       eschedPtr->qosQueuesConfig.qosQueuesParams[qId].tc,
+                       eschedPtr->qosQueuesConfig.qosQueuesParams[qId].minBw,
+                       eschedPtr->qosQueuesConfig.qosQueuesParams[qId].maxBw);
+                    FM_LOG_PRINT("+------+----+----+-------------+-------------+\n");
+                }
+            }
+       }
+       else
+       {
+           FM_LOG_PRINT("|  %2d  |              disabled               |\n",
+                        logPort);
+            
+            FM_LOG_PRINT("+------+----+----+-------------+-------------+\n");
+       }
+       
+    }
+
+ABORT:
+    FM_LOG_EXIT(FM_LOG_CAT_QOS, err);
+
+}   /* end fm10000DbgDumpQueueQOS */
 
 
 

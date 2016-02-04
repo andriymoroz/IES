@@ -80,7 +80,6 @@
 /* ECMP groups definitions */
 #define FM10000_MAX_ECMP_GROUP_CLIENTS                      2
 
-#define FM10000_ROUTER_ID_NO_REPLACEMENT                    15
 
 
 /*****************************************************************************

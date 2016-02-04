@@ -655,5 +655,9 @@ fm_status fm10000GetAclFfuRuleUsage(fm_int  sw,
 fm_status fm10000ValidateAclLogicalPort(fm_int      sw,
                                         fm_int      logicalPort,
                                         fm_bool *   referenced);
+fm_status fm10000CountActionSlicesNeeded(fm_int               sw,
+                                         fm_aclErrorReporter *errReport,
+                                         fm_aclRule *         rule,
+                                         fm_int *             actionSlices);
 
 #endif /* __FM_FM10000_API_ACL_INT_H */

@@ -5,7 +5,7 @@
  * Creation Date:   May 13th, 2013
  * Description:     Definitions related to FM10000 support for mailbox.
  *
- * Copyright (c) 2005 - 2015, Intel Corporation
+ * Copyright (c) 2005 - 2016, Intel Corporation
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -29,7 +29,7 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
+ *****************************************************************************/
 
 #ifndef __FM_FM10000_API_MAILBOX_INT_H
 #define __FM_FM10000_API_MAILBOX_INT_H
@@ -69,10 +69,18 @@
     if (--index < FM10000_MAILBOX_QUEUE_MIN_INDEX)      \
         index = (FM10000_MAILBOX_QUEUE_SIZE - 1)
 
-/* Macro for calculating used elements in mailbox queue. */
+/* Macro for calculating used elements in mailbox queue (index 0 is reserved).
+ */
 #define CALCULATE_USED_QUEUE_ELEMENTS(head, tail)       \
     (tail >= head) ? (tail - head) :                    \
     ((FM10000_MAILBOX_QUEUE_SIZE - head) + (tail -1))
+
+/* Macro for calculating empty elements in mailbox queue (index 0 is reserved).
+ */
+#define CALCULATE_EMPTY_QUEUE_ELEMENTS(head, tail)       \
+    FM10000_MAILBOX_QUEUE_SIZE -                         \
+    ((CALCULATE_USED_QUEUE_ELEMENTS(head, tail)) + 1)
+
 
 /* SWAG PEP number is calculated according to the formula:
  * swagPepId = (realSw * NUMBER_OF_PEPS_IN_SWITCH) + realPepId */
@@ -88,26 +96,36 @@
 
 /* Mailbox MBMEM min index value for request/response size is 1.
  * 0 is reserved for mailbox control header. */
-#define FM10000_MAILBOX_QUEUE_MIN_INDEX 1
+#define FM10000_MAILBOX_QUEUE_MIN_INDEX    1
 
 /* Mailbox request/response queue size. */
-#define FM10000_MAILBOX_QUEUE_SIZE       512
+#define FM10000_MAILBOX_QUEUE_SIZE         512
 
 /* Mailbox glorts */
 #define FM10000_MAILBOX_GLORT_BASE         0x4000
 #define FM10000_MAILBOX_GLORT_MAX          0x75FF
-#define FM10000_MAILBOX_GLORT_MASK         0xFF00
-#define FM10000_MAILBOX_GLORT_MASK_CUT     0xFF80
-#define FM10000_MAILBOX_GLORT_COUNT        0x900
-#define FM10000_MAILBOX_GLORT_COUNT_CUT    0x480
-#define FM10000_MAILBOX_GLORTS_PER_PEP     0x100
-#define FM10000_MAILBOX_GLORTS_PER_PEP_CUT 0x80
 
-/* Max number of switches in a SWAG supporting full glort range per PEP. */
-#define FM10000_MAILBOX_MAX_SWITCHES_WITH_FULL_GLORT_RANGE  6
+/* Number of source tables used for configurating flows (match interface). */
+#define FM10000_MAILBOX_SOURCE_TABLES      3
 
 /* Max number of inner/outer MAC filtering rules */
-#define FM10000_MAILBOX_MAX_INN_OUT_MAC_RULES                16384
+#define FM10000_MAILBOX_MAX_INN_OUT_MAC_RULES       16384
+
+
+/* The delay to wait in nsec before checking if part of a message was read
+ * when passing a fragmented data.
+ * This value should be set experimentally when this feature will be
+ * enabled in fm10k driver.
+ */
+#define FM10000_MAILBOX_FRAGMENTATION_DELAY   1000000
+
+/* The number of retries to check if part of a message was read
+ * when passing a fragmented data.
+ * This value should be set experimentally when this feature will be
+ * enabled in fm10k driver.
+ */
+#define FM10000_MAILBOX_FRAGMENTATION_RETIRES 100
+
 
 fm_status fm10000PCIeMailboxInterruptHandler(fm_int sw,
                                              fm_int pepNb);
@@ -144,12 +162,6 @@ fm_status fm10000ReadRequestArguments(fm_int                   sw,
 fm_status fm10000ProcessLoopbackRequest(fm_int                   sw,
                                         fm_int                   pepNb,
                                         fm_mailboxControlHeader *controlHeader);
-
-fm_status fm10000ProcessCreateFlowTableRequest(fm_int           sw,
-                                               fm_int           pepNb,
-                                               fm_int           tableIndex,
-                                               fm_uint16        tableType,
-                                               fm_flowCondition condition);
 
 fm_status fm10000GetHardwareMailboxGlortRange(fm_uint16 *mailboxGlortBase,
                                               fm_uint16 *mailboxGlortCount,
@@ -194,13 +206,6 @@ fm_status fm10000SetMailboxGlobalInterrupts(fm_int  sw,
                                             fm_bool enable);
 
 fm_status fm10000ResetPepMailboxVersion(fm_int sw, fm_int pepNb);
-
-fm_status fm10000AllocVirtualLogicalPort(fm_int  sw,
-                                         fm_int  pepNb,
-                                         fm_int  numberOfPorts,
-                                         fm_int *firstPort,
-                                         fm_int  useHandle,
-                                         fm_int  firstGlort);
 
 fm_status fm10000FindInternalPortByMailboxGlort(fm_int    sw,
                                                 fm_uint32 glort,

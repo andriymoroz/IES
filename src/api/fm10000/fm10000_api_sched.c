@@ -5,7 +5,7 @@
  * Creation Date:   March 20th, 2014
  * Description:     Functions for manipulating the scheduler configuration.
  *
- * Copyright (c) 2013 - 2015, Intel Corporation
+ * Copyright (c) 2013 - 2016, Intel Corporation
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -418,7 +418,7 @@ static fm_status FilterBwDuplicates(fm_int sw)
             }
         }
 
-        /* PCIE ports can safely be but lowered to 40G because the host
+        /* PCIE ports can safely be lowered to 40G because the host
          * interface only achieves 50G for 256B+ frames; 
          * it doesn't need to be fully provisioned for minsize frames. 
          * See bugzilla #25673 comment #12 */
@@ -601,7 +601,6 @@ ABORT:
 fm_status DbgDumpQPCUsage(fm_int sw, fm_int qpc, fm_bool showAll)
 {
     fm_status               err = FM_OK;
-    fm_switch *             switchPtr;
     fm10000_switch *        switchExt;
     fm10000_schedInfo  *    sInfo;
     fm_treeIterator         it;
@@ -616,7 +615,6 @@ fm_status DbgDumpQPCUsage(fm_int sw, fm_int qpc, fm_bool showAll)
     fm_int                  app;
     fm_int                  logSwitch;
     
-    switchPtr = GET_SWITCH_PTR(sw);
     switchExt = GET_SWITCH_EXT(sw);
     sInfo     = &switchExt->schedInfo;
 
@@ -844,8 +842,8 @@ static fm_status DbgDumpSchedulerConfig(fm_int sw, fm_int active, fm_bool dumpQP
             FM_LOG_PRINT(speedStatFormat, 
                          statPtr->speed, 
                          statPtr->cnt,
-                         statPtr->first,
-                         statPtr->last,
+                         statPtr->firstIdx,
+                         statPtr->lastIdx,
                          statPtr->minDiff,
                          statPtr->minLoc,
                          statPtr->maxDiff,
@@ -872,8 +870,8 @@ static fm_status DbgDumpSchedulerConfig(fm_int sw, fm_int active, fm_bool dumpQP
             FM_LOG_PRINT(qpcStatFormat, 
                          (fm_int)(treeKey & 0xFFFFFFFF), 
                          statPtr->cnt,
-                         statPtr->first,
-                         statPtr->last,
+                         statPtr->firstIdx,
+                         statPtr->lastIdx,
                          statPtr->minDiff,
                          statPtr->minLoc,
                          statPtr->maxDiff,
@@ -901,8 +899,8 @@ static fm_status DbgDumpSchedulerConfig(fm_int sw, fm_int active, fm_bool dumpQP
                          (fm_int)(treeKey & 0xFFFFFFFF), 
                          statPtr->speed,
                          statPtr->cnt,
-                         statPtr->first,
-                         statPtr->last,
+                         statPtr->firstIdx,
+                         statPtr->lastIdx,
                          statPtr->minDiff,
                          statPtr->minLoc,
                          statPtr->maxDiff,
@@ -1238,6 +1236,50 @@ static fm_int CompareDifficulty(const void *a, const void *b)
 }   /* end CompareDifficulty */
 
 
+/*****************************************************************************/
+/** Assign25GForDummyPort
+ * \ingroup intSwitch
+ *
+ * \desc            Assign 25G slots for dummy port.
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \return          FM_OK if successful.
+ *
+ *****************************************************************************/
+static fm_status Assign25GForDummyPort(fm_int sw)
+{
+    fm_status           err = FM_OK;
+    fm10000_switch *    switchExt;
+    fm10000_schedInfo  *sInfo;
+    fm_int              j;
+    fm_int              binCnt;
+    fm_int              speedBin[FM10000_MAX_SCHEDULE_LENGTH];
+    fm_int              incr;
+
+    FM_LOG_ENTRY(FM_LOG_CAT_SWITCH, "sw = %d", sw);
+
+    switchExt = GET_SWITCH_EXT(sw);
+    sInfo     = &switchExt->schedInfo;
+
+    binCnt = 0;
+    for (j = 1; j < sInfo->tmp.schedLen; j++)
+    {
+        if ( sInfo->tmp.speedList[j] == FM10000_SCHED_SPEED_25G )
+        {
+            speedBin[binCnt++] = j;
+        }
+    }
+
+    incr = binCnt / SLOTS_PER_25G; 
+    for (j = 0; j < binCnt; j += incr)
+    {
+        sInfo->tmp.speedList[speedBin[j]] |= SPEED_BIN_USED;    
+    }
+
+    FM_LOG_EXIT(FM_LOG_CAT_SWITCH, err);   
+    
+}
 
 
 /*****************************************************************************/
@@ -1275,6 +1317,12 @@ static fm_status AssignPort(fm_int       sw,
     fm_int              startBin;
     fm_int              speedBin[FM10000_MAX_SCHEDULE_LENGTH];
     fm_bool             notValid;
+    fm_int              slotsReqd;
+    fm_int              slotsAlloc;
+    fm_int              incr;
+    fm_int              maxStartBin;
+    fm_int              binsAssigned[(fm_int)SLOTS_PER_100G];
+    fm_int              binIndex;
 
     FM_LOG_ENTRY(FM_LOG_CAT_SWITCH, 
                  "sw = %d, port = %d, speed = %d\n", 
@@ -1288,6 +1336,8 @@ static fm_status AssignPort(fm_int       sw,
     err = fmGetBitArrayNonZeroBitCount(ba, &portCnt);
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
 
+    slotsReqd = speed / SLOT_SPEED_MBPS;
+
     /* First, extract speed bins, start at j=1, because j=0 is
      * the implicit idle and cannot be used */
     binCnt = 0;
@@ -1299,19 +1349,27 @@ static fm_status AssignPort(fm_int       sw,
         }
     }
 
+    maxStartBin = binCnt / slotsReqd ;
+    incr = maxStartBin;
+    
     FM_LOG_DEBUG(FM_LOG_CAT_SWITCH, 
-                 "portCnt=%d, binCnt=%d\n",
+                 "portCnt=%d, binCnt=%d, slotsReqd for port %d=%d, incr=%d\n",
                  portCnt,
-                 binCnt);
+                 binCnt,
+                 port,
+                 slotsReqd,
+                 incr);
 
     /* Find and validate in which bins the port can be fitted */
-    startBin = 0;
     notValid = TRUE;
 
-    while ( (startBin < portCnt) && (notValid == TRUE) )
+    startBin = 0;
+    slotsAlloc = 0;
+
+    while ( (startBin < maxStartBin) && (notValid == TRUE) )
     {
         notValid = FALSE;
-        for (j = startBin; j < binCnt; j += portCnt)
+        for (j = startBin; (j < binCnt) && (slotsAlloc < slotsReqd); j += incr)
         {
             notValid |= ValidateQuad4Constraint(sw, port, speedBin[j]);
 
@@ -1326,11 +1384,14 @@ static fm_status AssignPort(fm_int       sw,
             {
                 /* Try with the next set of bins */
                 startBin++;
+                slotsAlloc = 0;
                 break;
             }
+            binsAssigned[slotsAlloc] = j;
+            slotsAlloc++;
         }
     }
-    
+
     /* No solution could be found */
     if (notValid == TRUE)
     {
@@ -1343,11 +1404,12 @@ static fm_status AssignPort(fm_int       sw,
                      "Inserting port %d in the schedule\n",
                      port);
 
-        for (j = startBin; j < binCnt; j += portCnt)
+        for (j = 0; j < slotsAlloc; j++)
         {
-            sInfo->tmp.schedList[speedBin[j]].port = port;
-
-            sInfo->tmp.speedList[speedBin[j]] |= SPEED_BIN_USED;
+            binIndex = binsAssigned[j];
+            sInfo->tmp.schedList[speedBin[binIndex]].port = port;
+    
+            sInfo->tmp.speedList[speedBin[binIndex]] |= SPEED_BIN_USED;
         }
 
         /* Remove port from bit array */
@@ -1689,6 +1751,10 @@ static fm_status AssignPortsByDifficulty(fm_int sw)
     fm_int              speed;
     fm_int              i;
     fm_bitArray *       ba;
+    fm_int              prevPort;
+    fm_int              prevPortSpeed;
+    fm_int              curQpc;
+    fm_int              prevQpc;
     
     FM_LOG_ENTRY(FM_LOG_CAT_SWITCH, "sw = %d\n", sw);
 
@@ -1750,6 +1816,27 @@ static fm_status AssignPortsByDifficulty(fm_int sw)
                              speed);
                 FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
                 break;
+        }
+
+        if ( i > 0 )
+        {
+            prevPort = sInfo->tmp.diffTable[i-1].port;
+            prevPortSpeed = sInfo->tmp.physPortSpeed[prevPort];
+            curQpc = sInfo->physicalToFabricMap[port] / 4;
+            prevQpc =  sInfo->physicalToFabricMap[prevPort] / 4;
+
+            /* If previous port belongs to same QPC as current one
+               and speed is 25G and spare25G slots are available */
+            if ( (speed == FM10000_SCHED_SPEED_25G) &&
+                 (prevPortSpeed == FM10000_SCHED_SPEED_25G) &&
+                 (curQpc == prevQpc) &&
+                 (sInfo->tmp.spare25GSlots > 0) )
+            {
+                err = Assign25GForDummyPort(sw);
+                FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
+    
+                sInfo->tmp.spare25GSlots -= SLOTS_PER_25G;
+            }
         }
 
         err = AssignPort(sw, port, ba, speed);
@@ -2169,7 +2256,6 @@ static fm_status StripeDifficultyTable(fm_int sw)
     switchExt = GET_SWITCH_EXT(sw);
     sInfo     = &switchExt->schedInfo;
 
-    startDiffIndex   = 0;
     currentDiffIndex = 0;
     currDiff         = 0;
     
@@ -2432,8 +2518,8 @@ static fm_status InitStatStruct(fm10000_schedStat *statPtr)
     else
     {
         statPtr->speed   = FM10000_SCHED_SPEED_ANY;
-        statPtr->first   = -1;
-        statPtr->last    = -1;
+        statPtr->firstIdx = -1;
+        statPtr->lastIdx = -1;
         statPtr->minDiff = 9999;
         statPtr->maxDiff = 0;    
         statPtr->minLoc  = -1;
@@ -2583,8 +2669,8 @@ static fm_status ComputeStats(fm_int sw, fm_int statType)
             FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
 
             statPtr->speed = sInfo->tmp.speedList[i];
-            statPtr->first = i;
-            statPtr->last  = i;
+            statPtr->firstIdx = i;
+            statPtr->lastIdx  = i;
             
             err = fmTreeInsert(treePtr, 
                                treeKey, 
@@ -2595,21 +2681,21 @@ static fm_status ComputeStats(fm_int sw, fm_int statType)
         {
             FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
 
-            diff          = i - statPtr->last;
+            diff = i - statPtr->lastIdx;
             
             if (diff < statPtr->minDiff)
             {
                 statPtr->minDiff = diff;
-                statPtr->minLoc  = statPtr->last;
+                statPtr->minLoc  = statPtr->lastIdx;
             }
             
             if (diff > statPtr->maxDiff)
             {
                 statPtr->maxDiff = diff;
-                statPtr->maxLoc  = statPtr->last;
+                statPtr->maxLoc  = statPtr->lastIdx;
             }
 
-            statPtr->last = i;
+            statPtr->lastIdx = i;
             statPtr->cnt++;
         }
     }
@@ -2619,18 +2705,18 @@ static fm_status ComputeStats(fm_int sw, fm_int statType)
     for (fmTreeIterInit(&it, treePtr);
          (err = fmTreeIterNext(&it, &treeKey, (void **) &statPtr)) == FM_OK ;)
     {
-        diff = sInfo->tmp.schedLen - statPtr->last + statPtr->first;
+        diff = sInfo->tmp.schedLen - statPtr->lastIdx + statPtr->firstIdx;
 
         if (diff < statPtr->minDiff)
         {
             statPtr->minDiff = diff;
-            statPtr->minLoc  = statPtr->last;
+            statPtr->minLoc  = statPtr->lastIdx;
         }
         
         if (diff > statPtr->maxDiff)
         {
             statPtr->maxDiff = diff;
-            statPtr->maxLoc  = statPtr->last;
+            statPtr->maxLoc  = statPtr->lastIdx;
         }
     }
 
@@ -2726,7 +2812,8 @@ static fm_status ValidateSchedule(fm_int sw)
     sInfo     = &switchExt->schedInfo;
 
     /*********************************************** 
-     * Validate there are no invalid speed
+     * Validate there are no invalid speed 
+     * and QUAD ports use channel 0. 
      **********************************************/
     for (i = 0; i < sInfo->tmp.schedLen; i++)
     {
@@ -2735,6 +2822,20 @@ static fm_status ValidateSchedule(fm_int sw)
             err = FM_ERR_SCHED_VIOLATION;
             FM_LOG_FATAL(FM_LOG_CAT_SWITCH,
                          "Invalid speed bins remaining\n");
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
+        }
+
+        if ( (sInfo->tmp.schedList[i].quad) && 
+             (sInfo->tmp.schedList[i].fabricPort % 4) != 0 )
+        {
+            FM_LOG_FATAL(FM_LOG_CAT_SWITCH,
+                           "Detected that quad port is not using channel 0: "
+                           "slot=%d QPC=%d fabricPort=%d (channel = %d)\n",
+                           i,
+                           sInfo->tmp.schedList[i].fabricPort / 4,
+                           sInfo->tmp.schedList[i].fabricPort,
+                           sInfo->tmp.schedList[i].fabricPort % 4);
+            err = FM_ERR_SCHED_VIOLATION;
             FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
         }
     }
@@ -2749,7 +2850,8 @@ static fm_status ValidateSchedule(fm_int sw)
         {
             err = FM_ERR_SCHED_VIOLATION;
             FM_LOG_FATAL(FM_LOG_CAT_SWITCH,
-                         "Minimum Quad Port Spacing of 4 Cycles Violation\n");
+                         "For QPC: %d, Minimum Quad Port Spacing of 4 Cycles Violation\n", 
+                         (fm_int)(treeKey & 0xFFFFFFFF));
             FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
         }
     }
@@ -2795,6 +2897,48 @@ ABORT:
 
 
 /*****************************************************************************/
+/** GetNumSpare25GSlots
+ * \ingroup intSwitch
+ *
+ * \desc            Calculate number of spare 25G slots.
+ * 
+ * \param[in]       sw is the switch on which to operate.
+ * 
+ * \param[in]       slotsIdle is the idleSlots.
+ *
+ * \param[out]      spare25GSlots is where number of spare 25G slots are 
+ *                  returned.
+ *
+ * \return          FM_OK if successful.
+ *
+ *****************************************************************************/
+static fm_status GetNumSpare25GSlots(fm_int sw, 
+                                     fm_int slotsIdle, 
+                                     fm_int * spare25GSlots)
+{
+    
+    FM_LOG_ENTRY(FM_LOG_CAT_SWITCH, "sw = %d\n", sw);
+
+    /* Empirically found that 6 * SLOTS_PER_25 works best. If not available, then 
+       allocate next maximum possible. */ 
+
+    if ( (slotsIdle - 1) > (6 * SLOTS_PER_25G) )
+    {
+        *spare25GSlots = (6 * SLOTS_PER_25G);
+    }
+    else
+    {
+        *spare25GSlots = ( ( (fm_int) ( (slotsIdle - 1)  / SLOTS_PER_25G))) * SLOTS_PER_25G;
+    }
+
+    FM_LOG_EXIT(FM_LOG_CAT_SWITCH, FM_OK);
+
+}   /* end GetNumSpare25GSlots */
+
+
+
+
+/*****************************************************************************/
 /** GenerateSchedule
  * \ingroup intSwitch
  *
@@ -2832,6 +2976,7 @@ static fm_status GenerateSchedule(fm_int sw)
     fm_uint32           pcieHost;
     fm_uint32           pep;
     fm_bool             quad;
+    fm_int              spare25GSlots;
 
     fm_timestamp       tStart = {0,0};
     fm_timestamp       tGen   = {0,0};
@@ -3021,11 +3166,20 @@ static fm_status GenerateSchedule(fm_int sw)
         goto ABORT;
     }
 
+    err = GetNumSpare25GSlots(sw, slotsIdle, &spare25GSlots);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
+
+    slots25G  += spare25GSlots;
+    slotsIdle -= spare25GSlots;
+    sInfo->tmp.spare25GSlots = spare25GSlots;
+
+    FM_LOG_DEBUG(FM_LOG_CAT_SWITCH, "Spare 25G Slots allocated: %d\n", spare25GSlots);
+
     /*********************************************
      * Split the bandwidth by populating the slots 
      * with port speeds
      *********************************************/
-    err = PopulateSpeedList(sw, slots100G, slots60G, slots40G, slots25G, slots10G, slots2500M, slotsIdle );
+    err = PopulateSpeedList(sw, slots100G, slots60G, slots40G, slots25G, slots10G, slots2500M, slotsIdle);
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
 
 
@@ -3060,9 +3214,18 @@ static fm_status GenerateSchedule(fm_int sw)
     /* Assign Idle Tokens */
     for (i = 0; i < sInfo->tmp.schedLen; i++)
     {
+        sToken = &sInfo->tmp.schedList[i];
         if ( sInfo->tmp.speedList[i] == FM10000_SCHED_SPEED_IDLE )
         {
-            sToken = &sInfo->tmp.schedList[i];
+            sToken->port        = 0;
+            sToken->fabricPort  = 0;
+            sToken->quad        = 0;
+            sToken->idle        = 1;
+        }
+        else if ( (sInfo->tmp.speedList[i] == FM10000_SCHED_SPEED_25G) &&
+                  (sToken->port            == -1) ) 
+        {
+            sInfo->tmp.speedList[i] = FM10000_SCHED_SPEED_IDLE;
             sToken->port        = 0;
             sToken->fabricPort  = 0;
             sToken->quad        = 0;
@@ -3121,6 +3284,14 @@ static fm_status GenerateSchedule(fm_int sw)
                 sInfo->tmp.schedList[j].fabricPort = sInfo->tmp.portList[i].fabricPort;
                 sInfo->tmp.schedList[j].quad       = quad;
                 sInfo->tmp.schedList[j].idle       = 0;
+
+                /* If the entry is quad, force channel 0 (required for cases
+                 * where lane-reversal is used). */
+                if (sInfo->tmp.schedList[j].quad)
+                {
+                    sInfo->tmp.schedList[j].fabricPort = 
+                        (sInfo->tmp.schedList[j].fabricPort / 4) * 4;
+                }
             }
         }
 
@@ -4248,10 +4419,8 @@ fm_status fm10000MapEplLaneToLogicalPort(fm_int  sw,
  *
  * \desc            Updates a scheduler port in the scheduler list. This
  *                  function should be used to update the speed or quad mode
- *                  of the port. The update is only applied after a call
- *                  to fm10000ApplySchedPortUpdates(). A speed of 0 should
- *                  be used if the port is disabled. This allows more bandwidth
- *                  to other ports. 
+ *                  of the port. A speed of 0 should be used if the port is
+ *                  disabled. This allows more bandwidth to other ports. 
  * 
  * \param[in]       sw is the switch on which to operate.
  * 
@@ -4276,7 +4445,6 @@ fm_status fm10000UpdateSchedPort(fm_int               sw,
                                  fm_schedulerPortMode mode)
 {
     fm_status               err = FM_OK;
-    fm_switch *             switchPtr;
     fm10000_switch *        switchExt;
     fm10000_schedInfo  *    sInfo;
     fm_int                  i;
@@ -4295,7 +4463,6 @@ fm_status fm10000UpdateSchedPort(fm_int               sw,
     fm_int                  physPortTmp;
     fm_uint64               logCat;
     fm_uint64               logLvl;
-    fm_bool                 portAttrLockTaken;
     
     FM_LOG_ENTRY(FM_LOG_CAT_SWITCH, 
                  "sw=%d, physPort=%d, speed=%d, mode=%d\n", 
@@ -4303,16 +4470,13 @@ fm_status fm10000UpdateSchedPort(fm_int               sw,
 
     VALIDATE_AND_PROTECT_SWITCH(sw);
 
-    switchPtr = GET_SWITCH_PTR(sw);
     switchExt = GET_SWITCH_EXT(sw);
     sInfo     = &switchExt->schedInfo;
-
-    portAttrLockTaken = FALSE;
 
     /* Take port attribute lock since fm10000DrainPhysPort might be 
      * updating portExt and release lock at the end of this function
      * to be on a safer side. */
-    FM_FLAG_TAKE_PORT_ATTR_LOCK(sw);
+    FM_TAKE_PORT_ATTR_LOCK(sw);
 
     TAKE_SCHEDULER_LOCK(sw);
 
@@ -4742,10 +4906,7 @@ fm_status fm10000UpdateSchedPort(fm_int               sw,
 ABORT:
     DROP_SCHEDULER_LOCK(sw);
 
-    if (portAttrLockTaken)
-    {
-        FM_DROP_PORT_ATTR_LOCK(sw);
-    }
+    FM_DROP_PORT_ATTR_LOCK(sw);
 
     UNPROTECT_SWITCH(sw);
 
@@ -5464,8 +5625,6 @@ fm_status fm10000GetSchedPortSpeedForPep(fm_int  sw,
                          "sw=%d, pepId=%d\n", 
                          sw, pepId);
 
-    err = FM_OK;
-
     err = fm10000MapPepToLogicalPort(sw,
                                      pepId,
                                      &logicalPort);
@@ -5682,7 +5841,6 @@ ABORT:
 fm_status fm10000RegenerateSchedule(fm_int sw)
 {
     fm_status           err = FM_OK;
-    fm_switch *         switchPtr;
     fm10000_switch *    switchExt;
     fm10000_schedInfo  *sInfo;
     fm_int              i;
@@ -5699,6 +5857,7 @@ fm_status fm10000RegenerateSchedule(fm_int sw)
     fm_uint64           logLvl;
     fm_int              physPort;
     fm_int              fabricPort;
+    fm_int              spare25GSlots;
 
     fm_timestamp       tStart = {0,0};
     fm_timestamp       tGen   = {0,0};
@@ -5709,7 +5868,6 @@ fm_status fm10000RegenerateSchedule(fm_int sw)
 
     TAKE_SCHEDULER_LOCK(sw);
 
-    switchPtr = GET_SWITCH_PTR(sw);
     switchExt = GET_SWITCH_EXT(sw);
     sInfo     = &switchExt->schedInfo;
 
@@ -5867,6 +6025,15 @@ fm_status fm10000RegenerateSchedule(fm_int sw)
         goto ABORT;
     }
 
+    err = GetNumSpare25GSlots(sw, slotsIdle, &spare25GSlots);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
+
+    slots25G  += spare25GSlots;
+    slotsIdle -= spare25GSlots;
+    sInfo->tmp.spare25GSlots = spare25GSlots;
+
+    FM_LOG_DEBUG(FM_LOG_CAT_SWITCH, "Spare 25G Slots allocated: %d\n", spare25GSlots);
+
     /*********************************************
      * Split the bandwidth by populating the slots 
      * with port speeds
@@ -5909,9 +6076,18 @@ fm_status fm10000RegenerateSchedule(fm_int sw)
     /* Assign Idle Tokens */
     for (i = 0; i < sInfo->tmp.schedLen; i++)
     {
+        sToken = &sInfo->tmp.schedList[i];
         if ( sInfo->tmp.speedList[i] == FM10000_SCHED_SPEED_IDLE )
         {
-            sToken = &sInfo->tmp.schedList[i];
+            sToken->port        = 0;
+            sToken->fabricPort  = 0;
+            sToken->quad        = 0;
+            sToken->idle        = 1;
+        }
+        else if ( (sInfo->tmp.speedList[i] == FM10000_SCHED_SPEED_25G) &&
+                  (sToken->port            == -1) ) 
+        {
+            sInfo->tmp.speedList[i] = FM10000_SCHED_SPEED_IDLE;
             sToken->port        = 0;
             sToken->fabricPort  = 0;
             sToken->quad        = 0;
@@ -5932,6 +6108,14 @@ fm_status fm10000RegenerateSchedule(fm_int sw)
                 sInfo->tmp.schedList[j].fabricPort = sInfo->tmp.portList[i].fabricPort;
                 sInfo->tmp.schedList[j].quad       = sInfo->reservedQuad[physPort];
                 sInfo->tmp.schedList[j].idle       = 0;
+
+                /* If the entry is quad, force channel 0 (required for cases
+                 * where lane-reversal is used). */
+                if (sInfo->tmp.schedList[j].quad)
+                {
+                    sInfo->tmp.schedList[j].fabricPort = 
+                        (sInfo->tmp.schedList[j].fabricPort / 4) * 4;
+                }
             }
         }
     }
@@ -6017,14 +6201,11 @@ ABORT:
  *****************************************************************************/
 fm_status fm10000GetSchedAttributes(fm_int sw, fm10000_schedAttr *attr)
 {
-    fm_status err = FM_OK;
-    fm_switch *         switchPtr;
     fm10000_switch *    switchExt;
     fm10000_schedInfo  *sInfo;
 
     TAKE_SCHEDULER_LOCK(sw);
 
-    switchPtr = GET_SWITCH_PTR(sw);
     switchExt = GET_SWITCH_EXT(sw);
     sInfo     = &switchExt->schedInfo;
 
@@ -6033,6 +6214,6 @@ fm_status fm10000GetSchedAttributes(fm_int sw, fm10000_schedAttr *attr)
 
     DROP_SCHEDULER_LOCK(sw);
 
-    FM_LOG_EXIT(FM_LOG_CAT_SWITCH, err);
+    return FM_OK;
 
 }   /* end fm10000GetSchedMode */

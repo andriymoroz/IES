@@ -5,7 +5,7 @@
  * Creation Date:   2005
  * Description:     Wrapper file for all of system header files
  *
- * Copyright (c) 2005 - 2014, Intel Corporation
+ * Copyright (c) 2005 - 2015, Intel Corporation
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -29,10 +29,12 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
+ *****************************************************************************/
 
 #ifndef __FM_FM_ALOS_SYS_H
 #define __FM_FM_ALOS_SYS_H
+
+#if !defined(SWIGPERL)
 
 #include <semaphore.h>
 #include <math.h>
@@ -41,5 +43,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <errno.h>
+
+#endif
 
 #endif /* __FM_FM_ALOS_SYS_H */

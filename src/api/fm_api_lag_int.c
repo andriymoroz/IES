@@ -6,7 +6,7 @@
  * Description:     Internal Link Aggregation Group functions. 
  *                  Refactored from fm_api_lag.c.
  *
- * Copyright (c) 2005 - 2015, Intel Corporation
+ * Copyright (c) 2005 - 2016, Intel Corporation
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -37,6 +37,7 @@
 /*****************************************************************************
  * Macros, Constants & Types
  *****************************************************************************/
+
 /* Macro to round a value to the closest upper multiple of 4 */
 #define FM_CEIL_CHUNK_OF_4(val)         ((val + 3) & ~0x3);
 
@@ -863,7 +864,6 @@ fm_status fmInformLAGPortDown(fm_int sw, fm_int port)
 {
     fm_switch *switchPtr;
     fm_status  err = FM_OK;
-    fm_int     lagIndex;
 
     FM_LOG_ENTRY(FM_LOG_CAT_LAG, "sw = %d, port = %d\n", sw, port);
 
@@ -875,8 +875,6 @@ fm_status fmInformLAGPortDown(fm_int sw, fm_int port)
     {
         goto ABORT;
     }
-
-    lagIndex = fmGetPortLagIndex(sw, port);
     
     err = switchPtr->InformLAGPortDown(sw, port);
 
@@ -912,7 +910,6 @@ fm_status fmInformLAGPortUp(fm_int sw, fm_int port)
 {
     fm_switch *switchPtr;
     fm_status  err = FM_OK;
-    fm_int     lagIndex;
 
     FM_LOG_ENTRY(FM_LOG_CAT_LAG, "sw = %d, port = %d\n", sw, port);
 
@@ -926,14 +923,13 @@ fm_status fmInformLAGPortUp(fm_int sw, fm_int port)
     {
         goto ABORT;
     }
-
-    lagIndex = fmGetPortLagIndex(sw, port);
     
     err = switchPtr->InformLAGPortUp(sw, port);
 
 ABORT:
     FM_DROP_PORT_ATTR_LOCK(sw);
     DROP_LAG_LOCK(sw);
+
     FM_LOG_EXIT(FM_LOG_CAT_LAG, err);
 
 }   /* end fmInformLAGPortUp */

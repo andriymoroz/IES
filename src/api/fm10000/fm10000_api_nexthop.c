@@ -5,7 +5,7 @@
  * Creation Date: August 29, 2013
  * Description: Routing services
  *
- * Copyright (c) 2013 - 2015, Intel Corporation
+ * Copyright (c) 2013 - 2016, Intel Corporation
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -29,7 +29,7 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
+ *****************************************************************************/
 
 #include <fm_sdk_fm10000_int.h>
 
@@ -230,6 +230,8 @@ static fm_status BuildNextHopTunnel(fm_int           sw,
                                     fm10000_NextHop *pNextHop);
 static fm_status BuildNextHopVNTunnel(fm_int           sw,
                                       fm10000_NextHop *pNextHop);
+static fm_status BuildNextHopGlort(fm_int           sw,
+                                   fm10000_NextHop *pNextHop);
 static fm_status SetArpEntryUsedStatus(fm_int   sw,
                                        fm_int   arpBlkIndex,
                                        fm_int   arpBlkLength);
@@ -1074,11 +1076,9 @@ static fm_uint16 GetArpBlockOffset(fm_int    sw,
                                    fm_uint16 arpBlockHandle)
 {
     fm_uint16             offset;
-    fm10000_switch *      pSwitchExt;
     fm10000_ArpBlockCtrl *pArpBlkCtrl;
     
 
-    pSwitchExt = GET_SWITCH_EXT(sw);
     offset = FM10000_ARP_BLOCK_INVALID_OFFSET;
 
     pArpBlkCtrl = GetArpBlockPtr(sw, arpBlockHandle);
@@ -1117,11 +1117,9 @@ static fm_uint16 GetArpBlockLength(fm_int       sw,
                                    fm_uint16    arpBlockHandle)
 {
     fm_uint16             length;
-    fm10000_switch *      pSwitchExt;
     fm10000_ArpBlockCtrl *pArpBlkCtrl;
     
 
-    pSwitchExt = GET_SWITCH_EXT(sw);
     length = 0;
 
     pArpBlkCtrl = GetArpBlockPtr(sw, arpBlockHandle);
@@ -1160,10 +1158,8 @@ static fm_uint16 GetArpBlockFlags(fm_int       sw,
                                   fm_uint16    arpBlockHandle)
 {
     fm_uint16             optionFlags;
-    fm10000_switch *      pSwitchExt;
     fm10000_ArpBlockCtrl *pArpBlkCtrl;
     
-    pSwitchExt = GET_SWITCH_EXT(sw);
     optionFlags = 0xffff;
 
     pArpBlkCtrl = GetArpBlockPtr(sw, arpBlockHandle);
@@ -1198,11 +1194,9 @@ static fm_uint16 GetArpBlockNumOfClients(fm_int       sw,
                                          fm_uint16    arpBlockHandle)
 {
     fm_uint16             numClients;
-    fm10000_switch *      pSwitchExt;
     fm10000_ArpBlockCtrl *pArpBlkCtrl;
     fm_int                index;
     
-    pSwitchExt = GET_SWITCH_EXT(sw);
     numClients = 0xffff;
 
     pArpBlkCtrl = GetArpBlockPtr(sw, arpBlockHandle);
@@ -1244,11 +1238,9 @@ static fm_uint16 GetArpBlockNumOfClients(fm_int       sw,
 static fm_uint16 GetArpBlockOwner(fm_int       sw,
                                   fm_uint16    arpBlockHandle)
 {
-    fm10000_switch *      pSwitchExt;
     fm10000_ArpBlockCtrl *pArpBlkCtrl;
     fm_uint16             owner;
     
-    pSwitchExt = GET_SWITCH_EXT(sw);
     owner = 0xffff;
 
     pArpBlkCtrl = GetArpBlockPtr(sw, arpBlockHandle);
@@ -1281,12 +1273,10 @@ static fm_uint16 GetArpBlockOwner(fm_int       sw,
 static fm_uint GetArpBlockOpaque(fm_int    sw,
                                  fm_uint16 arpBlockHandle)
 {
-    fm10000_switch *      pSwitchExt;
     fm10000_ArpBlockCtrl *pArpBlkCtrl;
     fm_uint               opaque;
     
 
-    pSwitchExt = GET_SWITCH_EXT(sw);
     opaque = 0;
 
     pArpBlkCtrl = GetArpBlockPtr(sw, arpBlockHandle);
@@ -1320,11 +1310,8 @@ static void SetArpBlockOpaque(fm_int    sw,
                               fm_uint16 arpBlockHandle,
                               fm_uint   opaque)
 {
-    fm10000_switch *      pSwitchExt;
     fm10000_ArpBlockCtrl *pArpBlkCtrl;
-    
 
-    pSwitchExt = GET_SWITCH_EXT(sw);
     opaque = 0;
 
     pArpBlkCtrl = GetArpBlockPtr(sw, arpBlockHandle);
@@ -1647,7 +1634,6 @@ static fm_status ArpFreeBlockInverseLookup(fm_int     sw,
     fm_uint16 *     pArpHndlTabEntry;
     fm_uint16 *     pArpHndlTabStart;
     fm_uint16 *     pArpHndlTabLowerBound;
-    fm_uint16 *     pArpHndlTabNextFreeEntry;
     fm_uint16 *     pArpAuxHndlTabEntry;
 
 
@@ -1660,7 +1646,6 @@ static fm_status ArpFreeBlockInverseLookup(fm_int     sw,
     pSwitchExt = GET_SWITCH_EXT(sw);
     err = FM_OK;
     pArpHndlTabEntry = NULL;
-    pArpHndlTabNextFreeEntry = NULL;
 
     if ( pBlockOffset == NULL ||
          blkLength <= 0       ||
@@ -2040,7 +2025,6 @@ static fm_status ChooseBestBlockToPack(fm_int                  sw,
     fm_int                localScore;
     fm_uint16 *           pArpHndlTabScan;
     fm_uint16 *           pArpHndlTabUpperBound;
-    fm_uint16 *           pArpHndlTabLowerBound;
     fm_uint16             blkOffset;
     fm_uint16             blkLength;
     fm_uint16             blkHandle;
@@ -2050,7 +2034,8 @@ static fm_status ChooseBestBlockToPack(fm_int                  sw,
 
 
     FM_LOG_ENTRY( FM_LOG_CAT_ROUTING,
-                  "sw=%d, index=%d, recursionDepth=%d, score=%d, pNextHopCtrlStruct=%p, pBestBlockHandle=%p\n",
+                  "sw=%d, index=%d, recursionDepth=%d, score=%d, "
+                  "pNextHopCtrlStruct=%p, pBestBlockHandle=%p\n",
                   sw,
                   sIndex,
                   recursionDepth,
@@ -2072,14 +2057,13 @@ static fm_status ChooseBestBlockToPack(fm_int                  sw,
     {
         err = FM_ERR_INVALID_ARGUMENT;
     }
-    /* it does not have sense to continue if the index is too small */
+    /* it does not make sense to continue if the index is too small */
     else if (sIndex < FM10000_ARP_TABLE_SIZE - FM10000_ARP_MAINTENANCE_NOF_RESERVED_ENTRIES)
     {
         pArpHndlTabScan       = &(*pNextHopCtrlStruct->pArpHndlArray)[sIndex];
         pArpHndlTabUpperBound = 
             &(*pNextHopCtrlStruct->pArpHndlArray)[FM10000_ARP_TABLE_SIZE - 
                                                   FM10000_ARP_MAINTENANCE_NOF_RESERVED_ENTRIES - 1];
-        pArpHndlTabLowerBound = &(*pNextHopCtrlStruct->pArpHndlArray)[0];
 
         /* check if there are empty entries before the block */
         do
@@ -2151,7 +2135,8 @@ static fm_status ChooseBestBlockToPack(fm_int                  sw,
     }   /* end else if (sIndex < FM10000_ARP_TABLE_SIZE ...) */
 
     FM_LOG_EXIT(FM_LOG_CAT_ROUTING, err);
-}
+
+}   /* end ChooseBestBlockToPack */
 
 
 
@@ -3566,6 +3551,10 @@ static fm_status UpdateNextHopData(fm_int           sw,
                     err = BuildNextHopVNTunnel(sw, pNextHopExt);
                     break;
 
+                case FM_NEXTHOP_TYPE_LOGICAL_PORT:
+                    err = BuildNextHopGlort(sw, pNextHopExt);
+                    break;
+
                 default:
                     err = FM_ERR_INVALID_ARGUMENT;
                     break;
@@ -4066,7 +4055,6 @@ static fm_status SetNextHopArpIndexes(fm_int           sw,
 static fm_status AllocateArpForEcmpGroup(fm_int sw, fm_intEcmpGroup *group)
 {
     fm_switch         *switchPtr;
-    fm10000_switch    *switchExt;
     fm10000_EcmpGroup *ext;
     fm_status          err;
     fm_status          localErr;
@@ -4080,7 +4068,6 @@ static fm_status AllocateArpForEcmpGroup(fm_int sw, fm_intEcmpGroup *group)
                   group->groupId );
 
     switchPtr = GET_SWITCH_PTR(sw);
-    switchExt = GET_SWITCH_EXT(sw);
     ext       = group->extension;
 
     /* alloc an ARP block of 1 entry
@@ -4434,7 +4421,7 @@ static fm_bool CheckArpBlockAvailability(fm_int sw, fm_int arpCount)
     }
     return TRUE;
 
-} /* end CheckArpBlockAvailability */
+}   /* end CheckArpBlockAvailability */
 
 
 
@@ -4453,15 +4440,8 @@ static fm_bool CheckArpBlockAvailability(fm_int sw, fm_int arpCount)
 static fm_status DeleteUnresolvedNextHopRedirectTrigger(fm_int sw)
 {
     fm_status           err;
-    fm10000_switch     *switchExt;
 
     FM_LOG_ENTRY(FM_LOG_CAT_ROUTING, "sw %d\n", sw);
-
-    /* Initialize return code */
-    err = FM_OK;
-
-    /* Get switch ext pointer */
-    switchExt = GET_SWITCH_EXT(sw);
 
     /* Delete unresolved NH trigger */
     err = fm10000DeleteTrigger(sw,
@@ -4473,7 +4453,7 @@ static fm_status DeleteUnresolvedNextHopRedirectTrigger(fm_int sw)
 ABORT:
     FM_LOG_EXIT(FM_LOG_CAT_ROUTING, err);
 
-}/* end DeleteUnresolvedNextHopRedirectTrigger */
+}   /* end DeleteUnresolvedNextHopRedirectTrigger */
 
 
 
@@ -4493,7 +4473,6 @@ static fm_status CreateUnresolvedNextHopRedirectTrigger(fm_int sw)
 {
     fm_triggerCondition trigCond;
     fm_triggerAction    trigAction;
-    fm10000_switch     *switchExt;
     fm_switch          *switchPtr;
     fm_status           err;
     fm_char             trigName[32];
@@ -4510,9 +4489,8 @@ static fm_status CreateUnresolvedNextHopRedirectTrigger(fm_int sw)
     ruleNr = FM10000_TRIGGER_RULE_ROUTING_UNRESOLVED_NEXT_HOP;
     triggerAllocated = FALSE;
 
-    /* Get switch pointers */
+    /* Get switch pointer */
     switchPtr = GET_SWITCH_PTR(sw);
-    switchExt = GET_SWITCH_EXT(sw);
 
     /* Create the trigger's name */
     FM_SPRINTF_S(trigName,
@@ -4815,7 +4793,7 @@ static fm_status BuildNextHopArp(fm_int           sw,
           
             if (pArpEntry->vrid == FM_ROUTER_ANY)
             {
-                routerId = FM10000_ROUTER_ID_NO_REPLACEMENT;
+                routerId = FM_ROUTER_ID_NO_REPLACEMENT;
             }
             else
             {
@@ -4898,7 +4876,7 @@ static fm_status BuildNextHopArp(fm_int           sw,
                 FM_ARRAY_SET_FIELD( (fm_uint32 *)pNextHop->arpData,
                                     FM10000_ARP_ENTRY_GLORT,
                                     RouterIdGlort,
-                                    FM10000_ROUTER_ID_NO_REPLACEMENT );
+                                    FM_ROUTER_ID_NO_REPLACEMENT );
 
                 FM_ARRAY_SET_BIT( (fm_uint32 *)pNextHop->arpData,
                                   FM10000_ARP_ENTRY_GLORT,
@@ -4985,7 +4963,7 @@ static fm_status BuildNextHopTunnel(fm_int           sw,
             FM_ARRAY_SET_FIELD( (fm_uint32 *)pNextHop->arpData,
                                 FM10000_ARP_ENTRY_GLORT,
                                 RouterIdGlort,
-                                FM10000_ROUTER_ID_NO_REPLACEMENT );
+                                FM_ROUTER_ID_NO_REPLACEMENT );
 
             FM_ARRAY_SET_BIT( (fm_uint32 *)pNextHop->arpData,
                               FM10000_ARP_ENTRY_GLORT,
@@ -5068,7 +5046,7 @@ static fm_status BuildNextHopVNTunnel(fm_int           sw,
     FM_ARRAY_SET_FIELD( (fm_uint32 *)pNextHop->arpData,
                         FM10000_ARP_ENTRY_GLORT,
                         RouterIdGlort,
-                        FM10000_ROUTER_ID_NO_REPLACEMENT );
+                        FM_ROUTER_ID_NO_REPLACEMENT );
 
     FM_ARRAY_SET_BIT( (fm_uint32 *)pNextHop->arpData,
                       FM10000_ARP_ENTRY_GLORT,
@@ -5078,6 +5056,90 @@ static fm_status BuildNextHopVNTunnel(fm_int           sw,
     FM_LOG_EXIT(FM_LOG_CAT_ROUTING, FM_OK);
 
 }   /* end BuildNextHopVNTunnel */
+
+
+
+
+/*****************************************************************************/
+/** BuildNextHopGlort
+ * \ingroup intNextHop
+ *
+ * \desc            Fills in the arpData fields for a given tunnel logical 
+ *                  port next-hop.
+ *
+ * \param[in]       sw is the switch number.
+ *
+ * \param[in]       pNextHop points to the fm10000 next-hop record.
+ *
+ * \return          FM_OK if successful.
+ * \return          FM_ERR_INVALID_ARGUMENT if argument is invalid
+ *
+ *****************************************************************************/
+static fm_status BuildNextHopGlort(fm_int           sw,
+                                   fm10000_NextHop *pNextHop)
+{
+    fm_portNextHop * portNextHop;
+    fm_uint32        glort;
+    fm_status        err;
+
+    FM_LOG_ENTRY( FM_LOG_CAT_ROUTING,
+                  "sw=%d, pNextHop=0x%p\n",
+                  sw,
+                  (void *) pNextHop );
+
+    err = FM_OK;
+
+    if (pNextHop == NULL)
+    {
+        err = FM_ERR_INVALID_ARGUMENT;
+    }
+    else if (pNextHop->pParent->nextHop.type != FM_NEXTHOP_TYPE_LOGICAL_PORT)
+    {
+        err = FM_ERR_INVALID_ARGUMENT;
+    }
+    else
+    {
+        portNextHop = &pNextHop->pParent->nextHop.data.port;
+
+        pNextHop->arpData[0] = 0;
+        pNextHop->arpData[1] = 0;
+
+        err = fmGetLogicalPortGlort(sw, portNextHop->logicalPort, &glort);
+
+        if (err == FM_OK)
+        {
+            FM_ARRAY_SET_FIELD( (fm_uint32 *)pNextHop->arpData,
+                                FM10000_ARP_ENTRY_GLORT,
+                                DGLORT,
+                                glort );
+
+            FM_ARRAY_SET_FIELD( (fm_uint32 *)pNextHop->arpData,
+                                FM10000_ARP_ENTRY_GLORT,
+                                MTU_Index,
+                                portNextHop->mtuIndex );
+
+            FM_ARRAY_SET_BIT( (fm_uint32 *)pNextHop->arpData,
+                              FM10000_ARP_ENTRY_GLORT,
+                              markRouted,
+                              portNextHop->routed );
+
+            FM_ARRAY_SET_FIELD( (fm_uint32 *)pNextHop->arpData,
+                                FM10000_ARP_ENTRY_GLORT,
+                                RouterIdGlort,
+                                portNextHop->routerId );
+
+            FM_ARRAY_SET_FIELD( (fm_uint32 *)pNextHop->arpData,
+                                FM10000_ARP_ENTRY_GLORT,
+                                EVID,
+                                portNextHop->vlan );
+
+        }
+
+    }
+
+    FM_LOG_EXIT(FM_LOG_CAT_ROUTING, err);
+
+}   /* end BuildNextHopGlort */
 
 
 
@@ -5302,11 +5364,10 @@ fm_status fm10000NextHopAlloc(fm_int sw)
     fm_uint16              (*pArpHndlArrayTmp)[];
     fm10000_EcmpGroup      (*pEcmpGroupsHLTmp)[];
 
-    FM_LOG_ENTRY( FM_LOG_CAT_ROUTING,
-                  "sw=%d\n",
-                  sw );
+    FM_LOG_ENTRY(FM_LOG_CAT_ROUTING, "sw=%d\n", sw);
 
     pSwitchExt = GET_SWITCH_EXT(sw);
+
     /* assume an error condition */
     err = FM_ERR_NO_MEM;
     pArpHndlArrayTmp = NULL;
@@ -5336,7 +5397,7 @@ fm_status fm10000NextHopAlloc(fm_int sw)
         pNextHopCtrlTmp->pArpHndlArray = pArpHndlArrayTmp;
         pNextHopCtrlTmp->pEcmpGroupsHL  = pEcmpGroupsHLTmp;
         pSwitchExt->pNextHopSysCtrl     = pNextHopCtrlTmp;
-        /* indicate that there is no errors */
+        /* indicate that there are no errors */
         err = FM_OK;
     }
 
@@ -5362,7 +5423,7 @@ fm_status fm10000NextHopAlloc(fm_int sw)
 
     FM_LOG_EXIT(FM_LOG_CAT_ROUTING, err);
 
-}
+}   /* end fm10000NextHopAlloc */
 
 
 
@@ -5431,7 +5492,7 @@ fm_status fm10000NextHopFree(fm_int sw)
 
     FM_LOG_EXIT(FM_LOG_CAT_ROUTING, err);
 
-}
+}   /* end fm10000NextHopFree */
 
 
 
@@ -5509,12 +5570,12 @@ fm_status fm10000NextHopInit(fm_int sw)
     if (err != FM_OK)
     {
         FM_LOG_ERROR(FM_LOG_CAT_ROUTING, 
-                     "Cannot create unresolved NH trigger \n");
+                     "Cannot create unresolved NH trigger\n");
     }
 
     FM_LOG_EXIT(FM_LOG_CAT_ROUTING, err);
 
-} /* end fm10000NextHopInit */
+}   /* end fm10000NextHopInit */
 
 
 
@@ -5785,7 +5846,7 @@ fm_status fm10000RequestArpBlock(fm_int            sw,
                 else
                 {
                     /* there was an error filling the ARP ctrl table:
-                     *  free the allocated memory and invalidate the handle */
+                     * free the allocated memory and invalidate the handle */
                     fmFree(pArpBlkCtrlTmp);
                     pArpBlkCtrlTmp = NULL;
                     blkHandleTmp = FM10000_ARP_BLOCK_INVALID_HANDLE;
@@ -5899,9 +5960,9 @@ fm_status fm10000FreeArpBlock(fm_int            sw,
             arpBlkLength = (*ppArpBlkCtrlTmp)->length;
 
             err = FillArpHndlTable(sw,
-                                    arpBlkIndex,
-                                    arpBlkLength,
-                                    FM10000_ARP_BLOCK_INVALID_HANDLE);
+                                   arpBlkIndex,
+                                   arpBlkLength,
+                                   FM10000_ARP_BLOCK_INVALID_HANDLE);
 
             /* adjust the counter of free entries */ 
             pSwitchExt->pNextHopSysCtrl->arpTabFreeEntryCount += arpBlkLength;
@@ -5924,14 +5985,14 @@ fm_status fm10000FreeArpBlock(fm_int            sw,
             arpEntryIndex = arpBlkIndex;
             while (arpBlkLength--)
             {
-                err  = fm10000GetArpEntryUsedStatus (sw,
-                                                     arpEntryIndex++,
-                                                     TRUE,
-                                                     NULL);
+                err  = fm10000GetArpEntryUsedStatus(sw,
+                                                    arpEntryIndex++,
+                                                    TRUE,
+                                                    NULL);
             }
 
             /* release the block control structure */
-            fmFree (*ppArpBlkCtrlTmp);
+            fmFree(*ppArpBlkCtrlTmp);
             *ppArpBlkCtrlTmp = NULL;
 
             if (err == FM_OK)
@@ -6364,11 +6425,8 @@ fm_status fm10000RepairArpUsed(fm_int sw)
     fm_status  err;
     fm_int     index;
 
-    FM_LOG_ENTRY(FM_LOG_CAT_PARITY,
-                 "sw=%d\n",
-                 sw);
+    FM_LOG_ENTRY(FM_LOG_CAT_PARITY, "sw=%d\n", sw);
 
-    err = FM_OK;
     switchPtr = GET_SWITCH_PTR(sw);
 
     fmCaptureWriteLock(&switchPtr->routingLock, FM_WAIT_FOREVER);
@@ -6536,7 +6594,6 @@ fm_status fm10000NotifyArpBlockChange(fm_int    sw,
 
     pSwitchExt = GET_SWITCH_EXT(sw);
     err = FM_OK;
-    localErr = FM_OK;
     pArpBlkCtrlTmp = NULL;
 
     /* argument validation */
@@ -6599,11 +6656,13 @@ fm_status fm10000NotifyArpBlockChange(fm_int    sw,
                                                           newBlkOffset,
                                                           oldBlkOffset);
                         break;
+
                     case FM10000_ARP_CLIENT_LBG:
-                        /* add funcion to notify LBG client here */
+                        /* add function to notify LBG client here */
                         break;
+
                     case FM10000_ARP_CLIENT_VN:
-                        /* add funcion to notify VN client here */
+                        /* add function to notify VN client here */
                         break;
                 }
 
@@ -6766,7 +6825,6 @@ fm_status fm10000AddECMPGroupNextHops(fm_int           sw,
     fm_switch *switchPtr;
     fm_int     nextHopToAdd;
     fm_int *   pUndoNextHopTab;
-    fm_int     addedNextHopExtnsions;
     fm_uint16  arpBlockHndl;
     fm_uint16  arpBlockHndlAux;
     fm_uint16  oldOffset;
@@ -6781,7 +6839,6 @@ fm_status fm10000AddECMPGroupNextHops(fm_int           sw,
 
     switchPtr             = GET_SWITCH_PTR(sw);
     err                   = FM_OK;
-    addedNextHopExtnsions = 0;
     pUndoNextHopTab       = NULL;
 
     if (pEcmpGroup   == NULL ||
@@ -7242,7 +7299,6 @@ fm_status fm10000ReplaceECMPGroupNextHop(fm_int           sw,
     fm_switch *        switchPtr;
     fm10000_EcmpGroup *pEcmpGroupExt;
     fm10000_NextHop *  pNextHopExt;
-    fm_uint64 *        nextHopData;
     fm_uint16          groupBaseOffset;
     fm_int             arpIndex;
 
@@ -7256,7 +7312,6 @@ fm_status fm10000ReplaceECMPGroupNextHop(fm_int           sw,
 
     err = FM_OK;
     switchPtr = GET_SWITCH_PTR(sw);
-    nextHopData = 0;
 
 
     /* argument validation */
@@ -7363,11 +7418,11 @@ fm_status fm10000SetECMPGroupNextHops(fm_int           sw,
     fm_int             arpIndex;
     fm_intNextHop *    pNextHop;
     fm10000_NextHop *  pNextHopExt;
-    fm10000_EcmpGroup *pEcmpGroupExt;
     fm_int             index;
 
     FM_LOG_ENTRY( FM_LOG_CAT_ROUTING,
-                  "sw=%d, pEcmpGroup=%p, firstIndex=%d, numNextHops=%d, pNextHopList=%p\n",
+                  "sw=%d, pEcmpGroup=%p, firstIndex=%d, numNextHops=%d, "
+                  "pNextHopList=%p\n",
                   sw,
                   (void *) pEcmpGroup,
                   firstIndex,
@@ -7390,7 +7445,8 @@ fm_status fm10000SetECMPGroupNextHops(fm_int           sw,
         if (firstIndex + numNextHops > pEcmpGroup->nextHopCount)
         {
             FM_LOG_ERROR(FM_LOG_CAT_ROUTING,
-                         "Invalid nextHop list: groupId=%d, firstIndex=%d, numNextHops=%d, group NextHop Count=%d\n",
+                         "Invalid nextHop list: groupId=%d, firstIndex=%d, "
+                         "numNextHops=%d, group NextHop Count=%d\n",
                          pEcmpGroup->groupId,
                          firstIndex,
                          numNextHops,
@@ -7400,8 +7456,6 @@ fm_status fm10000SetECMPGroupNextHops(fm_int           sw,
         }
         else
         {
-            pEcmpGroupExt = pEcmpGroup->extension;
-
             TAKE_REG_LOCK(sw);
 
             for (index = 0 ; index < numNextHops ; index++)
@@ -7433,7 +7487,8 @@ fm_status fm10000SetECMPGroupNextHops(fm_int           sw,
                         arpIndex = GetArpBlockOffset(sw, pNextHopExt->arpBlkHndl);
 
                         FM_LOG_DEBUG( FM_LOG_CAT_ROUTING,
-                                      "Adding NextHop data to ARP table, nextHop=%p, baseIndex=%d, relIndex=%d\n",
+                                      "Adding NextHop data to ARP table, "
+                                      "nextHop=%p, baseIndex=%d, relIndex=%d\n",
                                       (void *) pNextHopExt->pParent,
                                       arpIndex,
                                       pNextHopExt->arpBlkRelOffset );
@@ -7450,7 +7505,8 @@ fm_status fm10000SetECMPGroupNextHops(fm_int           sw,
                 if (err != FM_OK)
                 {
                     FM_LOG_ERROR(FM_LOG_CAT_ROUTING,
-                                 "Cannot update ECMP group NextHop, groupId=%d, nextHop index=%d\n",
+                                 "Cannot update ECMP group NextHop, groupId=%d, "
+                                 "nextHop index=%d\n",
                                  pEcmpGroup->groupId,
                                  firstIndex + index);
                 }
@@ -7748,7 +7804,6 @@ fm_status fm10000GetNextHopUsed(fm_int         sw,
                                 fm_bool        resetFlag)
 {
     fm_status        err;
-    fm10000_switch * pSwitchExt;
     fm_uint16        arpEntryIndex;
     fm10000_NextHop *pArpNextHopExt;
 
@@ -7761,7 +7816,6 @@ fm_status fm10000GetNextHopUsed(fm_int         sw,
                   resetFlag ? "TRUE" : "FALSE" );
 
     err = FM_OK;
-    pSwitchExt = GET_SWITCH_EXT(sw);
 
     if (pNextHop == NULL)
     {
@@ -7994,7 +8048,7 @@ fm_status fm10000DeleteECMPGroup(fm_int           sw,
     }
     else
     {
-        /* check is the group is being referenced by another subsystem */
+        /* check if the group is being referenced by another subsystem */
         err = fm10000ValidateDeleteEcmpGroup(sw,
                                              pEcmpGroup->groupId,
                                              &groupMayBeDeleted);
@@ -8002,10 +8056,12 @@ fm_status fm10000DeleteECMPGroup(fm_int           sw,
         if (err != FM_OK || groupMayBeDeleted == FALSE)
         {
             FM_LOG_ERROR(FM_LOG_CAT_ROUTING, 
-                         "ECMP group is being referenced and it cannot be deleted, groupId=%d\n",
+                         "ECMP group is being referenced and it cannot be "
+                         "deleted, groupId=%d\n",
                          pEcmpGroup->groupId);
 
-            /* return an error code but do not override the one returned by fm10000ValidateDeleteEcmpGroup */
+            /* return an error code but do not override the one returned by
+             * fm10000ValidateDeleteEcmpGroup */
             if (err == FM_OK)
             {
                 err = FM_FAIL;
@@ -8084,7 +8140,6 @@ fm_status fm10000FreeECMPGroup(fm_int           sw,
                   (void *) pEcmpGroup );
 
     err = FM_OK;
-    localErr = FM_OK;
 
     /* argument validation */
     if (pEcmpGroup == NULL)
@@ -8321,7 +8376,6 @@ fm_status fm10000GetECMPGroupArpInfo(fm_int     sw,
 {
     fm_status          err;
     fm_switch *        switchPtr;
-    fm10000_switch *   pSwitchExt;
     fm_uint16          arpBlkHndl;
     fm_intEcmpGroup *  pEcmpGroup;
     fm10000_EcmpGroup *pEcmpGroupExtTmp;
@@ -8336,7 +8390,6 @@ fm_status fm10000GetECMPGroupArpInfo(fm_int     sw,
                   (void *) pPathCountType );
 
     switchPtr = GET_SWITCH_PTR(sw);
-    pSwitchExt = GET_SWITCH_EXT(sw);
     err = FM_OK;
 
     /* argument validation, note that pHandle may be NULL */
@@ -9096,7 +9149,6 @@ void fm10000DbgDumpArpTable(fm_int  sw,
                             fm_bool verbose)
 {
     fm_status      err;
-    fm_switch *    switchPtr;
     fm_int         index;
     fm_uint64 *    pArpTableImage;
     fm_uint64 *    pArpTabImageScan;
@@ -9109,9 +9161,6 @@ void fm10000DbgDumpArpTable(fm_int  sw,
     fm_bool        iPv6Entry;
     fm_byte        routerIdGlort;
     fm_uint16      eVlan;
-
-
-    switchPtr = GET_SWITCH_PTR(sw);
 
     /* create an image of the table */
     pArpTableImage = (fm_uint64*)fmAlloc(sizeof(fm_uint64) * FM10000_ARP_TAB_SIZE);
@@ -9164,7 +9213,8 @@ void fm10000DbgDumpArpTable(fm_int  sw,
                     else
                     {
                         
-                        macAddr = FM_ARRAY_GET_FIELD64((fm_uint32 *)pArpTabImageScan, FM10000_ARP_ENTRY_DMAC, DMAC);
+                        macAddr = FM_ARRAY_GET_FIELD64((fm_uint32 *)pArpTabImageScan,
+                                                       FM10000_ARP_ENTRY_DMAC, DMAC);
 
                         FM_LOG_PRINT("MAC Addr %012llX, vlan %4d, routerId %2d\n",
                                      macAddr,

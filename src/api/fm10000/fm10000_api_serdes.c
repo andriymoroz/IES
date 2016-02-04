@@ -231,6 +231,9 @@ static fm_int serdesPcieDebug = 0;
 static fm_bool eplUseSbusIntf  = FALSE;
 static fm_bool pcieUseSbusIntf = FALSE;
 
+
+static fm_int sbmAssocSerDes = -1;
+
 /*****************************************************************************
  * Local Functions
  *****************************************************************************/
@@ -242,7 +245,7 @@ static fm_bool pcieUseSbusIntf = FALSE;
 /** GetSerdesValidId
  * \ingroup intSerdes
  *
- * \desc            Get SERDES valid ID status.
+ * \desc            Gets SERDES valid ID status.
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -278,8 +281,9 @@ static fm_bool GetSerdesValidId(fm_int sw,
 /** fm10000SerdesSpicoSaiInt
  * \ingroup intSerdes
  *
- * \desc            Perform a fast SERDES SPICO interrupt access using
- *                  LANE_SAI_CFG and LANE_SAI_STATUS registers.
+ * \desc            Performs an EPL SERDES SPICO interrupt access using
+ *                  LANE_SAI_CFG and LANE_SAI_STATUS core registers. This type
+ *                  of access is typically faster than using the sBus.
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -472,7 +476,7 @@ fm_status fm10000SerdesSpicoSaiInt(fm_int     sw,
         }
     }
 
-    FM_LOG_EXIT_VERBOSE(FM_LOG_CAT_SWITCH, err);
+    FM_LOG_EXIT_VERBOSE(FM_LOG_CAT_SERDES, err);
 
 }
 
@@ -483,7 +487,7 @@ fm_status fm10000SerdesSpicoSaiInt(fm_int     sw,
 /** fm10000SerdesPcieSpicoInt
  * \ingroup intSerdes
  *
- * \desc            Perform a fast SERDES SPICO interrupt access using
+ * \desc            Performs a PCIe SERDES SPICO interrupt access using
  *                  PCIE_SERDES_CTRL registers.
  *
  * \param[in]       sw is the switch on which to operate.
@@ -682,7 +686,7 @@ static fm_status fm10000SerdesInitXServices(fm_int sw)
         }
     }
 
-    FM_LOG_EXIT(FM_LOG_CAT_SWITCH, err);
+    FM_LOG_EXIT(FM_LOG_CAT_SERDES, err);
 
 }
 
@@ -693,7 +697,7 @@ static fm_status fm10000SerdesInitXServices(fm_int sw)
 /**  fm10000SerdesInitGenericOptions
  * \ingroup intSerdes
  *
- * \desc            Performs the initialization of several serdes general
+ * \desc            Performs the initialization of several general serdes
  *                  options.
  *
  * \param[in]       sw is the switch on which to operate.
@@ -713,7 +717,7 @@ static fm_status fm10000SerdesInitGenericOptions(fm_int sw)
     switchExt = GET_SWITCH_EXT(sw);
     err = FM_OK;
 
-    FM_LOG_EXIT(FM_LOG_CAT_SWITCH, err);
+    FM_LOG_EXIT(FM_LOG_CAT_SERDES, err);
 
 }
 
@@ -724,7 +728,7 @@ static fm_status fm10000SerdesInitGenericOptions(fm_int sw)
 /**  fm10000SerdesGetPepId
  * \ingroup intSerdes
  *
- * \desc            Return the pepId given the serdes number.
+ * \desc            Returns the pepId given the serdes number.
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -871,7 +875,7 @@ fm_status fm10000SerdesInitMappingTable(fm_int sw)
         }
     }
 
-    FM_LOG_EXIT(FM_LOG_CAT_SWITCH, err);
+    FM_LOG_EXIT(FM_LOG_CAT_SERDES, err);
 
 }
 
@@ -882,7 +886,8 @@ fm_status fm10000SerdesInitMappingTable(fm_int sw)
 /** fm10000SerdesCheckIfIsActive
  * \ingroup intSerdes
  *
- * \desc            Check to see if port is mapped to an active SERDES.
+ * \desc            Checks if the specified serdes is active, reading and
+ *                  validating the serdes macro ID.
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -939,10 +944,13 @@ fm_bool fm10000SerdesCheckIfIsActive(fm_int sw,
 /** fm10000SerDesSaiSetDebug
  * \ingroup intSBus
  *
- * \desc            Set debug flag to log SAI transactions. SBus transactions
- *                  are also logged.
+ * \desc            Sets debug flag to log SAI transactions for the EPL ring.
+ *                  When this flag is set to a non zero value, sBus transactions
+ *                  are logged too. Only for low level debugging.
  *
- * \param[in]       debug at SAI serdes access level.
+ * \param[in]       debug enables (non-zero) or disables (zero) the log of
+ *                  SAI accesses. Additionally if forces to use of sBus accesses
+ *                  if equal to 0xFF or of SAI core registers if equal to 0xFE.
  *
  * \return          NONE.
  *
@@ -977,10 +985,13 @@ void fm10000SerDesSaiSetDebug(fm_int debug)
 /** fm10000SerDesPcieSetDebug
  * \ingroup intSBus
  *
- * \desc            Set debug flag to log PCIe transactions. SBus transactions
- *                  are also logged.
+ * \desc            Sets debug flag to log transactions for the PCIe ring.
+ *                  When this flag is set to a non zero value, SBus transactions
+ *                  are logged too. Only for low level debugging.
  *
- * \param[in]       debug at PCIe serdes access level.
+ * \param[in]       debug enables (non-zero) or disables (zero) PCIe accesses
+ *                  logging. Additionally if forces to use sBus accesses if
+ *                  equal to 0xFF or PCIE_SERDES_CTRL if equal to 0xFE.
  *
  * \return          NONE.
  *
@@ -1016,7 +1027,10 @@ void fm10000SerDesPcieSetDebug(fm_int debug)
 /**  fm10000LoadSpicoCode
  * \ingroup intSerdes
  *
- * \desc            Load SPICO image to the SERDES.
+ * \desc            Uploads all the SPICO firmware, including the sBus Master
+ *                  FW, the SERDES FW and the swap image, if required. The
+ *                  operational mode and the useAlternateSpicoFw API property
+ *                  determine the firmware versions to be uploaded.
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -1210,6 +1224,13 @@ fm_status fm10000LoadSpicoCode(fm_int sw)
     if (err == FM_OK)
     {
 
+        fm10000SbmSpicoSaveImageParam(pSbmCodeImage,
+                                      sbmCodeSize,
+                                      pSwapCodeImage,
+                                      swapCodeSize,
+                                      sbmCodeVersionBuildId);
+
+
 
 
 
@@ -1227,9 +1248,9 @@ fm_status fm10000LoadSpicoCode(fm_int sw)
                                                      lastSerdes,
                                                      serdesCodeVersionBuildId);
 
-            fm10000SerdesSpicoSaveImageParamV2(pSerdesCodeImage,
-                                               serdesCodeSize,
-                                               serdesCodeVersionBuildId);
+            fm10000SerdesSpicoSaveImageParam(pSerdesCodeImage,
+                                             serdesCodeSize,
+                                             serdesCodeVersionBuildId);
         }
     }
 
@@ -1244,7 +1265,9 @@ fm_status fm10000LoadSpicoCode(fm_int sw)
 /**  fm10000InitSwSerdes
  * \ingroup intSerdes
  *
- * \desc            Perform any SERDES intialization at switch initialization.
+ * \desc            Performs basic SERDES configuration including the firmware
+ *                  upload. This function must be called during the switch
+ *                  initialization before any other access to the serdes.
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -1283,7 +1306,7 @@ fm_status fm10000InitSwSerdes(fm_int sw)
                 if (err != FM_OK)
                 {
 
-                    FM_LOG_ERROR(FM_LOG_CAT_SWITCH,
+                    FM_LOG_ERROR(FM_LOG_CAT_SERDES,
                                  "Spico Ram BIST Failed: %s\n",
                                  fmErrorMsg(err));
                 }
@@ -1304,7 +1327,7 @@ fm_status fm10000InitSwSerdes(fm_int sw)
 
     switchExt->serdesIntAccssCtrlEna = TRUE;
 
-    FM_LOG_EXIT(FM_LOG_CAT_SWITCH, err);
+    FM_LOG_EXIT(FM_LOG_CAT_SERDES, err);
 
 }
 
@@ -1315,7 +1338,7 @@ fm_status fm10000InitSwSerdes(fm_int sw)
 /**  fm10000SerdesWrite
  * \ingroup intSerdes
  *
- * \desc            Write to a SERDES register.
+ * \desc            Writes a SERDES register.
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -1356,7 +1379,7 @@ fm_status fm10000SerdesWrite(fm_int     sw,
 /**  fm10000SerdesRead
  * \ingroup intSerdes
  *
- * \desc            Read a SerDes register.
+ * \desc            Reads from a SerDes register.
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -1399,7 +1422,7 @@ fm_status fm10000SerdesRead(fm_int     sw,
 /**  fm10000SerdesReadModifyWrite
  * \ingroup intSerdes
  *
- * \desc            Read and modify a SERDES register.
+ * \desc            Performs a read-modify-write access to a SERDES register.
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -1461,7 +1484,7 @@ fm_status fm10000SerdesReadModifyWrite(fm_int     sw,
         }
     }
 
-    FM_LOG_EXIT_V2(FM_LOG_CAT_SWITCH, serDes, err);
+    FM_LOG_EXIT_V2(FM_LOG_CAT_SERDES, serDes, err);
 
 }
 
@@ -1472,7 +1495,10 @@ fm_status fm10000SerdesReadModifyWrite(fm_int     sw,
 /** fm10000SerdesSpicoWrOnlyInt
  * \ingroup intSerdes
  *
- * \desc            Perform a SERDES SPICO write only interrupt.
+ * \desc            Performs a SERDES SPICO write only interrupt. The value
+ *                  returned by the interrupt is not returned to the caller
+ *                  and it is only used to validate that the interrupt was
+ *                  completed successfully.
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -1494,7 +1520,7 @@ fm_status fm10000SerdesSpicoWrOnlyInt(fm_int      sw,
     fm_status   err;
     fm_uint32   retVal;
 
-    FM_LOG_ENTRY_VERBOSE_V2(FM_LOG_CAT_SWITCH, serDes,
+    FM_LOG_ENTRY_VERBOSE_V2(FM_LOG_CAT_SERDES, serDes,
                             "sw=%d, serDes=%d, intNum 0x%4.4x, param=0x%4.4x\n",
                             sw,
                             serDes,
@@ -1516,7 +1542,7 @@ fm_status fm10000SerdesSpicoWrOnlyInt(fm_int      sw,
                       intNum);
     }
 
-    FM_LOG_EXIT_VERBOSE_V2(FM_LOG_CAT_SWITCH, serDes, err);
+    FM_LOG_EXIT_VERBOSE_V2(FM_LOG_CAT_SERDES, serDes, err);
 
 }
 
@@ -1527,7 +1553,11 @@ fm_status fm10000SerdesSpicoWrOnlyInt(fm_int      sw,
 /** fm10000SerdesSpicoInt
  * \ingroup intSerdes
  *
- * \desc            Perform SERDES SPICO interrupt.
+ * \desc            Executes a SERDES SPICO interrupt and return the result
+ *                  value to the caller. The access to the serdes registers may
+ *                  be performed using the SAI core registers or via the sBus
+ *                  The access mode is controlled by serdesIntUseLaneSai,
+ *                  which is a member of the 'fm10000_switch' structure.
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -1555,7 +1585,7 @@ fm_status fm10000SerdesSpicoInt(fm_int      sw,
     fm_bool             isEplRing;
     fm_bool             useParallelIntf;
 
-    FM_LOG_ENTRY_VERBOSE_V2(FM_LOG_CAT_SWITCH, serDes,
+    FM_LOG_ENTRY_VERBOSE_V2(FM_LOG_CAT_SERDES, serDes,
                             "sw=%d, serDes=%d, intNum 0x%4.4x, param=0x%4.4x, pValue=%p\n",
                             sw,
                             serDes,
@@ -1611,7 +1641,86 @@ fm_status fm10000SerdesSpicoInt(fm_int      sw,
         }
     }
 
-    FM_LOG_EXIT_VERBOSE_V2(FM_LOG_CAT_SWITCH, serDes, err);
+    FM_LOG_EXIT_VERBOSE_V2(FM_LOG_CAT_SERDES, serDes, err);
+
+}
+
+
+
+
+/*****************************************************************************/
+/** fm10000GetSbmAssocSerDes
+ * \ingroup intSerdes
+ *
+ * \desc            Retrieves the SBus Master associated SerDe.
+ *                  The logical association determines SerDes, the SBus Master
+ *                  Error Validation will be performed with.
+ *                  It avoids a situation that SBus Master Validation is
+ *                  performed with all SerDes's
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \param[out]      pSerDes points to an associated serdes.
+ *
+ * \return          FM_OK if successful.
+ * \return          Other ''Status Codes'' as appropriate in case of failure.
+ *
+ *****************************************************************************/
+fm_status fm10000GetSbmAssocSerDes(fm_int  sw,
+                                   fm_int *pSerDes)
+{
+    fm_status  status;
+    fm_int     port;
+    fm_switch *switchPtr;
+    fm_bool    isEpl;
+    fm_int     cpi;
+
+    status = FM_OK;
+
+
+    if ( sbmAssocSerDes == -1 )
+    {
+        switchPtr = GET_SWITCH_PTR(sw);
+
+        for (cpi = 0 ; cpi < switchPtr->numCardinalPorts ; cpi++)
+        {
+            port = GET_LOGICAL_PORT(sw, cpi);
+
+            status = fmIsEplPort(sw, port, &isEpl);
+            if ( status == FM_OK )
+            {
+                if ( isEpl )
+                {
+                    status = fm10000MapLogicalPortToSerdes(sw, port, pSerDes);
+                    if ( status == FM_OK )
+                    {
+                        sbmAssocSerDes = *pSerDes;
+                        FM_LOG_DEBUG(FM_LOG_CAT_SERDES,
+                                     "PORT%d assign SBus Master associated SerDes %d\n",
+                                     port,
+                                     sbmAssocSerDes);
+                    }
+
+                    FM_LOG_EXIT(FM_LOG_CAT_SERDES, status);
+                }
+
+            }
+            else
+            {
+                FM_LOG_EXIT(FM_LOG_CAT_SERDES, status);
+            }
+
+        }
+
+        status = FM_ERR_UNSUPPORTED;
+        FM_LOG_EXIT(FM_LOG_CAT_SERDES, status);
+    }
+    else
+    {
+        *pSerDes = sbmAssocSerDes;
+    }
+
+    FM_LOG_EXIT(FM_LOG_CAT_SERDES, status);
 
 }
 
@@ -1622,7 +1731,7 @@ fm_status fm10000SerdesSpicoInt(fm_int      sw,
 /** fm10000SbmSpicoInt
  * \ingroup intSerdes
  *
- * \desc            Perform a SBUS master SPICO interrupt.
+ * \desc            Executes a sBUS Master SPICO interrupt.
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -1687,7 +1796,7 @@ fm_status fm10000SbmSpicoInt(fm_int         sw,
 /** fm10000SerdesInitLaneControlStructures
  * \ingroup intSerdes
  *
- * \desc            Initialize lane control structures associated to the
+ * \desc            Initializes lane control structures associated to the
  *                  specified serDes.
  *
  * \param[in]       sw is the switch on which to operate.
@@ -1826,7 +1935,7 @@ fm_status fm10000SerdesInitLaneControlStructures(fm_int sw,
 /** fm10000SerdesClearAllSerDesInterrupts
  * \ingroup intSerdes
  *
- * \desc            Clear the interrupts for all serdes.
+ * \desc            Clears interrupts for all serdes.
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -1878,8 +1987,8 @@ fm_status fm10000SerdesClearAllSerDesInterrupts(fm_int sw)
 /** fm10000SerdesInitOpMode
  * \ingroup intSerdes
  *
- * \desc            Initializes serdes operational mode according to the value
- *                  of api.FM10000.serdesOpMode API attribute and the
+ * \desc            Initializes the serdes operational mode according to the
+ *                  value of api.FM10000.serdesOpMode API attribute and the
  *                  api.platform.model.devBoardIp platform attribute.
  *
  * \param[in]       sw is the switch on which to operate.
@@ -2049,8 +2158,9 @@ fm_status fm10000SerdesInitOpMode(fm_int sw)
  * \ingroup intSerdes
  *
  * \desc            Returns the serdes operational mode, including the opMode,
- *                  the kind of state machine being used and if serdes register
- *                  accesses are via LANE_SAI_XXX registers of via SBus.
+ *                  the kind of state machine being used and the type of access
+ *                  used to read and write serdes registers (LANE_SAI_XXX core
+ *                  registers or SBus).
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -2159,8 +2269,8 @@ fm_status fm10000SerdesGetOpMode(fm_int                 sw,
  * \ingroup intSerdes
  *
  * \desc            Configures PCS data width according to the port speed.
- *                  Only valid for 10G and 25G ethernet modes. Only applicable
- *                  to EPL serdes.
+ *                  Only be called for 10G and 25G ethernet modes and for the
+ *                  EPL ring.
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -2238,7 +2348,7 @@ fm_status fm10000SetPcslCfgWidthMode(fm_int             sw,
         }
     }
 
-    FM_LOG_EXIT_V2(FM_LOG_CAT_SWITCH, serDes, err);
+    FM_LOG_EXIT_V2(FM_LOG_CAT_SERDES, serDes, err);
 
 }
 
@@ -2249,8 +2359,8 @@ fm_status fm10000SetPcslCfgWidthMode(fm_int             sw,
 /** fm10000SerdesSaveKrTrainingDelayInfo
  * \ingroup intSerdes
  *
- * \desc            Saves statistical information about delays when performing
- *                  KR training.
+ * \desc            Saves statistical information about delays, expressed in
+ *                  milliseconds, when performing KR training.
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -2327,8 +2437,11 @@ fm_status fm10000SerdesSaveKrTrainingDelayInfo(fm_int       sw,
 /** fm10000SerdesSaveKrTrainingTimeoutInfo
  * \ingroup intSerdes
  *
- * \desc            Saves statistical information about delays when performing
- *                  KR training.
+ * \desc            Saves statistical information about delays, expressed in
+ *                  milliseconds, when performing KR training. This function
+ *                  excludes KR timeout situations, which are counted as
+ *                  special events, in order to not distort the statistical
+ *                  values.
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -2426,9 +2539,9 @@ fm_status fm10000SerdesSaveKrTrainingTimeoutInfo(fm_int       sw,
 /** fm10000SerdesIncrKrStatsCounter
  * \ingroup intSerdes
  *
- * \desc            Function that increments one of the KR statistical counters:
- *                  the start KR training counter or the KR training failed.
- *                  These counters saturates at 0xffffffff.
+ * \desc            Increments one of the KR statistical counters specified
+ *                  by the counterSpec selector. All these counters saturate
+ *                  at 0xffffffff.
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -2498,8 +2611,8 @@ fm_status fm10000SerdesIncrKrStatsCounter(fm_int       sw,
 /** fm10000SerdesSaveStopTuningStatsInfo
  * \ingroup intSerdes
  *
- * \desc            Saves statistical information about delays when stopping
- *                  DFE tuning.
+ * \desc            Saves statistical information about delays, expressed in
+ *                  cycles, when stopping DFE tuning.
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -2570,15 +2683,15 @@ fm_status fm10000SerdesSaveStopTuningStatsInfo(fm_int       sw,
 /** fm10000SerdesSaveICalTuningStatsInfo
  * \ingroup intSerdes
  *
- * \desc            Saves statistical information about delays when performing
- *                  iCal DFE (coarse) tuning.
+ * \desc            Save statistical information about delays, expressed in
+ *                  cycles, when performing iCal DFE (coarse) tuning.
  *
  * \param[in]       sw is the switch on which to operate.
  *
  * \param[in]       serDes is the SerDes number on which to operate.
  *
- * \param[in]       iCalDelay iCal (coarse) tuning delay. See ''fm10000_laneDfe''
- *                  to see measure units.
+ * \param[in]       iCalDelay iCal (coarse) tuning delay in cycles. See
+ *                  ''fm10000_laneDfe'' to the durations of cycles.
  *
  * \return          FM_OK if successful.
  * \return          Other ''Status Codes'' as appropriate in case of failure.
@@ -2627,15 +2740,15 @@ fm_status fm10000SerdesSaveICalTuningStatsInfo(fm_int       sw,
 /** fm10000SerdesSavePCalTuningStatsInfo
  * \ingroup intSerdes
  *
- * \desc            Saves statistical information about delays when performing
- *                  pCal DFE (fine) tuning.
+ * \desc            Save statistical information about delays, expressed in
+ *                  cycles, when performing pCal DFE (fine) tuning.
  *
  * \param[in]       sw is the switch on which to operate.
  *
  * \param[in]       serDes is the SerDes number on which to operate.
  *
- * \param[in]       pCalDelay iCal (fine) tuning delay. See ''fm10000_laneDfe''
- *                  to see measure units.
+ * \param[in]       pCalDelay iCal (fine) tuning delay in cycles. See
+ *                  ''fm10000_laneDfe'' to see the duration of cycles.
  *
  * \return          FM_OK if successful.
  * \return          Other ''Status Codes'' as appropriate in case of failure.
@@ -2682,8 +2795,8 @@ fm_status fm10000SerdesSavePCalTuningStatsInfo(fm_int       sw,
 /** fm10000SerdesSaveICalTuningDelayInfo
  * \ingroup intSerdes
  *
- * \desc            Saves statistical information about delays when performing
- *                  iCal DFE (coarse) tuning.
+ * \desc            Saves statistical information about delays, expressed in
+ *                  milliseconds, when performing iCal DFE (coarse) tuning.
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -2763,8 +2876,8 @@ fm_status fm10000SerdesSaveICalTuningDelayInfo(fm_int       sw,
 /** fm10000SerdesSavePCalTuningDelayInfo
  * \ingroup intSerdes
  *
- * \desc            Saves statistical information about delays when performing
- *                  iCal DFE (coarse) tuning.
+ * \desc            Saves statistical information about delays, expressed in
+ *                  milliseconds, when performing pCal DFE (fine) tuning.
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -2841,8 +2954,8 @@ fm_status fm10000SerdesSavePCalTuningDelayInfo(fm_int       sw,
 /** fm10000SerdesSaveStopTuningDelayInfo
  * \ingroup intSerdes
  *
- * \desc            Calculates and saves statistical information about delays
- *                  when stopping DFE tuning.
+ * \desc            Calculates and saves statistical information about delays,
+ *                  expressed in milliseconds, when stopping DFE tuning.
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -2922,8 +3035,8 @@ fm_status fm10000SerdesSaveStopTuningDelayInfo(fm_int       sw,
 /** fm10000SerdesGetTimestampMs
  * \ingroup intSerdes
  *
- * \desc            Function that return a relative timestamp to be used
- *                  for delay calculations involving serdes operations.
+ * \desc            Returns a relative timestamp to be used for delay
+ *                  calculations involving different serdes operations.
  *
  * \return          the time stamp in Ms.
  *
@@ -2949,7 +3062,7 @@ fm_uint32 fm10000SerdesGetTimestampMs(void)
 /** fm10000SerdesGetTimestampDiffMs
  * \ingroup intSerdes
  *
- * \desc            Function that return a the difference between two relative
+ * \desc            Returns the time difference between two relative
  *                  timestamps (stop-start). This function is intented to be
  *                  used for delay calculations involving serdes operations.
  *                  Timestamps are expressed in Ms and the range is limited to
@@ -3005,9 +3118,9 @@ fm_bool fm10000SerdesGetTimestampDiffMs(fm_uint32  start,
 /** fm10000SerdesIncrStatsCounter
  * \ingroup intSerdes
  *
- * \desc            Function that increments one of the statistical counters:
- *                  the start-dfe counter and and the stop-dfe cycle counter.
- *                  These counters saturates at 0xffffffff.
+ * \desc            Increments one of the statistical counters:  the start-dfe
+ *                  or the stop-dfe cycle counter. Both counters saturate at
+ *                  0xffffffff.
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -3109,7 +3222,7 @@ fm_status fm10000SerdesGetTuningState(fm_int     sw,
         *pDfeTuningState = pLaneExt->dfeExt.dfeTuningStat & 0x0f;
     }
 
-    FM_LOG_EXIT_V2(FM_LOG_CAT_SWITCH, serDes, err);
+    FM_LOG_EXIT_V2(FM_LOG_CAT_SERDES, serDes, err);
 
 }
 
@@ -3162,7 +3275,7 @@ fm_status fm10000SerdesIsDfeTuningActive(fm_int     sw,
                               (pLaneExt->dfeExt.retryCntr > 0);
     }
 
-    FM_LOG_EXIT_V2(FM_LOG_CAT_SWITCH, serDes, err);
+    FM_LOG_EXIT_V2(FM_LOG_CAT_SERDES, serDes, err);
 
 }
 
@@ -3174,10 +3287,9 @@ fm_status fm10000SerdesIsDfeTuningActive(fm_int     sw,
  * \ingroup intSerdes
  *
  * \desc            Returns the eye height for the given serdes. The eye width
- *                  is not available for the time being and 0xff is returned
- *                  instead. Eye score is not available for static DFE modes
- *                  and 0xffff is returned in that case. The eye score range
- *                  is [0..64].
+ *                  is not calculated and 0xff is returned instead. Eye score
+ *                  is not available for static DFE modes and 0xffff is returned
+ *                  in those cases. The eye score range is [0..64].
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -3258,7 +3370,7 @@ fm_status fm10000SerdesGetEyeScore(fm_int     sw,
         }
     }
 
-    FM_LOG_EXIT_V2(FM_LOG_CAT_SWITCH, serDes, err);
+    FM_LOG_EXIT_V2(FM_LOG_CAT_SERDES, serDes, err);
 
 }
 
@@ -3332,7 +3444,7 @@ fm_status fm10000SerdesGetBistUserPattern(fm_int     sw,
 
     }
 
-    FM_LOG_EXIT_V2(FM_LOG_CAT_SWITCH, serDes, err);
+    FM_LOG_EXIT_V2(FM_LOG_CAT_SERDES, serDes, err);
 
 }
 
@@ -3428,7 +3540,7 @@ fm_status fm10000SerdesSetBistUserPattern(fm_int     sw,
         }
     }
 
-    FM_LOG_EXIT_V2(FM_LOG_CAT_SWITCH, serDes, err);
+    FM_LOG_EXIT_V2(FM_LOG_CAT_SERDES, serDes, err);
 
 }
 
@@ -3439,7 +3551,7 @@ fm_status fm10000SerdesSetBistUserPattern(fm_int     sw,
 /** fm10000SerDesEventHandler
  * \ingroup intSerdes
  *
- * \desc            Function that processes serDes-level interrupts
+ * \desc            Processes serDes-level core interrupts.
  *
  * \param[in]       sw is the switch on which to operate
  *
@@ -3492,6 +3604,7 @@ fm_status fm10000SerDesEventHandler( fm_int    sw,
         {
 
             eventInfo.smType         = pLaneExt->smType;
+            eventInfo.srcSmType      = 0;
             eventInfo.lock           = FM_GET_STATE_LOCK( sw );
             eventInfo.dontSaveRecord = FALSE;
 
@@ -3573,7 +3686,7 @@ fm_status fm10000SerDesEventHandler( fm_int    sw,
 /** fm10000MapPhysicalPortToPepSerDes
  * \ingroup intSerdes
  *
- * \desc            Function that maps a physical port to a PEP and SerDes IDs
+ * \desc            Maps a physical port to a PEP and SerDes IDs
  *
  * \param[in]       sw is the switch on which to operate
  *
@@ -3618,7 +3731,7 @@ fm_status fm10000MapPhysicalPortToPepSerDes( fm_int  sw,
 /** fm10000MapFabricPortToPepSerDes
  * \ingroup intSerdes
  *
- * \desc            Function that maps a fabric port to a PEP and SerDes IDs
+ * \desc            Maps a fabric port to a PEP and SerDes IDs
  *
  * \param[in]       sw is the switch on which to operate
  *
@@ -3675,7 +3788,7 @@ fm_status fm10000MapFabricPortToPepSerDes( fm_int  sw,
 /** fm10000SerdesSendDfeEventReq
  * \ingroup intSerdes
  *
- * \desc            Send a notification to the dfe level state machine that
+ * \desc            Sends a notification to the dfe level state machine that
  *                  belongs to the specified serdes.
  *
  * \param[in]       sw is the switch on which to operate.
@@ -3701,6 +3814,7 @@ fm_status fm10000SerdesSendDfeEventReq(fm_int    sw,
 
 
     dfeEventInfo.smType  = pLaneExt->dfeExt.smType;
+    dfeEventInfo.srcSmType = pLaneExt->smType;
     dfeEventInfo.eventId = eventId;
     dfeEventInfo.lock    = FM_GET_STATE_LOCK( sw );
     dfeEventInfo.dontSaveRecord = FALSE;
@@ -3721,7 +3835,7 @@ fm_status fm10000SerdesSendDfeEventReq(fm_int    sw,
 /** fm10000MapEplChannelToLane
  * \ingroup intSerdes
  *
- * \desc            Return corresponding lane given (epl, channel) tuple.
+ * \desc            Returns the lane associated to the given (epl, channel) tuple.
  *
  * \param[in]       sw is the ID of the switch on which to operate.
  *
@@ -3767,7 +3881,8 @@ fm_status fm10000MapEplChannelToLane(fm_int  sw,
 /** fm10000MapEplLaneToChannel
  * \ingroup intSerdes
  *
- * \desc            Return corresponding channel given (epl, lane) tuple.
+ * \desc            Returns the channel associated to the given (epl, lane)
+ *                  tuple.
  *
  * \param[in]       sw is the ID of the switch on which to operate.
  *
@@ -3812,7 +3927,8 @@ fm_status fm10000MapEplLaneToChannel(fm_int  sw,
 /** fm10000MapEplLaneToSerdes
  * \ingroup intSerdes
  *
- * \desc            Return serdes number given (epl, lane) tuple.
+ * \desc            Returns the serdes ID associated to the given (epl, lane)
+ *                  tuple.
  *
  * \param[in]       sw is the ID of the switch on which to operate.
  *
@@ -3859,7 +3975,8 @@ fm_status fm10000MapEplLaneToSerdes(fm_int  sw,
 /** fm10000MapSerdesToSbus
  * \ingroup intSerdes
  *
- * \desc            Return SBUS address and ring given serdes number.
+ * \desc            Returns the SBUS address and ring associated to the given
+ *                  serdes ID.
  *
  * \param[in]       sw is the switch number on which to operate.
  *
@@ -3911,7 +4028,8 @@ fm_status fm10000MapSerdesToSbus(fm_int         sw,
 /** fm10000MapSerdesToEplLane
  * \ingroup intSerdes
  *
- * \desc            Return (epl, lane) tuple given serdes number.
+ * \desc            Returns the (epl, lane) tuple associated to the given
+ *                  serdes ID.
  *
  * \param[in]       sw is the switch number on which to operate.
  *
@@ -3968,7 +4086,8 @@ fm_status fm10000MapSerdesToEplLane(fm_int  sw,
 /** fm10000MapSerdesToPepLane
  * \ingroup intSerdes
  *
- * \desc            Return (pep, lane) tuple given serdes number.
+ * \desc            Returns the (pep, lane) tuple associated to the given
+ *                  serdes ID.
  *
  * \param[in]       sw is the switch number on which to operate.
  *
@@ -4031,7 +4150,7 @@ fm_status fm10000MapSerdesToPepLane(fm_int  sw,
 /** fm10000MapSerdesToLogicalPort
  * \ingroup intSerdes
  *
- * \desc            Return logical port given serdes number.
+ * \desc            Returns the logical port associated to the given serdes ID.
  *
  * \param[in]       sw is the switch number on which to operate.
  *
@@ -4074,7 +4193,8 @@ fm_status fm10000MapSerdesToLogicalPort(fm_int  sw,
 /** fm10000MapPortLaneToSerdes
  * \ingroup intSerdes
  *
- * \desc            Return serdes number given (port, laneNum) tuple.
+ * \desc            Returns the serdes ID associated to the given
+ *                  (port, laneNum) tuple.
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -4171,7 +4291,7 @@ ABORT:
 /** fm10000MapFabricPortToSerdes
  * \ingroup intSerdes
  *
- * \desc            Return serdes number given faabric port.
+ * \desc            Returns the serdes ID associated to the given fabric port.
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -4225,7 +4345,7 @@ fm_status fm10000MapFabricPortToSerdes( fm_int         sw,
 /** fm10000MapPhysicalPortToSerdes
  * \ingroup intSerdes
  *
- * \desc            Return serdes number given physical port.
+ * \desc            Returns the serdes ID associated to the given physical port.
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -4287,7 +4407,7 @@ fm_status fm10000MapPhysicalPortToSerdes( fm_int        sw,
 /** fm10000MapLogicalPortToSerdes
  * \ingroup intSerdes
  *
- * \desc            Return serdes number given logical port.
+ * \desc            Returns the serdes ID associated to the given logical port.
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -4317,11 +4437,10 @@ fm_status fm10000MapLogicalPortToSerdes(fm_int  sw,
 /** fm10000MapPepToLogicalPort
  * \ingroup intSwitch
  *
- * \desc            maps a PCIE Express endpoint ID to the associated logical
- *                  port.
+ * \desc            Maps a PCIe endpoint ID to the associated logical port.
  *                  Note well: the tables used by this function to perform
  *                  the pep to port mapping are constant, so no lock is
- *                  required to protect its execution.
+ *                  required.
  *
  * \param[in]       sw is the ID of the switch on which to operate
  *
@@ -4379,8 +4498,7 @@ fm_status fm10000MapPepToLogicalPort(fm_int  sw,
 /** fm10000MapLogicalPortToPep
  * \ingroup intSwitch
  *
- * \desc            maps logical port to the associated PCIE Express
- *                  endpoint ID.
+ * \desc            Maps a logical port to the associated PCIe endpoint ID.
  *
  * \param[in]       sw is the ID of the switch on which to operate
  *

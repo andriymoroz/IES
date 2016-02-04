@@ -129,7 +129,9 @@ static fm_status DecodeMacTableEntry(fm_int                 sw,
 
         if (status != FM_OK)
         {
-            entry->port = entry->glort;
+            /* Check if it is a tunnel GloRT user, leave port as -1 if yes */
+            status = fmCheckGlortRangeType(switchPtr, entry->glort, 1,
+                                           FM_GLORT_TYPE_TUNNEL);
         }
     }
 

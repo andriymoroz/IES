@@ -5,7 +5,7 @@
  * Creation Date:   2005
  * Description:     Functions to work with doubly-linked lists
  *
- * Copyright (c) 2005 - 2011, Intel Corporation
+ * Copyright (c) 2005 - 2015, Intel Corporation
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -29,7 +29,7 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
+ *****************************************************************************/
 
 #include <fm_sdk_int.h>
 
@@ -67,7 +67,7 @@ void fmDListInit(fm_dlist *list)
 {
     FM_DLL_INIT_LIST(list, head, tail);
 
-}   /* fmDListInit */
+}   /* end fmDListInit */
 
 
 
@@ -83,7 +83,7 @@ fm_status fmDListInsertEnd(fm_dlist *list, void *data)
 
     nnode->data = data;
 
-    FM_DLL_INSERT_LAST(list, head, tail, nnode, next, prev);
+    FM_DLL_INSERT_LAST(list, head, tail, nnode, nextPtr, prev);
 
     return FM_OK;
 
@@ -103,7 +103,7 @@ fm_status fmDListInsertBegin(fm_dlist *list, void *data)
 
     nnode->data = data;
 
-    FM_DLL_INSERT_FIRST(list, head, tail, nnode, next, prev);
+    FM_DLL_INSERT_FIRST(list, head, tail, nnode, nextPtr, prev);
 
     return FM_OK;
 
@@ -184,13 +184,13 @@ int fmDListInsertSorted(fm_dlist *list,
 
     for (p = list->head ;
          p && (key(p->data, nnode->data) <= 0) ;
-         p = p->next)
+         p = p->nextPtr)
     {
         ;
     }
 
     /* p is now at a node that is "greater" than the new one */
-    FM_DLL_INSERT_BEFORE(list, head, tail, p, next, prev, nnode);
+    FM_DLL_INSERT_BEFORE(list, head, tail, p, nextPtr, prev, nnode);
 
     return FM_OK;
 
@@ -225,7 +225,7 @@ void *fmDListRemove(fm_dlist *list, fm_dlist_node *node)
 
     if (node)
     {
-        FM_DLL_REMOVE_NODE(list, head, tail, node, next, prev);
+        FM_DLL_REMOVE_NODE(list, head, tail, node, nextPtr, prev);
 
         data = node->data;
         fmFree(node);
@@ -265,7 +265,7 @@ void fmDListFree(fm_dlist *list)
     {
         do
         {
-            p = list->head->next;
+            p = list->head->nextPtr;
             fmFree(list->head);
             list->head = p;
         }
@@ -304,7 +304,7 @@ void fmDListFreeWithDestructor(fm_dlist *list, fmFreeFunc delfunc)
                 delfunc(list->head->data);
             }
 
-            p = list->head->next;
+            p = list->head->nextPtr;
             fmFree(list->head);
             list->head = p;
         }
@@ -312,6 +312,8 @@ void fmDListFreeWithDestructor(fm_dlist *list, fmFreeFunc delfunc)
     }
 
 }   /* end fmDListFreeWithDestructor */
+
+
 
 
 /*****************************************************************************/
@@ -330,7 +332,7 @@ fm_uint fmDListSize(fm_dlist *list)
     fm_uint size = 0;
     fm_dlist_node *p;
 
-    for (p = list->head ; p != NULL ; p = p->next)
+    for (p = list->head ; p != NULL ; p = p->nextPtr)
     {
         size++;
     }
@@ -338,6 +340,9 @@ fm_uint fmDListSize(fm_dlist *list)
     return size;
 
 }   /* end fmDListSize */
+
+
+
 
 /*****************************************************************************/
 /** fmDListPeekFirst
@@ -373,6 +378,8 @@ fm_status fmDListPeekFirst(fm_dlist *list, void **dataPtr)
 }   /* end fmDListPeekFirst */
 
 
+
+
 /*****************************************************************************/
 /** fmDListInsertEndV2
  * \ingroup intList
@@ -400,7 +407,7 @@ fm_status fmDListInsertEndV2(fm_dlist *list, void *data, fm_dlist_node **node)
 
     nnode->data = data;
 
-    FM_DLL_INSERT_LAST(list, head, tail, nnode, next, prev);
+    FM_DLL_INSERT_LAST(list, head, tail, nnode, nextPtr, prev);
 
     *node = nnode;
 
@@ -438,14 +445,11 @@ fm_status fmDListInsertBeginV2(fm_dlist *list, void *data, fm_dlist_node **node)
 
     nnode->data = data;
 
-    FM_DLL_INSERT_FIRST(list, head, tail, nnode, next, prev);
+    FM_DLL_INSERT_FIRST(list, head, tail, nnode, nextPtr, prev);
 
     *node = nnode;
 
     return FM_OK;
 
 }   /* end fmDListInsertBeginV2 */
-
-
-
 

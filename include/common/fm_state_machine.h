@@ -30,7 +30,7 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
+ *****************************************************************************/
  
 #ifndef __FM_FM_STATE_MACHINE_H
 #define __FM_FM_STATE_MACHINE_H
@@ -45,23 +45,26 @@
 /***********************************************************/
 /** \ingroup typeStruct
  * Definition of the generic State Machine Event info header 
- * type 
+ * type.
  * Each individual state machine event info shall have 
  * this structure as header. 
  ***********************************************************/
 typedef struct _fm_smEventInfo
 {
-    /** State Machine type */
+    /** State Machine type. */
     fm_int     smType;
 
-    /** Event Id */
+    /** Event Id. */
     fm_int     eventId;
 
-    /** Caller lock */
+    /** Caller lock. */
     fm_lock    *lock;
 
-    /** Bypass current transaction record registration flag */
+    /** Bypass current transaction record registration flag. */
     fm_bool     dontSaveRecord;
+    
+    /** Event source State Machine type. */
+    fm_int      srcSmType;
 
 } fm_smEventInfo;
 

@@ -5,7 +5,7 @@
  * Creation Date:   March 13, 2014
  * Description:     NAT API
  *
- * Copyright (c) 2014, Intel Corporation
+ * Copyright (c) 2014 - 2016, Intel Corporation
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -29,7 +29,7 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
+ *****************************************************************************/
 
 #ifndef __FM_FM_API_NAT_H
 #define __FM_FM_API_NAT_H
@@ -210,6 +210,76 @@ typedef struct _fm_natNgeDefault
 
 /*****************************************************************************/
 /** \ingroup typeStruct
+ * Used to set default GPE configuration on NAT entries.
+ *****************************************************************************/
+typedef struct _fm_natGpeHdr
+{
+    /** GPE header's Next Protocol field. */
+    fm_uint32  nextProt;
+
+    /** The VNI that will be stored in the VXLAN-GPE header. */
+    fm_uint32  vni;
+
+} fm_natGpeHdr;
+
+
+/*****************************************************************************/
+/** \ingroup typeStruct
+ * Used to set default GPE NSH configuration on NAT entries.
+ *****************************************************************************/
+typedef struct _fm_natNshHdr
+{
+    /** The length of the NSH header in 4-byte words including the Base Header,
+     *  Service Path Header and Context Data. */
+    fm_byte    length;
+
+    /** The bit that should be set if there are critical TLVs that are
+     * included in the NSH data. */ 
+    fm_bool    critical;
+
+    /** MD Type. */
+    fm_byte    mdType;
+
+    /** Service Path ID. */
+    fm_uint32  svcPathId;
+
+    /** Service Index. */
+    fm_byte    svcIndex;
+
+    /** The NSH context data that follows the service header. */
+    fm_uint32  data[FM_TUNNEL_NSH_DATA_SIZE];
+
+    /** The bitmask of the valid 32-bit words in nshData. */
+    fm_uint16  dataMask;
+
+} fm_natNshHdr;
+
+
+/*****************************************************************************/
+/** \ingroup typeEnum
+ *  NAT Action Masks.
+ *
+ *  These bit masks are used to define which fields of the NSH header are set
+ *  using ''fm_natNshHdr'' in ''fmCreateNatTunnel''
+ *  (see ''fm_natTunnel'' structure).
+ *****************************************************************************/
+typedef enum
+{
+    /** Specify the NSH Base Header fields (Critical Flag, Length,
+     *  and MD Type). */
+    FM_NAT_TUNNEL_NSH_BASE_HDR    = (1 << 0),
+
+    /** Specify the NSH Service Header fields. */
+    FM_NAT_TUNNEL_NSH_SERVICE_HDR = (1 << 1),
+
+    /** Specify the NSH header's data bytes field. */
+    FM_NAT_TUNNEL_NSH_DATA        = (1 << 2),
+
+} fm_natNshHdrMask;
+
+
+/*****************************************************************************/
+/** \ingroup typeStruct
  * Used as an argument to ''fmSetNatTunnelDefault''. This structure is used 
  * to configure the type of tunnelling used and provide default value for some
  * of the outer header field.
@@ -245,6 +315,14 @@ typedef struct _fm_fm_natTunnelDefault
      *  type selected is FM_TUNNEL_TYPE_NGE. */
     fm_natNgeDefault ngeCfg;
 
+    /** Defines GPE specific configuration. This should only be set if the
+     *  tunnel type selected is FM_TUNNEL_TYPE_GPE or FM_TUNNEL_TYPE_GPE_NSH. */
+    fm_natGpeHdr     gpeCfg;
+
+    /** Defines GPE NSH specific configuration. This should only be set if the
+     *  tunnel type selected is FM_TUNNEL_TYPE_GPE_NSH. */
+    fm_natNshHdr     nshCfg;
+
 } fm_natTunnelDefault;
 
 
@@ -261,45 +339,58 @@ typedef struct _fm_fm_natTunnelDefault
 typedef struct _fm_natTunnel
 {
     /** Specifies the outer Destination IP for this tunnel. */
-    fm_ipAddr  dip;
+    fm_ipAddr            dip;
 
     /** Specifies the outer Source IP for this tunnel. */
-    fm_ipAddr  sip;
+    fm_ipAddr            sip;
 
     /** Specifies the outer L4 Source Port for this tunnel. This is only
      *  configurable for tunnel type ''FM_TUNNEL_TYPE_VXLAN'' or
      *  ''FM_TUNNEL_TYPE_NGE''. ''FM_NAT_TUNNEL_DEFAULT'' value can be set
      *  to use a hash based value built using inner dip, sip, l4Src, l4Dst,
      *  and Protocol. */
-    fm_int     l4Src;
+    fm_int               l4Src;
 
     /** Specifies the outer TOS for this tunnel. ''FM_NAT_TUNNEL_DEFAULT''
      *  value can be set to use the default configuration as specified by
      *  the ''fmSetNatTunnelDefault'' function. */
-    fm_int     tos;
+    fm_int               tos;
 
     /** Specifies the outer TTL for this tunnel. ''FM_NAT_TUNNEL_DEFAULT''
      *  value can be set to use the default configuration as specified by
      *  the ''fmSetNatTunnelDefault'' function. */
-    fm_int     ttl;
+    fm_int               ttl;
 
     /** Specifies the outer L4 Destination port for this tunnel.
      *  ''FM_NAT_TUNNEL_DEFAULT'' value can be set to use the default
      *  configuration as specified by the ''fmSetNatTunnelDefault''
      *  function. */
-    fm_int     l4Dst;
+    fm_int               l4Dst;
 
     /** Specifies the outer NGE information. Only valid for
      *  ''FM_TUNNEL_TYPE_NGE'' tunnel type. This is a mask indicating which
      *  of 16 words are present in ngeData[]. ''FM_NAT_TUNNEL_DEFAULT''
      *  value can be set to use the default configuration as specified by
      *  the ''fmSetNatTunnelDefault'' function. */
-    fm_int     ngeMask;
+    fm_int               ngeMask;
 
     /** Specifies the outer NGE information. Only valid for
      *  ''FM_TUNNEL_TYPE_NGE'' tunnel type. This is the value to set based on
      *  each bit set in the mask.  */
-    fm_uint32  ngeData[FM_TUNNEL_NGE_DATA_SIZE];
+    fm_uint32            ngeData[FM_TUNNEL_NGE_DATA_SIZE];
+
+    /** Specifies the VNI that will be stored in the VXLAN-GPE header. */
+    fm_int               gpeVni;
+
+    /** Defines GPE NSH specific configuration. This should only be set if the
+     *  tunnel type selected is FM_TUNNEL_TYPE_GPE_NSH. To make use of this
+     *  configuration, nshMask (''fm_natNshHdrMask'') must be set */
+    fm_natNshHdr         nsh;
+
+    /** Defines which fields of the NSH header are set using ''fm_natNshHdr''
+     *  structure. This should only be set if the tunnel type selected is
+     *  FM_TUNNEL_TYPE_GPE_NSH. */
+    fm_natNshHdrMask     nshMask;
 
 } fm_natTunnel;
 
@@ -419,6 +510,22 @@ typedef enum
     /** Specify the receiving host to uses on tunnel decap. */
     FM_NAT_ACTION_SET_TUNNEL_VSI = (1 << 11),
 
+    /** Specify the GPE header's VNI field. */
+    FM_NAT_ACTION_SET_TUNNEL_GPE_VNI = (1 << 12),
+
+    /** Specify the NSH Base Header fields (Critical Flag, Length,
+     *  and MD Type). */
+    FM_NAT_ACTION_SET_TUNNEL_NSH_BASE_HDR = (1 << 13),
+
+    /** Specify the NSH Service Header fields. */
+    FM_NAT_ACTION_SET_TUNNEL_NSH_SERVICE_HDR = (1 << 14),
+
+    /** Specify the NSH header's data bytes field. */
+    FM_NAT_ACTION_SET_TUNNEL_NSH_DATA = (1 << 15),
+
+    /** Trap the frame. */
+    FM_NAT_ACTION_TRAP = (1 << 16),
+
 } fm_natActionMask;
 
 
@@ -430,43 +537,50 @@ typedef enum
 typedef struct _fm_natActionParam
 {
     /** Destination MAC address, for use with ''FM_NAT_ACTION_SET_DMAC''. */
-    fm_macaddr dmac;
+    fm_macaddr   dmac;
 
     /** Source MAC address, for use with ''FM_NAT_ACTION_SET_SMAC''. */
-    fm_macaddr smac;
+    fm_macaddr   smac;
 
     /** Destination IP address, for use with ''FM_NAT_ACTION_SET_DIP''. */
-    fm_ipAddr  dstIp;
+    fm_ipAddr    dstIp;
 
     /** Source IP address, for use with ''FM_NAT_ACTION_SET_SIP''. */
-    fm_ipAddr  srcIp;
+    fm_ipAddr    srcIp;
 
     /** TCP or UDP source port, for use with ''FM_NAT_ACTION_SET_L4SRC''. */
-    fm_uint16  l4Src;
+    fm_uint16    l4Src;
 
     /** TCP or UDP destination port, for use with ''FM_NAT_ACTION_SET_L4DST''. */
-    fm_uint16  l4Dst;
+    fm_uint16    l4Dst;
 
     /** TTL value, for use with ''FM_NAT_ACTION_SET_TTL''. */
-    fm_byte    ttl;
+    fm_byte      ttl;
 
     /** Tunnel entry created using ''fmCreateNatTunnel'', for use with
      *  ''FM_NAT_ACTION_TUNNEL''. */
-    fm_int     tunnel;
+    fm_int       tunnel;
 
     /** VNI field, for use with ''FM_NAT_ACTION_SET_TUNNEL_VNI''. */
-    fm_uint32  vni;
+    fm_uint32    vni;
 
     /** Must be set to the proper value if ''FM_NAT_ACTION_SET_TUNNEL_NGE'' is
      *  set. This is a mask indicating which of 16 words is present.  */
-    fm_uint16  ngeMask;
+    fm_uint16    ngeMask;
 
     /** Must be set to the proper value if ''FM_NAT_ACTION_SET_TUNNEL_NGE'' is
      *  set. This is the value to set based on each word set in the mask.  */
-    fm_uint32  ngeData[FM_TUNNEL_NGE_DATA_SIZE];
+    fm_uint32    ngeData[FM_TUNNEL_NGE_DATA_SIZE];
 
     /** Logical port number, for use with ''FM_NAT_ACTION_SET_TUNNEL_VSI''. */
-    fm_int     logicalPort;
+    fm_int       logicalPort;
+
+    /** The VNI that will be stored in the VXLAN-GPE header. */
+    fm_uint32    gpeVni;
+
+    /** Defines GPE NSH specific configuration. This should only be set if the
+     *  tunnel type selected is FM_TUNNEL_TYPE_GPE_NSH. */
+    fm_natNshHdr nsh;
 
 } fm_natActionParam;
 

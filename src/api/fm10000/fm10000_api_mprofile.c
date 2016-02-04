@@ -5,7 +5,7 @@
  * Creation Date:   March 13, 2014
  * Description:     Mirror Profile management code.
  *
- * Copyright (c) 2014 - 2015, Intel Corporation
+ * Copyright (c) 2014 - 2016, Intel Corporation
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -29,7 +29,7 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
+ *****************************************************************************/
 
 #include <fm_sdk_fm10000_int.h>
 
@@ -955,7 +955,7 @@ static fm_status WriteMirrorProfileId(fm_int    sw,
         err = fmTreeIterNext(&triggerIt, &trigKey, (void **) &trigEntry);
         if (err == FM_ERR_NO_MORE)
         {
-            err = FM_OK;
+            /* no need to set err */
             break;
         }
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_TRIGGER, err);
@@ -1360,8 +1360,6 @@ static fm_status ReserveProfileIndex(fm_int sw, fm_uint32 index)
     switchExt = GET_SWITCH_EXT(sw);
     trigInfo  = &switchExt->triggerInfo;
 
-    err = FM_OK;
-
     if (index >= FM10000_FH_MIRROR_PROFILE_TABLE_ENTRIES)
     {
         err = FM_ERR_INVALID_PROFILE_INDEX;
@@ -1440,8 +1438,6 @@ static fm_status HandleLogAction(fm_int  sw,
                                  fm_int  rule,
                                  fm10000_triggerEntry * trigEntry)
 {
-    fm10000_switch *        switchExt;
-    fm10000_triggerInfo *   trigInfo;
     fm_uint32               logIndex;
     fm_uint32               handle;
     fm_status               err;
@@ -1450,9 +1446,6 @@ static fm_status HandleLogAction(fm_int  sw,
     FM_LOG_ENTRY(FM_LOG_CAT_TRIGGER,
                  "sw=%d group=%d rule=%d\n",
                  sw, group, rule);
-
-    switchExt = GET_SWITCH_EXT(sw);
-    trigInfo  = &switchExt->triggerInfo;
 
     handle = 0;
     haveLogIndex = FALSE;

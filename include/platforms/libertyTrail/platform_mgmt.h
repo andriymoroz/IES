@@ -102,4 +102,9 @@ fm_status fmPlatformMgmtEnableCableAutoDetection(fm_int  sw,
                                                  fm_int  port, 
                                                  fm_bool enable);
 
+fm_status fmPlatformMgmtIsEthModeSupportedByXcvrType(fm_platXcvrInfo *xcvrInfo,
+                                                     fm_uint64        anBasePage,
+                                                     fm_bool         *ethSupported,
+                                                     fm_ethMode      *autoEthMode);
+
 #endif /* __FM_PLATFORM_XCVR_MGMT_H */

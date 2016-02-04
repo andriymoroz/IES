@@ -29,7 +29,7 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
+ *****************************************************************************/
 
 #include <fm_sdk_fm10000_int.h>
 
@@ -497,6 +497,14 @@ static fm_status ConfigFloodingTrigger(fm_int sw, const triggerDesc * desc)
         trigCond.cfg.matchFFU    = FM_TRIGGER_MATCHCASE_MATCHIFNOTEQUAL;
         trigCond.param.ffuId     = floodInfo->trapAlwaysId;
         trigCond.param.ffuIdMask = floodInfo->trapAlwaysId;
+    }
+
+    if ( desc->classMask == FM_TRIGGER_FRAME_CLASS_MCAST )
+    {
+        /* Don't match on Pause Frames */
+        trigCond.cfg.matchEtherType  = FM_TRIGGER_MATCHCASE_MATCHIFNOTEQUAL;
+        trigCond.param.etherType     = 0x8808;
+        trigCond.param.etherTypeMask = 0xffff;
     }
 
     /**************************************************
@@ -1884,7 +1892,7 @@ fm_status fm10000SetFloodDestPort(fm_int  sw,
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
 
     /* Check if this port is already set to a given state */
-    portAlreadySet = ( (FM_PORTMASK_GET_BIT(&destMask, port)) == state );
+    portAlreadySet = ( (FM_PORTMASK_GET_BIT(&destMask, GET_PORT_INDEX(sw, port))) == state );
 
     /* Set state of port in destination mask. */
     err = fmSetPortInPortMask(sw, &destMask, port, state);
@@ -2042,8 +2050,10 @@ ABORT:
  *****************************************************************************/
 fm_status fm10000FreeFlooding(fm_int sw)
 {
+#if (ENABLE_AUX_TRIGGERS)
     fm10000_switch *    switchExt;
     fm10000_floodInfo * floodInfo;
+#endif
     fm_status           retVal;
     fm_status           err;
 
@@ -2051,8 +2061,10 @@ fm_status fm10000FreeFlooding(fm_int sw)
 
     FM_LOG_ENTRY(FM_LOG_CAT_SWITCH, "sw=%d\n", sw);
 
+#if (ENABLE_AUX_TRIGGERS)
     switchExt = GET_SWITCH_EXT(sw);
     floodInfo = &switchExt->floodInfo;
+#endif
 
     retVal = FM_OK;
 
@@ -2162,7 +2174,7 @@ fm_status fm10000NotifyFloodingTrapAlwaysId(fm_int sw, fm_int trapAlwaysId)
     err = UpdateFloodingTrigger(sw, &mcastLogDesc);
 
 ABORT:
-    FM_LOG_EXIT(FM_LOG_CAT_SWITCH, FM_OK);
+    FM_LOG_EXIT(FM_LOG_CAT_SWITCH, err);
 
 }   /* end fm10000NotifyFloodingTrapAlwaysId */
 
@@ -2188,15 +2200,8 @@ ABORT:
  *****************************************************************************/
 fm_status fm10000SetPortBcastFlooding(fm_int sw, fm_int port, fm_int value)
 {
-    fm_switch *         switchPtr;
-    fm10000_switch *    switchExt;
-    fm10000_floodInfo * floodInfo;
-    fm_uint32           trapClassSwPriMap;
-    fm_status           err;
-
-    switchPtr = GET_SWITCH_PTR(sw);
-    switchExt = GET_SWITCH_EXT(sw);
-    floodInfo = &switchExt->floodInfo;
+    fm_uint32   trapClassSwPriMap;
+    fm_status   err;
 
     switch (value)
     {
@@ -2312,13 +2317,8 @@ ABORT:
  *****************************************************************************/
 fm_status fm10000SetPortMcastFlooding(fm_int sw, fm_int port, fm_int value)
 {
-    fm10000_switch *    switchExt;
-    fm10000_floodInfo * floodInfo;
-    fm_uint32           trapClassSwPriMap;
-    fm_status           err;
-
-    switchExt = GET_SWITCH_EXT(sw);
-    floodInfo = &switchExt->floodInfo;
+    fm_uint32   trapClassSwPriMap;
+    fm_status   err;
 
     switch (value)
     {
@@ -2434,19 +2434,14 @@ ABORT:
  *****************************************************************************/
 fm_status fm10000SetPortUcastFlooding(fm_int sw, fm_int port, fm_int value)
 {
-    fm10000_switch *    switchExt;
-    fm10000_floodInfo * floodInfo;
-    fm_uint32           trapClassSwPriMap;
-    fm_status           err;
+    fm_uint32   trapClassSwPriMap;
+    fm_status   err;
 
     FM_LOG_ENTRY(FM_LOG_CAT_SWITCH,
                  "sw=%d port=%d value=%d\n",
                  sw,
                  port,
                  value);
-
-    switchExt = GET_SWITCH_EXT(sw);
-    floodInfo = &switchExt->floodInfo;
 
     switch (value)
     {

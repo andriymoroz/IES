@@ -5,7 +5,7 @@
  * Creation Date:   October 8, 2007
  * Description:     Structures and functions for dealing with multicast groups.
  *
- * Copyright (c) 2007 - 2015, Intel Corporation
+ * Copyright (c) 2007 - 2016, Intel Corporation
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -382,7 +382,6 @@ static fm_status AddRemoteListener(fm_int                   sw,
     FM_DBG_DUMP_LISTENER(&intListener->listener);
 
     internalPort         = -1;
-    internalPortListener = NULL;
 
     if (intListener->listener.listenerType != FM_MCAST_GROUP_LISTENER_PORT_VLAN)
     {
@@ -471,7 +470,6 @@ static fm_status AddLagListener(fm_int                   sw,
                                 fm_intMulticastGroup *   group,
                                 fm_intMulticastListener *intListener)
 {
-    fm_switch *           switchPtr;
     fm_int                lagPort;
     fm_int                lagIndex;
     fm_status             err;
@@ -491,8 +489,6 @@ static fm_status AddLagListener(fm_int                   sw,
     {
         FM_LOG_EXIT(FM_LOG_CAT_MULTICAST, FM_ERR_UNSUPPORTED);
     }
-
-    switchPtr = GET_SWITCH_PTR(sw);
 
     err = TAKE_LAG_LOCK(sw);
     FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_MULTICAST, err);
@@ -566,7 +562,6 @@ static fm_status DeleteLagListener(fm_int                   sw,
                                    fm_intMulticastGroup *   group,
                                    fm_intMulticastListener *intListener)
 {
-    fm_switch               *switchPtr;
     fm_int                   lagPort;
     fm_int                   lagIndex;
     fm_status                err;
@@ -587,8 +582,6 @@ static fm_status DeleteLagListener(fm_int                   sw,
     {
         FM_LOG_EXIT(FM_LOG_CAT_MULTICAST, FM_ERR_UNSUPPORTED);
     }
-
-    switchPtr = GET_SWITCH_PTR(sw);
 
     err = TAKE_LAG_LOCK(sw);
     FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_MULTICAST, err);
@@ -684,7 +677,7 @@ static fm_status AddListenerToHardware(fm_int                   sw,
     FM_DBG_DUMP_LISTENER(&intListener->listener);
 
     switchPtr = GET_SWITCH_PTR(sw);
-    portPtr   = NULL;
+    /*portPtr = NULL;*/
 
     switch (intListener->listener.listenerType)
     {
@@ -776,7 +769,7 @@ static fm_status DeleteListenerFromHardware(fm_int                   sw,
     FM_DBG_DUMP_LISTENER(&intListener->listener);
 
     switchPtr = GET_SWITCH_PTR(sw);
-    portPtr   = NULL;
+    /*portPtr = NULL;*/
 
     switch (intListener->listener.listenerType)
     {
@@ -897,7 +890,7 @@ static fm_status DeleteMulticastListener(fm_int                   sw,
                  (void *) intListener);
     FM_DBG_DUMP_LISTENER(&intListener->listener);
 
-    portPtr = NULL;
+    /*portPtr = NULL;*/
 
     switch (intListener->listener.listenerType)
     {
@@ -967,6 +960,8 @@ ABORT:
  * \param[in]       addrKey points to the multicast address key record.
  *
  * \return          FM_OK if successful.
+ * \return          FM_ERR_ADDR_BANK_FULL if there is no room in the MA table
+ *                  for the multicast address.
  *
  *****************************************************************************/
 static fm_status AddAddressToHardware(fm_int                sw,
@@ -3294,7 +3289,6 @@ fm_status fmAddMcastGroupListenerInternalForFlood(fm_int                 sw,
 
     switchPtr   = GET_SWITCH_PTR(sw);
     lockTaken   = FALSE;
-    group       = NULL;
     intListener = NULL;
 
     switch (listener->listenerType)
@@ -5752,6 +5746,8 @@ ABORT:
  *                  not a multicast address.
  * \return          FM_ERR_MCAST_ADDRESS_IN_USE if the address is already
  *                  in use by another multicast group.
+ * \return          FM_ERR_ADDR_BANK_FULL if there is no room in the MA table
+ *                  for the multicast address.
  * \return          FM_ERR_UNSUPPORTED if legacy multicast group restrictions
  *                  are enabled.
  *
@@ -5967,6 +5963,8 @@ ABORT:
  *                  not a multicast address.
  * \return          FM_ERR_MCAST_ADDRESS_IN_USE if the address is already
  *                  in use by another multicast group.
+ * \return          FM_ERR_ADDR_BANK_FULL if there is no room in the MA table
+ *                  for the multicast address.
  * \return          FM_ERR_UNSUPPORTED if legacy multicast group restrictions
  *                  are enabled.
  *
@@ -6405,6 +6403,8 @@ fm_status fmGetMcastGroupAddress(fm_int               sw,
  *                  returned only if legacy multicast group restrictions are
  *                  enabled. Otherwise it is not required for a multicast group
  *                  to have an address attached prior to activation.
+ * \return          FM_ERR_ADDR_BANK_FULL if there is no room in the MA table
+ *                  for the multicast address.
  * \return          FM_FAIL if multicast group could not share a replication
  *                  group with other multicast groups due to a common listener
  *                  port, or an internal logic error occurs.
@@ -6837,6 +6837,8 @@ ABORT:
  *                  returned only when legacy multicast group restrictions are
  *                  enabled. Otherwise it is not required for a multicast group
  *                  to have an address attached prior to activation.
+ * \return          FM_ERR_ADDR_BANK_FULL if there is no room in the MA table
+ *                  for the multicast address.
  * \return          FM_FAIL if multicast group could not share a replication
  *                  group with other multicast groups due to a common listener
  *                  port, or an internal logic error occurs.
@@ -6889,16 +6891,22 @@ fm_status fmActivateMcastGroup(fm_int sw,
  *****************************************************************************/
 fm_status fmDeactivateMcastGroupInt(fm_int sw, fm_int mcastGroup)
 {
-    fm_switch *              switchPtr;
-    fm_status                err;
-    fm_intMulticastGroup *   group;
-    fm_bool                  lockTaken;
-    fm_intMulticastListener *intListener;
-    fm_treeIterator          iter;
-    fm_uint64                key;
-    fm_customTreeIterator    addrIter;
-    fm_mcastAddrKey *        addrKey;
-    fm_mcastAddrKey *        addrValue;
+    fm_switch                       *switchPtr;
+    fm_status                        err;
+    fm_intMulticastGroup            *group;
+    fm_bool                          lockTaken;
+    fm_intMulticastListener         *intListener;
+    fm_treeIterator                  iter;
+    fm_uint64                        key;
+    fm_customTreeIterator            addrIter;
+    fm_mcastAddrKey                 *addrKey;
+    fm_mcastAddrKey                 *addrValue;
+    fm_uint64                        nextKey;
+    fm_status                        localErr;
+    fm_intMulticastListener         *nextIntListener;
+    fm_bool                          deleteFromHardware;
+    fm_intMulticastInternalListener *internalPortListener;
+    fm_port                         *portPtr;
 
     FM_LOG_ENTRY_API(FM_LOG_CAT_MULTICAST,
                      "sw = %d, mcastGroup = %d\n",
@@ -6960,21 +6968,88 @@ fm_status fmDeactivateMcastGroupInt(fm_int sw, fm_int mcastGroup)
     /* Remove all listeners from the hardware */
     fmTreeIterInit(&iter, &group->listenerTree);
 
-    while (1)
+    err = fmTreeIterNext( &iter, &key, (void **) &intListener );
+    
+    if (err != FM_ERR_NO_MORE)
     {
-        err = fmTreeIterNext( &iter, &key, (void **) &intListener );
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MULTICAST, err);
+    }
 
-        if (err != FM_OK)
+    while (err == FM_OK)
+    {
+        FM_LOG_DEBUG(FM_LOG_CAT_MULTICAST, "key=%llx\n", key);
+        localErr = 
+            fmTreeIterNext( &iter, &nextKey, (void **) &nextIntListener );
+
+        if (localErr == FM_ERR_MODIFIED_WHILE_ITERATING)
+        {
+            /* Initialize the tree iterator again because a key could be
+             *  removed. */
+            err = fmTreeIterInitFromSuccessor(&iter,
+                                              &group->listenerTree, key);
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MULTICAST, err);
+
+            localErr =
+                fmTreeIterNext( &iter, &nextKey, (void **) &nextIntListener );
+        }
+
+        if ( (localErr != FM_OK) && (localErr != FM_ERR_NO_MORE) )
+        {
+            err = localErr;
+            FM_LOG_ABORT(FM_LOG_CAT_MULTICAST, err);
+        }
+
+        deleteFromHardware = TRUE;
+
+        if ( (intListener->listener.listenerType ==
+              FM_MCAST_GROUP_LISTENER_PORT_VLAN) &&
+             ( (portPtr = 
+                GET_PORT_PTR(sw,
+                             intListener->listener.info.portVlanListener.port))
+               != NULL ) )
+        {
+            if (portPtr->portType == FM_PORT_TYPE_LAG)
+            {
+                internalPortListener =
+                    fmGetFirstMcastInternalListener(group);
+                
+                while (internalPortListener != NULL)
+                {
+                    if (internalPortListener->port == 
+                        intListener->listener.info.portVlanListener.port)
+                    {
+                        deleteFromHardware = FALSE;
+                        break;
+                    }
+                    
+                    internalPortListener =
+                        fmGetNextMcastInternalListener(internalPortListener);
+                }
+            }
+            else if (fmPortIsInALAG(sw,
+                                    intListener->listener.info.portVlanListener.port))
+            {
+                deleteFromHardware = FALSE;
+            }
+        }
+
+        if (deleteFromHardware)
+        {
+            err = DeleteListenerFromHardware(sw, group, intListener);
+            if (err != FM_OK)
+            {
+                group->updateHardware = TRUE;
+                goto ABORT;
+            }
+        }
+
+        if (localErr == FM_ERR_NO_MORE)
         {
             break;
         }
 
-        err = DeleteListenerFromHardware(sw, group, intListener);
-        if (err != FM_OK)
-        {
-            group->updateHardware = TRUE;
-            goto ABORT;
-        }
+        key = nextKey;
+        intListener = nextIntListener;
     }
 
     group->updateHardware = TRUE;
@@ -8495,6 +8570,8 @@ fm_status fmMcastBuildMacEntry(fm_int                  sw,
  * \param[in]       group points to the multicast group entry.
  *
  * \return          FM_OK if successful.
+ * \return          FM_ERR_ADDR_BANK_FULL if there is no room in the MA table
+ *                  for the multicast address.
  *
  *****************************************************************************/
 fm_status fmRewriteMcastGroupMacAddresses(fm_int                sw,
@@ -9303,7 +9380,6 @@ fm_status fmConfigureMcastGroupAsHNIFlooding(fm_int  sw,
                      isHNIFlooding);
 
     switchPtr        = GET_SWITCH_PTR(sw);
-    status           = FM_OK;
 
     group = fmFindMcastGroup(sw, mcastGroup);
     if (group == NULL)
@@ -9396,8 +9472,6 @@ fm_bool fmHasMcastGroupNonVirtualListeners(fm_int sw,
     fm_intMulticastListener *intListener;
     fm_treeIterator          iter;
     fm_uint64                key;
-
-    status = FM_OK;
 
     group = fmFindMcastGroup(sw, mcastGroup);
 
@@ -9557,8 +9631,6 @@ fm_bool fmHasMcastGroupNonFloodingListeners(fm_int sw,
     fm_intMulticastListener *intListener;
     fm_treeIterator          iter;
     fm_uint64                key;
-
-    status = FM_OK;
 
     group = fmFindMcastGroup(sw, mcastGroup);
 

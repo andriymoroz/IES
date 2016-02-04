@@ -71,8 +71,8 @@ static void HandleDfeTuningTimeout(void *arg);
 /** SendDfeEventInd
  * \ingroup intPort
  *
- * \desc            Send a DFE-level event notification to the parent serdes
- *                  state machine belonging to the current serdes
+ * \desc            Sends a DFE-level event notification to the parent serdes
+ *                  state machine.
  *
  * \param[in]       eventInfo is a pointer the generic event descriptor.
  *
@@ -101,6 +101,7 @@ fm_status SendDfeEventInd(fm_smEventInfo *eventInfo,
     pLaneExt = ((fm10000_dfeSmEventInfo *)userInfo)->laneExt;
 
     serDesEventInfo.smType  = pLaneExt->smType;
+    serDesEventInfo.srcSmType = pLaneExt->dfeExt.smType;
     serDesEventInfo.eventId = eventId;
     serDesEventInfo.lock    = FM_GET_STATE_LOCK( sw );
 
@@ -120,8 +121,8 @@ fm_status SendDfeEventInd(fm_smEventInfo *eventInfo,
 /** HandleDfeTuningTimeout
  * \ingroup intSerDesDfe
  *
- * \desc            Handles a DFE state machine timeout generating a
- *                  ''FM10000_SERDES_DFE_EVENT_TIMEOUT_IND'' event.
+ * \desc            Callback that handles a timeout and sends an event to the
+ *                  DFE state machine.
  *
  * \param[in]       arg is the pointer to the argument passed when the timer
  *                  was started, in this case the pointer to the lane extension
@@ -146,6 +147,7 @@ static void HandleDfeTuningTimeout(void *arg)
 
 
     eventInfo.smType  = pLaneDfe->smType;
+    eventInfo.srcSmType = 0;
     eventInfo.eventId = FM10000_SERDES_DFE_EVENT_TIMEOUT_IND;
     eventInfo.lock    = FM_GET_STATE_LOCK(sw);
 
@@ -165,7 +167,7 @@ static void HandleDfeTuningTimeout(void *arg)
 /** StartTimeoutTimer
  * \ingroup intSerDesDfe
  *
- * \desc            Start SerDes-DFE timeout timer. Timer is started using the
+ * \desc            Starts SerDes-DFE timeout timer. Timer is started using the
  *                  provided expiration time. The number of repetitions is
  *                  always set to 1.
  *
@@ -344,8 +346,7 @@ fm_status fm10000SerDesDfeConfigDfe(fm_smEventInfo *eventInfo,
 /** fm10000SerDesDfeStartTuning
  * \ingroup intSerDesDfe
  *
- * \desc            Action starting DFE tuning on the serdes associated to this
- *                  state machine.
+ * \desc            Action starting DFE tuning.
  *
  * \param[in]       eventInfo is a pointer the generic event descriptor.
  *
@@ -400,8 +401,7 @@ fm_status fm10000SerDesDfeStartTuning(fm_smEventInfo *eventInfo,
 /** fm10000SerDesDfeStartKrPCalTuning
  * \ingroup intSerDesDfe
  *
- * \desc            Action starting DFE tuning on the serdes associated to this
- *                  state machine.
+ * \desc            Action starting pCal tuning after KR training.
  *
  * \param[in]       eventInfo is a pointer the generic event descriptor.
  *
@@ -449,8 +449,7 @@ fm_status fm10000SerDesDfeStartKrPCalTuning(fm_smEventInfo *eventInfo,
 /** fm10000SerDesDfePauseTuning
  * \ingroup intSerDesDfe
  *
- * \desc            Action pausing DFE tuning on the serdes associated to this
- *                  state machine.
+ * \desc            Action pausing DFE tuning.
  *
  * \param[in]       eventInfo is a pointer the generic event descriptor.
  *
@@ -497,8 +496,7 @@ fm_status fm10000SerDesDfePauseTuning(fm_smEventInfo *eventInfo,
 /** fm10000SerDesDfeResumeTuning
  * \ingroup intSerDesDfe
  *
- * \desc            Action pausing DFE tuning on the serdes associated to this
- *                  state machine.
+ * \desc            Action resuming DFE tuning.
  *
  * \param[in]       eventInfo is a pointer the generic event descriptor.
  *
@@ -549,7 +547,7 @@ fm_status fm10000SerDesDfeResumeTuning(fm_smEventInfo *eventInfo,
  * \ingroup intSerDesDfe
  *
  * \desc            Conditional transition callback processing autostart
- *                  timeout events.
+ *                  events used to retry DFE tuning.
  *
  * \param[in]       eventInfo is a pointer the generic event descriptor.
  *
@@ -584,6 +582,7 @@ fm_status fm10000SerDesDfeProcessPushAutoStartTuning(fm_smEventInfo *eventInfo,
     if (--pLaneDfe->retryCntr > 0)
     {
         dfeEventInfo.smType  = pLaneDfe->smType;
+        dfeEventInfo.srcSmType = 0;
         dfeEventInfo.eventId = FM10000_SERDES_DFE_EVENT_START_TUNING_REQ;
         dfeEventInfo.lock    = FM_GET_STATE_LOCK( sw );
 
@@ -618,7 +617,7 @@ fm_status fm10000SerDesDfeProcessPushAutoStartTuning(fm_smEventInfo *eventInfo,
 /** fm10000SerDesDfeStartTimeoutTimerShrt
  * \ingroup intSerDesDfe
  *
- * \desc            Action starting the SerDes-DFE timeout timer using the a
+ * \desc            Action starting the SerDes-DFE timeout timer using the
  *                  short expiration time.
  *
  * \param[in]       eventInfo is a pointer the generic event descriptor (unused
@@ -654,8 +653,8 @@ fm_status fm10000SerDesDfeStartTimeoutTimerShrt(fm_smEventInfo *eventInfo,
 /** fm10000SerDesDfeStartTimeoutTimerStopTuning
  * \ingroup intSerDesDfe
  *
- * \desc            Action starting the SerDes-DFE timeout timer used when
- *                  tuning is being stopped.
+ * \desc            Action starting the SerDes-DFE timeout timer used to
+ *                  stop DFE.
  *
  * \param[in]       eventInfo is a pointer the generic event descriptor (unused
  *                  in this function)
@@ -690,8 +689,8 @@ fm_status fm10000SerDesDfeStartTimeoutTimerStopTuning(fm_smEventInfo *eventInfo,
 /** fm10000SerDesDfeStartTimeoutTimerDebounce
  * \ingroup intSerDesDfe
  *
- * \desc            Action starting the SerDes-DFE timeout timer using the
- *                  debounce time.
+ * \desc            Action starting the SerDes-DFE timeout timer for the
+ *                  debounce state after DFE is complete.
  *
  * \param[in]       eventInfo is a pointer the generic event descriptor (unused
  *                  in this function)
@@ -747,7 +746,9 @@ fm_status fm10000SerDesDfeStartTimeoutTimerDebounce(fm_smEventInfo *eventInfo,
  * \ingroup intSerDesDfe
  *
  * \desc            Action starting the SerDes-DFE timeout timer using an
- *                  adaptive algorithm.
+ *                  adaptive algorithm for eye score reading. This allows
+ *                  changing the reading pace, which is faster at the begining
+ *                  to become slower when the score is more or less stable.
  *
  * \param[in]       eventInfo is a pointer the generic event descriptor (unused
  *                  in this function)
@@ -963,8 +964,7 @@ fm_status fm10000SerDesDfeClrRetryCntr(fm_smEventInfo *eventInfo,
 /** fm10000SerDesDfeStopTuning
  * \ingroup intSerDesDfe
  *
- * \desc            Action stopping tuning on the serdes associated to this
- *                  state machine.
+ * \desc            Action stopping DFE tuning.
  *
  * \param[in]       eventInfo is a pointer the generic event descriptor.
  *
@@ -1000,7 +1000,7 @@ fm_status fm10000SerDesDfeStopTuning(fm_smEventInfo *eventInfo,
 /** fm10000SerDesDfeSendTuningStartedInd
  * \ingroup intSerDesDfe
  *
- * \desc            Action sending a DFE started indication event to the
+ * \desc            Action sending a 'DFE-started' event notification to the
  *                  parent state machine.
  *
  * \param[in]       eventInfo is a pointer the generic event descriptor.
@@ -1032,8 +1032,8 @@ fm_status fm10000SerDesDfeSendTuningStartedInd(fm_smEventInfo *eventInfo,
 /** fm10000SerDesDfeSendTuningStoppedInd
  * \ingroup intSerDesDfe
  *
- * \desc            Action sending a DFE stopped indication event to the parent
- *                  state machine.
+ * \desc            Action sending a 'DFE-stopped' event notification to the
+ *                  parent state machine.
  *
  * \param[in]       eventInfo is a pointer the generic event descriptor.
  *
@@ -1062,7 +1062,7 @@ fm_status fm10000SerDesDfeSendTuningStoppedInd(fm_smEventInfo *eventInfo,
 /** fm10000SerDesDfeSendTuningCompleteInd
  * \ingroup intSerDesDfe
  *
- * \desc            Action sending a DFE complete indication event to the
+ * \desc            Action sending a 'DFE-complete' event notification to the
  *                  parent state machine.
  *
  * \param[in]       eventInfo is a pointer the generic event descriptor.
@@ -1099,7 +1099,7 @@ fm_status fm10000SerDesDfeSendTuningCompleteInd(fm_smEventInfo *eventInfo,
 /** fm10000SerDesDfeSendICalTuningCompleteInd
  * \ingroup intSerDesDfe
  *
- * \desc            Action sending a DFE iCal complete indication event to
+ * \desc            Action sending a 'iCal-complete' event notification to
  *                  the parent state machine.
  *
  * \param[in]       eventInfo is a pointer the generic event descriptor.
@@ -1129,8 +1129,7 @@ fm_status fm10000SerDesDfeSendICalTuningCompleteInd(fm_smEventInfo *eventInfo,
 /** fm10000SerDesDfeReadEyeH
  * \ingroup intSerDesDfe
  *
- * \desc            Action reading the height of the eye for the serdes
- *                  associated to this state machine.
+ * \desc            Action reading the height of the eye.
  *
  * \param[in]       eventInfo is a pointer the generic event descriptor.
  *
@@ -1172,8 +1171,7 @@ fm_status fm10000SerDesDfeReadEyeH(fm_smEventInfo *eventInfo,
 /** fm10000SerDesDfeReadEyeW
  * \ingroup intSerDesDfe
  *
- * \desc            Action reading the width  of the eye for the serdes
- *                  associated to this state machine.
+ * \desc            Action reading the width  of the eye.
  *
  * \param[in]       eventInfo is a pointer the generic event descriptor.
  *
@@ -1275,10 +1273,9 @@ fm_status fm10000SerDesDfeConfigureEyeH(fm_smEventInfo *eventInfo,
 /** fm10000SerDesDfeDontSaveRecord
  * \ingroup intSerDesDfe
  *
- * \desc            Action setting the flag to do not save record for the
+ * \desc            Action setting the flag to do not save the record for the
  *                  current transaction. This tipically is used with timeouts
- *                  and periodically events to avoid saving redundant information
- *                  and sweep the state machine history buffer.
+ *                  and periodical events.
  *
  * \param[in]       eventInfo is a pointer the generic event descriptor.
  *
@@ -1304,11 +1301,60 @@ fm_status fm10000SerDesDfeDontSaveRecord(fm_smEventInfo *eventInfo,
 
 
 /*****************************************************************************/
+/** fm10000SerDesDfeRestartStopTuningTimer
+ * \ingroup intSerDesDfe
+ *
+ * \desc            Action restarting the timer used during the DFE halting
+ *                  sequence.
+ *
+ * \param[in]       eventInfo is a pointer the generic event descriptor.
+ *
+ * \param[in]       userInfo is pointer a purpose specific event descriptor
+ *                  (must be casted to ''fm10000_dfeSmEventInfo'')
+ *
+ *
+ * \return          FM_OK if successful
+ * \return          Other ''Status Codes'' as appropriate in case of failure.
+ *
+ *****************************************************************************/
+fm_status fm10000SerDesDfeRestartStopTuningTimer(fm_smEventInfo *eventInfo,
+                                                 void           *userInfo )
+{
+    fm_status        err;
+    fm10000_laneDfe *pLaneDfe;
+
+    FM_NOT_USED(eventInfo);
+
+    err = FM_OK;
+    pLaneDfe  = ((fm10000_dfeSmEventInfo *)userInfo)->laneDfe;
+
+
+
+    if (pLaneDfe->retryCntr > 0)
+    {
+
+        err = fm10000SerDesDfeStartTimeoutTimerShrt(eventInfo,userInfo);
+    }
+    else
+    {
+
+
+        err = fm10000SerDesDfeStartTimeoutTimerStopTuning(eventInfo,userInfo);
+    }
+
+    return err;
+
+}
+
+
+
+
+/*****************************************************************************/
 /** fm10000SerDesDfeProcessICalTimeout
  * \ingroup intSerDesDfe
  *
  * \desc            Conditional transition callback processing timeout events
- *                  during iCal DFE tuning.
+ *                  during iCal tuning.
  *
  * \param[in]       eventInfo is a pointer the generic event descriptor.
  *
@@ -1472,7 +1518,7 @@ fm_status fm10000SerDesDfeProcessICalTimeout(fm_smEventInfo *eventInfo,
  * \ingroup intSerDesDfe
  *
  * \desc            Conditional transition callback processing timeout events
- *                  during DFE tuning.
+ *                  during pCal tuning.
  *
  * \param[in]       eventInfo is a pointer the generic event descriptor.
  *
@@ -1595,52 +1641,7 @@ fm_status fm10000SerDesDfeProcessPCalTimeout(fm_smEventInfo *eventInfo,
 
 
 
-/*****************************************************************************/
-/** fm10000SerDesDfeProcessStopTuningTimeout
- * \ingroup intSerDesDfe
- *
- * \desc            Conditional transition callback processing stop tuning
- *                  timeout events.
- *
- * \param[in]       eventInfo is a pointer the generic event descriptor.
- *
- * \param[in]       userInfo is pointer a purpose specific event descriptor
- *                  (must be casted to ''fm10000_dfeSmEventInfo'')
- *
- * \param[out]      nextState is a pointer to a caller-allocated area where
- *                  this function will return the state the state machine
- *                  will transition to
- *
- * \return          FM_OK if successful
- * \return          Other ''Status Codes'' as appropriate in case of failure.
- *
- *****************************************************************************/
-fm_status fm10000SerDesDfeProcessStopTuningTimeout(fm_smEventInfo *eventInfo,
-                                                   void           *userInfo,
-                                                   fm_int         *nextState )
-{
-    fm_status        err;
-    fm10000_laneDfe *pLaneDfe;
 
-    FM_NOT_USED(eventInfo);
-
-    err = FM_OK;
-    pLaneDfe  = ((fm10000_dfeSmEventInfo *)userInfo)->laneDfe;
-
-
-
-    if (pLaneDfe->retryCntr > 0)
-    {
-
-        err = fm10000SerDesDfeStartTimeoutTimerShrt(eventInfo,userInfo);
-    }
-
-
-    *nextState = FM10000_SERDES_DFE_STATE_START;
-
-    return err;
-
-}
 
 
 

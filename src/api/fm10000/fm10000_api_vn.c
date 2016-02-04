@@ -1190,8 +1190,7 @@ static fm_status InitializeVNSubsystem(fm_int sw)
     status = fmCreateACLInt(sw,
                             switchExt->vnEncapAcl,
                             FM_ACL_SCENARIO_ANY_FRAME_TYPE
-                            | FM_ACL_SCENARIO_ANY_ROUTING_TYPE
-                            | FM_ACL_SCENARIO_ANY_ROUTING_GLORT_TYPE,
+                            | FM_ACL_SCENARIO_ANY_ROUTING_TYPE,
                             FM_ACL_DEFAULT_PRECEDENCE,
                             TRUE);
     FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_VN, status);
@@ -1200,8 +1199,7 @@ static fm_status InitializeVNSubsystem(fm_int sw)
                             switchExt->vnDecapAcl,
                             FM_ACL_SCENARIO_IPv4
                             | FM_ACL_SCENARIO_IPv6
-                            | FM_ACL_SCENARIO_UNICAST_ROUTED
-                            | FM_ACL_SCENARIO_UCAST_ROUTED_GLORT,
+                            | FM_ACL_SCENARIO_UNICAST_ROUTED,
                             FM_ACL_DEFAULT_PRECEDENCE,
                             TRUE);
     FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_VN, status);

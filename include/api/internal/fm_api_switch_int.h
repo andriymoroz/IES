@@ -695,6 +695,7 @@ struct _fm_switch
     fm_status                   (*ComputeFHClockFreq)(fm_int sw, fm_float *fhMhz);
     fm_status                   (*GetCpuPort)(fm_int sw, fm_int *cpuPort);
     fm_status                   (*SetCpuPort)(fm_int sw, fm_int cpuPort);
+    fm_status                   (*EnableSwitchMacFiltering)(fm_int sw);
                                   
     /**************************************************
      * Switch State Manipulation
@@ -1418,6 +1419,11 @@ struct _fm_switch
                                              fm_int groupId,
                                              fm_int tableIndex,
                                              fm_int flowId);
+    fm_status   (*GetFlowTableIndexUnused)(fm_int  sw,
+                                           fm_int *tableIndex);
+    fm_status   (*GetFlowTableSupportedActions)(fm_int           sw,
+                                                fm_flowTableType flowTableType,
+                                                fm_flowAction *  flowAction);
 
     /**************************************************
      * Tunnel API Support
@@ -1760,6 +1766,7 @@ struct _fm_switch
                                        fm_int txTc,
                                        fm_int islPri);
     fm_status   (*DbgDumpQOS)(fm_int sw, fm_int port);
+    fm_status   (*DbgDumpQueueQOS)(fm_int sw);
     fm_status   (*DbgDumpPortMax)(fm_int sw, fm_int port);
     fm_status   (*DbgDumpSwpriMap)(fm_int sw, fm_int attr);
     fm_status   (*DbgDumpPortIdxMap)(fm_int sw, 
@@ -1894,6 +1901,10 @@ struct _fm_switch
                                     fm_registerReadUINT32Func readFunc,
                                     fm_uint32                 miliSec);
     fm_status   (*DbgPollLtssm)(fm_int                    sw,
+                                fm_registerReadUINT32Func readFunc,
+                                fm_int                    pep,
+                                fm_uint32                 miliSec);
+    fm_status   (*DbgPollReset)(fm_int                    sw,
                                 fm_registerReadUINT32Func readFunc,
                                 fm_int                    pep,
                                 fm_uint32                 miliSec);
@@ -3100,12 +3111,6 @@ struct _fm_switch
     fm_status (*ProcessMailboxLoopbackRequest)(fm_int                   sw,
                                                fm_int                   pepNb,
                                                fm_mailboxControlHeader *controlHeader);
-
-    fm_status (*ProcessCreateFlowTableRequest)(fm_int           sw,
-                                               fm_int           pepNb,
-                                               fm_int           tableIndex,
-                                               fm_uint16        tableType,
-                                               fm_flowCondition condition);
 
     void (*SetMailboxLportGlortRange)(fm_int              sw,
                                       fm_int              pepNb,

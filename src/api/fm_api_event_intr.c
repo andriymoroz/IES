@@ -166,9 +166,13 @@ void *fmInterruptHandler(void *args)
             if ( (fmRootApi->fmSwitchStateTable[sw] == NULL)
                 || !FM_IS_STATE_ALIVE(fmRootApi->fmSwitchStateTable[sw]->state) )
             {
+                FM_LOG_DEBUG(FM_LOG_CAT_SWITCH, 
+                             "Switch %d is not up, ignoring interrupts\n",
+                             sw);
+
                 UNPROTECT_SWITCH(sw);
 
-                goto REENABLE;
+                continue;
             }
 
             switchPtr = fmRootApi->fmSwitchStateTable[sw];
@@ -177,8 +181,6 @@ void *fmInterruptHandler(void *args)
             switchPtr->InterruptHandler(switchPtr);
 
             UNPROTECT_SWITCH(sw);
-
-REENABLE:
 
             if (intrSource & FM_INTERRUPT_SOURCE_ISR)
             {

@@ -29,7 +29,7 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
+ *****************************************************************************/
 
 #ifndef __FM_FM_API_ROUTING_H
 #define __FM_FM_API_ROUTING_H
@@ -697,12 +697,22 @@ typedef struct _fm_unicastECMPRouteEntry
 typedef enum
 {
     /** Indicates that all the virtual routers including the
-     *  physical router can share this route entry. */
+     *  physical router can share this route entry.
+     *
+     *  \chips  FM4000, FM6000, FM10000 */
     FM_ROUTER_ANY = -1,
 
     /** Indicates a route that will only be a part of the
-     *  physical router. */
+     *  physical router.
+     *
+     *  \chips  FM4000, FM6000, FM10000 */
     FM_PHYSICAL_ROUTER = 0,
+
+    /** Indicates that the pipeline's Router ID derived from the mapper
+     *  should be retained.
+     *
+     * \chips FM10000 */
+    FM_ROUTER_ID_NO_REPLACEMENT = 15,
 
 } fm_vrid;
 

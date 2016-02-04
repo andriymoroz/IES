@@ -1180,6 +1180,7 @@ void fmDbgGenerateSwitchRemovalEvent(fm_int slot);
 
 fm_status fmDbgDumpPortMax(fm_int sw, fm_int port);
 fm_status fmDbgDumpQOS(fm_int sw, fm_int port);
+fm_status fmDbgDumpQueueQOS(fm_int sw);
 fm_status fmDbgDumpMemoryUsage(fm_int sw);
 fm_status fmDbgDumpMemoryUsageV2(fm_int  sw, 
                                  fm_int  rxPort, 
@@ -1277,5 +1278,6 @@ fm_status fmDbgDumpScheduler(fm_int sw);
 fm_status fmDbgDumpBsmScratch(fm_int sw, fm_uint32 regMask);
 fm_status fmDbgPollBsmStatus(fm_int sw, fm_uint32 miliSec);
 fm_status fmDbgPollLtssm(fm_int sw, fm_int pep, fm_uint32 miliSec);
+fm_status fmDbgPollReset(fm_int sw, fm_int pep, fm_uint32 miliSec);
 
 #endif /* __FM_FM_DEBUG_H */

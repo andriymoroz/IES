@@ -5,7 +5,7 @@
  * Creation Date:  November 28, 2013
  * Description:    Low-level API for manipulating the Tunneling Engine.
  *
- * Copyright (c) 2013 - 2015, Intel Corporation
+ * Copyright (c) 2013 - 2016, Intel Corporation
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -466,13 +466,13 @@ typedef enum
 
     /** Write all fields. (Except for
      *  FM10000_TE_DEFAULT_TUNNEL_MODE and GPE/NSH fields) */
-    FM10000_TE_DEFAULT_TUNNEL_ALL = (FM10000_TE_DEFAULT_TUNNEL_L4DST_VXLAN  |
-                                     FM10000_TE_DEFAULT_TUNNEL_L4DST_NGE    |
-                                     FM10000_TE_DEFAULT_TUNNEL_TTL          |
-                                     FM10000_TE_DEFAULT_TUNNEL_TOS          |
-                                     FM10000_TE_DEFAULT_TUNNEL_DMAC         |
-                                     FM10000_TE_DEFAULT_TUNNEL_SMAC         |
-                                     FM10000_TE_DEFAULT_TUNNEL_PROTOCOL     |
+    FM10000_TE_DEFAULT_TUNNEL_ALL = (FM10000_TE_DEFAULT_TUNNEL_L4DST_VXLAN |
+                                     FM10000_TE_DEFAULT_TUNNEL_L4DST_NGE   |
+                                     FM10000_TE_DEFAULT_TUNNEL_TTL         |
+                                     FM10000_TE_DEFAULT_TUNNEL_TOS         |
+                                     FM10000_TE_DEFAULT_TUNNEL_DMAC        |
+                                     FM10000_TE_DEFAULT_TUNNEL_SMAC        |
+                                     FM10000_TE_DEFAULT_TUNNEL_PROTOCOL    |
                                      FM10000_TE_DEFAULT_TUNNEL_VERSION),
 
     /** Write all NGE fields. */
@@ -480,15 +480,18 @@ typedef enum
                                             FM10000_TE_DEFAULT_TUNNEL_NGE_MASK | 
                                             FM10000_TE_DEFAULT_TUNNEL_NGE_TIME),
 
+    /** Write all GPE/NSH fields. */
+    FM10000_TE_DEFAULT_TUNNEL_GPE_ALL = (FM10000_TE_DEFAULT_GPE_NSH_CLEAR |
+                                         FM10000_TE_DEFAULT_GPE_NEXT_PROT |
+                                         FM10000_TE_DEFAULT_GPE_VNI),
+
     /** Write all NSH fields. */
-    FM10000_TE_DEFAULT_TUNNEL_NSH_ALL = (FM10000_TE_DEFAULT_NSH_BASE_HDR   |
-                                         FM10000_TE_DEFAULT_NSH_SERVICE_HDR|
+    FM10000_TE_DEFAULT_TUNNEL_NSH_ALL = (FM10000_TE_DEFAULT_NSH_BASE_HDR    |
+                                         FM10000_TE_DEFAULT_NSH_SERVICE_HDR |
                                          FM10000_TE_DEFAULT_NSH_DATA),
 
     /** Write all GPE/NSH fields. */
-    FM10000_TE_DEFAULT_TUNNEL_GPE_NSH_ALL = (FM10000_TE_DEFAULT_GPE_NSH_CLEAR  |
-                                             FM10000_TE_DEFAULT_GPE_NEXT_PROT  |
-                                             FM10000_TE_DEFAULT_GPE_VNI        |
+    FM10000_TE_DEFAULT_TUNNEL_GPE_NSH_ALL = (FM10000_TE_DEFAULT_TUNNEL_GPE_ALL |
                                              FM10000_TE_DEFAULT_TUNNEL_NSH_ALL),
 
 } fm_fm10000TeDefTunnelSel;

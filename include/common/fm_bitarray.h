@@ -343,6 +343,20 @@ fm_status fmGetBitArrayNonZeroBitCount(fm_bitArray *bitArray,
  *****************************************************************************/
 void fmDbgDumpBitArray(fm_bitArray *bitArray, fm_int n);
 
+/*****************************************************************************
+ * fmGetBitArrayBitCount
+ *
+ * Description: Retrieves the bit count value of a specified bit array.
+ *
+ * Arguments:   bitArray                pointer to the bit array
+ *
+ *              bitCount                bit count number.
+ *
+ * Returns:     Fulcrum API status code
+ *
+ *****************************************************************************/
+fm_status fmGetBitArrayBitCount(fm_bitArray *bitArray,
+                                fm_int      *bitCount);
 
 fm_bool fmCompareBitArrays(fm_bitArray *array1, fm_bitArray *array2);
 fm_status fmUnionBitArrays(const fm_bitArray *src1,

@@ -383,6 +383,8 @@ typedef struct
     fm_int              dropPort;
     fm_int              rpfFailurePort;
     fm_int              cpuMgmtPort; /* For fibm when cpuPort is redirected */
+    fm_int              natUndefFlowPort;
+    fm_int              denatUndefFlowPort;
 
     /* Resources allocated for multicast groups (MCGs). */
     fm_mcgAllocEntry    mcgAllocTable[FM_MCG_ALLOC_TABLE_SIZE];

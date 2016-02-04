@@ -5,7 +5,7 @@
  * Creation Date:   Aug 13, 2007
  * Description:     Structures and functions for dealing with link aggregation
  *
- * Copyright (c) 2007 - 2015, Intel Corporation
+ * Copyright (c) 2007 - 2016, Intel Corporation
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -1091,8 +1091,6 @@ fm_status fm10000LagGroupInit(fm_int sw)
     fm_status       err;
     fm_switch *     switchPtr;
     fm10000_switch *switchExt;
-    fm_uint32       rangeBase;
-    fm_uint32       rangeMax;
     fm_int          i;
     fm_glortRange * glorts;
 
@@ -1105,9 +1103,6 @@ fm_status fm10000LagGroupInit(fm_int sw)
     /* In FM10000, remote ports, local ports and also CPU port can be 
      * added to LAG. */
     switchPtr->lagInfoTable.allowedPortTypes = ALLOW_REMOTE | ALLOW_CPU;
-
-    rangeBase = glorts->glortBase;
-    rangeMax  = rangeBase | glorts->glortMask;
 
     /* Reset canonCamEntry to unused */
     for (i = 0 ; i < FM10000_CANONICAL_GLORT_CAM_ENTRIES ; i++)
@@ -2048,7 +2043,6 @@ fm_status fm10000DeletePortFromLag(fm_int sw, fm_int lagIndex, fm_int port)
 {
     fm_status  err;
     fm_switch *switchPtr;
-    fm_lag *   lagPtr;
     
     FM_LOG_ENTRY(FM_LOG_CAT_LAG,
                  "sw = %d, lagIndex = %d, port = %d\n",
@@ -2057,7 +2051,6 @@ fm_status fm10000DeletePortFromLag(fm_int sw, fm_int lagIndex, fm_int port)
                  port);
 
     switchPtr = GET_SWITCH_PTR(sw);
-    lagPtr    = GET_LAG_PTR(sw, lagIndex);
 
     /* Assume the that common API code already checked if port is not a member
      * of the LAG */

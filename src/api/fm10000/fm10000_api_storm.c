@@ -5,7 +5,7 @@
  * Creation Date:   2013
  * Description:     Structures and functions for dealing with storm control.
  *
- * Copyright (c) 2005 - 2014, Intel Corporation
+ * Copyright (c) 2005 - 2015, Intel Corporation
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -29,7 +29,7 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
+ *****************************************************************************/
 
 #include <fm_sdk_fm10000_int.h>
 
@@ -861,6 +861,7 @@ fm_status fm10000InitStormControllers(fm_switch * switchPtr)
      * FM10000_STORM_CONTROLLER_UNUSED state. */
     FM_CLEAR(switchExt->scInfo);
 
+#if !defined(__KLOCWORK__)
     /* Make sure that new storm controller conditions are added at the end
      * of the typedef enum. The "conditionSupportedTable" and
      * "conditionCompatibleTable" tables expect the order of enum elements 
@@ -871,6 +872,7 @@ fm_status fm10000InitStormControllers(fm_switch * switchPtr)
                      "Ordering in fm_stormCondType can cause undefined behavior\n");
         return FM_FAIL;
     }
+#endif
 
     return FM_OK;
     

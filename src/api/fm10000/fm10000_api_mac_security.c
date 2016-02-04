@@ -5,7 +5,7 @@
  * Creation Date: November 13, 2013
  * Description:   FM10000 MAC security functions.
  *
- * Copyright (c) 2013 - 2015, Intel Corporation
+ * Copyright (c) 2013 - 2016, Intel Corporation
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -1382,10 +1382,8 @@ fm_status fm10000MoveAddressSecure(fm_int       sw,
                                    fm_event **  outEvent)
 {
     fm_internalMacAddrEntry *   cachePtr;
-    fm10000_securityInfo *      secInfo;
 
     fm_switch *     switchPtr;
-    fm10000_switch *switchExt;
     fm_status       status;
     fm_uint16       learningFID;
     fm_bool         l2Locked = FALSE;
@@ -1402,8 +1400,6 @@ fm_status fm10000MoveAddressSecure(fm_int       sw,
                  (void *) *outEvent);
 
     switchPtr = GET_SWITCH_PTR(sw);
-    switchExt = switchPtr->extension;
-    secInfo   = &switchExt->securityInfo;
 
     /***************************************************
      * Convert VLAN ID to learning FID.
@@ -1866,16 +1862,11 @@ ABORT:
  *****************************************************************************/
 fm_status fm10000DbgDumpMacSecurity(fm_int sw)
 {
-    fm10000_switch *        switchExt;
-    fm10000_securityInfo *  secInfo;
     fm_securityStats        stats;
     fm_status               err;
     fm_text                 cntFmt = "%-20s : %lld\n";
 
     VALIDATE_AND_PROTECT_SWITCH(sw);
-
-    switchExt = GET_SWITCH_EXT(sw);
-    secInfo   = &switchExt->securityInfo;
 
     err = fm10000GetSecurityStats(sw, &stats);
     if (err != FM_OK)

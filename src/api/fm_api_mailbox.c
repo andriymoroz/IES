@@ -61,14 +61,23 @@
 #define GET_VLAN_FROM_MACVLAN_RESOURCE_KEY(key) \
     ( (fm_uint16) ( (key >> 48) & 0xFFFF) )
 
-#define GET_FLOW_RESOURCE_KEY(flowId, flowTable) \
+#define GET_FLOW_TABLE_KEY(flowId, flowTable) \
     ( ( ( (fm_uint32) flowId ) & 0xFFFFFFFFl) | ( (fm_uint64) flowTable << 32 ) )
 
-#define GET_FLOW_ID_FROM_FLOW_RESOURCE_KEY(key) \
+#define GET_FLOW_FROM_FLOW_TABLE_KEY(key) \
     ( (fm_uint32) (key & 0xFFFFFFFFl) )
 
-#define GET_FLOW_TABLE_FROM_FLOW_RESOURCE_KEY(key) \
+#define GET_TABLE_FROM_FLOW_TABLE_KEY(key) \
     ( (fm_uint32) ( (key >> 32) & 0xFFFFFFFFl) )
+
+#define GET_FLOW_GLORT_KEY(flowId, glort) \
+    ( ( ( (fm_uint32) flowId ) & 0xFFFFFFFFl) | ( (fm_uint64) glort << 32 ) )
+
+#define GET_GLORT_FROM_FLOW_GLORT_KEY(key) \
+    ( (fm_uint32) ( (key >> 32) & 0xFFFFFFFFl) )
+
+#define GET_FLOW_FROM_FLOW_GLORT_KEY(key) \
+    ( (fm_uint32) (key & 0xFFFFFFFFl) )
 
 /*****************************************************************************
  * Global Variables
@@ -1253,9 +1262,1331 @@ ABORT:
 
 
 
+/*****************************************************************************/
+/** CreateUserFlowTable
+ * \ingroup intMailbox
+ *
+ * \desc            Create user-defined flow table according to values defined
+ *                  in fm_hostSrvCreateTable structure.
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \param[in]       pepNb is the PEP number.
+ *
+ * \param[in]       createTable points to structure defining flow table params.
+ *
+ * \return          FM_OK if successful.
+ * \return          FM_ERR_UNSUPPORTED if table type is not supported.
+ *
+ *****************************************************************************/
+static fm_status CreateUserFlowTable(fm_int                 sw,
+                                     fm_int                 pepNb,
+                                     fm_hostSrvCreateTable *createTable)
+{
+    fm_switch *          switchPtr;
+    fm_mailboxInfo *     info;
+    fm_status            status;
+    fm_int               logicalPort;
+    fm_int               tableIndex;
+    fm_int               tunnelEngine;
+    fm_bool              tableWithPriority;
+    fm_bool              flowLockTaken;
+    fm_flowAction        supportedAction;
+    fm_mailboxResources *mailboxResourcesUsed;
+    fm_mailboxFlowTable *mailboxFlowTable;
+    fm_flowTableType     flowTableType;
+
+    FM_LOG_ENTRY(FM_LOG_CAT_MAILBOX,
+                 "sw=%d, pepNb=%d\n",
+                 sw,
+                 pepNb);
+
+    switchPtr         = GET_SWITCH_PTR(sw);
+    info              = GET_MAILBOX_INFO(sw);
+    status            = FM_OK;
+    logicalPort       = -1;
+    tableIndex        = -1;
+    tunnelEngine      = 0;
+    flowLockTaken     = FALSE;
+    tableWithPriority = TRUE;
+    mailboxFlowTable  = NULL;
+    flowTableType     = FM_FLOW_TCAM_TABLE;
+    mailboxResourcesUsed = NULL;
+
+    /* Flow table resources are tracked per logical port
+     * associated with PF glort.
+     */
+    status = fmGetPcieLogicalPort(sw,
+                                  pepNb,
+                                  FM_PCIE_PORT_PF,
+                                  0,
+                                  &logicalPort);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+    status = fmTreeFind(&info->mailboxResourcesPerVirtualPort,
+                        logicalPort,
+                        (void **) &mailboxResourcesUsed);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+    /* Check if match table index is not in use. */
+    status = fmTreeFind(&mailboxResourcesUsed->mailboxFlowTableResource,
+                        createTable->matchTableIndex,
+                        (void **) mailboxFlowTable);
+    if (status == FM_OK)
+    {
+        status = FM_ERR_ALREADY_EXISTS;
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+    }
+
+    switch (createTable->tableType)
+    {
+        case FM_MBX_TCAM_TABLE:
+            flowTableType = FM_FLOW_TCAM_TABLE;
+            break;
+
+        case FM_MBX_TE_A_TABLE:
+        case FM_MBX_TE_B_TABLE:
+            flowTableType = FM_FLOW_TE_TABLE;
+            break;
+
+        default:
+            status = FM_ERR_UNSUPPORTED;
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+            break;
+    }
+
+    TAKE_FLOW_LOCK(sw);
+    flowLockTaken = TRUE;
+
+    /* Check if user action bitmask is a subset of actions supported for given
+     * table type.
+     */
+    status = fmGetFlowTableSupportedActions(sw,
+                                            flowTableType,
+                                            &supportedAction);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+    if ( (supportedAction | createTable->action) != supportedAction)
+    {
+        status = FM_ERR_UNSUPPORTED;
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+    }
+
+    /* Find empty flow table index. */
+    status = fmGetFlowTableIndexUnused(sw,
+                                       &tableIndex);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+    status = fmSetFlowAttribute(sw,
+                                tableIndex,
+                                FM_FLOW_TABLE_WITH_PRIORITY,
+                                &tableWithPriority);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+    switch (flowTableType)
+    {
+        case FM_FLOW_TCAM_TABLE:
+            status = fmCreateFlowTCAMTable(sw,
+                                           tableIndex,
+                                           createTable->condition,
+                                           createTable->numOfEntr,
+                                           createTable->numOfAct);
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+            break;
+
+        case FM_FLOW_TE_TABLE:
+            /* There are two TEs supported by fm10000 numbered 0 and 1. */
+            if (createTable->tableType == FM_MBX_TE_A_TABLE)
+            {
+                tunnelEngine = 0;
+            }
+            else
+            {
+                tunnelEngine = 1;
+            }
+
+            status = fmSetFlowAttribute(sw,
+                                        tableIndex,
+                                        FM_FLOW_TABLE_TUNNEL_ENGINE,
+                                        &tunnelEngine);
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+            status = fmCreateFlowTETable(sw,
+                                         tableIndex,
+                                         createTable->condition,
+                                         createTable->numOfEntr,
+                                         createTable->numOfAct);
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+            break;
+
+        default:
+            status = FM_ERR_UNSUPPORTED;
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+            break;
+    }
+
+    DROP_FLOW_LOCK(sw);
+    flowLockTaken = FALSE;
+
+    mailboxFlowTable = fmAlloc(sizeof(fm_mailboxFlowTable));
+    if (mailboxFlowTable == NULL)
+    {
+        status = FM_ERR_NO_MEM;
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+    }
+
+    mailboxFlowTable->tableIndex = tableIndex;
+    mailboxFlowTable->action     = createTable->action;
+    mailboxFlowTable->flags      = createTable->flags;
+    mailboxFlowTable->matchTableIndex = createTable->matchTableIndex;
+
+    /* Initialize mapping trees. */
+    fmTreeInit(&mailboxFlowTable->matchFlowIdMap);
+    fmTreeInit(&mailboxFlowTable->internalFlowIdMap);
+
+    /* Add mapping between match and internal table indexes. */
+    status = fmTreeInsert(&mailboxResourcesUsed->mailboxFlowTableResource,
+                          createTable->matchTableIndex,
+                          mailboxFlowTable);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+ABORT:
+
+    if (flowLockTaken)
+    {
+        DROP_FLOW_LOCK(sw);
+    }
+
+    FM_LOG_EXIT(FM_LOG_CAT_MAILBOX, status);
+
+}   /* end CreateUserFlowTable */
+
+
+
+
+/*****************************************************************************/
+/** CreateDriverFlowTable
+ * \ingroup intMailbox
+ *
+ * \desc            Create driver-define flow tables according to values defined
+ *                  in fm_hostSrvCreateTable structure. This tables should be
+ *                  created for every active PEP.
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \param[in]       pepNb is the PEP number.
+ *
+ * \param[in]       createTable points to structure defining flow table params.
+ *
+ * \return          FM_OK if successful.
+ * \return          FM_ERR_UNSUPPORTED if table type is not supported.
+ *
+ *****************************************************************************/
+static fm_status CreateDriverFlowTable(fm_int                 sw,
+                                       fm_int                 pepNb,
+                                       fm_hostSrvCreateTable *createTable)
+{
+    fm_switch *          switchPtr;
+    fm_mailboxInfo *     info;
+    fm_status            status;
+    fm_int               i;
+    fm_int               pepPort;
+    fm_int               numberOfPeps;
+    fm_int               logicalPort;
+    fm_int               tableIndex;
+    fm_int               tunnelEngine;
+    fm_bool              tableWithPriority;
+    fm_bool              flowLockTaken;
+    fm_flowAction        supportedAction;
+    fm_mailboxResources *mailboxResourcesUsed;
+    fm_mailboxFlowTable *mailboxFlowTable;
+    fm_flowTableType     flowTableType;
+
+    FM_LOG_ENTRY(FM_LOG_CAT_MAILBOX,
+                 "sw=%d, pepNb=%d\n",
+                 sw,
+                 pepNb);
+
+    switchPtr         = GET_SWITCH_PTR(sw);
+    info              = GET_MAILBOX_INFO(sw);
+    status            = FM_OK;
+    numberOfPeps      = 1;
+    logicalPort       = -1;
+    tableIndex        = -1;
+    pepPort           = -1;
+    tunnelEngine      = 0;
+    flowLockTaken     = FALSE;
+    tableWithPriority = TRUE;
+    mailboxFlowTable  = NULL;
+    flowTableType     = FM_FLOW_TCAM_TABLE;
+    mailboxResourcesUsed = NULL;
+
+    FM_API_CALL_FAMILY(status,
+                       switchPtr->MapPepToLogicalPort,
+                       sw,
+                       pepNb,
+                       &pepPort);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+    if (pepPort != switchPtr->cpuPort)
+    {
+        status = FM_ERR_UNSUPPORTED;
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+    }
+
+    numberOfPeps = FM_PLATFORM_GET_HARDWARE_NUMBER_OF_PEPS();
+
+    for (i = 0 ; i < numberOfPeps ; i++)
+    {
+        /* Flow table resources are tracked per logical port
+           associated with PF glort. */
+        status = fmGetPcieLogicalPort(sw,
+                                      i,
+                                      FM_PCIE_PORT_PF,
+                                      0,
+                                      &logicalPort);
+        if (status != FM_OK)
+        {
+            /* Pep is not active. */
+            continue;
+        }
+
+        status = fmTreeFind(&info->mailboxResourcesPerVirtualPort,
+                            logicalPort,
+                            (void **) &mailboxResourcesUsed);
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+        /* Check if match table index is not in use. */
+        status = fmTreeFind(&mailboxResourcesUsed->mailboxFlowTableResource,
+                            createTable->matchTableIndex,
+                            (void **) mailboxFlowTable);
+        if (status == FM_OK)
+        {
+            status = FM_ERR_ALREADY_EXISTS;
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+        }
+
+        switch (createTable->tableType)
+        {
+            case FM_MBX_TCAM_TABLE:
+                flowTableType = FM_FLOW_TCAM_TABLE;
+                break;
+
+            case FM_MBX_TE_A_TABLE:
+            case FM_MBX_TE_B_TABLE:
+                flowTableType = FM_FLOW_TE_TABLE;
+                break;
+
+            default:
+                status = FM_ERR_UNSUPPORTED;
+                FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+                break;
+        }
+
+        TAKE_FLOW_LOCK(sw);
+        flowLockTaken = TRUE;
+
+        /* Check if user action bitmask is a subset of actions supported for given
+         * table type.
+         */
+        status = fmGetFlowTableSupportedActions(sw,
+                                                flowTableType,
+                                                &supportedAction);
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+        if ( (supportedAction | createTable->action) != supportedAction)
+        {
+            status = FM_ERR_UNSUPPORTED;
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+        }
+
+        /* Find empty flow table index. */
+        status = fmGetFlowTableIndexUnused(sw,
+                                           &tableIndex);
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+        status = fmSetFlowAttribute(sw,
+                                    tableIndex,
+                                    FM_FLOW_TABLE_WITH_PRIORITY,
+                                    &tableWithPriority);
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+        switch (flowTableType)
+        {
+            case FM_FLOW_TCAM_TABLE:
+                status = fmCreateFlowTCAMTable(sw,
+                                               tableIndex,
+                                               createTable->condition,
+                                               createTable->numOfEntr,
+                                               createTable->numOfAct);
+                FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+                break;
+
+            case FM_FLOW_TE_TABLE:
+                /* There are two TEs supported by fm10000 numbered 0 and 1. */
+                if (createTable->tableType == FM_MBX_TE_A_TABLE)
+                {
+                    tunnelEngine = 0;
+                }
+                else
+                {
+                    tunnelEngine = 1;
+                }
+
+                status = fmSetFlowAttribute(sw,
+                                            tableIndex,
+                                            FM_FLOW_TABLE_TUNNEL_ENGINE,
+                                            &tunnelEngine);
+                FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+                status = fmCreateFlowTETable(sw,
+                                             tableIndex,
+                                             createTable->condition,
+                                             createTable->numOfEntr,
+                                             createTable->numOfAct);
+                FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+                break;
+
+            default:
+                status = FM_ERR_UNSUPPORTED;
+                FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+                break;
+        }
+
+        DROP_FLOW_LOCK(sw);
+        flowLockTaken = FALSE;
+
+        mailboxFlowTable = fmAlloc(sizeof(fm_mailboxFlowTable));
+        if (mailboxFlowTable == NULL)
+        {
+            status = FM_ERR_NO_MEM;
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+        }
+
+        mailboxFlowTable->tableIndex = tableIndex;
+        mailboxFlowTable->action     = createTable->action;
+        mailboxFlowTable->flags      = createTable->flags;
+        mailboxFlowTable->matchTableIndex = createTable->matchTableIndex;
+
+        /* Initialize mapping trees. */
+        fmTreeInit(&mailboxFlowTable->matchFlowIdMap);
+        fmTreeInit(&mailboxFlowTable->internalFlowIdMap);
+
+        /* Add mapping between match and internal table indexes. */
+        status = fmTreeInsert(&mailboxResourcesUsed->mailboxFlowTableResource,
+                              createTable->matchTableIndex,
+                              mailboxFlowTable);
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+    }
+
+ABORT:
+
+    if (flowLockTaken)
+    {
+        DROP_FLOW_LOCK(sw);
+    }
+
+    FM_LOG_EXIT(FM_LOG_CAT_MAILBOX, status);
+
+}   /* end CreateDriverFlowTable */
+
+
+
+
+/*****************************************************************************/
+/** DestroyFlowTable
+ * \ingroup intMailbox
+ *
+ * \desc            Delete flow table according to values defined in
+ *                  fm_hostSrvTable structure.
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \param[in]       pepNb is the PEP number.
+ *
+ * \param[in]       table points to structure defining table index and type.
+ *
+ * \return          FM_OK if successful.
+ * \return          FM_ERR_UNSUPPORTED if table type is not supported.
+ *
+ *****************************************************************************/
+static fm_status DestroyFlowTable(fm_int          sw,
+                                  fm_int           pepNb,
+                                  fm_hostSrvTable *table)
+{
+    fm_switch *          switchPtr;
+    fm_mailboxInfo *     info;
+    fm_status            status;
+    fm_int               pep;
+    fm_int               index;
+    fm_int               flowId;
+    fm_int               logicalPort;
+    fm_pciePortType      type;
+    fm_uint32            glort;
+    fm_uint64            key;
+    fm_uint64 *          flowGlortKey;
+    fm_treeIterator      treeFlowIter;
+    fm_flowTableType     flowTableType;
+    fm_mailboxResources *resourcesUsed;
+    fm_mailboxResources *mailboxVfResources;
+    fm_mailboxFlowTable *mailboxFlowTable;
+
+    FM_LOG_ENTRY(FM_LOG_CAT_MAILBOX,
+                 "sw=%d, pepNb=%d\n",
+                 sw,
+                 pepNb);
+
+    switchPtr          = GET_SWITCH_PTR(sw);
+    info               = GET_MAILBOX_INFO(sw);
+    status             = FM_OK;
+    logicalPort        = -1;
+    resourcesUsed      = NULL;
+    mailboxVfResources = NULL;
+
+    /* Flow table resources are tracked per logical port
+       associated with PF glort. */
+    status = fmGetPcieLogicalPort(sw,
+                                  pepNb,
+                                  FM_PCIE_PORT_PF,
+                                  0,
+                                  &logicalPort);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+    status = fmTreeFind(&info->mailboxResourcesPerVirtualPort,
+                        logicalPort,
+                        (void **) &resourcesUsed);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+    /* Check if match index is valid. */
+    status = fmTreeFind(&resourcesUsed->mailboxFlowTableResource,
+                        table->matchTableIndex,
+                        (void **) &mailboxFlowTable);
+    if (status != FM_OK)
+    {
+        status = FM_ERR_INVALID_ARGUMENT;
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+    }
+
+    status = fmGetFlowTableType(sw,
+                                mailboxFlowTable->tableIndex,
+                                &flowTableType);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+    switch (flowTableType)
+    {
+        case FM_FLOW_TCAM_TABLE:
+            status = fmDeleteFlowTCAMTable(sw,
+                                           mailboxFlowTable->tableIndex);
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+            break;
+
+        case FM_FLOW_BST_TABLE:
+            status = fmDeleteFlowBSTTable(sw,
+                                          mailboxFlowTable->tableIndex);
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+            break;
+
+        case FM_FLOW_TE_TABLE:
+            status = fmDeleteFlowTETable(sw,
+                                         mailboxFlowTable->tableIndex);
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+            break;
+
+        default:
+            status = FM_ERR_UNSUPPORTED;
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+            break;
+    }
+
+    /* We need to cleanup VF flow table resources to be in-sync. */
+    fmTreeIterInit(&treeFlowIter,
+                   &mailboxFlowTable->matchFlowIdMap);
+    while ( fmTreeIterNext(&treeFlowIter,
+                           &key,
+                           (void **) &flowGlortKey) != FM_ERR_NO_MORE )
+    {
+        flowId = GET_FLOW_FROM_FLOW_GLORT_KEY(*flowGlortKey);
+        glort  = GET_GLORT_FROM_FLOW_GLORT_KEY(*flowGlortKey);
+
+        status = fmGetGlortLogicalPort(sw,
+                                       glort,
+                                       &logicalPort);
+        FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+        /* Check glort type */
+        status = fmGetLogicalPortPcie(sw,
+                                      logicalPort,
+                                      &pep,
+                                      &type,
+                                      &index);
+        FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+        if (type == FM_PCIE_PORT_VF)
+        {
+            status = fmTreeFind(&info->mailboxResourcesPerVirtualPort,
+                                logicalPort,
+                                (void **) &mailboxVfResources);
+            FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+            key = GET_FLOW_TABLE_KEY(flowId, mailboxFlowTable->tableIndex);
+            status = fmTreeRemove(&mailboxVfResources->mailboxFlowMap,
+                                  key,
+                                  NULL);
+            FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+        }
+    }
+
+    fmTreeDestroy(&mailboxFlowTable->matchFlowIdMap, fmFree);
+    fmTreeDestroy(&mailboxFlowTable->internalFlowIdMap, NULL);
+
+    /* Delete from index mapping tree. */
+    status = fmTreeRemoveCertain(&resourcesUsed->mailboxFlowTableResource,
+                                 table->matchTableIndex,
+                                 fmFree);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+ABORT:
+
+    FM_LOG_EXIT(FM_LOG_CAT_MAILBOX, status);
+
+}   /* end DestroyFlowTable */
+
+
+
+
+/*****************************************************************************/
+/** SetRule
+ * \ingroup intMailbox
+ *
+ * \desc            Add flow according to values defined in fm_hostSrvFlowEntry
+ *                  structure.
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \param[in]       pepNb is the PEP number.
+ *
+ * \param[in]       flowEntry points to structure defining flow table params.
+ *
+ * \return          FM_OK if successful.
+ *
+ *****************************************************************************/
+static fm_status SetRule(fm_int               sw,
+                         fm_int               pepNb,
+                         fm_hostSrvFlowEntry *flowEntry)
+{
+    fm_switch *          switchPtr;
+    fm_mailboxInfo *     info;
+    fm_status            status;
+    fm_int               logicalPort;
+    fm_int               flowId;
+    fm_int               pep;
+    fm_int               index;
+    fm_uint64 *          flowGlortKey;
+    fm_pciePortType      type;
+    fm_mailboxResources *mailboxPfResourcesUsed;
+    fm_mailboxResources *mailboxVfResourcesUsed;
+    fm_mailboxFlowTable *mailboxFlowTable;
+    fm_uintptr           treeKey;
+    fm_uintptr           treeValue;
+
+    FM_LOG_ENTRY(FM_LOG_CAT_MAILBOX,
+                 "sw=%d, pepNb=%d\n",
+                 sw,
+                 pepNb);
+
+    switchPtr         = GET_SWITCH_PTR(sw);
+    info              = GET_MAILBOX_INFO(sw);
+    status            = FM_OK;
+    logicalPort       = -1;
+    flowGlortKey           = NULL;
+    mailboxPfResourcesUsed = NULL;
+    mailboxVfResourcesUsed = NULL;
+
+    FM_LOG_ENTRY(FM_LOG_CAT_MAILBOX,
+                 "sw=%d, pepNb=%d\n",
+                 sw,
+                 pepNb);
+
+    status = fmGetGlortLogicalPort(sw, flowEntry->glort, &logicalPort);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+    /* Check glort type */
+    status = fmGetLogicalPortPcie(sw,
+                                  logicalPort,
+                                  &pep,
+                                  &type,
+                                  &index);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+    if (type == FM_PCIE_PORT_VF)
+    {
+        status = fmTreeFind(&info->mailboxResourcesPerVirtualPort,
+                            logicalPort,
+                            (void **) &mailboxVfResourcesUsed);
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+        /* Check flow counters for VF. */
+        if (mailboxVfResourcesUsed->flowEntriesAdded >=
+            info->maxFlowEntriesToAddPerVf)
+        {
+            status = FM_ERR_TABLE_FULL;
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+        }
+
+        /* Additional glort validation for VF - check if request glort suits
+         * given pep range.
+         */
+        if (pep != pepNb)
+        {
+            status = FM_ERR_INVALID_ARGUMENT;
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+        }
+    }
+
+    /* Flow table resources are tracked per logical port
+       associated with PF glort. */
+    status = fmGetPcieLogicalPort(sw,
+                                  pepNb,
+                                  FM_PCIE_PORT_PF,
+                                  0,
+                                  &logicalPort);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+    status = fmTreeFind(&info->mailboxResourcesPerVirtualPort,
+                        logicalPort,
+                        (void **) &mailboxPfResourcesUsed);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+    /* Check if match table index is valid. */
+    status = fmTreeFind(&mailboxPfResourcesUsed->mailboxFlowTableResource,
+                        flowEntry->matchTableIndex,
+                        (void **) &mailboxFlowTable);
+    if (status != FM_OK)
+    {
+        status = FM_ERR_INVALID_ARGUMENT;
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+    }
+
+    /* Check if rule action bitmask is a subset of actions supported for given
+     * flow table.
+     */
+    if ( (mailboxFlowTable->action | flowEntry->action) !=
+        mailboxFlowTable->action)
+    {
+        status = FM_ERR_UNSUPPORTED;
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+    }
+
+    /* Check if match flow ID is not in use. */
+    status = fmTreeFind(&mailboxFlowTable->matchFlowIdMap,
+                        flowEntry->matchFlowId,
+                        (void **) &flowGlortKey);
+    if (status == FM_OK)
+    {
+        status = FM_ERR_ALREADY_EXISTS;
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+    }
+
+    /* Match flow ID is used as priority for a flow.*/
+    status = fmAddFlow(sw,
+                       mailboxFlowTable->tableIndex,
+                       flowEntry->priority,
+                       0,
+                       flowEntry->condition,
+                       &flowEntry->flowVal,
+                       flowEntry->action,
+                       &flowEntry->flowParam,
+                       FM_FLOW_STATE_ENABLED,
+                       &flowId);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+    /* Add mapping between match and internal flow IDs in both trees. */
+    flowGlortKey = fmAlloc(sizeof(fm_uint64));
+    if (flowGlortKey == NULL)
+    {
+        status = FM_ERR_NO_MEM;
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+    }
+
+    *flowGlortKey = GET_FLOW_GLORT_KEY(flowId, flowEntry->glort);
+
+    status = fmTreeInsert(&mailboxFlowTable->matchFlowIdMap,
+                          flowEntry->matchFlowId,
+                          (void *) flowGlortKey);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+    treeValue = flowEntry->matchFlowId;
+    status = fmTreeInsert(&mailboxFlowTable->internalFlowIdMap,
+                          flowId,
+                          (void *) treeValue);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+    if (type == FM_PCIE_PORT_VF)
+    {
+        /* Update flow tree for given VF. */
+        treeKey = GET_FLOW_TABLE_KEY(flowId, mailboxFlowTable->tableIndex);
+        treeValue = flowEntry->matchTableIndex;
+        status = fmTreeInsert(&mailboxVfResourcesUsed->mailboxFlowMap,
+                              treeKey,
+                              (void *) treeValue);
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+        mailboxVfResourcesUsed->flowEntriesAdded++;
+    }
+
+ABORT:
+
+    if ( (status != FM_OK) && (flowGlortKey != NULL) )
+    {
+        fmFree(flowGlortKey);
+    }
+
+    FM_LOG_EXIT(FM_LOG_CAT_MAILBOX, status);
+
+}   /* end SetRule */
+
+
+
+
+/*****************************************************************************/
+/** DelRule
+ * \ingroup intMailbox
+ *
+ * \desc            Delete flow according to values defined in
+ *                  fm_hostSrvFlowHandle structure.
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \param[in]       pepNb is the PEP number.
+ *
+ * \param[in]       flowHandle points to structure defining flow ID.
+ *
+ * \return          FM_OK if successful.
+ *
+ *****************************************************************************/
+static fm_status DelRule(fm_int                sw,
+                         fm_int                pepNb,
+                         fm_hostSrvFlowHandle *flowHandle)
+{
+    fm_switch *          switchPtr;
+    fm_mailboxInfo *     info;
+    fm_status            status;
+    fm_int               logicalPort;
+    fm_int               flowId;
+    fm_int               pep;
+    fm_int               index;
+    fm_uint32            glort;
+    fm_pciePortType      type;
+    fm_uint64 *          flowGlortKey;
+    fm_mailboxResources *mailboxPfResourcesUsed;
+    fm_mailboxResources *mailboxVfResourcesUsed;
+    fm_mailboxFlowTable *mailboxFlowTable;
+    fm_uintptr           treeValue;
+
+    FM_LOG_ENTRY(FM_LOG_CAT_MAILBOX,
+                 "sw=%d, pepNb=%d\n",
+                 sw,
+                 pepNb);
+
+    switchPtr              = GET_SWITCH_PTR(sw);
+    info                   = GET_MAILBOX_INFO(sw);
+    status                 = FM_OK;
+    logicalPort            = -1;
+    glort                  = 0;
+    flowGlortKey           = NULL;
+    mailboxPfResourcesUsed = NULL;
+    mailboxVfResourcesUsed = NULL;
+
+    FM_LOG_ENTRY(FM_LOG_CAT_MAILBOX,
+                 "sw=%d, pepNb=%d\n",
+                 sw,
+                 pepNb);
+
+    /* Flow table resources are tracked per logical port
+       associated with PF glort. */
+    status = fmGetPcieLogicalPort(sw,
+                                  pepNb,
+                                  FM_PCIE_PORT_PF,
+                                  0,
+                                  &logicalPort);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+    status = fmTreeFind(&info->mailboxResourcesPerVirtualPort,
+                        logicalPort,
+                        (void **) &mailboxPfResourcesUsed);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+    /* Check if match table index is valid. */
+    status = fmTreeFind(&mailboxPfResourcesUsed->mailboxFlowTableResource,
+                        flowHandle->matchTableIndex,
+                        (void **) &mailboxFlowTable);
+    if (status != FM_OK)
+    {
+        status = FM_ERR_INVALID_ARGUMENT;
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+    }
+
+    /* Check if match flow ID is valid. */
+    status = fmTreeFind(&mailboxFlowTable->matchFlowIdMap,
+                        flowHandle->matchFlowId,
+                        (void **) &flowGlortKey);
+    if (status != FM_OK)
+    {
+        status = FM_ERR_INVALID_ARGUMENT;
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+    }
+
+    flowId = GET_FLOW_FROM_FLOW_GLORT_KEY(*flowGlortKey);
+    glort  = GET_GLORT_FROM_FLOW_GLORT_KEY(*flowGlortKey);
+
+    status = fmDeleteFlow(sw,
+                          mailboxFlowTable->tableIndex,
+                          flowId);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+    /* Remove mapping between match and internal flow IDs in both trees. */
+    status = fmTreeRemoveCertain(&mailboxFlowTable->matchFlowIdMap,
+                                 flowHandle->matchFlowId,
+                                 fmFree);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+    status = fmTreeRemove(&mailboxFlowTable->internalFlowIdMap,
+                          flowId,
+                          NULL);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+    status = fmGetGlortLogicalPort(sw, glort, &logicalPort);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+    /* Check glort type */
+    status = fmGetLogicalPortPcie(sw,
+                                  logicalPort,
+                                  &pep,
+                                  &type,
+                                  &index);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+    if (type == FM_PCIE_PORT_VF)
+    {
+        /* Update flow tree for given VF. */
+        status = fmTreeFind(&info->mailboxResourcesPerVirtualPort,
+                            logicalPort,
+                            (void **) &mailboxVfResourcesUsed);
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+        treeValue = GET_FLOW_TABLE_KEY(flowId, mailboxFlowTable->tableIndex);
+        status = fmTreeRemove(&mailboxVfResourcesUsed->mailboxFlowMap,
+                              treeValue,
+                              NULL);
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+        mailboxVfResourcesUsed->flowEntriesAdded--;
+    }
+
+ABORT:
+
+    FM_LOG_EXIT(FM_LOG_CAT_MAILBOX, status);
+
+}   /* end DelRule */
+
+
+
+
+/*****************************************************************************/
+/** HandleNoOfVfs
+ * \ingroup intMailbox
+ *
+ * \desc            Sets VF limits according to number of VFs defined in
+ *                  fm_hostSrvNoOfVfs structure.
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \param[in]       pepNb is the PEP number.
+ *
+ * \param[in]       noOfVfs points to structure defining number of VFs.
+ *
+ * \return          FM_OK if successful.
+ *
+ *****************************************************************************/
+static fm_status HandleNoOfVfs(fm_int             sw,
+                               fm_int             pepNb,
+                               fm_hostSrvNoOfVfs *noOfVfs)
+{
+    fm_switch *          switchPtr;
+    fm_mailboxInfo *     info;
+    fm_status            status;
+    fm_int               logicalPort;
+    fm_int               pep;
+    fm_int               index;
+    fm_uint32            glort;
+    fm_pciePortType      type;
+    fm_mailboxResources *mailboxPfResourcesUsed;
+
+    FM_LOG_ENTRY(FM_LOG_CAT_MAILBOX,
+                 "sw=%d, pepNb=%d\n",
+                 sw,
+                 pepNb);
+
+    switchPtr         = GET_SWITCH_PTR(sw);
+    info              = GET_MAILBOX_INFO(sw);
+    status            = FM_OK;
+    logicalPort       = -1;
+    glort             = 0;
+    mailboxPfResourcesUsed = NULL;
+
+    FM_LOG_ENTRY(FM_LOG_CAT_MAILBOX,
+                 "sw=%d, pepNb=%d\n",
+                 sw,
+                 pepNb);
+
+    /* Flow table resources are tracked per logical port associated with
+     * PF glort.
+     */
+    status = fmGetGlortLogicalPort(sw,
+                                   noOfVfs->glort,
+                                   &logicalPort);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+    status = fmGetLogicalPortPcie(sw,
+                                  logicalPort,
+                                  &pep,
+                                  &type,
+                                  &index);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+    if (type != FM_PCIE_PORT_PF)
+    {
+        status = FM_ERR_INVALID_ARGUMENT;
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+    }
+
+    status = fmTreeFind(&info->mailboxResourcesPerVirtualPort,
+                        logicalPort,
+                        (void **) &mailboxPfResourcesUsed);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+    mailboxPfResourcesUsed->noOfVfs = noOfVfs->noOfVfs;
+
+ABORT:
+
+    FM_LOG_EXIT(FM_LOG_CAT_MAILBOX, status);
+
+}   /* end HandleNoOfVfs */
+
+
+
+
+/*****************************************************************************/
+/** FreeMailboxFlowTableResources
+ * \ingroup intNat
+ *
+ * \desc            Free a fm_mailboxFlowTable structure.
+ *
+ * \param[in,out]   value points to the structure to free.
+ *
+ * \return          Nothing.
+ *
+ *****************************************************************************/
+static void FreeMailboxFlowTableResources(void *value)
+{
+    fm_mailboxFlowTable *mailboxFlowTable;
+
+    mailboxFlowTable = (fm_mailboxFlowTable *) value;
+    fmTreeDestroy(&mailboxFlowTable->matchFlowIdMap, fmFree);
+    fmTreeDestroy(&mailboxFlowTable->internalFlowIdMap, NULL);
+
+    fmFree(mailboxFlowTable);
+
+}   /* end FreeMailboxFlowTableResources */
+
+
+
+
+/*****************************************************************************/
+/** CreateVfFlowTable
+ * \ingroup intMailbox
+ *
+ * \desc            Create VF-accessible flow table according to table defined
+ *                  by driver for management PEP.
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \param[in]       pepNb is the PEP number.
+ *
+ * \return          FM_OK if successful.
+ * \return          FM_ERR_UNSUPPORTED if table type is not supported.
+ *
+ *****************************************************************************/
+static fm_status CreateVfFlowTable(fm_int sw,
+                                   fm_int pepNb)
+{
+    fm_switch *          switchPtr;
+    fm_mailboxInfo *     info;
+    fm_status            status;
+    fm_int               mgmtPep;
+    fm_int               maxEntries;
+    fm_int               maxActions;
+    fm_int               logicalPort;
+    fm_int               tableIndex;
+    fm_int               tunnelEngine;
+    fm_bool              tableWithPriority;
+    fm_bool              flowLockTaken;
+    fm_bool              vfTableFound;
+    fm_uint64            nextKey;
+    fm_flowCondition     condition;
+    fm_mailboxResources *mailboxResourcesUsed;
+    fm_mailboxFlowTable *pfMailboxFlowTable;
+    fm_mailboxFlowTable *mailboxFlowTable;
+    fm_flowTableType     flowTableType;
+    fm_treeIterator      treeIter;
+
+    FM_LOG_ENTRY(FM_LOG_CAT_MAILBOX,
+                 "sw=%d, pepNb=%d\n",
+                 sw,
+                 pepNb);
+
+    switchPtr          = GET_SWITCH_PTR(sw);
+    info               = GET_MAILBOX_INFO(sw);
+    status             = FM_OK;
+    logicalPort        = -1;
+    tableIndex         = -1;
+    tunnelEngine       = 0;
+    condition          = 0ll;
+    maxEntries         = 0;
+    maxActions         = 0;
+    flowLockTaken      = FALSE;
+    tableWithPriority  = TRUE;
+    vfTableFound       = FALSE;
+    pfMailboxFlowTable = NULL;
+    mailboxFlowTable   = NULL;
+    flowTableType      = FM_FLOW_TCAM_TABLE;
+    mailboxResourcesUsed = NULL;
+
+    /* Create VF-accessible flow table for given PEP if already defined. */
+    FM_API_CALL_FAMILY(status,
+                       switchPtr->MapLogicalPortToPep,
+                       sw,
+                       switchPtr->cpuPort,
+                       &mgmtPep);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+    if (mgmtPep == pepNb)
+    {
+        status = FM_OK;
+        goto ABORT;
+    }
+
+    /* Flow table resources are tracked per logical port
+     * associated with PF glort.
+     */
+    status = fmGetPcieLogicalPort(sw,
+                                  mgmtPep,
+                                  FM_PCIE_PORT_PF,
+                                  0,
+                                  &logicalPort);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+    status = fmTreeFind(&info->mailboxResourcesPerVirtualPort,
+                        logicalPort,
+                        (void **) &mailboxResourcesUsed);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+    fmTreeIterInit(&treeIter, &mailboxResourcesUsed->mailboxFlowTableResource);
+    status = fmTreeIterNext(&treeIter, &nextKey, (void **) &pfMailboxFlowTable);
+
+    while (status == FM_OK)
+    {
+        if (pfMailboxFlowTable->flags & FM_MAILBOX_DRIVER_TABLE)
+        {
+            vfTableFound = TRUE;
+            break;
+        }
+
+        status = fmTreeIterNext(&treeIter,
+                                &nextKey,
+                                (void **) &pfMailboxFlowTable);
+    }
+
+    /* If VF-accessible table was not defined yet, return FM_OK. */
+    if (vfTableFound == FALSE)
+    {
+        status = FM_OK;
+        goto ABORT;
+    }
+
+    status = fmGetFlowTableType(sw,
+                                pfMailboxFlowTable->tableIndex,
+                                &flowTableType);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+    status = fmGetFlowAttribute(sw,
+                                pfMailboxFlowTable->tableIndex,
+                                FM_FLOW_TABLE_CONDITION,
+                                &condition);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+    status = fmGetFlowAttribute(sw,
+                                pfMailboxFlowTable->tableIndex,
+                                FM_FLOW_TABLE_MAX_ENTRIES,
+                                &maxEntries);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+    status = fmGetFlowAttribute(sw,
+                                pfMailboxFlowTable->tableIndex,
+                                FM_FLOW_TABLE_MAX_ACTIONS,
+                                &maxActions);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+    TAKE_FLOW_LOCK(sw);
+    flowLockTaken = TRUE;
+
+    /* Find empty flow table index. */
+    status = fmGetFlowTableIndexUnused(sw,
+                                       &tableIndex);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+    status = fmSetFlowAttribute(sw,
+                                tableIndex,
+                                FM_FLOW_TABLE_WITH_PRIORITY,
+                                &tableWithPriority);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+    switch (flowTableType)
+    {
+        case FM_FLOW_TCAM_TABLE:
+            status = fmCreateFlowTCAMTable(sw,
+                                           tableIndex,
+                                           condition,
+                                           maxEntries,
+                                           maxActions);
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+            break;
+
+        case FM_FLOW_TE_TABLE:
+            /* There are two TEs supported by fm10000 numbered 0 and 1. */
+            status = fmGetFlowAttribute(sw,
+                                        pfMailboxFlowTable->tableIndex,
+                                        FM_FLOW_TABLE_TUNNEL_ENGINE,
+                                        &tunnelEngine);
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+            status = fmSetFlowAttribute(sw,
+                                        tableIndex,
+                                        FM_FLOW_TABLE_TUNNEL_ENGINE,
+                                        &tunnelEngine);
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+            status = fmCreateFlowTETable(sw,
+                                         tableIndex,
+                                         condition,
+                                         maxEntries,
+                                         maxActions);
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+            break;
+
+        default:
+            status = FM_ERR_UNSUPPORTED;
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+            break;
+    }
+
+    DROP_FLOW_LOCK(sw);
+    flowLockTaken = FALSE;
+
+    mailboxFlowTable = fmAlloc(sizeof(fm_mailboxFlowTable));
+    if (mailboxFlowTable == NULL)
+    {
+        status = FM_ERR_NO_MEM;
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+    }
+
+    mailboxFlowTable->tableIndex = tableIndex;
+    mailboxFlowTable->action     = pfMailboxFlowTable->action;
+    mailboxFlowTable->flags      = pfMailboxFlowTable->flags;
+    mailboxFlowTable->matchTableIndex = pfMailboxFlowTable->matchTableIndex;
+
+    /* Initialize mapping trees. */
+    fmTreeInit(&mailboxFlowTable->matchFlowIdMap);
+    fmTreeInit(&mailboxFlowTable->internalFlowIdMap);
+
+    /* Get logical port for pep being processed. */
+    status = fmGetPcieLogicalPort(sw,
+                                  pepNb,
+                                  FM_PCIE_PORT_PF,
+                                  0,
+                                  &logicalPort);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+    status = fmTreeFind(&info->mailboxResourcesPerVirtualPort,
+                        logicalPort,
+                        (void **) &mailboxResourcesUsed);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+    /* Add mapping between match and internal table indexes. */
+    status = fmTreeInsert(&mailboxResourcesUsed->mailboxFlowTableResource,
+                          mailboxFlowTable->matchTableIndex,
+                          mailboxFlowTable);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+ABORT:
+
+    if ( (status != FM_OK) && (mailboxFlowTable != NULL) )
+    {
+        fmFree(mailboxFlowTable);
+    }
+
+    if (flowLockTaken)
+    {
+        DROP_FLOW_LOCK(sw);
+    }
+
+    FM_LOG_EXIT(FM_LOG_CAT_MAILBOX, status);
+
+}   /* end CreateVfFlowTable */
+
+
 /*****************************************************************************
  * Public Functions
  *****************************************************************************/
+
+
+/*****************************************************************************/
+/** fmFreeMailboxResources
+ * \ingroup intNat
+ *
+ * \desc            Free a fm_mailboxResources structure.
+ *
+ * \param[in,out]   value points to the structure to free.
+ *
+ * \return          Nothing.
+ *
+ *****************************************************************************/
+void fmFreeMailboxResources(void *value)
+{
+    fm_mailboxResources *resources;
+
+    resources = (fm_mailboxResources *) value;
+    fmTreeDestroy(&resources->mailboxMacResource, NULL);
+    fmTreeDestroy(&resources->mailboxFlowTableResource,
+                  FreeMailboxFlowTableResources);
+    fmTreeDestroy(&resources->mailboxFlowMap, NULL);
+
+    fmFree(resources);
+
+}   /* end fmFreeMailboxResources */
 
 
 
@@ -1462,8 +2793,7 @@ fm_int fmCompareMcastMacVniKeys(const void *key1, const void *key2)
 /** fmSendHostSrvErrResponse
  * \ingroup intMailbox
  *
- * \desc            Send response containing fm_hostSrvErr structure if 
- *                  provided status contains any errors.
+ * \desc            Send response containing fm_hostSrvErr structure.
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -1487,11 +2817,11 @@ void fmSendHostSrvErrResponse(fm_int                        sw,
                               fm_mailboxMessageId           msgTypeId,
                               fm_mailboxMessageArgumentType argType)
 {
-    fm_switch *              switchPtr;
-    fm_status                err;
-    fm_hostSrvErr            srvErr;
-    fm_uint32                rowsUsed;
-    fm_int                   i;
+    fm_switch *   switchPtr;
+    fm_status     err;
+    fm_hostSrvErr srvErr;
+    fm_uint32     rowsUsed;
+    fm_int        i;
 
     FM_LOG_ENTRY(FM_LOG_CAT_MAILBOX,
                  "sw=%d, pepNb=%d, status=%d, ctrlHdr = %p," 
@@ -1510,49 +2840,27 @@ void fmSendHostSrvErrResponse(fm_int                        sw,
 
     FM_CLEAR(srvErr);
 
-    if (status == FM_OK)
+    FM_API_CALL_FAMILY_VOID(switchPtr->SetHostSrvErrResponse,
+                            sw,
+                            pepNb,
+                            &srvErr);
+
+    srvErr.statusCode = status;
+
+    FM_API_CALL_FAMILY(err,
+                       switchPtr->WriteMailboxResponseMessage,
+                       sw,
+                       pepNb,
+                       ctrlHdr,
+                       msgTypeId,
+                       argType,
+                       (void *) &srvErr);
+    if (err != FM_OK)
     {
-        /* Update head value in SM header */
-        FM_API_CALL_FAMILY(err,
-                           switchPtr->UpdateMailboxSmHdr,
-                           sw,
-                           pepNb,
-                           ctrlHdr,
-                           FM_UPDATE_CTRL_HDR_REQUEST_HEAD);
-
-        if (err != FM_OK)
-        {
-            FM_LOG_DEBUG(FM_LOG_CAT_MAILBOX,
-                         "fmSendHostSrvErrResponse: error while updating "
-                         "SM header (err = %d)\n",
-                         err);
-        }
-    }
-    else
-    {
-
-        FM_API_CALL_FAMILY_VOID(switchPtr->SetHostSrvErrResponse,
-                                sw,
-                                pepNb,
-                                &srvErr);
-
-        srvErr.statusCode = status;
-
-        FM_API_CALL_FAMILY(err,
-                           switchPtr->WriteMailboxResponseMessage,
-                           sw,
-                           pepNb,
-                           ctrlHdr,
-                           msgTypeId,
-                           argType,
-                           (void *) &srvErr);
-        if (err != FM_OK)
-        {
-            FM_LOG_DEBUG(FM_LOG_CAT_MAILBOX,
-                         "SendHostSrvErrResponse: error while writing "
-                         "response message (err = %d)\n",
-                         err);
-        }
+        FM_LOG_DEBUG(FM_LOG_CAT_MAILBOX,
+                     "SendHostSrvErrResponse: error while writing "
+                     "response message (err = %d)\n",
+                     err);
     }
 
 }   /* end fmSendHostSrvErrResponse */
@@ -1745,16 +3053,7 @@ fm_status fmMapLportProcess(fm_int                   sw,
                        pfTrHdr);
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
 
-    FM_API_CALL_FAMILY(status,
-                       switchPtr->ReadMailboxRequestArguments,
-                       sw,
-                       pepNb,
-                       ctrlHdr,
-                       pfTrHdr,
-                       FM_HOST_SRV_MAP_LPORT_TYPE,
-                       FM_HOST_SRV_LPORT_MAP_TYPE_SIZE,
-                       (void *) &lportMap);
-    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+    /* This message has no arguments, so no ReadMailboxRequestArguments call. */
 
     status = fmCleanupResourcesForPep(sw,
                                       pepNb);
@@ -1814,6 +3113,19 @@ fm_status fmMapLportProcess(fm_int                   sw,
             FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
         }
     }
+
+    status = CreateVfFlowTable(sw,
+                               pepNb);
+    if (status != FM_OK)
+    {
+        FM_LOG_DEBUG(FM_LOG_CAT_MAILBOX,
+                     "Creating a VF-accessible table for PEP=%x failed (err=%d)\n",
+                     pepNb,
+                     status);
+
+        status = FM_OK;
+    }
+
 
 ABORT:
 
@@ -1962,6 +3274,31 @@ fm_status fmCreateLportProcess(fm_int                   sw,
                  srvPort.glortCount ,
                  srvPort.firstGlort);
 
+    if (srvPort.glortCount == 1)
+    {
+        /* Request to allocate one port means we are allocating VF. */
+        status = fmGetGlortLogicalPort(sw,
+                                       srvPort.firstGlort,
+                                       &firstPort);
+
+        if (status == FM_OK)
+        {
+            /* If is already allocated on SM side, it means that VF crashed
+             * with no LPORT_DELETE message being called. We should re-allocate
+             * given glort, but all existing filtering rules for this VF should
+             * be deleted.
+             */
+            FM_API_CALL_FAMILY(status,
+                               switchPtr->FreeVirtualLogicalPort,
+                               sw,
+                               pepNb,
+                               firstPort,
+                               srvPort.glortCount);
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+        }
+
+    }
+
     FM_API_CALL_FAMILY(status,
                        switchPtr->AllocVirtualLogicalPort,
                        sw,
@@ -1969,7 +3306,7 @@ fm_status fmCreateLportProcess(fm_int                   sw,
                        srvPort.glortCount,
                        &firstPort,
                        0,
-                       srvPort.firstGlort); 
+                       srvPort.firstGlort);
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
 
     /* Get PVID for PEP port. */
@@ -2002,13 +3339,14 @@ fm_status fmCreateLportProcess(fm_int                   sw,
             }
 
             fmTreeInit(&mailboxResource->mailboxMacResource);
-            fmTreeInit(&mailboxResource->mailboxFlowResource);
             fmTreeInit(&mailboxResource->mailboxFlowTableResource);
+            fmTreeInit(&mailboxResource->mailboxFlowMap);
             fmCustomTreeInit(&mailboxResource->innOutMacResource,
                              fmCompareInnerOuterMacFilters);
 
             mailboxResource->macEntriesAdded           = 0;
             mailboxResource->innerOuterMacEntriesAdded = 0;
+            mailboxResource->flowEntriesAdded          = 0;
 
             status = fmTreeInsert(&info->mailboxResourcesPerVirtualPort,
                                   i,
@@ -2421,8 +3759,6 @@ fm_status fmSetXcastModesProcess(fm_int                   sw,
                        pfTrHdr);
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
 
-    FM_CLEAR(srvXcastMode);
-
     FM_API_CALL_FAMILY(status,
                        switchPtr->ReadMailboxRequestArguments,
                        sw,
@@ -2455,7 +3791,7 @@ fm_status fmSetXcastModesProcess(fm_int                   sw,
     status = fmCaptureWriteLock(&switchPtr->routingLock, FM_WAIT_FOREVER);
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
 
-    lockTaken = TRUE;    
+    lockTaken = TRUE;
 
     /* Using internal functions to avoid iterating over all listeners */
     mcastGroupForMcastFlood = fmFindMcastGroup(sw, 
@@ -2482,6 +3818,51 @@ fm_status fmSetXcastModesProcess(fm_int                   sw,
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
     }
 
+    /* If PEPs should be added to flooding port masks,
+     * we need to add PEP port as listener to all flood mcast groups. 
+     */
+    if (GET_PROPERTY()->addPepsToFlooding)
+    {
+        listenerKey = GET_LISTENER_KEY(pepPort, 
+                    FM_MAILBOX_DEF_VLAN_FOR_FLOOD_MCAST_GROUPS);
+
+        listener.vlan = FM_MAILBOX_DEF_VLAN_FOR_FLOOD_MCAST_GROUPS;
+        listener.port = pepPort;
+
+        status = fmTreeFind(&mcastGroupForMcastFlood->listenerTree,
+                            listenerKey,
+                            (void **) &intListener);
+        if (status == FM_ERR_NOT_FOUND)
+        {
+            status = fmAddMcastGroupListener(sw,
+                                             info->mcastGroupForMcastFlood,
+                                             &listener);
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+        }
+
+        status = fmTreeFind(&mcastGroupForUcastFlood->listenerTree,
+                            listenerKey,
+                            (void **) &intListener);
+        if (status == FM_ERR_NOT_FOUND)
+        {
+            status = fmAddMcastGroupListener(sw,
+                                             info->mcastGroupForUcastFlood,
+                                             &listener);
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+        }
+
+        status = fmTreeFind(&mcastGroupForBcastFlood->listenerTree,
+                            listenerKey,
+                            (void **) &intListener);
+        if (status == FM_ERR_NOT_FOUND)
+        {
+            status = fmAddMcastGroupListener(sw,
+                                             info->mcastGroupForBcastFlood,
+                                             &listener);
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+        }
+    }
+
     listenerKey   = GET_LISTENER_KEY(logicalPort, 
                                      FM_MAILBOX_DEF_VLAN_FOR_FLOOD_MCAST_GROUPS);
 
@@ -2489,6 +3870,13 @@ fm_status fmSetXcastModesProcess(fm_int                   sw,
     listener.port = logicalPort;
 
     xcastFloodMode = 0;
+
+    /* Set the XCAST mode of the management port depending on
+     * attribute ''api.port.allowXcastToCpuPortHostSystem''. */
+    if ( !(GET_PROPERTY()->cpuPortXCastMode) && (switchPtr->cpuPort == pepPort) )
+    {
+        srvXcastMode.mode = FM_HOST_SRV_XCAST_MODE_NONE;
+    }
 
     switch (srvXcastMode.mode)
     {
@@ -3020,7 +4408,7 @@ fm_status fmUpdateMacFwdRuleProcess(fm_int                   sw,
 
     FM_CLEAR(macAddrEntry);
     macAddrEntry.macAddress = ( (fm_macaddr) srvMacUpdate.macAddressUpper << 
-                                FM_MAILBOX_QUEUE_ENTRY_BIT_LENGTH) |
+                                FM_MBX_ENTRY_BIT_LENGTH) |
                                 srvMacUpdate.macAddressLower;
     macAddrEntry.vlanID     = srvMacUpdate.vlan;
     macAddrEntry.type       = (isMacSecure) ?
@@ -3422,10 +4810,10 @@ ABORT:
 
 
 /*****************************************************************************/
-/** fmCreateFlowTableProcess
+/** fmCreateTableProcess
  * \ingroup intMailbox
  *
- * \desc            Process mailbox requests for CREATE_FLOW_TABLE.
+ * \desc            Process mailbox requests for CREATE_TABLE.
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -3436,30 +4824,20 @@ ABORT:
  * \param[in]       pfTrHdr points to PF transaction header structure.
  *
  * \return          FM_OK if successful.
- * \return          FM_ERR_INVALID_VALUE if there are not enough queue 
+ * \return          FM_ERR_INVALID_VALUE if there are not enough queue
  *                  elements used to store proper message arguments.
+ * \return          FM_ERR_ALREADY_EXISTS if a flow table with given index
+ *                  already exists.
  *
  *****************************************************************************/
-fm_status fmCreateFlowTableProcess(fm_int                   sw,
-                                   fm_int                   pepNb,
-                                   fm_mailboxControlHeader *ctrlHdr,
-                                   fm_mailboxMessageHeader *pfTrHdr)
+fm_status fmCreateTableProcess(fm_int                   sw,
+                               fm_int                   pepNb,
+                               fm_mailboxControlHeader *ctrlHdr,
+                               fm_mailboxMessageHeader *pfTrHdr)
 {
-    fm_switch *               switchPtr;
-    fm_mailboxInfo *          info;
-    fm_status                 status;
-    fm_uint32                 rv;
-    fm_uint32                 bytesRead;
-    fm_uint32                 argBytesRead;
-    fm_uint16                 pfGlort;
-    fm_int                    size;
-    fm_int                    logicalPort;
-    fm_hostSrvLportMap        lportMap; /* Need to get glort range for given PEP*/
-    fm_hostSrvCreateFlowTable srvCreateTable;
-    fm_flowCondition          condition;
-    fm_bool                   tableWithPriority;
-    fm_mailboxResources *     mailboxResourcesUsed;
-    fm_uintptr                tableType;
+    fm_switch *           switchPtr;
+    fm_status             status;
+    fm_hostSrvCreateTable srvCreateTable;
 
     FM_LOG_ENTRY(FM_LOG_CAT_MAILBOX,
                  "sw=%d, pepNb=%d, ctrlHdr=%p, pfTrHdr=%p\n",
@@ -3468,18 +4846,8 @@ fm_status fmCreateFlowTableProcess(fm_int                   sw,
                  (void *) ctrlHdr,
                  (void *) pfTrHdr);
 
-    switchPtr         = GET_SWITCH_PTR(sw);
-    info              = GET_MAILBOX_INFO(sw);
-    status            = FM_OK;
-    bytesRead         = 0;
-    rv                = 0;
-    argBytesRead      = 0;
-    size              = 0;
-    condition         = 0;
-    pfGlort           = 0;
-    logicalPort       = -1;
-    tableWithPriority = TRUE;
-    mailboxResourcesUsed = NULL;
+    switchPtr = GET_SWITCH_PTR(sw);
+    status    = FM_OK;
 
     FM_API_CALL_FAMILY(status,
                        switchPtr->ValidateMailboxMessageLength,
@@ -3497,86 +4865,29 @@ fm_status fmCreateFlowTableProcess(fm_int                   sw,
                        pepNb,
                        ctrlHdr,
                        pfTrHdr,
-                       FM_HOST_SRV_CREATE_FLOW_TABLE_TYPE,
-                       FM_HOST_SRV_CREATE_FLOW_TABLE_TYPE_SIZE,
+                       FM_HOST_SRV_CREATE_TABLE_TYPE,
+                       FM_HOST_SRV_CREATE_TABLE_TYPE_SIZE,
                        (void *) &srvCreateTable);
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
 
-    if (srvCreateTable.tableType == FM_FLOW_TCAM_TABLE)
+    if (srvCreateTable.flags & FM_MAILBOX_USER_TABLE)
     {
-        status = fmSetFlowAttribute(sw,
-                                    srvCreateTable.tableIndex,
-                                    FM_FLOW_TABLE_WITH_PRIORITY,
-                                    &tableWithPriority);
+        status = CreateUserFlowTable(sw,
+                                     pepNb,
+                                     &srvCreateTable);
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
     }
-
-    condition = srvCreateTable.flowConditionBitmaskUpper;
-    condition = condition << FM_MAILBOX_QUEUE_ENTRY_BIT_LENGTH;
-    condition |= (fm_flowCondition)srvCreateTable.flowConditionBitmaskLower;
-
-    FM_API_CALL_FAMILY(status,
-                       switchPtr->ProcessCreateFlowTableRequest,
-                       sw,
-                       pepNb,
-                       srvCreateTable.tableIndex,
-                       srvCreateTable.tableType,
-                       condition);
-    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
-
-    FM_CLEAR(lportMap);
-
-    FM_API_CALL_FAMILY_VOID(switchPtr->SetMailboxLportGlortRange,
-                            sw,
-                            pepNb,
-                            &lportMap);
-
-    pfGlort = CALCULATE_PF_GLORT_VALUE(lportMap.glortValue);
-
-    status = fmGetGlortLogicalPort(sw,
-                                   pfGlort,
-                                   &logicalPort);
-    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
-
-    if (fmTreeIsInitialized(&info->mailboxResourcesPerVirtualPort))
+    else if (srvCreateTable.flags & FM_MAILBOX_DRIVER_TABLE)
     {
-        /* FLOW resources are tracked per logical port
-           associated with PF glort. */
-        status = fmTreeFind(&info->mailboxResourcesPerVirtualPort,
-                            logicalPort,
-                            (void **) &mailboxResourcesUsed);
+        status = CreateDriverFlowTable(sw,
+                                       pepNb,
+                                       &srvCreateTable);
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
-
-        tableType = srvCreateTable.tableType;
-
-        if ( (mailboxResourcesUsed != NULL) &&
-            fmTreeIsInitialized(&mailboxResourcesUsed->mailboxFlowTableResource))
-        {
-            /* Add flow group to tracked resources list */
-            status = fmTreeInsert(&mailboxResourcesUsed->mailboxFlowTableResource,
-                                  srvCreateTable.tableIndex,
-                                  (void *) tableType);
-
-            if (status == FM_ERR_ALREADY_EXISTS)
-            {
-                FM_LOG_DEBUG(FM_LOG_CAT_MAILBOX,
-                             "Given flow table (index=0x%x, type=%d) already tracked with"
-                             " port %d\n",
-                             srvCreateTable.tableIndex,
-                             srvCreateTable.tableType,
-                             logicalPort);
-            }
-            else if (status != FM_OK)
-            {
-                FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
-            }
-        }
     }
     else
     {
-        FM_LOG_DEBUG(FM_LOG_CAT_MAILBOX,
-                     "Cannot track used resources per virtual port "
-                     "as resource tree is not initialized.\n");
+        status = FM_ERR_INVALID_ARGUMENT;
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
     }
 
 ABORT:
@@ -3585,21 +4896,21 @@ ABORT:
                              pepNb,
                              status,
                              ctrlHdr,
-                             FM_MAILBOX_MSG_CREATE_FLOW_TABLE_ID,
+                             FM_MAILBOX_MSG_CREATE_TABLE_ID,
                              FM_HOST_SRV_RETURN_ERR_TYPE);
 
     FM_LOG_EXIT(FM_LOG_CAT_MAILBOX, status);
 
-}   /* end fmCreateFlowTableProcess */
+}   /* end fmCreateTableProcess */
 
 
 
 
 /*****************************************************************************/
-/** fmDeleteFlowTableProcess
+/** fmDestroyTableProcess
  * \ingroup intMailbox
  *
- * \desc            Process mailbox requests for DELETE_FLOW_TABLE.
+ * \desc            Process mailbox requests for DESTROY_TABLE.
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -3610,589 +4921,18 @@ ABORT:
  * \param[in]       pfTrHdr points to PF transaction header structure.
  *
  * \return          FM_OK if successful.
- * \return          FM_ERR_INVALID_VALUE if there are not enough queue 
+ * \return          FM_ERR_INVALID_VALUE if there are not enough queue
  *                  elements used to store proper message arguments.
  *
  *****************************************************************************/
-fm_status fmDeleteFlowTableProcess(fm_int                   sw,
-                                   fm_int                   pepNb,
-                                   fm_mailboxControlHeader *ctrlHdr,
-                                   fm_mailboxMessageHeader *pfTrHdr)
-{
-    fm_switch *               switchPtr;
-    fm_mailboxInfo *          info;
-    fm_status                 status;
-    fm_uint64                 key;
-    fm_uint32                 rv;
-    fm_uint32                 bytesRead;
-    fm_uint32                 argBytesRead;
-    fm_uint16                 pfGlort;
-    fm_uint16                 flowTableIndex;
-    fm_int                    size;
-    fm_int                    logicalPort;
-    fm_int                    flowId;
-    fm_hostSrvLportMap        lportMap; /* Need to get glort range for given PEP*/
-    fm_hostSrvDeleteFlowTable srvDeleteTable;
-    fm_mailboxResources *     mailboxResourcesUsed;
-    fm_treeIterator           treeIterMailboxRes;
-    void *                    nextValue;
-
-    FM_LOG_ENTRY(FM_LOG_CAT_MAILBOX,
-                 "sw=%d, pepNb=%d, ctrlHdr=%p, pfTrHdr=%p\n",
-                 sw,
-                 pepNb,
-                 (void *) ctrlHdr,
-                 (void *) pfTrHdr);
-
-    switchPtr      = GET_SWITCH_PTR(sw);
-    info           = GET_MAILBOX_INFO(sw);
-    status         = FM_OK;
-    bytesRead      = 0;
-    rv             = 0;
-    argBytesRead   = 0;
-    size           = 0;
-    pfGlort        = 0;
-    logicalPort    = -1;
-    flowId         = -1;
-    flowTableIndex = 0;
-    key            = 0;
-    mailboxResourcesUsed = NULL;
-
-    FM_API_CALL_FAMILY(status,
-                       switchPtr->ValidateMailboxMessageLength,
-                       sw,
-                       pepNb,
-                       ctrlHdr,
-                       pfTrHdr);
-    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
-
-    FM_CLEAR(srvDeleteTable);
-
-    FM_API_CALL_FAMILY(status,
-                       switchPtr->ReadMailboxRequestArguments,
-                       sw,
-                       pepNb,
-                       ctrlHdr,
-                       pfTrHdr,
-                       FM_HOST_SRV_DELETE_FLOW_TABLE_TYPE,
-                       FM_HOST_SRV_DELETE_FLOW_TABLE_TYPE_SIZE,
-                       (void *) &srvDeleteTable);
-    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
-
-    switch (srvDeleteTable.tableType)
-    {
-        case FM_FLOW_TCAM_TABLE:
-            status = fmDeleteFlowTCAMTable(sw,
-                                           srvDeleteTable.tableIndex);
-            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
-
-            break;
-
-        case FM_FLOW_BST_TABLE:
-            status = fmDeleteFlowBSTTable(sw,
-                                          srvDeleteTable.tableIndex);
-            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
-
-            break;
-
-        case FM_FLOW_TE_TABLE:
-            status = fmDeleteFlowTETable(sw,
-                                         srvDeleteTable.tableIndex);
-            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
-
-            break;
-
-        default:
-            status = FM_ERR_UNSUPPORTED;
-            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
-
-            break;
-    }
-
-    FM_CLEAR(lportMap);
-
-    FM_API_CALL_FAMILY_VOID(switchPtr->SetMailboxLportGlortRange,
-                            sw,
-                            pepNb,
-                            &lportMap);
-
-    pfGlort = CALCULATE_PF_GLORT_VALUE(lportMap.glortValue);
-
-    status = fmGetGlortLogicalPort(sw,
-                                   pfGlort,
-                                   &logicalPort);
-    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
-
-    if (fmTreeIsInitialized(&info->mailboxResourcesPerVirtualPort))
-    {
-        /* FLOW resources are tracked per logical port
-           associated with PF glort. */
-        status = fmTreeFind(&info->mailboxResourcesPerVirtualPort,
-                            logicalPort,
-                            (void **) &mailboxResourcesUsed);
-        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
-
-        if ( (mailboxResourcesUsed != NULL) &&
-            fmTreeIsInitialized(&mailboxResourcesUsed->mailboxFlowTableResource) )
-        {
-            /* Delete flow table from tracked resources list */
-            status = fmTreeRemove(&mailboxResourcesUsed->mailboxFlowTableResource,
-                                  srvDeleteTable.tableIndex,
-                                  NULL);
-
-            if (status == FM_ERR_NOT_FOUND)
-            {
-                FM_LOG_DEBUG(FM_LOG_CAT_MAILBOX,
-                             "Given flow table (index=0x%x, type=%d) was not tracked with"
-                             " port %d\n",
-                             srvDeleteTable.tableIndex,
-                             srvDeleteTable.tableType,
-                             logicalPort);
-            }
-            else if (status != FM_OK)
-            {
-                FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
-            }
-        }
-
-        if ( (mailboxResourcesUsed != NULL) &&
-            fmTreeIsInitialized(&mailboxResourcesUsed->mailboxFlowResource) )
-        {
-            /* Cleanup Flow entries added to this table. */
-            fmTreeIterInit(&treeIterMailboxRes,
-                           &mailboxResourcesUsed->mailboxFlowResource);
-
-            while ( fmTreeIterNext(&treeIterMailboxRes,
-                                   &key,
-                                   &nextValue) != FM_ERR_NO_MORE )
-            {
-                flowId         = GET_FLOW_ID_FROM_FLOW_RESOURCE_KEY(key);
-                flowTableIndex = GET_FLOW_TABLE_FROM_FLOW_RESOURCE_KEY(key);
-
-                if (flowTableIndex == srvDeleteTable.tableIndex)
-                {
-                    fmTreeRemoveCertain(&mailboxResourcesUsed->mailboxFlowResource,
-                                        key,
-                                        NULL);
-
-                    /* Re-initialize the iterator because we modified the tree */
-                    fmTreeIterInitFromSuccessor(&treeIterMailboxRes, 
-                                                &mailboxResourcesUsed->mailboxFlowResource,
-                                                0);
-                }
-            }
-        }
-    }
-    else
-    {
-        FM_LOG_DEBUG(FM_LOG_CAT_MAILBOX,
-                     "Cannot track used resources per virtual port "
-                     "as resource tree is not initialized.\n");
-    }
-
-ABORT:
-
-    fmSendHostSrvErrResponse(sw,
-                             pepNb,
-                             status,
-                             ctrlHdr,
-                             FM_MAILBOX_MSG_DELETE_FLOW_TABLE_ID,
-                             FM_HOST_SRV_RETURN_ERR_TYPE);
-
-    FM_LOG_EXIT(FM_LOG_CAT_MAILBOX, status);
-
-}   /* end fmDeleteFlowTableProcess */
-
-
-
-
-/*****************************************************************************/
-/** fmUpdateFlowProcess
- * \ingroup intMailbox
- *
- * \desc            Process mailbox requests for UPDATE_FLOW.
- *
- * \param[in]       sw is the switch on which to operate.
- *
- * \param[in]       pepNb is the PEP number.
- *
- * \param[in]       ctrlHdr points to mailbox control header structure.
- *
- * \param[in]       pfTrHdr points to PF transaction header structure.
- *
- * \return          FM_OK if successful.
- * \return          FM_ERR_INVALID_VALUE if there are not enough queue 
- *                  elements used to store proper message arguments.
- *
- *****************************************************************************/
-fm_status fmUpdateFlowProcess(fm_int                   sw,
-                              fm_int                   pepNb,
-                              fm_mailboxControlHeader *ctrlHdr,
-                              fm_mailboxMessageHeader *pfTrHdr)
-{
-    fm_switch *             switchPtr;
-    fm_mailboxInfo *        info;
-    fm_status               status;
-    fm_uint16               pfGlort;
-    fm_uint32               rv;
-    fm_uint32               bytesRead;
-    fm_uint32               argBytesRead;
-    fm_int                  size;
-    fm_int                  offset;
-    fm_int                  flowId;
-    fm_int                  logicalPort;
-    fm_hostSrvLportMap      lportMap; /* Need to get glort range for given PEP*/
-    fm_hostSrvUpdateFlow    srvUpdateFlow;
-    fm_hostSrvFlowHandle    srvFlowHandle;
-    fm_flowCondition        condition;
-    fm_flowAction           action;
-    fm_flowValue            condVal;
-    fm_flowParam            flowParam;
-    fm_macaddr              macAddr;
-    fm_mailboxResources *   mailboxResourcesUsed;
-    fm_uint64               key;
-
-    FM_LOG_ENTRY(FM_LOG_CAT_MAILBOX,
-                 "sw=%d, pepNb=%d, ctrlHdr=%p, pfTrHdr=%p\n",
-                 sw,
-                 pepNb,
-                 (void *) ctrlHdr,
-                 (void *) pfTrHdr);
-
-    switchPtr    = GET_SWITCH_PTR(sw);
-    info         = GET_MAILBOX_INFO(sw);
-    status       = FM_OK;
-    bytesRead    = 0;
-    rv           = 0;
-    argBytesRead = 0;
-    offset       = 0;
-    size         = 0;
-    condition    = 0;
-    action       = 0;
-    macAddr      = 0;
-    key          = 0;
-    pfGlort      = 0;
-    mailboxResourcesUsed = NULL;
-
-    FM_CLEAR(condVal);
-    FM_CLEAR(flowParam);
-
-    FM_API_CALL_FAMILY(status,
-                       switchPtr->ValidateMailboxMessageLength,
-                       sw,
-                       pepNb,
-                       ctrlHdr,
-                       pfTrHdr);
-    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
-
-    FM_CLEAR(srvUpdateFlow);
-
-    FM_API_CALL_FAMILY(status,
-                       switchPtr->ReadMailboxRequestArguments,
-                       sw,
-                       pepNb,
-                       ctrlHdr,
-                       pfTrHdr,
-                       FM_HOST_SRV_UPDATE_FLOW_TYPE,
-                       0, /*message size is variable for UPDATE_FLOW */
-                       (void *) &srvUpdateFlow);
-    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
-
-    if (srvUpdateFlow.flowID == FM_MAILBOX_FLOW_ID_ADD_NEW)
-    {
-        status = fmAddFlow(sw,
-                           srvUpdateFlow.tableIndex,
-                           srvUpdateFlow.priority,
-                           0,
-                           srvUpdateFlow.condition,
-                           &srvUpdateFlow.flowVal,
-                           srvUpdateFlow.action,
-                           &srvUpdateFlow.flowParam,
-                           FM_FLOW_STATE_ENABLED,
-                           &flowId);
-        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);          
-
-        srvUpdateFlow.flowID = flowId;
-
-        FM_CLEAR(lportMap);
-
-        FM_API_CALL_FAMILY_VOID(switchPtr->SetMailboxLportGlortRange,
-                                sw,
-                                pepNb,
-                                &lportMap);
-
-        pfGlort = CALCULATE_PF_GLORT_VALUE(lportMap.glortValue);
-
-        status = fmGetGlortLogicalPort(sw,
-                                       pfGlort,
-                                       &logicalPort);
-        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
-
-        if (fmTreeIsInitialized(&info->mailboxResourcesPerVirtualPort))
-        {
-            /* FLOW resources are tracked per logical port
-               associated with PF glort. */
-            status = fmTreeFind(&info->mailboxResourcesPerVirtualPort,
-                                logicalPort,
-                                (void **) &mailboxResourcesUsed);
-            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
-
-            if ( (mailboxResourcesUsed != NULL) &&
-                fmTreeIsInitialized(&mailboxResourcesUsed->mailboxFlowResource) )
-            {
-                key = GET_FLOW_RESOURCE_KEY(srvUpdateFlow.flowID,
-                                            srvUpdateFlow.tableIndex); 
-
-                /* Add flow group to tracked resources list */
-                status = fmTreeInsert(&mailboxResourcesUsed->mailboxFlowResource,
-                                      key,
-                                      NULL);
-
-                if (status == FM_ERR_ALREADY_EXISTS)
-                {
-                    FM_LOG_DEBUG(FM_LOG_CAT_MAILBOX,
-                                 "Given FLOW key (0x%llx) already tracked with"
-                                 " port %d\n",
-                                 key,
-                                 logicalPort);
-                }
-                else if (status != FM_OK)
-                {
-                    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
-                }
-            }
-        }
-        else
-        {
-            FM_LOG_DEBUG(FM_LOG_CAT_MAILBOX,
-                         "Cannot track used resources per virtual port "
-                         "as resource tree is not initialized.\n");
-        }
-    }
-    else
-    {
-        status = fmModifyFlow(sw,
-                              srvUpdateFlow.tableIndex,
-                              srvUpdateFlow.flowID,
-                              srvUpdateFlow.priority,
-                              0,
-                              srvUpdateFlow.condition,
-                              &srvUpdateFlow.flowVal,
-                              srvUpdateFlow.action,
-                              &srvUpdateFlow.flowParam);
-        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
-    }
-
-
-ABORT:
-
-    /* Prepare response */
-    FM_CLEAR(srvFlowHandle);
-
-    if (status == FM_OK)
-    {
-        srvFlowHandle.flowID = srvUpdateFlow.flowID;
-    }
-
-    FM_API_CALL_FAMILY(status,
-                       switchPtr->WriteMailboxResponseMessage,
-                       sw,
-                       pepNb,
-                       ctrlHdr,
-                       FM_MAILBOX_MSG_UPDATE_FLOW_ID,
-                       FM_HOST_SRV_HANDLE_FLOW_TYPE,
-                       (void *) &srvFlowHandle);
-        
-    FM_LOG_EXIT(FM_LOG_CAT_MAILBOX, status);
-
-}   /* end fmUpdateFlowProcess */
-
-
-
-
-/*****************************************************************************/
-/** fmDeleteFlowProcess
- * \ingroup intMailbox
- *
- * \desc            Process mailbox requests for DELETE_FLOW.
- *
- * \param[in]       sw is the switch on which to operate.
- *
- * \param[in]       pepNb is the PEP number.
- *
- * \param[in]       ctrlHdr points to mailbox control header structure.
- *
- * \param[in]       pfTrHdr points to PF transaction header structure.
- *
- * \return          FM_OK if successful.
- * \return          FM_ERR_INVALID_VALUE if there are not enough queue 
- *                  elements used to store proper message arguments.
- *
- *****************************************************************************/
-fm_status fmDeleteFlowProcess(fm_int                   sw,
-                              fm_int                   pepNb,
-                              fm_mailboxControlHeader *ctrlHdr,
-                              fm_mailboxMessageHeader *pfTrHdr)
-{
-    fm_switch *             switchPtr;
-    fm_mailboxInfo *        info;
-    fm_status               status;
-    fm_uint16               pfGlort;
-    fm_uint32               rv;
-    fm_uint32               bytesRead;
-    fm_uint32               argBytesRead;
-    fm_hostSrvDeleteFlow    srvDeleteFlow;
-    fm_mailboxResources *   mailboxResourcesUsed;
-    fm_uint64               key;
-    fm_int                  logicalPort;
-    fm_hostSrvLportMap      lportMap; /* Need to get glort range for given PEP*/
-
-    FM_LOG_ENTRY(FM_LOG_CAT_MAILBOX,
-                 "sw=%d, pepNb=%d, ctrlHdr=%p, pfTrHdr=%p\n",
-                 sw,
-                 pepNb,
-                 (void *) ctrlHdr,
-                 (void *) pfTrHdr);
-
-    switchPtr    = GET_SWITCH_PTR(sw);
-    info         = GET_MAILBOX_INFO(sw);
-    status       = FM_OK;
-    bytesRead    = 0;
-    rv           = 0;
-    argBytesRead = 0;
-    key          = 0;
-    pfGlort      = 0;
-    logicalPort  = -1;
-    mailboxResourcesUsed = NULL;
-
-    FM_API_CALL_FAMILY(status,
-                       switchPtr->ValidateMailboxMessageLength,
-                       sw,
-                       pepNb,
-                       ctrlHdr,
-                       pfTrHdr);
-    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
-
-    FM_CLEAR(srvDeleteFlow);
-
-    FM_API_CALL_FAMILY(status,
-                       switchPtr->ReadMailboxRequestArguments,
-                       sw,
-                       pepNb,
-                       ctrlHdr,
-                       pfTrHdr,
-                       FM_HOST_SRV_DELETE_FLOW_TYPE,
-                       FM_HOST_SRV_DELETE_FLOW_TYPE_SIZE,
-                       (void *) &srvDeleteFlow);
-    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
-
-    status = fmDeleteFlow(sw,
-                          srvDeleteFlow.tableIndex,
-                          srvDeleteFlow.flowID);
-    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
-
-    FM_CLEAR(lportMap);
-
-    FM_API_CALL_FAMILY_VOID(switchPtr->SetMailboxLportGlortRange,
-                            sw,
-                            pepNb,
-                            &lportMap);
-
-    pfGlort = CALCULATE_PF_GLORT_VALUE(lportMap.glortValue);
-
-    status = fmGetGlortLogicalPort(sw,
-                                   pfGlort,
-                                   &logicalPort);
-    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
-
-    if (fmTreeIsInitialized(&info->mailboxResourcesPerVirtualPort))
-    {
-        /* FLOW resources are tracked per logical port
-           associated with PF glort. */
-        status = fmTreeFind(&info->mailboxResourcesPerVirtualPort,
-                            logicalPort,
-                            (void **) &mailboxResourcesUsed);
-        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
-
-        if ( (mailboxResourcesUsed != NULL) &&
-            fmTreeIsInitialized(&mailboxResourcesUsed->mailboxFlowResource) )
-        {
-            key = GET_FLOW_RESOURCE_KEY(srvDeleteFlow.flowID,
-                                        srvDeleteFlow.tableIndex);
-
-            /* Delete flow group from tracked resources list */
-            status = fmTreeRemove(&mailboxResourcesUsed->mailboxFlowResource,
-                                  key,
-                                  NULL);
-
-            if (status == FM_ERR_NOT_FOUND)
-            {
-                FM_LOG_DEBUG(FM_LOG_CAT_MAILBOX,
-                             "Given FLOW key (0x%llx) was not tracked with"
-                             " port %d\n",
-                             key,
-                             logicalPort);
-            }
-            else if (status != FM_OK)
-            {
-                FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
-            }
-        }
-    }
-    else
-    {
-        FM_LOG_DEBUG(FM_LOG_CAT_MAILBOX,
-                     "Cannot track used resources per virtual port "
-                     "as resource tree is not initialized.\n");
-    }
-
-ABORT:
-
-    fmSendHostSrvErrResponse(sw,
-                             pepNb,
-                             status,
-                             ctrlHdr,
-                             FM_MAILBOX_MSG_DELETE_FLOW_ID,
-                             FM_HOST_SRV_RETURN_ERR_TYPE);
-
-    FM_LOG_EXIT(FM_LOG_CAT_MAILBOX, status);
-
-}   /* end fmDeleteFlowProcess */
-
-
-
-
-/*****************************************************************************/
-/** fmSetFlowStateProcess
- * \ingroup intMailbox
- *
- * \desc            Process mailbox requests for SET_FLOW_STATE.
- *
- * \param[in]       sw is the switch on which to operate.
- *
- * \param[in]       pepNb is the PEP number.
- *
- * \param[in]       ctrlHdr points to mailbox control header structure.
- *
- * \param[in]       pfTrHdr points to PF transaction header structure.
- *
- * \return          FM_OK if successful.
- * \return          FM_ERR_INVALID_VALUE if there are not enough queue 
- *                  elements used to store proper message arguments.
- *
- *****************************************************************************/
-fm_status fmSetFlowStateProcess(fm_int                   sw,
+fm_status fmDestroyTableProcess(fm_int                   sw,
                                 fm_int                   pepNb,
                                 fm_mailboxControlHeader *ctrlHdr,
                                 fm_mailboxMessageHeader *pfTrHdr)
 {
-    fm_switch *             switchPtr;
-    fm_status               status;
-    fm_uint32               rv;
-    fm_uint32               bytesRead;
-    fm_uint32               argBytesRead;
-    fm_int                  size;
-    fm_hostSrvFlowState     srvFlowState;
+    fm_switch *     switchPtr;
+    fm_status       status;
+    fm_hostSrvTable srvTable;
 
     FM_LOG_ENTRY(FM_LOG_CAT_MAILBOX,
                  "sw=%d, pepNb=%d, ctrlHdr=%p, pfTrHdr=%p\n",
@@ -4201,12 +4941,8 @@ fm_status fmSetFlowStateProcess(fm_int                   sw,
                  (void *) ctrlHdr,
                  (void *) pfTrHdr);
 
-    switchPtr       = GET_SWITCH_PTR(sw);
-    status          = FM_OK;
-    bytesRead       = 0;
-    rv              = 0;
-    argBytesRead    = 0;
-    size            = 0;
+    switchPtr = GET_SWITCH_PTR(sw);
+    status    = FM_OK;
 
     FM_API_CALL_FAMILY(status,
                        switchPtr->ValidateMailboxMessageLength,
@@ -4216,7 +4952,7 @@ fm_status fmSetFlowStateProcess(fm_int                   sw,
                        pfTrHdr);
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
 
-    FM_CLEAR(srvFlowState);
+    FM_CLEAR(srvTable);
 
     FM_API_CALL_FAMILY(status,
                        switchPtr->ReadMailboxRequestArguments,
@@ -4224,17 +4960,15 @@ fm_status fmSetFlowStateProcess(fm_int                   sw,
                        pepNb,
                        ctrlHdr,
                        pfTrHdr,
-                       FM_HOST_SRV_SET_FLOW_STATE_TYPE,
-                       FM_HOST_SRV_FLOW_STATE_TYPE_SIZE,
-                       (void *) &srvFlowState);
+                       FM_HOST_SRV_TABLE_TYPE,
+                       FM_HOST_SRV_TABLE_TYPE_SIZE,
+                       (void *) &srvTable);
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
 
-    status = fmSetFlowState(sw,
-                            srvFlowState.tableIndex,
-                            srvFlowState.flowID,
-                            srvFlowState.flowState);
+    status = DestroyFlowTable(sw,
+                              pepNb,
+                              &srvTable);
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
-
 
 ABORT:
 
@@ -4242,12 +4976,458 @@ ABORT:
                              pepNb,
                              status,
                              ctrlHdr,
-                             FM_MAILBOX_MSG_SET_FLOW_STATE_ID,
+                             FM_MAILBOX_MSG_DESTROY_TABLE_ID,
                              FM_HOST_SRV_RETURN_ERR_TYPE);
 
     FM_LOG_EXIT(FM_LOG_CAT_MAILBOX, status);
 
-}   /* end fmSetFlowStateProcess */
+}   /* end fmDestroyTableProcess */
+
+
+
+
+/*****************************************************************************/
+/** fmGetTablesProcess
+ * \ingroup intMailbox
+ *
+ * \desc            Process mailbox requests for GET_TABLES.
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \param[in]       pepNb is the PEP number.
+ *
+ * \param[in]       ctrlHdr points to mailbox control header structure.
+ *
+ * \param[in]       pfTrHdr points to PF transaction header structure.
+ *
+ * \return          FM_OK if successful.
+ * \return          FM_ERR_INVALID_VALUE if there are not enough queue
+ *                  elements used to store proper message arguments.
+ *
+ *****************************************************************************/
+fm_status fmGetTablesProcess(fm_int                   sw,
+                             fm_int                   pepNb,
+                             fm_mailboxControlHeader *ctrlHdr,
+                             fm_mailboxMessageHeader *pfTrHdr)
+{
+    fm_status                 status;
+    fm_switch *               switchPtr;
+    fm_hostSrvFlowTableRange  srvFlowTableRange;
+
+    FM_LOG_ENTRY(FM_LOG_CAT_MAILBOX,
+                 "sw=%d, pepNb=%d, ctrlHdr=%p, pfTrHdr=%p\n",
+                 sw,
+                 pepNb,
+                 (void *) ctrlHdr,
+                 (void *) pfTrHdr);
+
+    switchPtr = GET_SWITCH_PTR(sw);
+    status    = FM_OK;
+
+    FM_API_CALL_FAMILY(status,
+                       switchPtr->ValidateMailboxMessageLength,
+                       sw,
+                       pepNb,
+                       ctrlHdr,
+                       pfTrHdr);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+    FM_CLEAR(srvFlowTableRange);
+
+    FM_API_CALL_FAMILY(status,
+                       switchPtr->ReadMailboxRequestArguments,
+                       sw,
+                       pepNb,
+                       ctrlHdr,
+                       pfTrHdr,
+                       FM_HOST_SRV_FLOW_TABLE_RANGE_TYPE,
+                       FM_HOST_SRV_FLOW_TABLE_RANGE_TYPE_SIZE,
+                       (void *) &srvFlowTableRange);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+ABORT:
+
+    if (status == FM_OK)
+    {
+        FM_API_CALL_FAMILY(status,
+                           switchPtr->WriteMailboxResponseMessage,
+                           sw,
+                           pepNb,
+                           ctrlHdr,
+                           FM_MAILBOX_MSG_GET_TABLES_ID,
+                           FM_HOST_SRV_TABLE_LIST_TYPE,
+                           (void *) &srvFlowTableRange);
+
+        if (status != FM_OK)
+        {
+            FM_LOG_DEBUG(FM_LOG_CAT_MAILBOX,
+                         "Writing response message failed with error = %d\n"
+                         "(%s)\n",
+                         status,
+                         fmErrorMsg(status));
+
+            FM_LOG_EXIT(FM_LOG_CAT_MAILBOX, status);
+        }
+    }
+    else
+    {
+        fmSendHostSrvErrResponse(sw,
+                                 pepNb,
+                                 status,
+                                 ctrlHdr,
+                                 FM_MAILBOX_MSG_GET_TABLES_ID,
+                                 FM_HOST_SRV_RETURN_ERR_TYPE);
+    }
+
+    FM_LOG_EXIT(FM_LOG_CAT_MAILBOX, status);
+
+}   /* end fmGetTablesProcess */
+
+
+
+
+/*****************************************************************************/
+/** fmSetRulesProcess
+ * \ingroup intMailbox
+ *
+ * \desc            Process mailbox requests for SET_RULES.
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \param[in]       pepNb is the PEP number.
+ *
+ * \param[in]       ctrlHdr points to mailbox control header structure.
+ *
+ * \param[in]       pfTrHdr points to PF transaction header structure.
+ *
+ * \return          FM_OK if successful.
+ * \return          FM_ERR_INVALID_VALUE if there are not enough queue
+ *                  elements used to store proper message arguments.
+ * \return          FM_ERR_ALREADY_EXISTS if a flow with given ID
+ *                  already exists.
+ *
+ *****************************************************************************/
+fm_status fmSetRulesProcess(fm_int                   sw,
+                            fm_int                   pepNb,
+                            fm_mailboxControlHeader *ctrlHdr,
+                            fm_mailboxMessageHeader *pfTrHdr)
+{
+    fm_switch *         switchPtr;
+    fm_status           status;
+    fm_hostSrvFlowEntry srvFlowEntry;
+
+    FM_LOG_ENTRY(FM_LOG_CAT_MAILBOX,
+                 "sw=%d, pepNb=%d, ctrlHdr=%p, pfTrHdr=%p\n",
+                 sw,
+                 pepNb,
+                 (void *) ctrlHdr,
+                 (void *) pfTrHdr);
+
+    switchPtr = GET_SWITCH_PTR(sw);
+    status    = FM_OK;
+
+    FM_API_CALL_FAMILY(status,
+                       switchPtr->ValidateMailboxMessageLength,
+                       sw,
+                       pepNb,
+                       ctrlHdr,
+                       pfTrHdr);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+    FM_CLEAR(srvFlowEntry);
+
+    FM_API_CALL_FAMILY(status,
+                       switchPtr->ReadMailboxRequestArguments,
+                       sw,
+                       pepNb,
+                       ctrlHdr,
+                       pfTrHdr,
+                       FM_HOST_SRV_FLOW_ENTRY_TYPE,
+                       FM_HOST_SRV_FLOW_ENTRY_TYPE_SIZE,
+                       (void *) &srvFlowEntry);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+    status = SetRule(sw,
+                     pepNb,
+                     &srvFlowEntry);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+ABORT:
+
+    fmSendHostSrvErrResponse(sw,
+                             pepNb,
+                             status,
+                             ctrlHdr,
+                             FM_MAILBOX_MSG_SET_RULES_ID,
+                             FM_HOST_SRV_RETURN_ERR_TYPE);
+
+    FM_LOG_EXIT(FM_LOG_CAT_MAILBOX, status);
+
+}   /* end fmSetRulesProcess */
+
+
+
+
+/*****************************************************************************/
+/** fmGetRulesProcess
+ * \ingroup intMailbox
+ *
+ * \desc            Process mailbox requests for GET_RULES.
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \param[in]       pepNb is the PEP number.
+ *
+ * \param[in]       ctrlHdr points to mailbox control header structure.
+ *
+ * \param[in]       pfTrHdr points to PF transaction header structure.
+ *
+ * \return          FM_OK if successful.
+ * \return          FM_ERR_INVALID_VALUE if there are not enough queue
+ *                  elements used to store proper message arguments.
+ *
+ *****************************************************************************/
+fm_status fmGetRulesProcess(fm_int                   sw,
+                            fm_int                   pepNb,
+                            fm_mailboxControlHeader *ctrlHdr,
+                            fm_mailboxMessageHeader *pfTrHdr)
+{
+    fm_switch *          switchPtr;
+    fm_status            status;
+    fm_hostSrvFlowRange  srvFlowRange;
+
+    FM_LOG_ENTRY(FM_LOG_CAT_MAILBOX,
+                 "sw=%d, pepNb=%d, ctrlHdr=%p, pfTrHdr=%p\n",
+                 sw,
+                 pepNb,
+                 (void *) ctrlHdr,
+                 (void *) pfTrHdr);
+
+    switchPtr = GET_SWITCH_PTR(sw);
+    status    = FM_OK;
+
+    FM_API_CALL_FAMILY(status,
+                       switchPtr->ValidateMailboxMessageLength,
+                       sw,
+                       pepNb,
+                       ctrlHdr,
+                       pfTrHdr);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+    FM_CLEAR(srvFlowRange);
+
+    FM_API_CALL_FAMILY(status,
+                       switchPtr->ReadMailboxRequestArguments,
+                       sw,
+                       pepNb,
+                       ctrlHdr,
+                       pfTrHdr,
+                       FM_HOST_SRV_FLOW_RANGE_TYPE,
+                       FM_HOST_SRV_FLOW_RANGE_TYPE_SIZE,
+                       (void *) &srvFlowRange);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+ABORT:
+
+    if (status == FM_OK)
+    {
+        FM_API_CALL_FAMILY(status,
+                           switchPtr->WriteMailboxResponseMessage,
+                           sw,
+                           pepNb,
+                           ctrlHdr,
+                           FM_MAILBOX_MSG_GET_RULES_ID,
+                           FM_HOST_SRV_FLOW_ENTRY_TYPE,
+                           (void *) &srvFlowRange);
+
+        if (status != FM_OK)
+        {
+            FM_LOG_DEBUG(FM_LOG_CAT_MAILBOX,
+                         "Writing response message failed with error = %d\n"
+                         "(%s)\n",
+                         status,
+                         fmErrorMsg(status));
+
+            FM_LOG_EXIT(FM_LOG_CAT_MAILBOX, status);
+        }
+    }
+    else
+    {
+        fmSendHostSrvErrResponse(sw,
+                                 pepNb,
+                                 status,
+                                 ctrlHdr,
+                                 FM_MAILBOX_MSG_GET_RULES_ID,
+                                 FM_HOST_SRV_RETURN_ERR_TYPE);
+    }
+
+    FM_LOG_EXIT(FM_LOG_CAT_MAILBOX, status);
+
+}   /* end fmGetRulesProcess */
+
+
+
+
+/*****************************************************************************/
+/** fmDelRulesProcess
+ * \ingroup intMailbox
+ *
+ * \desc            Process mailbox requests for DEL_RULES.
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \param[in]       pepNb is the PEP number.
+ *
+ * \param[in]       ctrlHdr points to mailbox control header structure.
+ *
+ * \param[in]       pfTrHdr points to PF transaction header structure.
+ *
+ * \return          FM_OK if successful.
+ * \return          FM_ERR_INVALID_VALUE if there are not enough queue
+ *                  elements used to store proper message arguments.
+ * \return          FM_ERR_ALREADY_EXISTS if a flow with given ID
+ *                  already exists.
+ *
+ *****************************************************************************/
+fm_status fmDelRulesProcess(fm_int                   sw,
+                            fm_int                   pepNb,
+                            fm_mailboxControlHeader *ctrlHdr,
+                            fm_mailboxMessageHeader *pfTrHdr)
+{
+    fm_switch *          switchPtr;
+    fm_status            status;
+    fm_hostSrvFlowHandle srvFlowHandle;
+
+    FM_LOG_ENTRY(FM_LOG_CAT_MAILBOX,
+                 "sw=%d, pepNb=%d, ctrlHdr=%p, pfTrHdr=%p\n",
+                 sw,
+                 pepNb,
+                 (void *) ctrlHdr,
+                 (void *) pfTrHdr);
+
+    switchPtr = GET_SWITCH_PTR(sw);
+    status    = FM_OK;
+
+    FM_API_CALL_FAMILY(status,
+                       switchPtr->ValidateMailboxMessageLength,
+                       sw,
+                       pepNb,
+                       ctrlHdr,
+                       pfTrHdr);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+    FM_CLEAR(srvFlowHandle);
+
+    FM_API_CALL_FAMILY(status,
+                       switchPtr->ReadMailboxRequestArguments,
+                       sw,
+                       pepNb,
+                       ctrlHdr,
+                       pfTrHdr,
+                       FM_HOST_SRV_FLOW_HANDLE_TYPE,
+                       FM_HOST_SRV_FLOW_HANDLE_TYPE_SIZE,
+                       (void *) &srvFlowHandle);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+    status = DelRule(sw,
+                     pepNb,
+                     &srvFlowHandle);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+ABORT:
+
+    fmSendHostSrvErrResponse(sw,
+                             pepNb,
+                             status,
+                             ctrlHdr,
+                             FM_MAILBOX_MSG_DEL_RULES_ID,
+                             FM_HOST_SRV_RETURN_ERR_TYPE);
+
+    FM_LOG_EXIT(FM_LOG_CAT_MAILBOX, status);
+
+}   /* end fmDelRulesProcess */
+
+
+
+
+/*****************************************************************************/
+/** fmSetNoOfVfsProcess
+ * \ingroup intMailbox
+ *
+ * \desc            Process mailbox requests for SET_NO_OF_VFS.
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \param[in]       pepNb is the PEP number.
+ *
+ * \param[in]       ctrlHdr points to mailbox control header structure.
+ *
+ * \param[in]       pfTrHdr points to PF transaction header structure.
+ *
+ * \return          FM_OK if successful.
+ * \return          FM_ERR_INVALID_VALUE if there are not enough queue
+ *                  elements used to store proper message arguments.
+ * \return          FM_ERR_ALREADY_EXISTS if a flow with given ID
+ *                  already exists.
+ *
+ *****************************************************************************/
+fm_status fmSetNoOfVfsProcess(fm_int                   sw,
+                              fm_int                   pepNb,
+                              fm_mailboxControlHeader *ctrlHdr,
+                              fm_mailboxMessageHeader *pfTrHdr)
+{
+    fm_switch *       switchPtr;
+    fm_status         status;
+    fm_hostSrvNoOfVfs srvNoOfVfs;
+
+    FM_LOG_ENTRY(FM_LOG_CAT_MAILBOX,
+                 "sw=%d, pepNb=%d, ctrlHdr=%p, pfTrHdr=%p\n",
+                 sw,
+                 pepNb,
+                 (void *) ctrlHdr,
+                 (void *) pfTrHdr);
+
+    switchPtr = GET_SWITCH_PTR(sw);
+    status    = FM_OK;
+
+    FM_API_CALL_FAMILY(status,
+                       switchPtr->ValidateMailboxMessageLength,
+                       sw,
+                       pepNb,
+                       ctrlHdr,
+                       pfTrHdr);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+    FM_CLEAR(srvNoOfVfs);
+
+    FM_API_CALL_FAMILY(status,
+                       switchPtr->ReadMailboxRequestArguments,
+                       sw,
+                       pepNb,
+                       ctrlHdr,
+                       pfTrHdr,
+                       FM_HOST_SRV_NO_OF_VFS_TYPE,
+                       FM_HOST_SRV_NO_OF_VFS_TYPE_SIZE,
+                       (void *) &srvNoOfVfs);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+    status = HandleNoOfVfs(sw,
+                           pepNb,
+                           &srvNoOfVfs);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_MAILBOX, status);
+
+ABORT:
+
+    fmSendHostSrvErrResponse(sw,
+                             pepNb,
+                             status,
+                             ctrlHdr,
+                             FM_MAILBOX_MSG_SET_NO_OF_VFS_ID,
+                             FM_HOST_SRV_RETURN_ERR_TYPE);
+
+    FM_LOG_EXIT(FM_LOG_CAT_MAILBOX, status);
+
+}   /* end fmSetNoOfVfsProcess */
 
 
 
@@ -5034,7 +6214,7 @@ fm_status fmMailboxFreeResources(fm_int sw)
     if ( (GET_SWITCH_AGGREGATE_ID_IF_EXIST(sw)) == sw)
     {
         fmTreeDestroy(&info->mailboxResourcesPerVirtualPort,
-                      fmFree);
+                      fmFreeMailboxResources);
         fmTreeDestroy(&info->defaultPvidPerGlort,
                       NULL);
         fmCustomTreeDestroy(&info->mcastMacVni,

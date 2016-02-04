@@ -150,6 +150,15 @@ typedef enum
 #define FM10000_LINK_FAULT_TIME_SCALE_DOWN      4
 #define FM10000_LINK_FAULT_TICKS_DOWN           5
 
+/* heartbeat time scales */
+/* default time scale */
+#define FM10000_HEARTBEAT_TIME_SCALE_DEFAULT    0
+/* time scale for 10GBASER */
+#define FM10000_HEARTBEAT_TIME_SCALE_10GBASER   4
+
+/* pause during ethernet mode reconfiguration to
+ * allow completing serdes powerdown tasks: 100ms */
+#define FM10000_ETHERNET_MODE_CONFIG_PAUSE      100000000
 
 /* From EAS MAC_CFG.TxFcsMode */
 enum 
@@ -728,6 +737,7 @@ fm_status fm10000DbgEnablePortEee( fm_int sw, fm_int port, fm_int mode );
 
 fm_status fm10000IsPciePort( fm_int sw, fm_int port, fm_bool *isPciePort );
 fm_status fm10000IsSpecialPort( fm_int sw, fm_int port, fm_bool *isSpecialPort );
+fm_status fm10000IsEplPort( fm_int sw, fm_int port, fm_bool *isEplPort );
 fm_status fm10000ConfigurePepMode( fm_int sw, fm_int port );
 
 fm_status fm10000PepRecoveryHandler( fm_int sw, 

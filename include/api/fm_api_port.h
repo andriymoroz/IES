@@ -816,6 +816,8 @@ fm_status fmIsPciePort( fm_int sw, fm_int port, fm_bool *isPciePort );
 
 fm_status fmIsSpecialPort( fm_int sw, fm_int port, fm_bool *isSpecialPort );
 
+fm_status fmIsEplPort( fm_int sw, fm_int port, fm_bool *isEplPort );
+
 fm_status fmGetPcieLogicalPort(fm_int sw,
                                fm_int pep,
                                fm_pciePortType type,

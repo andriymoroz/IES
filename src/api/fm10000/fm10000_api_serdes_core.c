@@ -105,8 +105,14 @@ static fm_status DbgSerdesDumpStatusInt(fm_int  sw,
 static fm_status DbgSerdesDumpDfeStatusInt(fm_int   sw,
                                            fm_int   serdes,
                                            fm_bool  detailed);
-static fm_status DbgSerdesPrnKrInfo(fm_int   sw,
-                                    fm_int   serdes);
+static fm_status DbgSerdesPrnKrInfo(fm_int       sw,
+                                    fm_int       serDes);
+static fm_status SerdesDbgPrnKrTrainingBasicInfo(fm_int       sw,
+                                                 fm_int       serDes);
+static fm_status SerdesDbgPrnKrTrainingStats(fm_int       sw,
+                                             fm_int       serDes);
+static fm_status SerdesDbgKrDumpRemoteRequests(fm_int       sw,
+                                               fm_int       serDes);
 static fm_status DbgSerdesDumpSpicoSbmVersionsInt(fm_int sw,
                                                   fm_int serdes);
 static fm_status DbgSerdesDumpRegistersInt(fm_int     sw,
@@ -152,6 +158,13 @@ static fm_status DbgSerdesInjectErrorsInt(fm_int              sw,
                                           fm_int              serdes,
                                           fm10000SerdesSelect serdesSel,
                                           fm_uint             numErrors);
+static fm_status DbgSerDesRegisterInjectErrorInt(fm_int    sw,
+                                                 fm_int    serDes,
+                                                 fm_int    regAddr,
+                                                 fm_uint32 value);
+static fm_status DbgSbmRegisterInjectErrorInt(fm_int    sw,
+                                                fm_int    regAddr,
+                                                fm_uint32 value);
 static fm_status DbgSerdesReadSBusRegisterInt(fm_int     sw,
                                               fm_int     sbusDevID,
                                               fm_int     devRegID,
@@ -183,6 +196,15 @@ static fm_status SerdesGetEyeSimpleMetric(fm_int  sw,
 static fm_status SerDesGetEyeDiagram(fm_int                 sw,
                                      fm_int                 serDes,
                                      fm_eyeDiagramSample   *pSampleTable);
+static fm_status SerdesReadExt(fm_int     sw,
+                               fm_int     serdes,
+                               fm_uint    regAddr,
+                               fm_uint32 *pValue);
+static fm_status SbusReadExt(fm_int     sw,
+                             fm_bool    eplRing,
+                             fm_uint    sbusAddr,
+                             fm_uint    sbusReg,
+                             fm_uint32 *pValue);
 
 
 /*****************************************************************************
@@ -299,9 +321,48 @@ static fm_text dfeTuneModeStr[] =
     "SERDES_DFE_TUNE_DISABLE"
 };
 
+
+static fm_text krDbgStatItem[] =
+{
+    "Number of INC request from remote..............",
+    "Number of DEC request from remote..............",
+    "Number of INC request sent to remote...........",
+    "Number of DEC request sent to remote...........",
+    "Number of Min responses sent to remote.........",
+    "Number of Max responses sent to remote.........",
+    "Number of Min responses received from remote...",
+    "Number of Max responses received from remote...",
+};
+
+
+static fm_text krBasicDbgInfoStr[] =
+{
+    "Last TxEq received..",
+    "Last TxEq sent......",
+    "Rx metric....................................",
+    "Number of Initialize request from remote.....",
+    "Number of Preset request from remote.........",
+    "Initial TxEq Coefficients (Pre, Main, Post)..",
+    "Final TxEq Coefficients (Pre, Main, Post)...."
+};
+
+
+static fm_text krDbgCoeffUpdatStr[] =
+{
+    "HOLD",
+    "INC ",
+    "DEC ",
+    "RESV"
+};
+
 static const fm_uint16 *pCurSerdesImage = NULL;
 static fm_int           curRerdesImageSize = 0;
 static fm_uint32        curSerdesCodeVersionBuildId = 0;
+static const fm_uint16 *pCurSbmImage    = NULL;
+static fm_int           curSbmImageSize = 0;
+static const fm_uint16 *pCurSwapImage   = NULL;
+static fm_int           curSwapImageSize = 0;
+static fm_uint32        curSbmCodeVersionBuildId = 0;
 
 /*****************************************************************************
  * Local Functions
@@ -340,7 +401,9 @@ static fm_status ParseHex(fm_char *string, fm_uint64 *result)
 /** DecodeTxPattern
  * \ingroup intSerdes
  *
- * \desc            Convert pattern text string into SERDES configuration.
+ * \desc            Converts a Tx pattern text string into a SERDES
+ *                  configuration for BIST user defined patterns for the Tx
+ *                  generator.
  *
  * \param[in]       pattern is the pattern text representation.
  *
@@ -483,7 +546,9 @@ static fm_status DecodeTxPattern(fm_text                    pattern,
 /** DecodeRxPattern
  * \ingroup intSerdes
  *
- * \desc            Convert pattern text string into SERDES configuration.
+ * \desc            Converts a Rx pattern text string into SERDES
+ *                  configuration for BIST user defined patterns for the rx
+ *                  comparator.
  *
  * \param[in]       pattern is the pattern text representation.
  *
@@ -565,7 +630,7 @@ static fm_status DecodeRxPattern(fm_text                 pattern,
 /** DbgSerdesDumpInt
  * \ingroup intSerdes
  *
- * \desc            Dump SERDES configurations.
+ * \desc            Dumps full SERDES status.
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -709,7 +774,7 @@ static fm_status DbgSerdesDumpInt(fm_int  sw,
 /** DbgSerdesDumpStatusInt
  * \ingroup intSerdes
  *
- * \desc            Dump SERDES general status.
+ * \desc            Dumps SERDES general status.
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -728,6 +793,8 @@ static fm_status DbgSerdesDumpStatusInt(fm_int  sw,
     fm_bool                     rxRdy;
     fm_bool                     signalOk;
     fm10000_lane               *pLaneExt;
+    fm10000_lane               *pSbmLaneExt;
+    fm_int                      assocSerDes;
     fm10000SerdesLbMode         lbMode;
     fm10000SerdesPolarity       polarity;
     fm10000SerdesTxDataSelect   dataSel;
@@ -893,6 +960,29 @@ static fm_status DbgSerdesDumpStatusInt(fm_int  sw,
     FM_LOG_PRINT("Initial Eye Height  : %d (%d mV)\n", eyeScore/4, heightmV);
 
     FM_LOG_PRINT("Forced Reset Count  : %d \n", pLaneExt->fResetCnt);
+    FM_LOG_PRINT("SerDes Firmware Error Validation\n");
+    FM_LOG_PRINT("  Action Pending    : %d \n", pLaneExt->serdesErrorActionPending);
+    FM_LOG_PRINT("  Action Inprog     : %d \n", pLaneExt->serdesErrorActionInprog);
+    FM_LOG_PRINT("  Validated  Count  : %d \n", pLaneExt->serdesUErrValidateCnt);
+    FM_LOG_PRINT("  Action Exec Count : %d \n", pLaneExt->serdesUErrActionCnt);
+
+
+    err = fm10000GetSbmAssocSerDes( sw, &assocSerDes);
+    if ( err != FM_OK )
+    {
+        FM_LOG_DEBUG(FM_LOG_CAT_SERDES,
+                     "Unable to retrieve SBus Master associated SerDes\n");
+        FM_LOG_EXIT(FM_LOG_CAT_SERDES, err);
+    }
+
+    pSbmLaneExt = GET_LANE_EXT(sw, assocSerDes);
+
+    FM_LOG_PRINT("SBus Master Errors \n");
+    FM_LOG_PRINT("  SBM assoc SerDes  : %d \n", assocSerDes);
+    FM_LOG_PRINT("  Action Pending    : %d \n", pSbmLaneExt->sbmErrorActionPending);
+    FM_LOG_PRINT("  Action Inprog     : %d \n", pSbmLaneExt->sbmErrorActionInprog);
+    FM_LOG_PRINT("  Validated  Count  : %d \n", pSbmLaneExt->sbmUErrValidateCnt);
+    FM_LOG_PRINT("  Action Exec Count : %d \n", pSbmLaneExt->sbmUErrActionCnt);
 
     FM_LOG_PRINT("\n");
     return err;
@@ -906,7 +996,7 @@ static fm_status DbgSerdesDumpStatusInt(fm_int  sw,
 /** DbgSerdesDumpDfeStatusInt
  * \ingroup intSerdes
  *
- * \desc            Dump SERDES DFE status.
+ * \desc            Dumps SERDES DFE status.
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -1003,24 +1093,22 @@ static fm_status DbgSerdesDumpDfeStatusInt(fm_int   sw,
 /** DbgSerdesPrnKrInfo
  * \ingroup intSerdes
  *
- * \desc            Dump basic KR status info.
+ * \desc            Dumps full KR training debug information, including basic
+ *                  info, stats, and the latest remote requests.
  *
  * \param[in]       sw is the switch on which to operate.
  *
- * \param[in]       serdes is the SERDES number on which to operate.
+ * \param[in]       serDes is the SerDes number on which to operate.
  *
  * \return          FM_OK if successful.
  * \return          Other ''Status Codes'' as appropriate in case of failure.
  *
  *****************************************************************************/
-static fm_status DbgSerdesPrnKrInfo(fm_int   sw,
-                                    fm_int   serdes)
+static fm_status DbgSerdesPrnKrInfo(fm_int       sw,
+                                    fm_int       serDes)
 {
     fm_status       err;
     fm10000_switch *switchExt;
-    fm10000_lane   *pLaneExt;
-    fm10000_laneKr *pLaneKr;
-
 
     switchExt = GET_SWITCH_EXT(sw);
 
@@ -1032,12 +1120,105 @@ static fm_status DbgSerdesPrnKrInfo(fm_int   sw,
     }
     else
     {
-        pLaneExt = GET_LANE_EXT(sw, serdes);
+
+        err = SerdesDbgPrnKrTrainingBasicInfo(sw, serDes);
+
+        if (err == FM_OK)
+        {
+            err = SerdesDbgPrnKrTrainingStats(sw, serDes);
+        }
+
+        if (err == FM_OK)
+        {
+            err = SerdesDbgKrDumpRemoteRequests(sw, serDes);
+        }
+    }
+
+    return err;
+
+}
+
+
+
+
+/*****************************************************************************/
+/** SerdesDbgPrnKrTrainingBasicInfo
+ * \ingroup intSerdes
+ *
+ * \desc            Dumps basic KR training info.
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \param[in]       serDes is the SerDes number on which to operate.
+ *
+ * \return          FM_OK if successful.
+ * \return          Other ''Status Codes'' as appropriate in case of failure.
+ *
+ *****************************************************************************/
+static fm_status SerdesDbgPrnKrTrainingBasicInfo(fm_int       sw,
+                                                 fm_int       serDes)
+{
+    fm_status       err;
+    fm10000_switch *switchExt;
+    fm10000_lane   *pLaneExt;
+    fm10000_laneKr *pLaneKr;
+    fm_uint32       intData;
+    fm_uint32       value;
+    fm_int          eqValue;
+    fm_int          item;
+
+    switchExt = GET_SWITCH_EXT(sw);
+
+    err = FM_OK;
+
+    if ( !switchExt->serdesSupportsKR )
+    {
+        FM_LOG_PRINT("KR training not supported by this build version\n");
+    }
+    else
+    {
+        pLaneExt = GET_LANE_EXT(sw, serDes);
         pLaneKr  = &pLaneExt->krExt;
 
 
-        FM_LOG_PRINT("\nSerdes #%d, KR Training Basic Debug Info\n", serdes);
-        FM_LOG_PRINT("-------------------------------------------------------------------\n");
+        FM_LOG_PRINT("\nSerdes #%d, KR Training Basic Debug Info\n", serDes);
+
+
+        FM_LOG_PRINT("\n");
+
+        for (item = 0; item < 3; item++)
+        {
+            intData = (0x000d << 12) | (item + 3);
+
+            err = fm10000SerdesSpicoInt(sw,serDes, FM10000_SPICO_SERDES_INTR_0X3D, intData, &value);
+
+            if (err == FM_OK)
+            {
+                FM_LOG_PRINT("%s %d\n", krBasicDbgInfoStr[item+2], value);
+            }
+            else
+            {
+                FM_LOG_ERROR_V2(FM_LOG_CAT_SERDES, serDes,
+                                "Cannot read Basic KR debug info from SPICO\n");
+                break;
+            }
+        }
+
+        FM_LOG_PRINT("%s",krBasicDbgInfoStr[6]);
+        for (item = FM10000_SERDES_EQ_SEL_PRECUR; item < FM10000_SERDES_EQ_SEL_ALL; item++)
+        {
+            err = fm10000SerdesGetTxEq(sw, serDes, item, &eqValue);
+
+            if (err == FM_OK)
+            {
+                FM_LOG_PRINT("%s%-2d", (item==FM10000_SERDES_EQ_SEL_PRECUR) ? " " : ", ", eqValue);
+            }
+            else
+            {
+                break;
+            }
+        }
+        FM_LOG_PRINT("\n\n");
 
         if (pLaneKr->pCalMode <= 2)
         {
@@ -1046,7 +1227,7 @@ static fm_status DbgSerdesPrnKrInfo(fm_int   sw,
 
         FM_LOG_PRINT("  %41s : %d\n", "Number of KR training cycles",pLaneKr->startKrCycleCnt);
         FM_LOG_PRINT("  %41s : %d\n", "KR training failures",pLaneKr->krErrorCnt);
-        FM_LOG_PRINT("  %41s : %d\n", "KR training timeouts",pLaneKr->krTimeoutCnt);
+        FM_LOG_PRINT("  %41s : %d\n", "KR timeout failures",pLaneKr->krTimeoutCnt);
         FM_LOG_PRINT("  %41s : %-6d ms\n", "KR training Lst Delay",pLaneKr->krTrainingDelayLastMs);
         FM_LOG_PRINT("  %41s : %-6d ms\n", "KR training Avg Delay",pLaneKr->krTrainingDelayAvgMs/1000);
         FM_LOG_PRINT("  %41s : %-6d ms\n\n", "KR training Max Delay",pLaneKr->krTrainingDelayMaxMs);
@@ -1060,10 +1241,213 @@ static fm_status DbgSerdesPrnKrInfo(fm_int   sw,
 
 
 /*****************************************************************************/
+/** SerdesDbgPrnKrTrainingStats
+ * \ingroup intSerdes
+ *
+ * \desc            Dumps KR training statistiscs.
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \param[in]       serDes is the SerDes number on which to operate.
+ *
+ * \return          FM_OK if successful.
+ * \return          Other ''Status Codes'' as appropriate in case of failure.
+ *
+ *****************************************************************************/
+static fm_status SerdesDbgPrnKrTrainingStats(fm_int       sw,
+                                             fm_int       serDes)
+{
+    fm_status       err;
+    fm10000_switch *switchExt;
+    fm10000_lane   *pLaneExt;
+    fm10000_laneKr *pLaneKr;
+    fm_uint32       intData;
+    fm_uint32       value;
+    fm_int          index;
+    fm_int          item;
+
+
+    switchExt = GET_SWITCH_EXT(sw);
+    err = FM_OK;
+
+    if ( !switchExt->serdesSupportsKR )
+    {
+        FM_LOG_PRINT("KR training not supported by this build version\n");
+    }
+    else
+    {
+        pLaneExt = GET_LANE_EXT(sw, serDes);
+        pLaneKr  = &pLaneExt->krExt;
+
+        FM_LOG_PRINT("\nSerdes #%d KR Training statistics\n", serDes);
+        FM_LOG_PRINT(" ----------------------------------------------------------------\n");
+        FM_LOG_PRINT("                                                 Pre   Main  Post\n");
+        FM_LOG_PRINT(" ----------------------------------------------------------------\n");
+
+        for (item = 0; item < 8 && err == FM_OK; item++)
+        {
+            FM_LOG_PRINT(" %s ",krDbgStatItem[item]);
+
+            for (index = 0; index < 3; index++)
+            {
+                intData = (0x000d << 12) | (0x008 + item) | (index << 8);
+                err = fm10000SerdesSpicoInt(sw,serDes, FM10000_SPICO_SERDES_INTR_0X3D, intData, &value);
+
+                if (err == FM_OK)
+                {
+                    FM_LOG_PRINT("%2.2d    ", value);
+                }
+                else
+                {
+                    FM_LOG_ERROR_V2(FM_LOG_CAT_SERDES, serDes, "Cannot read KR stats from SPICO\n");
+                    break;
+                }
+            }
+            FM_LOG_PRINT("\n");
+        }
+        FM_LOG_PRINT("\n");
+    }
+
+    return err;
+
+}
+
+
+
+
+/*****************************************************************************/
+/** SerdesDbgKrDumpRemoteRequests
+ * \ingroup intSerdes
+ *
+ * \desc            Dumps the 8 most recent requests made by remote (most
+ *                  recent request first).
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \param[in]       serDes is the SerDes number on which to operate.
+ *
+ * \return          FM_OK if successful.
+ * \return          Other ''Status Codes'' as appropriate in case of failure.
+ *
+ *****************************************************************************/
+static fm_status SerdesDbgKrDumpRemoteRequests(fm_int       sw,
+                                               fm_int       serDes)
+{
+    fm_status       err;
+    fm10000_switch *switchExt;
+    fm10000_lane   *pLaneExt;
+    fm10000_laneKr *pLaneKr;
+    fm_uint32       intData;
+    fm_uint32       value;
+    fm_int          index;
+
+    switchExt = GET_SWITCH_EXT(sw);
+
+    err = FM_OK;
+
+    if ( !switchExt->serdesSupportsKR )
+    {
+        FM_LOG_PRINT("KR training not supported by this build version\n");
+    }
+    else
+    {
+        pLaneExt = GET_LANE_EXT(sw, serDes);
+        pLaneKr  = &pLaneExt->krExt;
+
+        FM_LOG_PRINT("\nSerdes #%d, KR Training history\n", serDes);
+        FM_LOG_PRINT("-------------------------------------------------------------------\n");
+        FM_LOG_PRINT("                     Value   Pre   Main  Post    Init  Preset  Gain\n");
+        FM_LOG_PRINT("-------------------------------------------------------------------\n");
+
+        intData = (0x000d << 12) | 0x300;
+        err = fm10000SerdesSpicoInt(sw,serDes, FM10000_SPICO_SERDES_INTR_0X3D, intData, &value);
+
+        if (err == FM_OK)
+        {
+            FM_LOG_PRINT("%s 0x%4.4x   %s  %s  %s    %c     %c       %d\n",
+                         krBasicDbgInfoStr[0x0],
+                         value,
+                         krDbgCoeffUpdatStr[value & 0x03],
+                         krDbgCoeffUpdatStr[(value >> 2) & 0x03],
+                         krDbgCoeffUpdatStr[(value >> 4) & 0x03],
+                         (value & 0x1000) ? 'Y': 'N',
+                         (value & 0x2000) ? 'Y': 'N',
+                         1 << (value >> 14));
+        }
+        else
+        {
+            FM_LOG_ERROR_V2(FM_LOG_CAT_SERDES, serDes,
+                            "Cannot read last KR request made by remote\n");
+        }
+
+        intData = (0x000d << 12) | 0x2;
+        err = fm10000SerdesSpicoInt(sw,serDes, FM10000_SPICO_SERDES_INTR_0X3D, intData, &value);
+
+        if (err == FM_OK)
+        {
+            FM_LOG_PRINT("%s 0x%4.4x   %s  %s  %s    %c     %c       %d\n",
+                         krBasicDbgInfoStr[0x1],
+                         value,
+                         krDbgCoeffUpdatStr[value & 0x03],
+                         krDbgCoeffUpdatStr[(value >> 2) & 0x03],
+                         krDbgCoeffUpdatStr[(value >> 4) & 0x03],
+                         (value & 0x1000) ? 'Y': 'N',
+                         (value & 0x2000) ? 'Y': 'N',
+                         1 << (value >> 14));
+        }
+        else
+        {
+            FM_LOG_ERROR_V2(FM_LOG_CAT_SERDES, serDes,
+                            "Cannot read last KR request sent to remote\n");
+        }
+
+        FM_LOG_PRINT("\n");
+        FM_LOG_PRINT("Most recent request made by remote (latest first)\n");
+        FM_LOG_PRINT("----------------------------------------------------\n");
+        FM_LOG_PRINT("Seq  Value    Pre   Main  Post    Init  Preset  Gain\n");
+        FM_LOG_PRINT("----------------------------------------------------\n");
+
+        for (index = 0; index < 8; index++)
+        {
+            intData = (0x000d << 12) | 0x300 | index;
+            err = fm10000SerdesSpicoInt(sw,serDes, FM10000_SPICO_SERDES_INTR_0X3D, intData, &value);
+
+            if (err == FM_OK)
+            {
+                FM_LOG_PRINT(" %d   0x%4.4x   %s  %s  %s    %c     %c       %d\n",
+                             index,
+                             value,
+                             krDbgCoeffUpdatStr[value & 0x03],
+                             krDbgCoeffUpdatStr[(value >> 2) & 0x03],
+                             krDbgCoeffUpdatStr[(value >> 4) & 0x03],
+                             (value & 0x1000) ? 'Y': 'N',
+                             (value & 0x2000) ? 'Y': 'N',
+                             1 << (value >> 14));
+
+            }
+            else
+            {
+                FM_LOG_ERROR_V2(FM_LOG_CAT_SERDES, serDes,
+                                "Cannot read latest KR requests made by remote\n");
+                break;
+            }
+        }
+
+        FM_LOG_PRINT("\n");
+    }
+
+    return err;
+
+}
+
+
+
+
+/*****************************************************************************/
 /** DbgSerdesDumpSpicoSbmVersionsInt
  * \ingroup intSerdes
  *
- * \desc            Dump Spico and Sbm image versions.
+ * \desc            Dumps Spico and Sbm image versions.
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -1135,7 +1519,7 @@ static fm_status DbgSerdesDumpSpicoSbmVersionsInt(fm_int sw,
 /** DbgSerdesDumpRegistersInt
  * \ingroup intSerdes
  *
- * \desc            Dump SERDES configurations.
+ * \desc            Dumps SERDES configurations.
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -1199,7 +1583,7 @@ static fm_status DbgSerdesDumpRegistersInt(fm_int     sw,
 /** DbgSerdesResetStatsInt
  * \ingroup intSerdes
  *
- * \desc            Reset serdes statistical counters and accumulators.
+ * \desc            Resets serdes statistical counters and accumulators.
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -1222,6 +1606,10 @@ static fm_status DbgSerdesResetStatsInt(fm_int     sw,
     pLaneKr  = &pLaneExt->krExt;
 
     pLaneExt->fResetCnt            = 0;
+    pLaneExt->serdesUErrValidateCnt= 0;
+    pLaneExt->serdesUErrActionCnt  = 0;
+    pLaneExt->sbmUErrValidateCnt   = 0;
+    pLaneExt->sbmUErrActionCnt     = 0;
     pLaneDfe->startCycleCnt        = 0;
     pLaneDfe->iCalDelayAvg         = 0;
     pLaneDfe->iCalDelayMax         = 0;
@@ -1262,7 +1650,7 @@ static fm_status DbgSerdesResetStatsInt(fm_int     sw,
 /** DbgSerdesGetInt01Bits
  * \ingroup intSerdes
  *
- * \desc            Get the SERDES interrupt 01 bits which are set in mask.
+ * \desc            Gets the SERDES interrupt 01 bits defined by the mask.
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -1331,8 +1719,7 @@ static fm_status DbgSerdesGetInt01Bits(fm_int   sw,
 /** DbgSerdesSetTxRxEnableInt
  * \ingroup intSerdes
  *
- * \desc            Dbg function that controls Tx/Rx/output serdes enable
- *                  commands.
+ * \desc            Controls Tx/Rx/output serdes enable bits.
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -1404,7 +1791,7 @@ static fm_status DbgSerdesSetTxRxEnableInt(fm_int  sw,
 /** DbgSerdesInitInt
  * \ingroup intSerdes
  *
- * \desc            Initialize specified SERDES, only for debug or test mode.
+ * \desc            Initializes the specified SERDES, only for debug.
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -1585,7 +1972,7 @@ static fm_status DbgSerdesInitInt(fm_int  sw,
 /** DbgSerdesResetSerDesInt
  * \ingroup intDiag
  *
- * \desc            Reset SERDES to default state.
+ * \desc            Resets SERDES to default state.
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -1619,7 +2006,7 @@ static fm_status DbgSerdesResetSerDesInt(fm_int sw,
 /** DbgSerdesReadSerDesRegisterInt
  * \ingroup intDiag
  *
- * \desc            Read the content of the specified SERDES register.
+ * \desc            Reads the content of the specified SERDES register.
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -1685,7 +2072,7 @@ static fm_status DbgSerdesReadSerDesRegisterInt(fm_int     sw,
 /** DbgSerdesWriteSerDesRegisterInt
  * \ingroup intDiag
  *
- * \desc            Write to SERDES registers.
+ * \desc            Writes to SERDES registers.
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -1741,7 +2128,7 @@ static fm_status DbgSerdesWriteSerDesRegisterInt(fm_int     sw,
 /** DbgSerdesSetSerDesTxPatternInt
  * \ingroup intSerDes
  *
- * \desc            Configure SerDes Tx pattern.
+ * \desc            Configures SerDes Tx BIST pattern.
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -1791,7 +2178,7 @@ static fm_status DbgSerdesSetSerDesTxPatternInt(fm_int  sw,
 /** DbgSerdesSetSerDesRxPatternInt
  * \ingroup intSerDes
  *
- * \desc            Configure SerDes Rx pattern.
+ * \desc            Configures SerDes Rx BIST pattern.
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -1837,7 +2224,7 @@ static fm_status DbgSerdesSetSerDesRxPatternInt(fm_int  sw,
 /** DbgSerdesSetSerdesPolarityInt
  * \ingroup intSerdes
  *
- * \desc            Set polarity for a given SERDES.
+ * \desc            Sets Tx and/or Rx polarity for a given SERDES.
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -1892,7 +2279,7 @@ static fm_status DbgSerdesSetSerdesPolarityInt(fm_int  sw,
 /** DbgSerdesSetSerdesLoopbackInt
  * \ingroup intSerdes
  *
- * \desc            Set loopback mode for a given SERDES.
+ * \desc            Sets loopback mode for a given SERDES.
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -1941,7 +2328,7 @@ static fm_status DbgSerdesSetSerdesLoopbackInt(fm_int  sw,
 /** DbgSerdesInjectErrorsInt
  * \ingroup intSerdes
  *
- * \desc            Inject errors into SERDES TX or RX stream.
+ * \desc            Injects errors into the Tx or Rx paths.
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -1970,10 +2357,83 @@ static fm_status DbgSerdesInjectErrorsInt(fm_int              sw,
 
 
 /*****************************************************************************/
+/** DbgSerDesRegisterInjectErrorInt
+ * \ingroup intSerdes
+ *
+ * \desc            Injects an error into the RO SERDES register.
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \param[in]       serDes is the SERDES number on which to operate.
+ *
+ * \param[in]       regAddr register Address to be injected,
+ *
+ * \param[in]       value simulated injected error value,
+ *
+ * \return          FM_OK if successful.
+ * \return          FM_ERR_INVALID_ARGUMENT for wrong register number
+ *
+ *****************************************************************************/
+static fm_status DbgSerDesRegisterInjectErrorInt(fm_int    sw,
+                                                 fm_int    serDes,
+                                                 fm_int    regAddr,
+                                                 fm_uint32 value)
+{
+
+    FM_NOT_USED(sw);
+    FM_NOT_USED(serDes);
+    FM_NOT_USED(regAddr);
+    FM_NOT_USED(value);
+
+    FM_LOG_PRINT("\n *** Feature not Available ***\n\n");
+
+    return FM_OK;
+
+
+}
+
+
+
+
+/*****************************************************************************/
+/** DbgSbmRegisterInjectErrorInt
+ * \ingroup intSerdes
+ *
+ * \desc            Injects errors into RO SBus Master register.
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \param[in]       regAddr register Address to be injected,
+ *
+ * \param[in]       value injected error value,
+ *
+ * \return          FM_OK if successful.
+ * \return          FM_ERR_INVALID_ARGUMENT for wrong register number
+ *
+ *****************************************************************************/
+static fm_status DbgSbmRegisterInjectErrorInt(fm_int    sw,
+                                              fm_int    regAddr,
+                                              fm_uint32 value)
+{
+
+    FM_NOT_USED(sw);
+    FM_NOT_USED(regAddr);
+    FM_NOT_USED(value);
+
+    FM_LOG_PRINT("\n *** Feature not Available ***\n\n");
+
+    return FM_OK;
+
+}
+
+
+
+
+/*****************************************************************************/
 /** DbgSerdesReadSBusRegisterInt
  * \ingroup intDiag
  *
- * \desc            Read the content of SBus registers.
+ * \desc            Reads the content of SBus registers.
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -2035,7 +2495,7 @@ static fm_status DbgSerdesReadSBusRegisterInt(fm_int     sw,
 /** DbgSerdesWriteSBusRegisterInt
  * \ingroup intDiag
  *
- * \desc            Read the content of SBus registers.
+ * \desc            Reads the content of SBus registers.
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -2102,9 +2562,9 @@ static fm_status DbgSerdesWriteSBusRegisterInt(fm_int     sw,
 /** DbgSerdesInterruptSpicoInt
  * \ingroup intSBus
  *
- * \desc            Send the specified SPICO interrupt command to the
- *                  SBM or SERDES SPICO controller, waits for the command
- *                  to complete, and returns the command's data result.
+ * \desc            Sends the specified SPICO interrupt command to the
+ *                  SBM or SerDes SPICO controller, waits for the command
+ *                  to complete, and returns the result.
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -2187,7 +2647,7 @@ static fm_status DbgSerdesInterruptSpicoInt(fm_int      sw,
 /** DbgSerdesSetDfeParmeter
  * \ingroup intSBus
  *
- * \desc            Set, for the given serDes, the value of the DFE parameter
+ * \desc            Sets, for the given serDes, the value of the DFE parameter
  *                  indicated by paramSelector to paramValue.
  *
  * \param[in]       sw is the switch on which to operate.
@@ -2226,7 +2686,7 @@ static fm_status DbgSerdesSetDfeParmeter(fm_int      sw,
 /** DbgSerdesGetDfeParmeter
  * \ingroup intSBus
  *
- * \desc            Get, for the given serDes, the value of the DFE parameter
+ * \desc            Gets, for the given serDes, the value of the DFE parameter
  *                  indicated by paramSelector.
  *
  * \param[in]       sw is the switch on which to operate.
@@ -2267,8 +2727,9 @@ static fm_status DbgSerdesGetDfeParmeter(fm_int      sw,
 /** SerdesValidateAttenuationCoefficients
  * \ingroup intSerdes
  *
- * \desc            Validate that the range of each coefficient and the addition
- *                  of theirs absolute values are inside the allowed ranges.
+ * \desc            Validates that the range of each transmit equalization
+ *                  coefficient and the addition of theirs absolute values are
+ *                  inside the allowed ranges.
  *                  If one of these conditions is not satisfied, the subjacent
  *                  hardware returns an error.
  *                  Note well: this function do not check for the limit compliant
@@ -2335,7 +2796,7 @@ static fm_bool SerdesValidateAttenuationCoefficients(fm_int  att,
 /** SerdesGetEyeSimpleMetric
  * \ingroup intSerdes
  *
- * \desc            Return a simple eye metric in the ranges [0..64] (pEyeScore)
+ * \desc            Returns a simple eye metric in the ranges [0..64] (pEyeScore)
  *                  and [0..1000] (pHeightmV).
  *                  Value is derived from SerDes tuning, and returns 0 if tuning
  *                  was not completed.
@@ -2505,6 +2966,98 @@ static fm_status SerDesGetEyeDiagram(fm_int                 sw,
 }
 
 
+
+
+/*****************************************************************************/
+/**  SerDesReadExt
+ * \ingroup intSerdes
+ *
+ * \desc            Reads SerDes register for the given serdes ID.
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \param[in]       serDes is the SerDes number.
+ *
+ * \param[in]       regAddr is the SerDes register address to read from.
+ *
+ * \param[in]       pValue is caller allocated storage where the register
+ *                  value will be written.
+ *
+ * \return          FM_OK if successful
+ * \return          Other ''Status Codes'' as appropriate in case of failure.
+ *
+ *****************************************************************************/
+static fm_status SerdesReadExt(fm_int     sw,
+                               fm_int     serDes,
+                               fm_uint    regAddr,
+                               fm_uint32 *pValue)
+{
+    fm_status err;
+
+    FM_LOG_ENTRY_V2(FM_LOG_CAT_SERDES, serDes,
+                    "sw=%d, serDes=%d regAddr=0x%X value=0x%08x\n",
+                    sw,
+                    serDes,
+                    regAddr,
+                    *pValue);
+
+    err = fm10000SerdesRead(sw, serDes, regAddr, pValue);
+
+    FM_LOG_EXIT_V2(FM_LOG_CAT_SERDES, serDes, err);
+
+    return err;
+
+}
+
+
+
+
+/*****************************************************************************/
+/** SbusReadExt
+ * \ingroup intSBus
+ *
+ * \desc            Reads a sBus register at the the given sBus address.
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \param[in]       eplRing specifies EPL ring (TRUE) or PCIE ring (FALSE).
+ *
+ * \param[in]       sbusAddr is the SBus address to read from.
+ *
+ * \param[in]       sbusReg is the SBus register to read from.
+ *
+ * \param[in]       pValue points to user-allocated storage where this function
+ *                  will place the register value.
+ *
+ * \return          FM_OK if successful.
+ * \return          Other ''Status Codes'' as appropriate in case of failure.
+ *
+ *****************************************************************************/
+static fm_status SbusReadExt(fm_int     sw,
+                             fm_bool    eplRing,
+                             fm_uint    sbusAddr,
+                             fm_uint    sbusReg,
+                             fm_uint32 *pValue)
+{
+    fm_status err;
+
+    FM_LOG_ENTRY(FM_LOG_CAT_SERDES,
+                 "sw=%d, eplRing=%d sbusAddr=0x%X sbusReg=0x%x value=0x%08x\n",
+                 sw,
+                 eplRing,
+                 sbusAddr,
+                 sbusReg,
+                 *pValue);
+
+    err = fm10000SbusRead(sw, eplRing, sbusAddr,  sbusReg, pValue);
+
+    FM_LOG_EXIT(FM_LOG_CAT_SERDES, err);
+
+}
+
+
+
+
 /*****************************************************************************
  * Public Functions
  *****************************************************************************/
@@ -2515,7 +3068,7 @@ static fm_status SerDesGetEyeDiagram(fm_int                 sw,
 /**  fm10000SerdesInitXServicesInt
  * \ingroup intSerdes
  *
- * \desc            Performs the initialization of extended services and
+ * \desc            Performs the initialization of the extended services and
  *                  debug function accesses.
  *
  * \param[in]       sw is the switch on which to operate.
@@ -2540,6 +3093,8 @@ fm_status fm10000SerdesInitXServicesInt(fm_int sw)
     serdesPtr->SerdesGetEyeHeight       = SerdesGetEyeSimpleMetric;
     serdesPtr->SerdesGetEyeScore        = SerDesGetEyeScore;
     serdesPtr->SerdesGetEyeDiagram      = SerDesGetEyeDiagram;
+    serdesPtr->SerdesReadExt            = SerdesReadExt;
+    serdesPtr->SbusReadExt              = SbusReadExt;
 
 
     serdesPtr->dbgDump                  = DbgSerdesDumpInt;
@@ -2563,8 +3118,10 @@ fm_status fm10000SerdesInitXServicesInt(fm_int sw)
     serdesPtr->dbgInterruptSpico        = DbgSerdesInterruptSpicoInt;
     serdesPtr->dbgSetDfeParameter       = DbgSerdesSetDfeParmeter;
     serdesPtr->dbgGetDfeParameter       = DbgSerdesGetDfeParmeter;
+    serdesPtr->dbgSerDesRegInjectError  = DbgSerDesRegisterInjectErrorInt;
+    serdesPtr->dbgSbmRegInjectError     = DbgSbmRegisterInjectErrorInt;
 
-    FM_LOG_EXIT(FM_LOG_CAT_SWITCH, err);
+    FM_LOG_EXIT(FM_LOG_CAT_SERDES, err);
 
 }
 
@@ -2575,8 +3132,8 @@ fm_status fm10000SerdesInitXServicesInt(fm_int sw)
 /** fm10000SerdesCheckId
  * \ingroup intSerdes
  *
- * \desc            Validate the ID of the serDes and set pValidId to TRUE
- *                  is the ID is the expected on.
+ * \desc            Validates the ID of the serDes and set pValidId to TRUE
+ *                  is the ID is the expected one.
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -2625,7 +3182,7 @@ fm_status fm10000SerdesCheckId(fm_int   sw,
 /** fm10000SerdesEnableSerDesInterrupts
  * \ingroup intSerdes
  *
- * \desc            Enable interrupts at serdes macro level.
+ * \desc            Enables interrupts at serdes macro level.
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -2673,7 +3230,7 @@ fm_status fm10000SerdesEnableSerDesInterrupts(fm_int   sw,
 /** fm10000SerdesDisableSerDesInterrupts
  * \ingroup intSerdes
  *
- * \desc            Disable interrupts at serdes macro level.
+ * \desc            Disables interrupts at serdes macro level.
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -2725,7 +3282,8 @@ fm_status fm10000SerdesDisableSerDesInterrupts(fm_int   sw,
 /** fm10000SerdesTxRxEnaCtrl
  * \ingroup intSerdes
  *
- * \desc            Enable/Disable serdes Tx/Rx sections and Tx output
+ * \desc            Enables/Disables serdes Tx/Rx sections and Tx output
+ *                  according to the mask and control bits defined by enaCtrl
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -2775,7 +3333,7 @@ fm_status fm10000SerdesTxRxEnaCtrl(fm_int    sw,
 /** fm10000SerdesDisable
  * \ingroup intSerdes
  *
- * \desc            Disable the serdes (Tx/Rx sections and Tx output).
+ * \desc            Disables the serdes (Tx/Rx sections and Tx output).
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -2835,7 +3393,7 @@ fm_status fm10000SerdesDisable(fm_int    sw,
 /** fm10000SerdesSetBitRate
  * \ingroup intSerdes
  *
- * \desc            Set Serdes bit rate dividers according to rateSel.
+ * \desc            Sets Serdes bit rate dividers according to rateSel.
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -2879,7 +3437,7 @@ fm_status fm10000SerdesSetBitRate(fm_int  sw,
 /** fm10000SerdesSetWidthMode
  * \ingroup intSerdes
  *
- * \desc            Set Serdes Width mode according to widthMode.
+ * \desc            Configures the serdes width mode according to widthMode.
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -2940,7 +3498,7 @@ fm_status fm10000SerdesSetWidthMode(fm_int             sw,
 /** fm10000SerdesSetPllCalibrationMode
  * \ingroup intSerdes
  *
- * \desc            Set PLL calibration mode.
+ * \desc            Configures the PLL calibration mode.
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -2999,7 +3557,7 @@ fm_status fm10000SerdesSetPllCalibrationMode(fm_int    sw,
 /** fm10000SerdesSpicoIntSBusWrite
  * \ingroup intSerdes
  *
- * \desc            Perform SERDES SPICO interrupt write.
+ * \desc            Performs a serdes Spico interrupt write.
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -3086,7 +3644,7 @@ fm_status fm10000SerdesSpicoIntSBusWrite(fm_int     sw,
 /** fm10000SerdesSpicoIntSBusRead
  * \ingroup intSerdes
  *
- * \desc            Read SERDES SPICO interrupt result.
+ * \desc            Reads the serdes Spico interrupt result.
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -3180,7 +3738,8 @@ fm_status fm10000SerdesSpicoIntSBusRead(fm_int      sw,
 /** fm10000SerdesSpicoIntSBusReadFast
  * \ingroup intSerdes
  *
- * \desc            Read SERDES SPICO interrupt result using a short timeout.
+ * \desc            Reads the serdes Spico interrupt result using a short
+ *                  timeout.
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -3256,7 +3815,7 @@ fm_status fm10000SerdesSpicoIntSBusReadFast(fm_int      sw,
 /** fm10000SbmSpicoIntWrite
  * \ingroup intSerdes
  *
- * \desc            Perform SBUS master SPICO interrupt write.
+ * \desc            Performs a SBM Spico interrupt write.
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -3317,7 +3876,7 @@ fm_status fm10000SbmSpicoIntWrite(fm_int        sw,
 /** fm10000SbmSpicoIntRead
  * \ingroup intSerdes
  *
- * \desc            Read SBUS master SPICO interrupt result.
+ * \desc            Reads a SBM Spico interrupt result.
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -3424,7 +3983,7 @@ fm_status fm10000SbmSpicoIntRead(fm_int         sw,
 /** fm10000SerdesSpicoUploadImage
  * \ingroup intSerdes
  *
- * \desc            Upload the SerDes SPICO image to specified SERDES.
+ * \desc            Uploads the serdes Spico image to specified sBus address.
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -3606,11 +4165,11 @@ fm_status fm10000SerdesSpicoUploadImage(fm_int           sw,
 /** fm10000SerdesSwapUploadImage
  * \ingroup intSerdes
  *
- * \desc            Upload the SPICO swap image. Note that only some serdes
+ * \desc            Uploads the SPICO swap FW. Note that only some serdes
  *                  firmwares require a swap image. A non null swapNumWords
- *                  value indicates that there is a swap code to upload. This
- *                  function uploads that code on top of the SBus master code
- *                  and it is destinated to be used with production version.
+ *                  value indicates that there is a swap code to be uploaded.
+ *                  This function do that on top of the SBM FW and it is
+ *                  destinated to be used with production version.
  *                  For development versions see
  *                  ''fm10000SerdesSwapAltUploadImage'' instead.
  *
@@ -3793,11 +4352,12 @@ fm_status fm10000SerdesSwapUploadImage(fm_int           sw,
 /** fm10000SerdesSwapAltUploadImage
  * \ingroup intSerdes
  *
- * \desc            Upload the SPICO swap image. Note that only some serdes
+ * \desc            Uploads the SPICO swap FW. Note that only some serdes
  *                  firmwares require a swap image. A non null swapNumWords
- *                  value indicates that there is a swap code to upload. This
- *                  is an alternate function that uploads swap code to XDMEM,
- *                  detinated to be used with development firmware versions.
+ *                  value indicates that there is a swap code to upload.
+ *                  This is an alternate function that uploads the swap FW
+ *                  into a special memory area for HW debug only using
+ *                  the development board.
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -3919,7 +4479,7 @@ fm_status fm10000SerdesSwapAltUploadImage(fm_int         sw,
 /** fm10000SbmSpicoUploadImage
  * \ingroup intSerdes
  *
- * \desc            Upload the SBUS master SPICO image.
+ * \desc            Uploads the SBM Spico image.
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -4053,21 +4613,19 @@ fm_status fm10000SbmSpicoUploadImage(fm_int           sw,
 /** fm10000SerdesSpicoDoCrc
  * \ingroup intSerdes
  *
- * \desc            Perform SERDES SPICO CRC. This function split the
- *                  command into two sequences, START and CHECK. The
- *                  caller can perform the START sequence on all the SERDES
- *                  and then come back and perform the CHECK sequence.
+ * \desc            Performs a serdes Spico CRC validation for the specified
+ *                  serdes ID.
  *
  * \param[in]       sw is the switch on which to operate.
  *
  * \param[in]       serDes is the SERDES number on which to operate.
  *
- * \return          FM_OK if successful and CRC passes.
+ * \return          FM_OK if successful and CRC validation passes.
  * \return          Other ''Status Codes'' as appropriate in case of failure.
  *
  *****************************************************************************/
-fm_status fm10000SerdesSpicoDoCrc(fm_int                       sw,
-                                  fm_int                       serDes)
+fm_status fm10000SerdesSpicoDoCrc(fm_int    sw,
+                                  fm_int    serDes)
 {
     fm_status   err;
     fm_uint32   crc;
@@ -4108,10 +4666,8 @@ fm_status fm10000SerdesSpicoDoCrc(fm_int                       sw,
 /** fm10000SbmSpicoDoCrc
  * \ingroup intSerdes
  *
- * \desc            Perform SERDES SPICO CRC. This function split the
- *                  command into two sequences, START and CHECK. The
- *                  caller can perform the START sequence on all the SERDES
- *                  and then come back and perform the CHECK sequence.
+ * \desc            Performs a SBM Spico validation on the specified ring
+ *                  and sBus address.
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -4119,7 +4675,7 @@ fm_status fm10000SerdesSpicoDoCrc(fm_int                       sw,
  *
  * \param[in]       sbusAddr is the SBUS address.
  *
- * \return          FM_OK if successful and CRC passes.
+ * \return          FM_OK if successful and CRC validation passes.
  * \return          Other ''Status Codes'' as appropriate in case of failure.
  *
  *****************************************************************************/
@@ -4175,7 +4731,7 @@ fm_status fm10000SbmSpicoDoCrc(fm_int                       sw,
 /** fm10000SwapImageDoCrc
  * \ingroup intSerdes
  *
- * \desc            Compute and check the CRC OF the loaded swap image.
+ * \desc            Performs a CRC validation for the swap FW.
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -4250,8 +4806,8 @@ fm_status fm10000SwapImageDoCrc(fm_int                       sw,
 /** fm10000SbmGetBuildRevisionId
  * \ingroup intSerdes
  *
- * \desc            Get the Build-ID and Revision-Id of the code loaded in the
- *                  bus master controller for the specified ring
+ * \desc            Gets the Build-ID and Revision-ID of the SBM firmware
+ *                  for the specified ring
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -4312,7 +4868,7 @@ fm_status fm10000SbmGetBuildRevisionId(fm_int        sw,
 /** fm10000SerDesGetBuildRevisionId
  * \ingroup intSerdes
  *
- * \desc            Get the Build-ID and Revision-Id of the code loaded in the
+ * \desc            Gets the Build-ID and Revision-ID of the serdes FW for the
  *                  specified SerDes.
  *
  * \param[in]       sw is the switch on which to operate.
@@ -4373,10 +4929,11 @@ fm_status fm10000SerDesGetBuildRevisionId(fm_int    sw,
 /**  fm10000SerdesChckCrcVersionBuildId
  * \ingroup intSerdes
  *
- * \desc            Verify the CRC, the image version and the image build for
+ * \desc            Verifies the CRC, the image version and the image build for
  *                  every serdes in the range [firstSerde, lastSerdes]. This
- *                  function validates all the specified serdes, even if it
- *                  finds errors. Serdes numbers must be correlative.
+ *                  function does not stop on errors, it just prints an error
+ *                  message.
+ *                  Serdes must have correlative IDs.
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -4491,8 +5048,8 @@ fm_status fm10000SerdesChckCrcVersionBuildId(fm_int     sw,
 /**  fm10000SbmChckCrcVersionBuildId
  * \ingroup intSerdes
  *
- * \desc            Verify the CRC, the image version and the image build for
- *                  SBus master (SBM) image.
+ * \desc            Verifies the CRC, the image version and the image build of
+ *                  the SBM FW on the specified ring.
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -4604,7 +5161,7 @@ fm_status fm10000SbmChckCrcVersionBuildId(fm_int     sw,
 /**  fm10000SwapImageCheckCrc
  * \ingroup intSerdes
  *
- * \desc            Verify the CRC of the loaded swap image.
+ * \desc            Verifies the CRC of the swap FW.
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -4658,7 +5215,7 @@ fm_status fm10000SwapImageCheckCrc(fm_int     sw,
 /** fm10000SpicoRamBist
  * \ingroup intSerdes
  *
- * \desc            Perform RAM BIST on SPICO. This function split the
+ * \desc            Performs RAM BIST on the Spico. This function split the
  *                  command into two sequences, START and CHECK. The
  *                  caller can perform the START sequence on all the SERDES
  *                  and then come back and perform the CHECK sequence.
@@ -4808,7 +5365,9 @@ fm_status fm10000SpicoRamBist(fm_int                        sw,
 /** fm10000SerdesSpicoInt02Retry
  * \ingroup intSerdes
  *
- * \desc            Perform SERDES interrupt 02 with retry.
+ * \desc            Executes serdes interrupt 0x02 with retry (often it is
+ *                  required to repeat this interrupt several times until it
+ *                  completes successfully).
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -4862,7 +5421,8 @@ static fm_status fm10000SerdesSpicoInt02Retry(fm_int sw, fm_int serDes, fm_uint3
 /** fm10000SerdesSpicoIsRunning
  * \ingroup intSerdes
  *
- * \desc            Return whether a given SerDes SPICO is running or not.
+ * \desc            Returns an indication whether a given SerDes SPICO is
+ *                  running or not.
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -4968,7 +5528,7 @@ fm_bool fm10000SerdesSpicoIsRunning(fm_int sw,
 
     if (err != FM_OK)
     {
-        FM_LOG_ERROR_V2(FM_LOG_CAT_SWITCH, serDes,
+        FM_LOG_ERROR_V2(FM_LOG_CAT_SERDES, serDes,
                         "SerDes=0x%2.2x, Error checking if Spico is running\n",
                         serDes);
     }
@@ -4984,7 +5544,8 @@ fm_bool fm10000SerdesSpicoIsRunning(fm_int sw,
 /** fm10000SbmSpicoIsRunning
  * \ingroup intSerdes
  *
- * \desc            Return whether SBM SPICO is running or not.
+ * \desc            Returns and indication whether the SBM Spico is running or
+ *                  not.
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -5036,7 +5597,9 @@ fm_bool fm10000SbmSpicoIsRunning(fm_int sw,
 /** fm10000SerdesDmaRead
  * \ingroup intSerdes
  *
- * \desc            Perform DMA read on specified serdes and register.
+ * \desc            Performs DMA read access to the specified address on the
+ *                  given serdes. The access sequence depends on the memory
+ *                  type.
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -5194,7 +5757,7 @@ fm_status fm10000SerdesDmaRead(fm_int               sw,
                         serDes);
     }
 
-    FM_LOG_EXIT_V2(FM_LOG_CAT_SWITCH, serDes, err);
+    FM_LOG_EXIT_V2(FM_LOG_CAT_SERDES, serDes, err);
 
 }
 
@@ -5205,7 +5768,9 @@ fm_status fm10000SerdesDmaRead(fm_int               sw,
 /** fm10000SerdesDmaWrite
  * \ingroup intSerdes
  *
- * \desc            Perform DMA write on specified serdes.
+ * \desc            Performs a DMA write access to the specified address on
+ *                  the given serdes. The access sequence depends on the memory
+ *                  type.
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -5351,7 +5916,7 @@ fm_status fm10000SerdesDmaWrite(fm_int               sw,
                         serDes);
     }
 
-    FM_LOG_EXIT_V2(FM_LOG_CAT_SWITCH, serDes, err);
+    FM_LOG_EXIT_V2(FM_LOG_CAT_SERDES, serDes, err);
 
 }
 
@@ -5362,7 +5927,9 @@ fm_status fm10000SerdesDmaWrite(fm_int               sw,
 /** fm10000SerdesDmaReadModifyWrite
  * \ingroup intSerdes
  *
- * \desc            Perform DMA write-modify-write on specified serdes.
+ * \desc            Performs a DMA write-modify-write access to specified
+ *                  address on the given serdes. The access sequence depends
+ *                  on the memory type.
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -5422,7 +5989,7 @@ fm_status fm10000SerdesDmaReadModifyWrite(fm_int                sw,
         }
     }
 
-    FM_LOG_EXIT_V2(FM_LOG_CAT_SWITCH, serDes, err);
+    FM_LOG_EXIT_V2(FM_LOG_CAT_SERDES, serDes, err);
 
 }
 
@@ -5433,7 +6000,7 @@ fm_status fm10000SerdesDmaReadModifyWrite(fm_int                sw,
 /** fm10000SerdesResetSpico
  * \ingroup intSerdes
  *
- * \desc            Reset specified SERDES SPICO.
+ * \desc            Resets a given serdes Spico.
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -5528,7 +6095,151 @@ fm_status fm10000SerdesResetSpico(fm_int sw,
         }
     }
 
-    FM_LOG_EXIT_V2(FM_LOG_CAT_SWITCH, serDes, err);
+    FM_LOG_EXIT_V2(FM_LOG_CAT_SERDES, serDes, err);
+
+}
+
+
+
+
+/*****************************************************************************/
+/** fm10000SerdesSoftReset
+ * \ingroup intSerdes
+ *
+ * \desc            Requests a soft reset to the Spico sBus receiver.
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \param[in]       serDes is the SERDES number on which to operate.
+ *
+ * \return          FM_OK if successful.
+ * \return          Other ''Status Codes'' as appropriate in case of failure.
+ *
+ *****************************************************************************/
+fm_status fm10000SerdesSoftReset(fm_int sw,
+                                 fm_int serDes)
+{
+    fm_status      err;
+
+    FM_LOG_ENTRY_V2(FM_LOG_CAT_SERDES, serDes,
+                    "sw=%d, serDes=%d\n",
+                    sw,
+                    serDes);
+
+    err = fm10000SbusReceiverReset(sw, serDes);
+    if (err != FM_OK)
+    {
+        FM_LOG_ERROR_V2(FM_LOG_CAT_SERDES, serDes,
+                        "SerDes Soft Reset FAILED \n");
+    }
+
+    FM_LOG_EXIT_V2(FM_LOG_CAT_SERDES, serDes, err);
+
+}
+
+
+
+
+/*****************************************************************************/
+/** fm10000SmbSpicoSetup
+ * \ingroup intSerdes
+ *
+ * \desc            Resets the SBM Spico and reloads the FW if required.
+ *                  If forceUpload is set to FALSE the image is reloaded only if
+ *                  verification image CRC failed, for forceUpload set to TRUE,
+ *                  the image is reloaded unconditionally, no CRC check is made.
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \param[in]       forceUpload indicates forced image upload without Check.
+ *
+ * \return          FM_OK if successful.
+ * \return          Other ''Status Codes'' as appropriate in case of failure.
+ *
+ *****************************************************************************/
+fm_status fm10000SmbSpicoSetup(fm_int  sw,
+                               fm_bool forceUpload)
+{
+    fm_status       err;
+    fm_status       localErr;
+    fm_int          swapCrcCode;
+
+
+    FM_LOG_ENTRY(FM_LOG_CAT_SERDES,
+                 "sw=%d, forceUpload=%d\n",
+                 sw,
+                 forceUpload);
+
+    err = fm10000SbusSbmReset(sw, TRUE);
+    fmDelay(0, FM10000_SERDES_RESET_DELAY);
+
+    if (err == FM_OK)
+    {
+        localErr = FM_OK;
+        if (!forceUpload)
+        {
+            localErr = fm10000SbmSpicoDoCrc(sw,
+                                            FM10000_SERDES_RING_EPL,
+                                            FM10000_SBUS_SPICO_BCAST_ADDR);
+            fmDelay(0, FM10000_SERDES_RESET_DELAY);
+        }
+
+        if ( forceUpload ||
+             localErr != FM_OK )
+        {
+            if (pCurSbmImage != NULL && curSbmImageSize != 0)
+            {
+
+                err = fm10000SbmSpicoUploadImage(sw,
+                                                 FM10000_SERDES_RING_EPL,
+                                                 FM10000_SBUS_SPICO_BCAST_ADDR,
+                                                 pCurSbmImage,
+                                                 curSbmImageSize);
+
+                if (err == FM_OK)
+                {
+
+                    err = fm10000SbmChckCrcVersionBuildId(sw, FM10000_SERDES_RING_EPL, curSbmCodeVersionBuildId);
+                }
+
+
+
+                if (err == FM_OK && curSwapImageSize > 0)
+                {
+                    if ((curSbmCodeVersionBuildId & 0x00008000) == 0)
+                    {
+
+
+                        err = fm10000SerdesSwapUploadImage(sw,
+                                                           FM10000_SERDES_RING_EPL,
+                                                           FM10000_SBUS_SPICO_BCAST_ADDR,
+                                                           pCurSwapImage,
+                                                           curSwapImageSize);
+                        swapCrcCode = 0x1a;
+                    }
+                    else
+                    {
+                        err = fm10000SerdesSwapAltUploadImage(sw,
+                                                              FM10000_SERDES_RING_EPL,
+                                                              FM10000_SBUS_SPICO_BCAST_ADDR,
+                                                              pCurSwapImage,
+                                                              curSwapImageSize);
+                        swapCrcCode = 0x04;
+                    }
+
+                    if (err == FM_OK)
+                    {
+
+                        err = fm10000SwapImageCheckCrc(sw, FM10000_SERDES_RING_EPL, swapCrcCode);
+                    }
+                }
+
+            }
+
+        }
+    }
+
+    FM_LOG_EXIT(FM_LOG_CAT_SWITCH, err);
 
 }
 
@@ -5539,19 +6250,25 @@ fm_status fm10000SerdesResetSpico(fm_int sw,
 /** fm10000SerdesSpicoSetup
  * \ingroup intSerdes
  *
- * \desc            Reset specified SERDES SPICO and verify the image CRC,
- *                  reload the image is required.
+ * \desc            Resets the specified serdes Spico and verifies the CRC,
+ *                  then reloads the FW if required.
  *
  * \param[in]       sw is the switch on which to operate.
  *
  * \param[in]       serDes is the SERDES number on which to operate.
  *
+ * \param[in]       softReset indicates if softReset is requested.
+ *
+ * \param[in]       forceUpload indicates forced image upload without CRC Check.
+ *
  * \return          FM_OK if successful.
  * \return          Other ''Status Codes'' as appropriate in case of failure.
  *
  *****************************************************************************/
-fm_status fm10000SerdesSpicoSetup(fm_int sw,
-                                  fm_int serDes)
+fm_status fm10000SerdesSpicoSetup(fm_int  sw,
+                                  fm_int  serDes,
+                                  fm_bool softReset,
+                                  fm_bool forceUpload)
 {
     fm_status       err;
     fm_status       localErr;
@@ -5561,20 +6278,34 @@ fm_status fm10000SerdesSpicoSetup(fm_int sw,
 
 
     FM_LOG_ENTRY_V2(FM_LOG_CAT_SERDES, serDes,
-                    "sw=%d, serDes=%d\n",
+                    "sw=%d, serDes=%d softReset=%d forceUpload=%d\n",
                     sw,
-                    serDes);
+                    serDes,
+                    softReset,
+                    forceUpload);
 
 
-    err = fm10000SerdesResetSpico(sw, serDes);
+    if (softReset)
+    {
+        err = fm10000SerdesSoftReset(sw, serDes);
+    }
+    else
+    {
+        err = fm10000SerdesResetSpico(sw, serDes);
+    }
     fmDelay(0, FM10000_SERDES_RESET_DELAY);
 
     if (err == FM_OK)
     {
-        localErr = fm10000SerdesSpicoDoCrc(sw, serDes);
-        fmDelay(0, FM10000_SERDES_RESET_DELAY);
+        localErr = FM_OK;
+        if (!forceUpload)
+        {
+            localErr = fm10000SerdesSpicoDoCrc(sw, serDes);
+            fmDelay(0, FM10000_SERDES_RESET_DELAY);
+        }
 
-        if (localErr != FM_OK)
+        if ( forceUpload ||
+             localErr != FM_OK )
         {
             if (pCurSerdesImage != NULL && curRerdesImageSize != 0)
             {
@@ -5612,7 +6343,7 @@ fm_status fm10000SerdesSpicoSetup(fm_int sw,
         }
     }
 
-    FM_LOG_EXIT_V2(FM_LOG_CAT_SWITCH, serDes, err);
+    FM_LOG_EXIT_V2(FM_LOG_CAT_SERDES, serDes, err);
 
 }
 
@@ -5623,34 +6354,7 @@ fm_status fm10000SerdesSpicoSetup(fm_int sw,
 /** fm10000SerdesSpicoSaveImageParam
  * \ingroup intSerdes
  *
- * \desc            Save the Spico image pointer and size.
- *
- * \param[in]       pRomImg is the buffer containing the SerDes SPICO image.
- *
- * \param[in]       numWords is the size of the image. It may be set to 0,
- *                  in which case the upload stage will be skipped.
- *
- * \return          FM_OK if successful.
- *
- *****************************************************************************/
-fm_status fm10000SerdesSpicoSaveImageParam(const fm_uint16 *pRomImg,
-                                           fm_int           numWords)
-{
-    pCurSerdesImage = pRomImg;
-    curRerdesImageSize = numWords;
-
-    return FM_OK;
-
-}
-
-
-
-
-/*****************************************************************************/
-/** fm10000SerdesSpicoSaveImageParamV2
- * \ingroup intSerdes
- *
- * \desc            Save the Spico image pointer and size.
+ * \desc            Saves the pointer to the uploaded Spico FW and its  size.
  *
  * \param[in]       pRomImg is the buffer containing the SerDes SPICO image.
  *
@@ -5663,9 +6367,9 @@ fm_status fm10000SerdesSpicoSaveImageParam(const fm_uint16 *pRomImg,
  * \return          FM_OK if successful.
  *
  *****************************************************************************/
-fm_status fm10000SerdesSpicoSaveImageParamV2(const fm_uint16 *pRomImg,
-                                             fm_int           numWords,
-                                             fm_uint32        serdesFwVersionBuildId)
+fm_status fm10000SerdesSpicoSaveImageParam(const fm_uint16 *pRomImg,
+                                           fm_int           numWords,
+                                           fm_uint32        serdesFwVersionBuildId)
 {
     pCurSerdesImage = pRomImg;
     curRerdesImageSize = numWords;
@@ -5679,10 +6383,51 @@ fm_status fm10000SerdesSpicoSaveImageParamV2(const fm_uint16 *pRomImg,
 
 
 /*****************************************************************************/
+/** fm10000SbmSpicoSaveImageParam
+ * \ingroup intSerdes
+ *
+ * \desc            Saves the pointer to the upload SBM FW and its size.
+ *
+ * \param[in]       pRomImg is the buffer containing the SerDes SPICO image.
+ *
+ * \param[in]       numWords is the size of the image. It may be set to 0,
+ *                  in which case the upload stage will be skipped.
+ *
+ * \param[in]       pSwapImg is the buffer containing the SerDes SPICO Swap image.
+ *
+ * \param[in]       swapNumWords is the size of the swap image. It may be set to 0,
+ *                  in which case the upload stage will be skipped.
+ *
+ * \param[in]       sbmFwVersionBuildId is the version and the Build ID
+ *                  of the current Sbm SPICO image.
+ *
+ * \return          FM_OK if successful.
+ *
+ *****************************************************************************/
+fm_status fm10000SbmSpicoSaveImageParam(const fm_uint16 *pRomImg,
+                                        fm_int           numWords,
+                                        const fm_uint16 *pSwapImg,
+                                        fm_int           swapNumWords,
+                                        fm_uint32        sbmFwVersionBuildId)
+{
+    pCurSbmImage     = pRomImg;
+    curSbmImageSize  = numWords;
+    pCurSwapImage    = pSwapImg;
+    curSwapImageSize = swapNumWords;
+    curSbmCodeVersionBuildId = sbmFwVersionBuildId;
+
+    return FM_OK;
+
+}
+
+
+
+
+/*****************************************************************************/
 /** fm10000SerdesGetTxRxReadyStatus
  * \ingroup intSerdes
  *
- * \desc            Return SERDES TX and RX ready status.
+ * \desc            Returns the serdes Tx and Rx ready statuses.
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -5800,7 +6545,7 @@ fm_status fm10000SerdesGetTxRxReadyStatus(fm_int    sw,
         }
     }
 
-    FM_LOG_EXIT_V2(FM_LOG_CAT_SWITCH, serDes, err);
+    FM_LOG_EXIT_V2(FM_LOG_CAT_SERDES, serDes, err);
 
 }
 
@@ -5811,7 +6556,7 @@ fm_status fm10000SerdesGetTxRxReadyStatus(fm_int    sw,
 /** fm10000SerdesInitSignalOk
  * \ingroup intSerdes
  *
- * \desc            Initialize signal OK status.
+ * \desc            Initializes signalOK detection logic.
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -5859,7 +6604,7 @@ fm_status fm10000SerdesInitSignalOk(fm_int sw,
 /** fm10000SerdesGetSignalOk
  * \ingroup intSerdes
  *
- * \desc            Get signal OK status.
+ * \desc            Gets the current signalOK status.
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -6006,7 +6751,7 @@ fm_status fm10000SerdesGetSignalOk(fm_int   sw,
 /** fm10000SerdesGetKrTrainingStatus
  * \ingroup intSerdes
  *
- * \desc            Get signal_ok and kr_failure statuses durign KR training.
+ * \desc            Gets signal_ok and kr_failure statuses durign KR training.
  *                  In case of error, the returned values remain indeterminated.
  *
  * \param[in]       sw is the switch on which to operate.
@@ -6083,7 +6828,7 @@ fm_status fm10000SerdesGetKrTrainingStatus(fm_int   sw,
         }
     }
 
-    FM_LOG_EXIT_V2(FM_LOG_CAT_SWITCH, serDes, err);
+    FM_LOG_EXIT_V2(FM_LOG_CAT_SERDES, serDes, err);
 
 }
 
@@ -6094,8 +6839,8 @@ fm_status fm10000SerdesGetKrTrainingStatus(fm_int   sw,
 /** fm10000SerdesSetLoopbackMode
  * \ingroup intSerdes
  *
- * \desc            Set SERDES loopback mode. This function should not be
- *                  called directly from the port layer, loopback are
+ * \desc            Sets the serdes loopback mode. This function should not
+ *                  be called directly from the port layer, loopback are
  *                  managed by the serdes state machine instead.
  *
  * \param[in]       sw is the switch on which to operate.
@@ -6165,7 +6910,7 @@ fm_status fm10000SerdesSetLoopbackMode(fm_int              sw,
         err = fm10000SerdesSpicoWrOnlyInt(sw, serdes, FM10000_SPICO_SERDES_INTR_0X08, intData);
     }
 
-    FM_LOG_EXIT_V2(FM_LOG_CAT_SWITCH, serdes, err);
+    FM_LOG_EXIT_V2(FM_LOG_CAT_SERDES, serdes, err);
 
 }
 
@@ -6176,7 +6921,7 @@ fm_status fm10000SerdesSetLoopbackMode(fm_int              sw,
 /** fm10000SerdesGetLoopbackMode
  * \ingroup intSerdes
  *
- * \desc            Get SERDES loopback mode.
+ * \desc            Gets the current serdes loopback mode.
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -6224,7 +6969,7 @@ fm_status fm10000SerdesGetLoopbackMode(fm_int sw, fm_int serdes, fm10000SerdesLb
 /** fm10000SerdesSetPolarity
  * \ingroup intSerdes
  *
- * \desc            Set SERDES polarity.
+ * \desc            Sets the Rx/Tx polarities.
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -6272,7 +7017,7 @@ fm_status fm10000SerdesSetPolarity(fm_int sw, fm_int serdes, fm10000SerdesPolari
 /** fm10000SerdesGetPolarity
  * \ingroup intSerdes
  *
- * \desc            Get SERDES polarity.
+ * \desc            Gets the  Tx/Rx polarities.
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -6358,7 +7103,7 @@ fm_status fm10000SerdesGetPolarity(fm_int                 sw,
         }
     }
 
-    FM_LOG_EXIT_V2(FM_LOG_CAT_SWITCH, serdes, err);
+    FM_LOG_EXIT_V2(FM_LOG_CAT_SERDES, serdes, err);
 
 }
 
@@ -6369,7 +7114,7 @@ fm_status fm10000SerdesGetPolarity(fm_int                 sw,
 /** fm10000SerdesSetTxEq
  * \ingroup intSerdes
  *
- * \desc            Set SERDES TX equalization.
+ * \desc            Sets Tx equalization (precursor, cursor, postcursor)
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -6426,7 +7171,8 @@ fm_status fm10000SerdesSetTxEq(fm_int                sw,
 /** fm10000SerdesGetTxEq
  * \ingroup intSerdes
  *
- * \desc            Get SERDES TX equalization.
+ * \desc            Gets the specified Tx equalization (pre, cursor or post)
+ *                  for the given serdes.
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -6497,7 +7243,7 @@ fm_status fm10000SerdesGetTxEq(fm_int sw,
 /** fm10000SerdesSetRxTerm
  * \ingroup intSerdes
  *
- * \desc            Set SERDES RX termination.
+ * \desc            Sets Rx termination for the given serdes.
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -6561,7 +7307,7 @@ fm_status fm10000SerdesSetRxTerm(fm_int              sw,
 /** fm10000SerdesGetRxTerm
  * \ingroup intSerdes
  *
- * \desc            Get SERDES RX termination.
+ * \desc            Gets Rx termination of the given serdes.
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -6601,7 +7347,7 @@ fm_status fm10000SerdesGetRxTerm(fm_int sw, fm_int serdes, fm10000SerdesRxTerm *
 /** fm10000SerdesSetBasicCmpMode
  * \ingroup intSerdes
  *
- * \desc            Set SERDES basic compare mode.
+ * \desc            Sets serdes comparison mode.
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -6629,7 +7375,7 @@ fm_status fm10000SerdesSetBasicCmpMode(fm_int   sw,
     status = fm10000SerdesSpicoInt(sw, serdes, FM10000_SPICO_SERDES_INTR_0X03, mode, NULL);
     FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_SERDES, status);
 
-    FM_LOG_EXIT_V2(FM_LOG_CAT_SWITCH, serdes, status);
+    FM_LOG_EXIT_V2(FM_LOG_CAT_SERDES, serdes, status);
 
 }
 
@@ -6640,7 +7386,7 @@ fm_status fm10000SerdesSetBasicCmpMode(fm_int   sw,
 /** fm10000SerdesSetDataCoreSource
  * \ingroup intSerdes
  *
- * \desc            Set SERDES data pattern.
+ * \desc            Configures the data source for Tx section.
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -6698,7 +7444,7 @@ fm_status fm10000SerdesSetDataCoreSource(fm_int                  sw,
                         serdes);
     }
 
-    FM_LOG_EXIT_V2(FM_LOG_CAT_SWITCH, serdes, err);
+    FM_LOG_EXIT_V2(FM_LOG_CAT_SERDES, serdes, err);
 
 }
 
@@ -6709,7 +7455,8 @@ fm_status fm10000SerdesSetDataCoreSource(fm_int                  sw,
 /** fm10000SerdesSetTxDataSelect
  * \ingroup intSerdes
  *
- * \desc            Set SERDES Tx data pattern.
+ * \desc            Configures the data source and the pattern generator of
+ *                  the Tx section.
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -6781,7 +7528,7 @@ fm_status fm10000SerdesSetTxDataSelect(fm_int                    sw,
 
     }
 
-    FM_LOG_EXIT_V2(FM_LOG_CAT_SWITCH, serdes, err);
+    FM_LOG_EXIT_V2(FM_LOG_CAT_SERDES, serdes, err);
 
 }
 
@@ -6792,7 +7539,7 @@ fm_status fm10000SerdesSetTxDataSelect(fm_int                    sw,
 /** fm10000SerdesSetRxCmpData
  * \ingroup intSerdes
  *
- * \desc            Set SERDES Rx compare data.
+ * \desc            Selects the Rx comparison data source.
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -6864,7 +7611,7 @@ fm_status fm10000SerdesSetRxCmpData(fm_int                    sw,
 
     err = fm10000SerdesSpicoInt02Retry(sw, serdes, intData, FM10000_SERDES_INT02_TIMEOUT_MSEC);
 
-    FM_LOG_EXIT_V2(FM_LOG_CAT_SWITCH, serdes, err);
+    FM_LOG_EXIT_V2(FM_LOG_CAT_SERDES, serdes, err);
 
 }
 
@@ -6875,7 +7622,7 @@ fm_status fm10000SerdesSetRxCmpData(fm_int                    sw,
 /** fm10000SerdesDisablerbsGen
  * \ingroup intSerdes
  *
- * \desc            Disable the PRBS generator.
+ * \desc            Disables the PRBS generator.
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -6917,12 +7664,12 @@ fm_status fm10000SerdesDisablePrbsGen(fm_int                  sw,
             intData = 0x3ff;
             break;
         default:
-           FM_LOG_EXIT_V2(FM_LOG_CAT_SWITCH, serDes, FM_ERR_INVALID_ARGUMENT);
+           FM_LOG_EXIT_V2(FM_LOG_CAT_SERDES, serDes, FM_ERR_INVALID_ARGUMENT);
     }
 
     err = fm10000SerdesSpicoInt02Retry(sw, serDes, intData, FM10000_SERDES_INT02_TIMEOUT_MSEC);
 
-    FM_LOG_EXIT_V2(FM_LOG_CAT_SWITCH, serDes, err);
+    FM_LOG_EXIT_V2(FM_LOG_CAT_SERDES, serDes, err);
 
 }
 
@@ -6933,7 +7680,7 @@ fm_status fm10000SerdesDisablePrbsGen(fm_int                  sw,
 /** fm10000SerdesGetTxDataSelect
  * \ingroup intSerdes
  *
- * \desc            Get SERDES TX data select.
+ * \desc            Returns the configuration of the Tx pattern generator.
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -7001,7 +7748,7 @@ fm_status fm10000SerdesGetTxDataSelect(fm_int                   sw,
         }
     }
 
-    FM_LOG_EXIT_V2(FM_LOG_CAT_SWITCH, serdes, err);
+    FM_LOG_EXIT_V2(FM_LOG_CAT_SERDES, serdes, err);
 
 }
 
@@ -7011,7 +7758,8 @@ fm_status fm10000SerdesGetTxDataSelect(fm_int                   sw,
 /** fm10000SerdesGetRxCmpData
  * \ingroup intSerdes
  *
- * \desc            Get SERDES RX compare data.
+ * \desc            Returns the configuration of the Rx pattern generator used
+ *                  by the comparator.
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -7069,7 +7817,7 @@ fm_status fm10000SerdesGetRxCmpData(fm_int                   sw,
             break;
     }
 
-    FM_LOG_EXIT_V2(FM_LOG_CAT_SWITCH, serdes, err);
+    FM_LOG_EXIT_V2(FM_LOG_CAT_SERDES, serdes, err);
 
 }
 
@@ -7080,10 +7828,10 @@ fm_status fm10000SerdesGetRxCmpData(fm_int                   sw,
 /** fm10000SerdesSetUserDataPattern
  * \ingroup intSerdes
  *
- * \desc            Set SERDES user data pattern. The size of the user
+ * \desc            Sets the user data pattern. The size of the user
  *                  pattern may be 10, 20, 40 and 80 bits. When the pattern
- *                  is bigger than 10 bits, it is divided in chunks of 10 bits
- *                  each. The number of chunks is indicated by patternSize.
+ *                  is bigger than 10 bits, it is divided in chunks of 10 bits.
+ *                  The number of chunks is indicated by patternSize.
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -7157,7 +7905,7 @@ fm_status fm10000SerdesSetUserDataPattern(fm_int              sw,
     }
 
 
-    FM_LOG_EXIT_V2(FM_LOG_CAT_SWITCH, serDes, err);
+    FM_LOG_EXIT_V2(FM_LOG_CAT_SERDES, serDes, err);
 
 }
 
@@ -7168,7 +7916,8 @@ fm_status fm10000SerdesSetUserDataPattern(fm_int              sw,
 /** fm10000SerdesGetErrors
  * \ingroup intSerdes
  *
- * \desc            Get SERDES error counters.
+ * \desc            Reads the comparison error counter and optionally clears
+ *                  it.
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -7266,7 +8015,7 @@ fm_status fm10000SerdesGetErrors(fm_int                 sw,
         }
     }
 
-    FM_LOG_EXIT_V2(FM_LOG_CAT_SWITCH, serDes, err);
+    FM_LOG_EXIT_V2(FM_LOG_CAT_SERDES, serDes, err);
 
 }
 
@@ -7277,7 +8026,8 @@ fm_status fm10000SerdesGetErrors(fm_int                 sw,
 /** fm10000SerdesInjectErrors
  * \ingroup intSerdes
  *
- * \desc            Inject errors into SERDES TX or RX stream.
+ * \desc            Injects the specified number of errors into the Tx or Rx
+ *                  stream.
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -7351,7 +8101,7 @@ fm_status fm10000SerdesInjectErrors(fm_int              sw,
 /** fm10000GetSerdesWidthModeRateSel
  * \ingroup intSerdes
  *
- * \desc            Return SERDES rate select and width mode.
+ * \desc            Returns the current bit rate and width mode.
  *
  * \param[in]       serDes is the target SerDes. It is only used for
  *                  logging tracking.
@@ -7421,7 +8171,7 @@ fm_status fm10000GetSerdesWidthModeRateSel(fm_int              serDes,
 /** fm10000ConfigurePcslBitSlip
  * \ingroup intSerdes
  *
- * \desc            Configures bits slip mechanism. Epl serdes only.
+ * \desc            Configures the bit slip mechanism. EPL ring only.
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -7501,7 +8251,7 @@ fm_status fm10000ConfigurePcslBitSlip(fm_int    sw,
         }
     }
 
-    FM_LOG_EXIT_V2(FM_LOG_CAT_SWITCH, serDes, err);
+    FM_LOG_EXIT_V2(FM_LOG_CAT_SERDES, serDes, err);
 
 }
 
@@ -7512,7 +8262,7 @@ fm_status fm10000ConfigurePcslBitSlip(fm_int    sw,
 /** fm10000SerdesConfigurePhaseSlip
  * \ingroup intSerdes
  *
- * \desc            Configures serdes Tx and Rx phase slips. Epl serdes only.
+ * \desc            Configures Tx and Rx phase slips. EPL ring only.
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -7577,7 +8327,7 @@ fm_status fm10000SerdesConfigurePhaseSlip(fm_int    sw,
         }
     }
 
-    FM_LOG_EXIT_V2(FM_LOG_CAT_SWITCH, serDes, err);
+    FM_LOG_EXIT_V2(FM_LOG_CAT_SERDES, serDes, err);
 
 }
 
@@ -7588,9 +8338,9 @@ fm_status fm10000SerdesConfigurePhaseSlip(fm_int    sw,
 /** fm10000SetSerdesTxPattern
  *  \ingroup intSerdes
  *
- * \desc            Enable the generation of a Test Pattern for
- *                  a given Serdes. To be used for Built-In Self Tests or
- *                  similar diagnostic functions.
+ * \desc            Enables the test pattern generator for the given serdes.
+ *                  To be used for Built-In Self Tests or similar diagnostic
+ *                  functions.
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -7806,7 +8556,7 @@ fm_status fm10000SetSerdesTxPattern(fm_int    sw,
         }
     }
 
-    FM_LOG_EXIT_V2(FM_LOG_CAT_SWITCH, serdes, err);
+    FM_LOG_EXIT_V2(FM_LOG_CAT_SERDES, serdes, err);
 
 }
 
@@ -7817,9 +8567,9 @@ fm_status fm10000SetSerdesTxPattern(fm_int    sw,
 /** fm10000SetSerdesRxPattern
  *  \ingroup intSerdes
  *
- * \desc            Enable the comparison of data received by
- *                  a Serdes with a given test pattern. To be used for Built-In
- *                  Self Tests or similar diagnostic functions.
+ * \desc            Enables the Rx data comparator for the given serdes. To be
+ *                  used for Built-In Self Tests or similar diagnostic
+ *                  functions.
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -7973,7 +8723,7 @@ fm_status fm10000SetSerdesRxPattern(fm_int    sw,
         err = fm10000SerdesSpicoWrOnlyInt(sw, serdes, FM10000_SPICO_SERDES_INTR_0X14, 0x33);
     }
 
-    FM_LOG_EXIT_V2(FM_LOG_CAT_SWITCH, serdes, err);
+    FM_LOG_EXIT_V2(FM_LOG_CAT_SERDES, serdes, err);
 
 }
 
@@ -7984,8 +8734,8 @@ fm_status fm10000SetSerdesRxPattern(fm_int    sw,
 /** fm10000ClearSerdesTxPattern
  * \ingroup intSerdes
  *
- * \desc            Disables the generation of a Test Pattern for
- *                  a given Serdes.
+ * \desc            Disables the Tx test pattern generator for the given
+ *                  serdes.
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -7995,7 +8745,8 @@ fm_status fm10000SetSerdesRxPattern(fm_int    sw,
  * \return          Other ''Status Codes'' as appropriate in case of failure.
  *
  *****************************************************************************/
-fm_status fm10000ClearSerdesTxPattern(fm_int sw, fm_int serdes)
+fm_status fm10000ClearSerdesTxPattern(fm_int sw,
+                                      fm_int serdes)
 {
     fm_status status;
 
@@ -8017,8 +8768,7 @@ fm_status fm10000ClearSerdesTxPattern(fm_int sw, fm_int serdes)
 /** fm10000ClearSerdesRxPattern
  * \ingroup intSerdes
  *
- * \desc            Disable the comparison of data received by
- *                  a Serdes with a given test pattern.
+ * \desc            Disables the rx data comparator for the given serdes.
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -8028,7 +8778,8 @@ fm_status fm10000ClearSerdesTxPattern(fm_int sw, fm_int serdes)
  * \return          Other ''Status Codes'' as appropriate in case of failure.
  *
  *****************************************************************************/
-fm_status fm10000ClearSerdesRxPattern(fm_int sw, fm_int serdes)
+fm_status fm10000ClearSerdesRxPattern(fm_int sw,
+                                      fm_int serdes)
 {
     fm_status status;
 
@@ -8050,7 +8801,7 @@ fm_status fm10000ClearSerdesRxPattern(fm_int sw, fm_int serdes)
 /** fm10000ResetSerdesErrorCounter
  * \ingroup intSerdes
  *
- * \desc            Clear SerDes error counter.
+ * \desc            Clears the error counter for the given serdes.
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -8084,7 +8835,7 @@ fm_status fm10000ResetSerdesErrorCounter(fm_int sw,
         err = fm10000SerdesSpicoWrOnlyInt(sw, serDes, FM10000_SPICO_SERDES_INTR_0X17, 0);
     }
 
-    FM_LOG_EXIT_V2(FM_LOG_CAT_SWITCH, serDes, err);
+    FM_LOG_EXIT_V2(FM_LOG_CAT_SERDES, serDes, err);
 
 }
 
@@ -8095,7 +8846,7 @@ fm_status fm10000ResetSerdesErrorCounter(fm_int sw,
 /** fm10000GetSerdesErrorCounter
  * \ingroup intSerdes
  *
- * \desc            Return SERDES error counter.
+ * \desc            Reads the error counter for the given serdes.
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -8138,7 +8889,7 @@ fm_status fm10000GetSerdesErrorCounter(fm_int     sw,
         err = fm10000SerdesGetErrors(sw, serDes, FM10000_SERDES_DMA_TYPE_LSB, pCounter, FALSE);
     }
 
-    FM_LOG_EXIT_V2(FM_LOG_CAT_SWITCH, serDes, err);
+    FM_LOG_EXIT_V2(FM_LOG_CAT_SERDES, serDes, err);
 
 }
 
@@ -8149,7 +8900,7 @@ fm_status fm10000GetSerdesErrorCounter(fm_int     sw,
 /** fm10000SetSerdesCursor
  * \ingroup intSerdes
  *
- * \desc            Set SERDES cursor or attenuation.
+ * \desc            Saves and sets the Tx cursor or attenuation.
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -8206,7 +8957,7 @@ fm_status fm10000SetSerdesCursor(fm_int     sw,
         }
     }
 
-    FM_LOG_EXIT_V2(FM_LOG_CAT_SWITCH, serDes, err);
+    FM_LOG_EXIT_V2(FM_LOG_CAT_SERDES, serDes, err);
 
 }
 
@@ -8217,7 +8968,7 @@ fm_status fm10000SetSerdesCursor(fm_int     sw,
 /** fm10000SetSerdesPreCursor
  * \ingroup intSerdes
  *
- * \desc            Set SERDES pre-cursor.
+ * \desc            Saves and sets the Tx pre-cursor.
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -8275,7 +9026,7 @@ fm_status fm10000SetSerdesPreCursor(fm_int    sw,
         }
     }
 
-    FM_LOG_EXIT_V2(FM_LOG_CAT_SWITCH, serDes, err);
+    FM_LOG_EXIT_V2(FM_LOG_CAT_SERDES, serDes, err);
 
 }
 
@@ -8286,7 +9037,7 @@ fm_status fm10000SetSerdesPreCursor(fm_int    sw,
 /** fm10000SetSerdesPostCursor
  * \ingroup intSerdes
  *
- * \desc            Set SERDES post-cursor.
+ * \desc            Saves and sets the Tx post-cursor.
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -8343,7 +9094,7 @@ fm_status fm10000SetSerdesPostCursor(fm_int    sw,
         }
     }
 
-    FM_LOG_EXIT_V2(FM_LOG_CAT_SWITCH, serDes, err);
+    FM_LOG_EXIT_V2(FM_LOG_CAT_SERDES, serDes, err);
 
 }
 
@@ -8354,7 +9105,7 @@ fm_status fm10000SetSerdesPostCursor(fm_int    sw,
 /** fm10000SetSerdesLanePolarity
  * \ingroup intSerdes
  *
- * \desc            Set TX and RX lane polarity on a given Serdes.
+ * \desc            Sets Tx and RX lane polarities on the given Serdes.
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -8406,7 +9157,7 @@ fm_status fm10000SetSerdesLanePolarity(fm_int sw,
 /** fm10000SerdesDfeTuningStartICal
  * \ingroup intSerdes
  *
- * \desc            Start DFE tuning iCal (initial calibration)
+ * \desc            Starts DFE tuning iCal (initial calibration)
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -8451,7 +9202,7 @@ fm_status fm10000SerdesDfeTuningStartICal(fm_int     sw,
 /** fm10000SerdesDfeTuningStartPCalSingleExec
  * \ingroup intSerdes
  *
- * \desc            Start DFE tuning pCal (periodic calibration), single
+ * \desc            Starts DFE tuning pCal (periodic calibration), single
  *                  execution
  *
  * \param[in]       sw is the switch on which to operate.
@@ -8494,7 +9245,7 @@ fm_status fm10000SerdesDfeTuningStartPCalSingleExec(fm_int     sw,
 /** fm10000SerdesDfeTuningStartPCalContinuous
  * \ingroup intSerdes
  *
- * \desc            Start DFE tuning pCal (periodic calibration), continuous
+ * \desc            Starts DFE tuning pCal (periodic calibration), continuous
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -8536,7 +9287,7 @@ fm_status fm10000SerdesDfeTuningStartPCalContinuous(fm_int     sw,
 /** fm10000SerdesDfeTuningStopAll
  * \ingroup intSerdes
  *
- * \desc            Stop DFE tuning, both iCal and pCal
+ * \desc            Stops DFE tuning, both iCal and pCal
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -8569,7 +9320,7 @@ fm_status fm10000SerdesDfeTuningStopAll(fm_int     sw,
 /** fm10000SerdesDfeTuningGetStatus
  * \ingroup intSerdes
  *
- * \desc            Read the DFE tuning status for the specified serdes
+ * \desc            Reads the DFE tuning status.
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -8621,8 +9372,8 @@ fm_status fm10000SerdesDfeTuningGetStatus(fm_int     sw,
 /** fm10000SerdesDfeTuningGetICalStatus
  * \ingroup intSerdes
  *
- * \desc            Get the iCal status for the specified serdes. TRUE is
- *                  returned if iCal is in progress or FALSE, otherwise.
+ * \desc            Gets the iCal status. TRUE is returned if iCal is in
+ *                  progress or FALSE, otherwise.
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -8674,10 +9425,9 @@ fm_status fm10000SerdesDfeTuningGetICalStatus(fm_int     sw,
 /** fm10000SerdesDfeTuningCheckICalConvergence
  * \ingroup intSerdes
  *
- * \desc            Check if iCal was succesful or not. The criterion is
- *                  to perform a quick validation that was suggested by the
- *                  serdes provider. If iCal is succesful, this function
- *                  returns iCalSuccessful equal to TRUE or FALSE otherwise.
+ * \desc            Checks if iCal was succesful or not. The criterion is
+ *                  to perform a quick validation sequence suggested by the
+ *                  serdes provider.
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -8760,7 +9510,7 @@ fm_status fm10000SerdesDfeTuningCheckICalConvergence(fm_int     sw,
 /** fm10000SerdesDfeTuningGetPCalStatus
  * \ingroup intSerdes
  *
- * \desc            Get the pCal status for the specified serdes. TRUE is
+ * \desc            Gets the pCal status for the specified serdes. TRUE is
  *                  returned is pCal is in progress or FALSE, otherwise.
  *
  * \param[in]       sw is the switch on which to operate.
@@ -8813,7 +9563,7 @@ fm_status fm10000SerdesDfeTuningGetPCalStatus (fm_int     sw,
 /** fm10000SerdesDfeTuningStop
  * \ingroup intSerdes
  *
- * \desc            Stop DFE tuning on the specified serdes
+ * \desc            Stops DFE tuning on the specified serdes
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -9153,7 +9903,7 @@ fm_status fm10000SerdesForcedDfeStop(fm_int       sw,
 
     }
 
-    FM_LOG_EXIT_V2(FM_LOG_CAT_SWITCH, serDes, err);
+    FM_LOG_EXIT_V2(FM_LOG_CAT_SERDES, serDes, err);
 
 }
 
@@ -9165,7 +9915,7 @@ fm_status fm10000SerdesForcedDfeStop(fm_int       sw,
  * \ingroup intSerdes
  *
  * \desc            Configures the serdes to run DFE tuning. Note that this
- *                  function only configures hardware related values and
+ *                  function only configures hardware related values, and
  *                  state variables are not initialized.
  *
  * \param[in]       sw is the switch on which to operate.
@@ -9244,7 +9994,7 @@ fm_status fm10000SerdesDfeTuningConfig(fm_int     sw,
  * \ingroup intSerdes
  *
  * \desc            Returne an eye height metric for the given serdes.
- *                  This function return an estimation of both a eye score,
+ *                  This function return an estimation of both the eye score,
  *                  which range is [0..64] and the absolute height of the
  *                  eye in mV.
  *                  A score range [0..64] is used to keep backward compatibility.
@@ -9314,7 +10064,7 @@ fm_status fm10000SerdesGetEyeHeight(fm_int  sw,
 /** fm10000SerDesGetEyeHeightnWidth
  * \ingroup intSerdes
  *
- * \desc            Return an eye height/width metric for the given serdes.
+ * \desc            Returns an eye height/width metric for the given serdes.
  *                  This function return an estimation of both a eye score,
  *                  which range is [0..64]
  *                  A score range [0..64] is used to keep backward compatibility.
@@ -9384,10 +10134,8 @@ fm_status fm10000SerDesGetEyeHeightWidth(fm_int  sw,
 /** fm10000SerDesGetEyeDiagram
  * \ingroup intSerdes
  *
- * \desc            Debug function that dumps the 8 most recent requests made
- *                  by remote. Most recent request first. It may be called only
- *                  after a successful KR training, otherwise it returns an
- *                  error.
+ * \desc            Debug function that fills a table of samples used to
+ *                  plot the eye-diagram.
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -9441,10 +10189,115 @@ fm_status fm10000SerDesGetEyeDiagram(fm_int                 sw,
 
 
 /*****************************************************************************/
+/** fm10000SerdesReadExt
+ * \ingroup intSerdes
+ *
+ * \desc            Reads the specified register at the given serdes ID.
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \param[in]       serdes is the SerDes number.
+ *
+ * \param[in]       regAddr is the SerDes register address to read from.
+ *
+ * \param[in]       pValue is caller allocated storage where the register
+ *                  value will be written.
+ *
+ * \return          FM_OK if successful
+ * \return          Other ''Status Codes'' as appropriate in case of failure.
+ *
+ *****************************************************************************/
+fm_status fm10000SerdesReadExt(fm_int     sw,
+                               fm_int     serdes,
+                               fm_uint    regAddr,
+                               fm_uint32 *pValue)
+{
+    fm_status        err;
+    fm10000_serdes  *serdesPtr;
+    fm10000_switch  *switchExt;
+
+
+    switchExt = GET_SWITCH_EXT(sw);
+    serdesPtr = &switchExt->serdesXServices;
+
+    err = FM_ERR_UNSUPPORTED;
+
+    if (serdesPtr->magicNumber != FM10000_SERDES_STRUCT_MAGIG_NUMBER)
+    {
+
+        err = FM_ERR_UNINITIALIZED;
+    }
+    else if (serdesPtr->SerdesReadExt != NULL)
+    {
+        err = serdesPtr->SerdesReadExt(sw, serdes, regAddr, pValue);
+    }
+
+    return err;
+
+}
+
+
+
+
+/*****************************************************************************/
+/** fm10000SbusReadExt
+ * \ingroup intSBus
+ *
+ * \desc            Performs a sBus extended read access.
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \param[in]       eplRing specifies EPL ring (TRUE) or PCIE ring (FALSE).
+ *
+ * \param[in]       sbusAddr is the SBus address to read from.
+ *
+ * \param[in]       sbusReg is the SBus register to read from.
+ *
+ * \param[in]       pValue points to user-allocated storage where this function
+ *                  will place the register value.
+ *
+ * \return          FM_OK if successful.
+ * \return          Other ''Status Codes'' as appropriate in case of failure.
+ *
+ *****************************************************************************/
+fm_status fm10000SbusReadExt(fm_int     sw,
+                             fm_bool    eplRing,
+                             fm_uint    sbusAddr,
+                             fm_uint    sbusReg,
+                             fm_uint32 *pValue)
+{
+    fm_status        err;
+    fm10000_serdes  *serdesPtr;
+    fm10000_switch  *switchExt;
+
+
+    switchExt = GET_SWITCH_EXT(sw);
+    serdesPtr = &switchExt->serdesXServices;
+
+    err = FM_ERR_UNSUPPORTED;
+
+    if (serdesPtr->magicNumber != FM10000_SERDES_STRUCT_MAGIG_NUMBER)
+    {
+
+        err = FM_ERR_UNINITIALIZED;
+    }
+    else if (serdesPtr->SbusReadExt != NULL)
+    {
+        err = serdesPtr->SbusReadExt(sw, eplRing, sbusAddr, sbusReg, pValue);
+    }
+
+    return err;
+
+}
+
+
+
+
+/*****************************************************************************/
 /** fm10000SerdesDfeTuningReset
  * \ingroup intSerdes
  *
- * \desc            Reset DFE tuning state.
+ * \desc            Resets DFE tuning state.
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -9781,7 +10634,17 @@ fm_status fm10000SerdesSetupKrConfig(fm_int       sw,
 
         if (err == FM_OK)
         {
+
+
             err = fm10000SerdesSpicoInt(sw,serDes, FM10000_SPICO_SERDES_INTR_0X26, 0x5c00, NULL);
+
+            if (err == FM_OK &&
+                (curSerdesCodeVersionBuildId & 0xffff0000) >= 0x20550000)
+            {
+
+
+                err = fm10000SerdesSpicoInt(sw,serDes, FM10000_SPICO_SERDES_INTR_0X26, 0x5b02, NULL);
+            }
         }
 
 
@@ -9802,7 +10665,7 @@ fm_status fm10000SerdesSetupKrConfig(fm_int       sw,
 /** fm10000StartKrTraining
  * \ingroup intSerDes
  *
- * \desc            Action starting KR training on this SerDes.
+ * \desc            Statrs KR training on this SerDes.
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -9911,7 +10774,7 @@ fm_status fm10000StartKrTraining(fm_int  sw,
         }
     }
 
-    FM_LOG_EXIT_V2(FM_LOG_CAT_SWITCH, serDes, err);
+    FM_LOG_EXIT_V2(FM_LOG_CAT_SERDES, serDes, err);
 
 }
 
@@ -9922,7 +10785,7 @@ fm_status fm10000StartKrTraining(fm_int  sw,
 /** fm10000StopKrTraining
  * \ingroup intSerDes
  *
- * \desc            Action stopping the KR training on this SerDes.
+ * \desc            Stops KR training on this SerDes.
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -10013,7 +10876,7 @@ fm_status fm10000StopKrTraining(fm_int  sw,
         }
     }
 
-    FM_LOG_EXIT_V2(FM_LOG_CAT_SWITCH, serDes, err);
+    FM_LOG_EXIT_V2(FM_LOG_CAT_SERDES, serDes, err);
 
 }
 
@@ -10024,7 +10887,7 @@ fm_status fm10000StopKrTraining(fm_int  sw,
 /** fm10000SetKrPcalMode
  * \ingroup intSerDes
  *
- * \desc            Set the pCal mode to be run after KR is complete
+ * \desc            Sets the pCal mode to be executed after KR is complete
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -10075,7 +10938,7 @@ fm_status fm10000SetKrPcalMode(fm_int  sw,
         }
     }
 
-    FM_LOG_EXIT_V2(FM_LOG_CAT_SWITCH, serDes, err);
+    FM_LOG_EXIT_V2(FM_LOG_CAT_SERDES, serDes, err);
 
 }
 
@@ -10086,7 +10949,7 @@ fm_status fm10000SetKrPcalMode(fm_int  sw,
 /** fm10000SerdesConfigureEeeInt
  * \ingroup intSerdes
  *
- * \desc            Enable EEE support at serdes level.
+ * \desc            Enables EEE support at serdes level.
  *
  * \param[in]       sw is the switch on which to operate.
  *
@@ -10129,7 +10992,7 @@ fm_status fm10000SerdesConfigureEeeInt(fm_int sw, fm_int serDes)
 /** fm10000SerdesGetCapturedData
  * \ingroup intSerdes
  *
- * \desc            Get a 80 bit data sample from the specified serdes and
+ * \desc            Gets a 80 bit data sample from the specified serdes and
  *                  determine the number of level transitions ('0' to '1' and
  *                  vice-versa) in the sample.
  *
@@ -10231,7 +11094,7 @@ fm_status fm10000SerdesGetCapturedData(fm_int       sw,
         }
     }
 
-    FM_LOG_EXIT_V2(FM_LOG_CAT_SWITCH, serDes, err);
+    FM_LOG_EXIT_V2(FM_LOG_CAT_SERDES, serDes, err);
 
 }
 
@@ -10242,7 +11105,7 @@ fm_status fm10000SerdesGetCapturedData(fm_int       sw,
 /** fm10000SerdesValidateSignal
  * \ingroup intSerdes
  *
- * \desc            Validate a 80 bit data sample of the incoming signal
+ * \desc            Validates a 80 bit data sample of the incoming signal
  *                  determining if the number of level transitions ('0' to '1'
  *                  and vice-versa) is big enough to perform DFE tuning on such
  *                  signal. Validation may be disabled setting the transition-
@@ -10334,7 +11197,7 @@ fm_status fm10000SerdesValidateSignal(fm_int              sw,
         err = FM_ERR_INVALID_ARGUMENT;
     }
 
-    FM_LOG_EXIT_V2(FM_LOG_CAT_SWITCH, serDes, err);
+    FM_LOG_EXIT_V2(FM_LOG_CAT_SERDES, serDes, err);
 
 }
 

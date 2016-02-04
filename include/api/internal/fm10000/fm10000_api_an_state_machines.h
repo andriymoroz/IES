@@ -42,7 +42,6 @@
 #ifndef __FM_FM10000_API_AN_STATE_MACHINES_H
 #define __FM_FM10000_API_AN_STATE_MACHINES_H
 
-
 /* declaration of the auto-negotiation state machine types */
 #define FM10000_CLAUSE73_AN_STATE_MACHINE 401
 #define FM10000_CLAUSE37_AN_STATE_MACHINE 400
@@ -112,6 +111,7 @@ fm_status fm10000NotifyPortAutonegComplete( fm_smEventInfo *eventInfo, void *use
 fm_status fm10000NotifyPortAutonegRestarted( fm_smEventInfo *eventInfo, void *userInfo );
 fm_status fm10000DoAbilityMatch( fm_smEventInfo *eventInfo, void *userInfo );
 fm_status fm10000StartAnPollingTimer( fm_smEventInfo *eventInfo, void *userInfo );
+fm_status fm10000StartAnQuickPollingTimer( fm_smEventInfo *eventInfo, void *userInfo );
 fm_status fm10000StopAnPollingTimer( fm_smEventInfo *eventInfo, void *userInfo );
 fm_status fm10000PerformAnPortStatusValidation( fm_smEventInfo *eventInfo, void *userInfo );
 

@@ -5,7 +5,7 @@
  * Creation Date:   April 3, 2008
  * Description:     Functions for managing load balancing groups.
  *
- * Copyright (c) 2005 - 2013, Intel Corporation
+ * Copyright (c) 2005 - 2016, Intel Corporation
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -29,7 +29,7 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
+ *****************************************************************************/
 
 #include <fm_sdk_int.h>
 
@@ -259,10 +259,17 @@ fm_status fmCreateLBG(fm_int sw, fm_int *lbgNumber)
  *                  to ''fmCreateLBG'', but provides additional parameters
  *                  for the configuration of the resulting LBG.
  *
- * \note            This function should not be used after calling
- *                  ''fmAllocateStackLBGs'' (see ''Stacking and GloRT 
- *                  Management''). Instead, use ''fmCreateStackLBGExt''.
- * 
+ * \note            On FM4000 and FM6000, this function should not be used
+ *                  after calling ''fmAllocateStackLBGs'' (see ''Stacking
+ *                  and GloRT Management''). Use ''fmCreateStackLBGExt''
+ *                  instead.
+ *
+ * \note            On FM10000, if ''fmAllocateStackLBGs'' was previously
+ *                  called, this function should not be used to create
+ *                  LBGs of mode ''FM_LBG_MODE_MAPPED_L234HASH'' (see
+ *                  ''Stacking and GloRT Management'').
+ *                  Use ''fmCreateStackLBGExt'' instead.
+ *
  * \note            On FM4000 and FM6000, the LBG handle returned by
  *                  this function is a logical port number.
  *
@@ -335,7 +342,6 @@ fm_status fmDeleteLBG(fm_int sw, fm_int lbgNumber)
 {
     fm_status   err = FM_OK;
     fm_switch * switchPtr;
-    fm_LBGInfo *info;
 
     FM_LOG_ENTRY_API(FM_LOG_CAT_LBG,
                      "sw=%d, lbgNumber=%d\n",
@@ -346,7 +352,6 @@ fm_status fmDeleteLBG(fm_int sw, fm_int lbgNumber)
     FM_TAKE_LBG_LOCK(sw);
 
     switchPtr = GET_SWITCH_PTR(sw);
-    info      = GET_LBG_INFO(sw);
 
     FM_API_CALL_FAMILY(err, switchPtr->DeleteLBG, sw, lbgNumber);
 

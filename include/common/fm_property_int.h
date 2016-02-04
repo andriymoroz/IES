@@ -5,7 +5,7 @@
  * Creation Date:   October 2015
  * Description:     Internal API Property definitions.
  *
- * Copyright (c) 2015, Intel Corporation
+ * Copyright (c) 2015 - 2016, Intel Corporation
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -284,8 +284,29 @@ typedef struct _fm_property
     /* Maximum number of inner/outer MAC filtering entries per virtual port */
     fm_int  hniInnOutEntriesPerPort;
 
+    /* Maximum number of flow entries per VF. */
+    fm_int  hniFlowEntriesPerVf;
+
+    /* Controls the XCast mode for the management port. */
+    fm_bool cpuPortXCastMode;
+
     /* Use values out of the valid range */
     fm_bool anTimerAllowOutSpec;
+
+    /* Allow Serdes Error Handling */
+    fm_bool serdesValidate;
+
+    /* Allow SBus Master Error Handling */
+    fm_bool sbmasterValidate;
+
+    /* Serdes Error Handling Validation timer in seconds*/
+    fm_int  serdesValidateTimer;
+    
+    /* SerDes Error Action allowed in UP state */
+    fm_bool serdesErrActionUpState;
+
+    /* Number of GloRTs per PEP port */
+    fm_int  hniGlortsPerPep;
 
 } fm_property;
 

@@ -5,7 +5,7 @@
  * Creation Date:   August 23, 2013
  * Description:     MAC table purge for the FM10000.
  *
- * Copyright (c) 2005 - 2015, Intel Corporation
+ * Copyright (c) 2005 - 2016, Intel Corporation
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -29,7 +29,7 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
+ *****************************************************************************/
 
 #include <fm_sdk_fm10000_int.h>
 
@@ -79,12 +79,28 @@ static fm_status FinishPurge(fm_int sw)
     fm_switch *     switchPtr;
     fm_maPurge *    purgePtr;
     fm_status       err = FM_OK;
+#if FM_SUPPORT_SWAG
+    fm_int          swagSw;
+    fm_bool         swagLagLockTaken;
+#endif
 
     FM_LOG_ENTRY(FM_LOG_CAT_EVENT_MAC_MAINT, "sw=%d\n", sw);
 
     switchPtr = GET_SWITCH_PTR(sw);
     purgePtr  = &switchPtr->maPurge;
-    
+
+#if FM_SUPPORT_SWAG
+    /* SWAG LAG lock must be taken first. */
+    swagLagLockTaken = FALSE;
+
+    err = fmIsSwitchInASWAG(sw, &swagSw);
+    if (err == FM_OK)
+    {
+        TAKE_LAG_LOCK(swagSw);
+        swagLagLockTaken = TRUE;
+    }
+#endif  
+
     /**************************************************
      * The LAG lock must be taken first in case we 
      * make a callback to the LAG deletion logic. 
@@ -119,6 +135,13 @@ static fm_status FinishPurge(fm_int sw)
     FM_DROP_MA_PURGE_LOCK(sw);
     FM_DROP_L2_LOCK(sw);
     DROP_LAG_LOCK(sw);
+
+#if FM_SUPPORT_SWAG
+    if (swagLagLockTaken == TRUE)
+    {
+        DROP_LAG_LOCK(swagSw);
+    }
+#endif
 
     FM_LOG_EXIT(FM_LOG_CAT_EVENT_MAC_MAINT, err);
 
@@ -208,10 +231,11 @@ static fm_bool MeetsPurgeCriteria(fm_int                   sw,
     purgePtr  = &switchPtr->maPurge;
     request   = &purgePtr->request;
 
-    if (entry->state == FM_MAC_ENTRY_STATE_INVALID ||
-        entry->state == FM_MAC_ENTRY_STATE_LOCKED)
+    if ( entry->state == FM_MAC_ENTRY_STATE_INVALID ||
+        (entry->state == FM_MAC_ENTRY_STATE_LOCKED && 
+         request->statics == FALSE) )
     {
-        /* Entry is not dynamic. */
+        /* We are only purging dynamic entries. */
         return FALSE;
     }
 
@@ -238,7 +262,9 @@ static fm_bool MeetsPurgeCriteria(fm_int                   sw,
         return FALSE;
     }
 
-    if (request->port < 0 || entry->port == request->port)
+    if ( (request->port < 0) ||
+         ( (entry->port == request->port) &&
+           (entry->isTunnelEntry == FM_DISABLED) ) )
     {
         /* Port matches. */
         return TRUE;
@@ -257,7 +283,8 @@ static fm_bool MeetsPurgeCriteria(fm_int                   sw,
             return TRUE;
         }
     }
-    else if (request->port == entry->port)
+    else if (request->port == entry->port &&
+             entry->isTunnelEntry == FM_DISABLED)
     {
         if (request->vid1 < 0)
         {
@@ -308,7 +335,6 @@ static fm_status PerformPurge(fm_int sw)
 
     l2Locked    = FALSE;
     numSkipped  = 0;
-    eventPtr    = NULL;
     numUpdates  = 0;
 
     /***************************************************

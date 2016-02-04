@@ -540,6 +540,7 @@ static fm_status SerDesEventReq( fm_smEventInfo *eventInfo,
     while ( laneExt != NULL )
     {
         laneEventInfo.smType = laneExt->smType;
+        laneEventInfo.srcSmType = portExt->smType;
         laneEventInfo.lock   = FM_GET_STATE_LOCK( sw );
         laneEventInfo.dontSaveRecord = FALSE;
         status =  fmNotifyStateMachineEvent( laneExt->smHandle,
@@ -756,6 +757,7 @@ static void HandleDeferralTimeout( void *arg )
     /* The callback argument is the pointer to the lane extension structure */
     portExt           = arg;
     eventInfo.smType  = portExt->smType;
+    eventInfo.srcSmType = 0;
     eventInfo.eventId = FM10000_PORT_EVENT_DEFTIMER_EXP_IND;
     portEventInfo     = &portExt->eventInfo;
     sw                = portEventInfo->switchPtr->switchNumber;
@@ -810,6 +812,7 @@ static void HandlePortStatusPollingTimerEvent( void *arg )
     
     portExt           = arg;
     eventInfo.smType  = portExt->smType;
+    eventInfo.srcSmType = 0;
     eventInfo.eventId = FM10000_PORT_EVENT_POLLING_TIMER_EXP_IND;
     portEventInfo     = &portExt->eventInfo;
     sw                = portEventInfo->switchPtr->switchNumber;
@@ -1984,20 +1987,31 @@ fm_status fm10000CheckAndPreReserveSchedBw( fm_smEventInfo *eventInfo, void *use
     port        = ((fm10000_portSmEventInfo *)userInfo)->portExt->base->portNumber;
     portExt     = ((fm10000_portSmEventInfo *)userInfo)->portExt;
     portAttr    = ((fm10000_portSmEventInfo *)userInfo)->portAttr;
-    ethMode     = ((fm10000_portSmEventInfo *)userInfo)->info.config.ethMode;
     speed       = ((fm10000_portSmEventInfo *)userInfo)->info.config.speed;
     portAttrExt = ((fm10000_portSmEventInfo *)userInfo)->portAttrExt;
 
+    if (eventInfo->eventId == FM10000_PORT_EVENT_CONFIG_REQ)
+    {
+        ethMode = ((fm10000_portSmEventInfo *)userInfo)->info.config.ethMode;
+    }
+    else if (eventInfo->eventId == FM10000_PORT_EVENT_AN_CONFIG_REQ)
+    {
+        ethMode = portAttrExt->ethMode;       
+    }
+    else
+    {
+        err = FM_ERR_INVALID_STATE;
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
+    }
 
     err = fm10000GetSchedAttributes(sw, &schedAttr);
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
 
     /* For Clause_37 and SGMII, reconfigure scheduler now itself since 
        only one speed is supported. */
-    if ( ( (eventInfo->eventId   == FM10000_PORT_EVENT_CONFIG_REQ) &&
-           (ethMode              != FM_ETH_MODE_AN_73) ) ||
-         ( (eventInfo->eventId   == FM10000_PORT_EVENT_AN_CONFIG_REQ) &&
-           (portAttrExt->ethMode != FM_ETH_MODE_AN_73) ) )
+    if ( (ethMode != FM_ETH_MODE_AN_73)  &&
+         ( (eventInfo->eventId == FM10000_PORT_EVENT_CONFIG_REQ) ||
+           (eventInfo->eventId == FM10000_PORT_EVENT_AN_CONFIG_REQ) ) )
     {
         err = GetSchedPortMode(sw, physPort, ethMode, &schedPortMode);
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
@@ -2377,11 +2391,6 @@ fm_status fm10000NotifyApiPortUp( fm_smEventInfo *eventInfo, void *userInfo )
         else if (portAttrExt->ethMode != FM_ETH_MODE_AN_73)
         {
             status = fm10000StartPortStatusPollingTimer(eventInfo,userInfo);
-            FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-        }
-        else
-        {
-            status = fm10000StartAnPollingTimer(eventInfo,userInfo);
             FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
         }
 
@@ -3466,6 +3475,7 @@ fm_status fm10000WriteMac( fm_smEventInfo *eventInfo, void *userInfo )
     fm_uint           txRateFifoFastIncValue;
     fm_bool           dicEnable;
     fm_uint32         link_rules;
+    fm_uint32         heartbeatTimeScale;
 
     /* the generic event info is unsed in this function */
     FM_NOT_USED( eventInfo );
@@ -3669,7 +3679,21 @@ fm_status fm10000WriteMac( fm_smEventInfo *eventInfo, void *userInfo )
         /* link down debounce */
         FM_SET_FIELD(link_rules, FM10000_LINK_RULES,FaultTimeScaleDown, FM10000_LINK_FAULT_TIME_SCALE_DOWN);
         FM_SET_FIELD(link_rules, FM10000_LINK_RULES,FaultTicksDown, FM10000_LINK_FAULT_TICKS_DOWN);
-    
+
+        if (pcsType == FM10000_PCS_SEL_10GBASER)
+        {
+            heartbeatTimeScale = FM10000_HEARTBEAT_TIME_SCALE_10GBASER;
+        }
+        else
+        {
+            heartbeatTimeScale = FM10000_HEARTBEAT_TIME_SCALE_DEFAULT;
+        }
+
+        FM_SET_FIELD(link_rules,
+                     FM10000_LINK_RULES,
+                     HeartbeatTimeScale,
+                     heartbeatTimeScale);
+
         status = switchPtr->WriteUINT32(sw,addr,link_rules);
     }
 
@@ -4719,26 +4743,33 @@ fm_status fm10000StopAnWatchDogTimer( fm_smEventInfo *eventInfo, void *userInfo 
 fm_status fm10000StartPortStatusPollingTimer( fm_smEventInfo *eventInfo,
                                               void           *userInfo )
 {
-    fm_status     status;
-    fm10000_port *portExt;
-    fm_timestamp  timeout = { 2, 0 };
+    fm_status            status;
+    fm10000_port        *portExt;
+     fm10000_portAttr   *portAttrExt;
+    fm_timestamp         timeout = { 2, 0 };
 
     FM_NOT_USED(eventInfo);
 
     status = FM_OK;
 
+    portAttrExt = ((fm10000_portSmEventInfo *)userInfo)->portAttrExt;
+
     if (GET_PROPERTY()->enableStatusPolling == TRUE)
     {
-        /* start an 2 sec port-level timer. The callback will generate
-           a FM10000_PORT_EVENT_POLLING_TIMER_EXP_IND event */
-        portExt = ((fm10000_portSmEventInfo *)userInfo)->portExt;
-    
-        status = fmStartTimer( portExt->timerHandle,
-                               &timeout,
-                               1, 
-                               HandlePortStatusPollingTimerEvent,
-                               portExt );
+        if (portAttrExt->ethMode != FM_ETH_MODE_AN_73)
+        {
+            /* start an 2 sec port-level timer. The callback will generate
+               a FM10000_PORT_EVENT_POLLING_TIMER_EXP_IND event */
+            portExt = ((fm10000_portSmEventInfo *)userInfo)->portExt;
+        
+            status = fmStartTimer( portExt->timerHandle,
+                                   &timeout,
+                                   1, 
+                                   HandlePortStatusPollingTimerEvent,
+                                   portExt );
+        }
     }
+
     return status;
 
 }   /* end fm10000StartPortStatusPollingTimer */
@@ -4992,6 +5023,7 @@ fm_status fm10000ConfigureDfe( fm_smEventInfo *eventInfo, void *userInfo )
     laneExt = GET_LANE_EXT( sw, serDes );
     laneEventInfo.eventId = FM10000_SERDES_EVENT_CONFIGURE_DFE_REQ;
     laneEventInfo.smType = laneExt->smType;
+    laneEventInfo.srcSmType = portExt->smType;
     laneEventInfo.lock = FM_GET_STATE_LOCK( sw );
     laneEventInfo.dontSaveRecord = FALSE;
     laneExt->eventInfo.info.dfeMode = dfeMode;
@@ -5073,6 +5105,7 @@ fm_status fm10000RestoreDfe( fm_smEventInfo *eventInfo, void *userInfo )
     {
         /* prepare the event notification */
         laneEventInfo.smType = laneExt->smType;
+        laneEventInfo.srcSmType = portExt->smType;
 
         status = fm10000MapEthModeToDfeMode( sw, 
                                              port, 
@@ -5868,106 +5901,6 @@ ABORT:
 
 
 /*****************************************************************************/
-/** fm10000UpdatePcieLanePolarity
- * \ingroup intPort
- *
- * \desc            Action updating the lane polarity for a PCIE link
- *                  at the end of LTSSM negotiation
- * 
- * \param[in]       eventInfo pointer to a caller-allocated area containing
- *                  the generic event descriptor (unsed in this function)
- * 
- * \param[in]       userInfo pointer to a caller-allocated area containing the
- *                  purpose specific event descriptor (cast to
- *                  ''fm10000_portSmEventInfo'' in this function)
- * 
- * \return          FM_OK if successful
- * \return          Other ''Status Codes'' as appropriate in case of failure.
- *
- *****************************************************************************/
-fm_status fm10000UpdatePcieLanePolarity( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status              status;
-    fm_laneAttr           *laneAttr;
-    fm10000_lane          *laneExt;
-    fm10000_port          *portExt;
-    fm_int                 sw;
-    fm_int                 serDes;
-    fm10000SerdesPolarity  polarity;
-
-    sw        = ((fm10000_portSmEventInfo *)userInfo)->switchPtr->switchNumber;
-    portExt   = ((fm10000_portSmEventInfo *)userInfo)->portExt;
-
-    laneExt = FM_DLL_GET_FIRST( portExt, firstLane );
-    while ( laneExt != NULL )
-    {
-        serDes   = laneExt->serDes;
-        laneAttr = GET_LANE_ATTR(sw, serDes);
-
-        /* For PCIE we'll always assume Tx Lane Polarity is never inverted
-           but we'll issue a warning if we find otherwise later on. Also,
-           we'll assume Polarity is never inverted if the link is down */
-
-        laneAttr->txPolarity = FALSE;
-        laneAttr->rxPolarity = FALSE;
-        if ( eventInfo->eventId == FM10000_PORT_EVENT_LINK_UP_IND ||
-             eventInfo->eventId == FM10000_PORT_EVENT_CONFIG_REQ  )
-        {
-            status = fm10000SerdesGetPolarity( sw, serDes, &polarity );
-            if ( status != FM_OK )
-            {
-                FM_LOG_ERROR_V2( FM_LOG_CAT_PORT,
-                                 portExt->base->portNumber,
-                                 "Error '%s' reading polarity on "
-                                 "PCIE port %d, serDes %d\n",
-                                 fmErrorMsg( status ),
-                                 portExt->base->portNumber,
-                                 serDes );
-            }
-            else
-            {
-                switch ( polarity )
-                {
-                    case FM10000_SERDES_POLARITY_INVERT_RX:
-
-                        laneAttr->rxPolarity = TRUE;
-                        break;
-
-                    case FM10000_SERDES_POLARITY_INVERT_TX_RX:
-
-                        laneAttr->rxPolarity = TRUE;
-                        /* intentional fall-through to the next case block */
-
-                    case FM10000_SERDES_POLARITY_INVERT_TX:
-
-                        FM_LOG_WARNING_V2( FM_LOG_CAT_PORT,
-                                           portExt->base->portNumber,
-                                           "Tx Polarity Inverted on "
-                                           "PCIE port %d, serDes %d\n",
-                                           portExt->base->portNumber,
-                                           serDes );
-                        break;
-                
-                    case FM10000_SERDES_POLARITY_NONE:
-                    default:
-                        break;
-                }
-            }
-        }
-
-        /* next lane */
-        laneExt = FM_DLL_GET_NEXT( laneExt, nextLane );
-    }
-
-    /* return OK regardless (intentional) */
-    return FM_OK;
-
-}   /* end fm10000UpdatePcieLanePolarity */
-
-
-
-
-/*****************************************************************************/
 /** fm10000UpdatePcieLaneReversal
  * \ingroup intPort
  *
@@ -6361,9 +6294,6 @@ fm_status fm10000ConfigureDeviceAndCheckState( fm_smEventInfo *eventInfo,
         status = fm10000UpdatePcieModeAndSpeed( eventInfo, userInfo );
         FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
 
-        status = fm10000UpdatePcieLanePolarity( eventInfo, userInfo );
-        FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-
         status = fm10000UpdatePcieLaneReversal( eventInfo, userInfo );
         FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
 
@@ -6731,100 +6661,120 @@ fm_status fm10000EnterNegotiatedMode( fm_smEventInfo *eventInfo,
     hcd         = ((fm10000_portSmEventInfo *)userInfo)->hcd;
     eventId     = eventInfo->eventId;
 
+    status = FM_OK;
+
     /* different processing depending on auto-negotiation mode */
     if ( portAttrExt->ethMode == FM_ETH_MODE_AN_73 )
     {
-        /* Clause 73 */
-        ethMode = fm10000An73HcdToEthMode( hcd );
-        speed   = fm10000GetPortSpeed( ethMode );
-
-        if ( ethMode == FM_ETH_MODE_DISABLED )
+        if (hcd != AN73_HCD_INCOMPATIBLE_LINK)
         {
-            status = FM_ERR_UNSUPPORTED;
+            /* Clause 73 */
+            ethMode = fm10000An73HcdToEthMode( hcd );
+            speed   = fm10000GetPortSpeed( ethMode );
+    
+            if ( ethMode == FM_ETH_MODE_DISABLED )
+            {
+                status = FM_ERR_UNSUPPORTED;
+                FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+            }
+    
+            /* Verify if EEE has been successfully negotiated if enabled */
+            if (portAttrExt->eeeEnable)
+            {
+                status = fm10000AnVerifyEeeNegotiation( sw, port, ethMode );
+                FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+            }
+    
+            /* this is effectively a reconfiguration from AN-73 to the negotiated
+                   mode. In the following make the action callbacks think that the 
+                   original event was a configuration request. An alternative
+                   could be to recursively notify a CONFIG_REQ event. After it returns
+                   this function would set the final next state as the next state
+                   of the 2nd-level event notification */
+                portExt->eventInfo.info.config.ethMode = ethMode;
+            portExt->eventInfo.info.config.speed   = speed;
+            eventInfo->eventId = FM10000_PORT_EVENT_CONFIG_REQ;
+    
+            status = fm10000StopAnWatchDogTimer(eventInfo,userInfo);
+            FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+    
+            status = fm10000DisablePhy( eventInfo, userInfo );
+            FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+    
+            status = fm10000PowerDownLane( eventInfo, userInfo );
+            FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+    
+            status = fm10000ResetPortModuleState( eventInfo, userInfo );
+            FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+    
+            status = fm10000ReconfigureScheduler( eventInfo, userInfo );
+            FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+    
+            status = fm10000LinkPortToLanes( eventInfo, userInfo );
+            FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+    
+            status = fm10000WriteEplCfgA( eventInfo, userInfo );
+            FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+    
+            status = fm10000WriteEplCfgB( eventInfo, userInfo );
+            FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+    
+            status = fm10000WriteMac( eventInfo, userInfo );
+            FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+    
+            status = fm10000InitPcs( eventInfo, userInfo );
+            FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+    
+            status = fm10000ConfigureLane( eventInfo, userInfo );
+            FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+    
+            status = fm10000EnablePhy( eventInfo, userInfo );
+            FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+    
+            status = fm10000RestoreDfe( eventInfo, userInfo );
+            FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+    
+            status = fm10000ConfigureLoopback( eventInfo, userInfo );
+            FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+    
+            portExt->eventInfo.info.admin.mode = FM_PORT_MODE_UP;
+            portExt->eventInfo.info.admin.submode = 0;
+            status = fm10000PowerUpLane( eventInfo, userInfo );
+            FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+    
+            status = fm10000ClearEplFifo( eventInfo, userInfo );
+            FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+    
+            /* The ethMode switch from AN73 to the negotiated mode was
+             * successful */
+            portExt->ethMode = ethMode;
+            oldSpeed         = portExt->speed;
+            portExt->speed   = speed;
+            portAttr->speed  = speed;
+    
+            /* Update Pause Quanta based on the negotiated speed. */
+            status = fm10000SetPauseQuantaCoefficients(sw, port);
+            FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+            if (oldSpeed != portExt->speed)
+            {
+                status = fm10000UpdateAllSAFValues(sw);
+                FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+            }
+    
+            *nextState = FM10000_PORT_STATE_POWERING_UP;
+        }
+        else
+        {
+            /* There is not a HCD, force a quick AN restart:
+             * this is not an error condition */
+            status =  fm10000An73UpdateLinkInhibitTimer(sw, 
+                                                        port,
+                                                        portExt->endpoint.epl, 
+                                                        portExt->nativeLaneExt->physLane,
+                                                        LINK_INHIBIT_TIMER_FORCE_TX_DISA );
             FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
         }
-
-        /* Verify if EEE has been successfully negotiated if enabled */
-        if (portAttrExt->eeeEnable)
-        {
-            status = fm10000AnVerifyEeeNegotiation( sw, port, ethMode );
-            FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-        }
-
-        /* this is effectively a reconfiguration from AN-73 to the negotiated
-           mode. In the following make the action callbacks think that the 
-           original event was a configuration request. An alternative
-           could be to recursively notify a CONFIG_REQ event. After it returns
-           this function would set the final next state as the next state
-           of the 2nd-level event notification */
-        portExt->eventInfo.info.config.ethMode = ethMode;
-        portExt->eventInfo.info.config.speed   = speed;
-        eventInfo->eventId = FM10000_PORT_EVENT_CONFIG_REQ;
-
-        status = fm10000StopAnWatchDogTimer(eventInfo,userInfo);
-        FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-
-        status = fm10000DisablePhy( eventInfo, userInfo );
-        FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-
-        status = fm10000PowerDownLane( eventInfo, userInfo );
-        FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-
-        status = fm10000ResetPortModuleState( eventInfo, userInfo );
-        FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-
-        status = fm10000ReconfigureScheduler( eventInfo, userInfo );
-        FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-
-        status = fm10000LinkPortToLanes( eventInfo, userInfo );
-        FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-
-        status = fm10000WriteEplCfgA( eventInfo, userInfo );
-        FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-
-        status = fm10000WriteEplCfgB( eventInfo, userInfo );
-        FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-
-        status = fm10000WriteMac( eventInfo, userInfo );
-        FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-
-        status = fm10000InitPcs( eventInfo, userInfo );
-        FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-
-        status = fm10000ConfigureLane( eventInfo, userInfo );
-        FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-
-        status = fm10000EnablePhy( eventInfo, userInfo );
-        FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-
-        status = fm10000RestoreDfe( eventInfo, userInfo );
-        FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-
-        status = fm10000ConfigureLoopback( eventInfo, userInfo );
-        FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-
-        portExt->eventInfo.info.admin.mode = FM_PORT_MODE_UP;
-        portExt->eventInfo.info.admin.submode = 0;
-        status = fm10000PowerUpLane( eventInfo, userInfo );
-        FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-
-        status = fm10000ClearEplFifo( eventInfo, userInfo );
-        FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-
-        /* The ethMode switch from AN73 to the negotiated mode was
-           successful */
-        portExt->ethMode = ethMode;
-        oldSpeed         = portExt->speed;
-        portExt->speed   = speed;
-        portAttr->speed  = speed;
-
-        if (oldSpeed != portExt->speed)
-        {
-            status = fm10000UpdateAllSAFValues(sw);
-            FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-        }
-
-        *nextState = FM10000_PORT_STATE_POWERING_UP;
     }
     else
     {
@@ -6905,6 +6855,14 @@ fm_status fm10000ProcessDeferralTimerWithAn( fm_smEventInfo *eventInfo,
         /* if we're running Clause 73 and we completed auto-negotiation, we've
            entered the negotiated mode and the PLLs are now ready */
         status = fm10000CheckPortStatus( eventInfo, userInfo, nextState );
+
+        if (status == FM_OK &&
+            portExt->ethMode == FM_ETH_MODE_1000BASE_KX)
+        {
+            /* this is only required if eth-mode is 1000Base-KX. For
+             * the other modes, this timer was already started */
+            status = fm10000StartAnPollingTimer(eventInfo,userInfo);
+        }
     }
     else
     {
@@ -7828,9 +7786,9 @@ fm_status fm10000ProcessPortStatusPollingTimer( fm_smEventInfo *eventInfo,
                                                 void           *userInfo, 
                                                 fm_int         *nextState )
 {
-    fm_status status;
-    fm_int    port;
-    fm_int    currentState;
+    fm_status           status;
+    fm_int              port;
+    fm_int              currentState;
     fm10000_portAttr   *portAttrExt;
 
     status = FM_OK;

@@ -29,7 +29,7 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
+ *****************************************************************************/
 
 #ifndef __FM_PLATFORM_TYPES_H
 #define __FM_PLATFORM_TYPES_H
@@ -57,14 +57,16 @@
 /* For attribute loader */
 #include <platforms/common/fm_file_attr_loader.h>
 
+#if defined(FM_LT_WHITE_MODEL_SUPPORT)
 /* For network sockets library */
 #include <platforms/common/lib/net/fm_netsock.h>
-
-/* Platform events */
-#include <platforms/common/event/fm_platform_event.h>
+#endif
 
 /* Platform PHY/Transceiver */
 #include <platforms/common/phy/fm_platform_xcvr.h>
+
+/* Platform events */
+#include <platforms/common/event/fm_platform_event.h>
 
 /* For dynamic library loading (shared-lib) */
 #include <platforms/common/lib/dll/fm_dynamicLib.h>
@@ -98,7 +100,7 @@
 /* Only needed for internal use of TestPoint */
 #include <platform_app_api.h>
 
-#include <net/if.h>  
+#include <net/if.h>
 
 /* Platform state structure */
 typedef struct

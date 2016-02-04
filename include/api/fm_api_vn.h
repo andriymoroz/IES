@@ -5,7 +5,7 @@
  * Creation Date:   August 30, 2012
  * Description:     Header file for virtual networking services.
  *
- * Copyright (c) 2012 - 2014, Intel Corporation
+ * Copyright (c) 2012 - 2015, Intel Corporation
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -29,7 +29,7 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
+ *****************************************************************************/
 
 #ifndef __FM_FM_API_VN_H
 #define __FM_FM_API_VN_H
@@ -343,8 +343,8 @@ typedef struct _fm_vnNshBaseHdr
      *  Service Path Header and Context Data. */
     fm_byte length;
 
-    /** This bit should be set if there are critical TLV that are included in
-     *  the NSH data. */
+    /** This bit should be set if there are critical TLVs that are included
+     *  in the NSH data. */
     fm_bool critical;
 
     /** NSH MD Type. */

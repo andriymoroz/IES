@@ -5,7 +5,7 @@
  * Creation Date:  Jul 8, 2015
  * Description:    Global Resource Tag (GloRT) management functions.
  *
- * Copyright (c) 2005 - 2015, Intel Corporation
+ * Copyright (c) 2005 - 2016, Intel Corporation
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -173,9 +173,8 @@ static fm_status GlortStateToText(fm_int  state,
  * \param[out]      rangeCount points to caller supplied storage where the
  *                  size of the GloRT block is placed.
  *
- * \return          FM_OK if successful
- * \return          FM_ERR_UNINITIALIZED if both of output pointers are NULL or
- *                  the switchPtr is NULL
+ * \return          FM_OK if successful.
+ * \return          FM_ERR_UNINITIALIZED if both of output pointers are NULL.
  *
  *****************************************************************************/
 static fm_status GetGlortRange(fm_switch *  switchPtr,
@@ -199,10 +198,10 @@ static fm_status GetGlortRange(fm_switch *  switchPtr,
 
 #endif
 
-    if (switchPtr == NULL)
-    {
-        return FM_ERR_UNINITIALIZED;
-    }
+    FM_LOG_ENTRY_VERBOSE(FM_LOG_CAT_GLORT,
+                         "sw=%d type=%d\n",
+                         switchPtr->switchNumber,
+                         type);
 
     mailboxInfo  = &switchPtr->mailboxInfo;
     range        = &switchPtr->glortRange;
@@ -210,9 +209,10 @@ static fm_status GetGlortRange(fm_switch *  switchPtr,
     base         = range->glortBase;
     numberOfPeps = 0;
 
+
     if ( (rangeBase == NULL) && (rangeCount == NULL) )
     {
-        return FM_ERR_UNINITIALIZED;
+        FM_LOG_EXIT_VERBOSE(FM_LOG_CAT_GLORT, FM_ERR_UNINITIALIZED);
     }
 
     switch (type)
@@ -267,6 +267,11 @@ static fm_status GetGlortRange(fm_switch *  switchPtr,
 
             numGlort = numberOfPeps * mailboxInfo->glortsPerPep;
             break;
+        case FM_GLORT_TYPE_TUNNEL:
+            firstGlort = glortInfo->tunnelBase;
+            numGlort   = (glortInfo->tunnelBase | range->glortMask)
+                          - glortInfo->tunnelBase + 1;
+            break;
         default:
             firstGlort = 0;
             numGlort   = FM_MAX_GLORT;
@@ -283,7 +288,11 @@ static fm_status GetGlortRange(fm_switch *  switchPtr,
         *rangeCount = numGlort;
     }
 
-    return FM_OK;
+    FM_LOG_EXIT_CUSTOM_VERBOSE( FM_LOG_CAT_GLORT,
+                                FM_OK,
+                                "*rangeBase=0x%X *rangeCount=%d\n",
+                                (rangeBase != NULL ? *rangeBase : 0),
+                                (rangeCount != NULL ? *rangeCount : -1) );
 
 }   /* end GetGlortRange */
 
@@ -362,16 +371,23 @@ static inline fm_bool IsGlortType(fm_switch *  switchPtr,
     fm_uint32        rangeBase;
     fm_int           rangeCount;
 
+    FM_LOG_ENTRY_VERBOSE_V2(FM_LOG_CAT_GLORT,
+                            glort,
+                            "sw=%d glort=0x%X type=%d\n",
+                            switchPtr->switchNumber,
+                            glort,
+                            type);
+
     rangeBase  = 0;
     rangeCount = -1;
 
     GetGlortRange(switchPtr, type, &rangeBase, &rangeCount);
     if ( IsGlortInRange(glort, rangeBase, rangeCount) )
     {
-        return TRUE;
+        FM_LOG_EXIT_VERBOSE_V2(FM_LOG_CAT_GLORT, glort, TRUE);
     }
 
-    return FALSE;
+    FM_LOG_EXIT_VERBOSE_V2(FM_LOG_CAT_GLORT, glort, FALSE);
 
 }   /* end IsGlortType */
 
@@ -392,10 +408,9 @@ static inline fm_bool IsGlortType(fm_switch *  switchPtr,
  *                  type of the GloRT is placed. If type is NULL then the return
  *                  value is the only if the GloRT type was found.
  *
- * \return          FM_OK if successful
- * \return          FM_ERR_UNINITIALIZED if a pointer is NULL
+ * \return          FM_OK if successful.
  * \return          FM_ERR_NOT_FOUND if the type was not recognized
- *                  (FM_GLORT_TYPE_UNSPECIFIED is placed to type pointer)
+ *                  (FM_GLORT_TYPE_UNSPECIFIED is placed to type pointer).
  *
  *****************************************************************************/
 static fm_status GetGlortType(fm_switch *   switchPtr,
@@ -405,13 +420,15 @@ static fm_status GetGlortType(fm_switch *   switchPtr,
     fm_status err;
     fm_glortType type;
 
+    FM_LOG_ENTRY_VERBOSE_V2(FM_LOG_CAT_GLORT,
+                            glort,
+                            "sw=%d glort=0x%X\n",
+                            switchPtr->switchNumber,
+                            glort);
+
     err  = FM_OK;
     type = FM_GLORT_TYPE_UNSPECIFIED;
 
-    if (switchPtr == NULL)
-    {
-        return FM_ERR_UNINITIALIZED;
-    }
 
     /***************************************************
      * The for loop cannot be used and
@@ -442,6 +459,10 @@ static fm_status GetGlortType(fm_switch *   switchPtr,
     {
         type = FM_GLORT_TYPE_SPECIAL;
     }
+    else if ( IsGlortType(switchPtr, glort, FM_GLORT_TYPE_TUNNEL) )
+    {
+        type = FM_GLORT_TYPE_TUNNEL;
+    }
     else if ( IsGlortType(switchPtr, glort, FM_GLORT_TYPE_CPU) )
     {
         type = FM_GLORT_TYPE_CPU;
@@ -461,8 +482,12 @@ static fm_status GetGlortType(fm_switch *   switchPtr,
         *glortType = type;
     }
 
-
-    return err;
+    FM_LOG_EXIT_CUSTOM_VERBOSE_V2(FM_LOG_CAT_GLORT,
+                                  glort,
+                                  err,
+                                  "*glortType=%d%s\n",
+                                  (glortType != NULL ? *glortType : type),
+                                  (glortType != NULL ? "" : " (NULL pointer)"));
 
 }   /* end GetGlortType */
 
@@ -482,8 +507,8 @@ static fm_status GetGlortType(fm_switch *   switchPtr,
  * \param[in]       type identifies the GloRT range owner.
  *
  * \return          TRUE if GloRT is in the specified GloRT range.
- *                  FALSE if GloRT is not in the specified GloRT range, if the
- *                  GloRT is invalid or if the pointer is NULL.
+ *                  FALSE if GloRT is not in the specified GloRT range or if the
+ *                  GloRT is invalid.
  *
  *****************************************************************************/
 static fm_bool IsGlortReservedForType(fm_switch *  switchPtr,
@@ -494,38 +519,40 @@ static fm_bool IsGlortReservedForType(fm_switch *  switchPtr,
     fm_mailboxInfo *    mailboxInfo;
     fm_bool             reserved;
 
-    lportInfo   = NULL;
-    mailboxInfo = NULL;
+    FM_LOG_ENTRY_VERBOSE_V2(FM_LOG_CAT_GLORT,
+                            glort,
+                            "sw=%d glort=0x%X type=%d\n",
+                            switchPtr->switchNumber,
+                            glort,
+                            type);
+
+    lportInfo   = &switchPtr->logicalPortInfo;
+    mailboxInfo = &switchPtr->mailboxInfo;
     reserved    = FALSE;
 
     if (!IsGlortCorrect(glort))
     {
-        return FALSE;
+        FM_LOG_EXIT_VERBOSE_V2(FM_LOG_CAT_GLORT, glort, FALSE);
     }
 
-    if (switchPtr != NULL)
+    switch (type)
     {
-        lportInfo   = &switchPtr->logicalPortInfo;
-        mailboxInfo = &switchPtr->mailboxInfo;
+        case FM_GLORT_TYPE_LAG:
+            reserved = FM_IS_GLORT_LAG_RESERVED(lportInfo, glort);
+            break;
+        case FM_GLORT_TYPE_MULTICAST:
+            reserved = FM_IS_GLORT_MCG_RESERVED(lportInfo, glort);
+            break;
+        case FM_GLORT_TYPE_LBG:
+            reserved = FM_IS_GLORT_LBG_RESERVED(lportInfo, glort);
+            break;
+        default:
+            reserved = FALSE;
+            break;
+   }
 
-        switch (type)
-        {
-            case FM_GLORT_TYPE_LAG:
-                reserved = FM_IS_GLORT_LAG_RESERVED(lportInfo, glort);
-                break;
-            case FM_GLORT_TYPE_MULTICAST:
-                reserved = FM_IS_GLORT_MCG_RESERVED(lportInfo, glort);
-                break;
-            case FM_GLORT_TYPE_LBG:
-                reserved = FM_IS_GLORT_LBG_RESERVED(lportInfo, glort);
-                break;
-            default:
-                reserved = FALSE;
-                break;
-       }
-    }
+    FM_LOG_EXIT_VERBOSE_V2(FM_LOG_CAT_GLORT, glort, reserved);
 
-    return reserved;
 }   /* end IsGlortReservedForType */
 
 
@@ -544,9 +571,8 @@ static fm_bool IsGlortReservedForType(fm_switch *  switchPtr,
  *
  * \param[in]       type identifies the potential GloRT range owner.
  *
- * \return          FM_OK if successful
- * \return          FM_ERR_UNINITIALIZED if a pointer is NULL
- * \return          FM_ERR_INVALID_ARGUMENT if the GloRT is invalid
+ * \return          FM_OK if successful.
+ * \return          FM_ERR_INVALID_ARGUMENT if the GloRT is invalid.
  * \return          FM_ERR_GLORT_IN_USE if the GloRT is already used
  *                  or not destined to be allocated by the caller.
  *
@@ -557,14 +583,15 @@ static fm_status RequestGlort(fm_switch *  switchPtr,
 {
     fm_logicalPortInfo* lportInfo;
 
-    if (switchPtr != NULL)
-    {
-        lportInfo = &switchPtr->logicalPortInfo;
-    }
-    else
-    {
-        return FM_ERR_UNINITIALIZED;
-    }
+    FM_LOG_ENTRY_VERBOSE_V2(FM_LOG_CAT_GLORT,
+                            glort,
+                            "sw=%d glort=0x%X type=%d\n",
+                            switchPtr->switchNumber,
+                            glort,
+                            type);
+
+    lportInfo = &switchPtr->logicalPortInfo;
+
 
     /***************************************************
      * Three conditions must be met:
@@ -576,19 +603,25 @@ static fm_status RequestGlort(fm_switch *  switchPtr,
 
     if (!IsGlortCorrect(glort))
     {
-        return FM_ERR_INVALID_ARGUMENT;
+        FM_LOG_EXIT_VERBOSE_V2(FM_LOG_CAT_GLORT,
+                               glort,
+                               FM_ERR_INVALID_ARGUMENT);
     }
 
     if ( !FM_IS_GLORT_FREE(lportInfo, glort) ||
          ( !IsGlortType(switchPtr, glort, type) &&
            !IsGlortReservedForType(switchPtr, glort, type) ) )
     {
-        return FM_ERR_GLORT_IN_USE;
+        FM_LOG_EXIT_VERBOSE_V2(FM_LOG_CAT_GLORT,
+                               glort,
+                               FM_ERR_GLORT_IN_USE);
     }
 
     FM_SET_GLORT_IN_USE(lportInfo, glort);
 
-    return FM_OK;
+    FM_LOG_EXIT_VERBOSE_V2(FM_LOG_CAT_GLORT,
+                           glort,
+                           FM_OK);
 
 }   /* end RequestGlort */
 
@@ -611,9 +644,8 @@ static fm_status RequestGlort(fm_switch *  switchPtr,
  * \param[in]       pending indicates whether the GloRT should be released or
  *                  just marked as "free pending".
  *
- * \return          FM_OK if successful
- * \return          FM_ERR_UNINITIALIZED if a pointer is NULL
- * \return          FM_ERR_INVALID_ARGUMENT if the GloRT or its type is invalid
+ * \return          FM_OK if successful.
+ * \return          FM_ERR_INVALID_ARGUMENT if the GloRT or its type is invalid.
  * \return          FM_ERR_NO_GLORTS_ALLOCATED if the GloRT was not allocated
  *                  before (or was already released).
  *
@@ -625,12 +657,16 @@ static fm_status ReleaseGlort(fm_switch *  switchPtr,
 {
     fm_logicalPortInfo* lportInfo;
 
-    if (switchPtr == NULL)
-    {
-        return FM_ERR_UNINITIALIZED;
-    }
+    FM_LOG_ENTRY_VERBOSE_V2(FM_LOG_CAT_GLORT,
+                            glort,
+                            "sw=%d glort=0x%X type=%d pending=%s\n",
+                            switchPtr->switchNumber,
+                            glort,
+                            type,
+                            FM_BOOLSTRING(pending));
 
     lportInfo = &switchPtr->logicalPortInfo;
+
 
     /***************************************************
      * Three conditions must be met:
@@ -644,13 +680,17 @@ static fm_status ReleaseGlort(fm_switch *  switchPtr,
          ( !IsGlortType(switchPtr, glort, type) &&
            !IsGlortReservedForType(switchPtr, glort, type) ) )
     {
-        return FM_ERR_INVALID_ARGUMENT;
+        FM_LOG_EXIT_VERBOSE_V2(FM_LOG_CAT_GLORT,
+                               glort,
+                               FM_ERR_INVALID_ARGUMENT);
     }
 
     if ( FM_IS_GLORT_FREE(lportInfo, glort) ||
          (pending && FM_IS_GLORT_FREE_PEND(lportInfo, glort)) )
     {
-        return FM_ERR_NO_GLORTS_ALLOCATED;
+        FM_LOG_EXIT_VERBOSE_V2(FM_LOG_CAT_GLORT,
+                               glort,
+                               FM_ERR_NO_GLORTS_ALLOCATED);
     }
 
     if (!pending)
@@ -662,8 +702,9 @@ static fm_status ReleaseGlort(fm_switch *  switchPtr,
         FM_SET_GLORT_FREE_PEND(lportInfo, glort);
     }
 
-    return FM_OK;
-}
+    FM_LOG_EXIT_VERBOSE_V2(FM_LOG_CAT_GLORT, glort, FM_OK);
+
+}   /* end ReleaseGlort */
 
 
 
@@ -672,8 +713,8 @@ static fm_status ReleaseGlort(fm_switch *  switchPtr,
 /** ReserveGlort
  * \ingroup intPort
  *
- * \desc            Reserves the single GloRT. The GloRT should be released
- *                  using the UnreserveGlort function.
+ * \desc            Reserves the single GloRT. The GloRT reservation should be
+ *                  released using the UnreserveGlort function.
  *
  * \param[in]       switchPtr points to the switch state structure.
  *
@@ -683,13 +724,12 @@ static fm_status ReleaseGlort(fm_switch *  switchPtr,
  *                  (only ''FM_GLORT_TYPE_LAG'', ''FM_GLORT_TYPE_MULTICAST'' and
  *                  ''FM_GLORT_TYPE_LBG'' are supported).
  *
- * \return          FM_OK if successful
- * \return          FM_ERR_UNINITIALIZED if a pointer is NULL
- * \return          FM_ERR_INVALID_ARGUMENT if the GloRT is invalid
+ * \return          FM_OK if successful.
+ * \return          FM_ERR_INVALID_ARGUMENT if the GloRT is invalid.
  * \return          FM_ERR_GLORT_IN_USE if the GloRT is already used
- *                  or not destined to be allocated by the caller
+ *                  or not destined to be allocated by the caller.
  * \return          FM_ERR_UNSUPPORTED if it is not possible to reserve
- *                  for the given type
+ *                  for the given type.
  *
  *****************************************************************************/
 static fm_status ReserveGlort(fm_switch *  switchPtr,
@@ -698,12 +738,15 @@ static fm_status ReserveGlort(fm_switch *  switchPtr,
 {
     fm_logicalPortInfo* lportInfo;
 
-    if (switchPtr == NULL)
-    {
-        return FM_ERR_UNINITIALIZED;
-    }
+    FM_LOG_ENTRY_VERBOSE_V2(FM_LOG_CAT_GLORT,
+                            glort,
+                            "sw=%d glort=0x%X type=%d\n",
+                            switchPtr->switchNumber,
+                            glort,
+                            type);
 
     lportInfo = &switchPtr->logicalPortInfo;
+
 
     /***************************************************
      * Two conditions must be met:
@@ -713,12 +756,16 @@ static fm_status ReserveGlort(fm_switch *  switchPtr,
 
     if (!IsGlortCorrect(glort))
     {
-        return FM_ERR_INVALID_ARGUMENT;
+        FM_LOG_EXIT_VERBOSE_V2(FM_LOG_CAT_GLORT,
+                               glort,
+                               FM_ERR_INVALID_ARGUMENT);
     }
 
     if (FM_IS_GLORT_TAKEN(lportInfo, glort))
     {
-        return FM_ERR_GLORT_IN_USE;
+        FM_LOG_EXIT_VERBOSE_V2(FM_LOG_CAT_GLORT,
+                               glort,
+                               FM_ERR_GLORT_IN_USE);
     }
 
     switch (type)
@@ -733,10 +780,12 @@ static fm_status ReserveGlort(fm_switch *  switchPtr,
             FM_RESERVE_GLORT_LBG(lportInfo, glort);
             break;
         default:
-            return FM_ERR_UNSUPPORTED;
+            FM_LOG_EXIT_VERBOSE_V2(FM_LOG_CAT_GLORT,
+                                   glort,
+                                   FM_ERR_UNSUPPORTED);
    }
 
-    return FM_OK;
+   FM_LOG_EXIT_VERBOSE_V2(FM_LOG_CAT_GLORT, glort, FM_OK);
 
 } /* end ReserveGlort */
 
@@ -747,8 +796,8 @@ static fm_status ReserveGlort(fm_switch *  switchPtr,
 /** UnreserveGlort
  * \ingroup intPort
  *
- * \desc            Releases the GloRT range. The range should be allocated
- *                  using the fmRequestGlortRange function.
+ * \desc            Releases the GloRT range reservation. The range should be
+ *                  reserved using the ReserveGlort function.
  *
  * \param[in]       switchPtr points to the switch state structure.
  *
@@ -756,10 +805,9 @@ static fm_status ReserveGlort(fm_switch *  switchPtr,
  *
  * \param[in]       type identifies the GloRT range owner.
  *
- * \return          FM_OK if successful
- * \return          FM_ERR_UNINITIALIZED if a pointer is NULL
- * \return          FM_ERR_INVALID_ARGUMENT if the GloRT is invalid
- * \return          FM_ERR_GLORT_IN_USE if any of GloRTs is still used
+ * \return          FM_OK if successful.
+ * \return          FM_ERR_INVALID_ARGUMENT if the GloRT is invalid.
+ * \return          FM_ERR_GLORT_IN_USE if any of GloRTs is still used.
  * \return          FM_ERR_NO_GLORTS_ALLOCATED if any of GloRTs was not reserved
  *                  before or was reserved by someone else.
  *
@@ -770,12 +818,15 @@ static fm_status UnreserveGlort(fm_switch *  switchPtr,
 {
     fm_logicalPortInfo* lportInfo;
 
-    if (switchPtr == NULL)
-    {
-        return FM_ERR_UNINITIALIZED;
-    }
+    FM_LOG_ENTRY_VERBOSE_V2(FM_LOG_CAT_GLORT,
+                            glort,
+                            "sw=%d glort=0x%X type=%d\n",
+                            switchPtr->switchNumber,
+                            glort,
+                            type);
 
     lportInfo = &switchPtr->logicalPortInfo;
+
 
     /***************************************************
      * Three conditions must be met:
@@ -786,24 +837,30 @@ static fm_status UnreserveGlort(fm_switch *  switchPtr,
 
     if (!IsGlortCorrect(glort))
     {
-        return FM_ERR_INVALID_ARGUMENT;
+        FM_LOG_EXIT_VERBOSE_V2(FM_LOG_CAT_GLORT,
+                               glort,
+                               FM_ERR_INVALID_ARGUMENT);
     }
 
     if ( !FM_IS_GLORT_FREE(lportInfo, glort) &&
          !FM_IS_GLORT_FREE_PEND(lportInfo, glort) )
     {
-        return FM_ERR_GLORT_IN_USE;
+        FM_LOG_EXIT_VERBOSE_V2(FM_LOG_CAT_GLORT,
+                               glort,
+                               FM_ERR_GLORT_IN_USE);
     }
 
     if ( !IsGlortReservedForType(switchPtr, glort, type) )
     {
-        return FM_ERR_NO_GLORTS_ALLOCATED;
+        FM_LOG_EXIT_VERBOSE_V2(FM_LOG_CAT_GLORT,
+                               glort,
+                               FM_ERR_NO_GLORTS_ALLOCATED);
     }
 
     /* the GloRT is unused anyway, so we can just set the state to 0 */
     FM_RELEASE_GLORT(lportInfo, glort);
 
-    return FM_OK;
+    FM_LOG_EXIT_VERBOSE_V2(FM_LOG_CAT_GLORT, glort, FM_OK);
 
 }   /* end UnreserveGlort */
 
@@ -840,6 +897,7 @@ static fm_status GlortTypeToText(fm_glortType glortType,
     fm_text        mailboxText;
     fm_text        cpuText;
     fm_text        specialText;
+    fm_text        tunnelText;
     fm_text        unspecifiedText;
 
     mcastText       = "Multicast GloRTs";
@@ -849,6 +907,7 @@ static fm_status GlortTypeToText(fm_glortType glortType,
     mailboxText     = "PEP GloRTs";
     cpuText         = "CPU GloRTs";
     specialText     = "Special GloRTs";
+    tunnelText      = "Tunnel GloRTs";
     unspecifiedText = "Unspecified GloRTs";
 
     if (name == NULL)
@@ -878,6 +937,9 @@ static fm_status GlortTypeToText(fm_glortType glortType,
             break;
         case FM_GLORT_TYPE_PEP:
             FM_STRCPY_S(name, bufSize, mailboxText);
+            break;
+        case FM_GLORT_TYPE_TUNNEL:
+            FM_STRCPY_S(name, bufSize, tunnelText);
             break;
         default:
             FM_STRCPY_S(name, bufSize, unspecifiedText);
@@ -993,6 +1055,10 @@ static fm_status GlortStateToText(fm_int  state,
  *****************************************************************************/
 fm_status fmVerifyGlortRange(fm_uint32 glort, fm_int size)
 {
+    FM_LOG_ENTRY_VERBOSE(FM_LOG_CAT_GLORT,
+                         "glort=0x%X size=%d\n",
+                         glort,
+                         size);
 
     if ( (size <= 0) || (size > FM_MAX_GLORT + 1) )
     {
@@ -1009,7 +1075,7 @@ fm_status fmVerifyGlortRange(fm_uint32 glort, fm_int size)
         return FM_FAIL;
     }
 
-    return FM_OK;
+    FM_LOG_EXIT_VERBOSE(FM_LOG_CAT_GLORT, FM_OK);
 
 }   /* end fmVerifyGlortRange */
 
@@ -1038,9 +1104,10 @@ fm_status fmVerifyGlortRange(fm_uint32 glort, fm_int size)
  *
  * \param[in]       mask is a GloRT state bit mask.
  *
- * \return          FM_OK if successful
- * \return          FM_ERR_INVALID_ARGUMENT if the range is invalid
- * \return          FM_ERR_INVALID_STATE if any GloRT has an unexpected state
+ * \return          FM_OK if successful.
+ * \return          FM_ERR_UNINITIALIZED if a pointer is NULL.
+ * \return          FM_ERR_INVALID_ARGUMENT if the range is invalid.
+ * \return          FM_ERR_INVALID_STATE if any GloRT has an unexpected state.
  *
  *****************************************************************************/
 fm_status fmCheckGlortRangeStateInt(fm_switch *switchPtr,
@@ -1053,32 +1120,53 @@ fm_status fmCheckGlortRangeStateInt(fm_switch *switchPtr,
     fm_uint32 glort;
     fm_uint32 rangeEnd;
 
+    FM_LOG_ENTRY(FM_LOG_CAT_GLORT,
+                 "sw=%d start=0x%X numGlorts=%d state=%d mask=0x%X\n",
+                 (switchPtr != NULL) ? switchPtr->switchNumber : -1,
+                 start,
+                 numGlorts,
+                 state,
+                 mask);
+
     err      = FM_OK;
     glort    = 0;
     rangeEnd = start + numGlorts - 1;
 
-    err = fmVerifyGlortRange(start, numGlorts);
 
+    if (switchPtr == NULL)
+    {
+        FM_LOG_EXIT(FM_LOG_CAT_GLORT, FM_ERR_UNINITIALIZED);
+    }
+
+    err = fmVerifyGlortRange(start, numGlorts);
     if (err != FM_OK)
     {
-        FM_LOG_EXIT(FM_LOG_CAT_PORT, FM_ERR_INVALID_ARGUMENT);
+        FM_LOG_EXIT(FM_LOG_CAT_GLORT, FM_ERR_INVALID_ARGUMENT);
     }
 
     for ( glort = start ; glort <= rangeEnd ; ++glort )
     {
         if (!IsGlortCorrect(glort))
         {
-            FM_LOG_EXIT(FM_LOG_CAT_PORT, FM_ERR_INVALID_ARGUMENT);
+            FM_LOG_EXIT(FM_LOG_CAT_GLORT, FM_ERR_INVALID_ARGUMENT);
         }
 
         if ( (switchPtr->logicalPortInfo.glortState[glort] & mask) !=
              (state & mask) )
         {
-            FM_LOG_EXIT(FM_LOG_CAT_PORT, FM_ERR_INVALID_STATE);
+            FM_LOG_DEBUG_V2(FM_LOG_CAT_GLORT,
+                            glort,
+                            "Invalid state of GloRT 0x%X: %d (expected %d, "
+                            "mask 0x%X)\n",
+                            glort,
+                            switchPtr->logicalPortInfo.glortState[glort],
+                            state,
+                            mask);
+            FM_LOG_EXIT(FM_LOG_CAT_GLORT, FM_ERR_INVALID_STATE);
         }
     }
 
-    FM_LOG_EXIT(FM_LOG_CAT_PORT, FM_OK);
+    FM_LOG_EXIT(FM_LOG_CAT_GLORT, FM_OK);
 
 }   /* end fmCheckGlortRangeStateInt */
 
@@ -1105,9 +1193,10 @@ fm_status fmCheckGlortRangeStateInt(fm_switch *switchPtr,
  * \param[in]       state is an expected GloRT state (examples:
  *                  FM_GLORT_STATE_IN_USE, FM_GLORT_STATE_RESV_MCG etc).
  *
- * \return          FM_OK if successful
- * \return          FM_ERR_INVALID_ARGUMENT if the range is invalid
- * \return          FM_ERR_INVALID_STATE if any GloRT has an unexpected state
+ * \return          FM_OK if successful.
+ * \return          FM_ERR_UNINITIALIZED if a pointer is NULL.
+ * \return          FM_ERR_INVALID_ARGUMENT if the range is invalid.
+ * \return          FM_ERR_INVALID_STATE if any GloRT has an unexpected state.
  *
  *****************************************************************************/
 inline fm_status fmCheckGlortRangeState(fm_switch *switchPtr,
@@ -1147,9 +1236,10 @@ inline fm_status fmCheckGlortRangeState(fm_switch *switchPtr,
  *
  * \param[in]       glortType is an expected GloRT type.
  *
- * \return          FM_OK if successful
- * \return          FM_ERR_INVALID_ARGUMENT if the range is invalid
- * \return          FM_ERR_FAIL if any GloRT has an unexpected type
+ * \return          FM_OK if successful.
+ * \return          FM_ERR_UNINITIALIZED if a pointer is NULL.
+ * \return          FM_ERR_INVALID_ARGUMENT if the range is invalid.
+ * \return          FM_ERR_FAIL if any GloRT has an unexpected type.
  *
  *****************************************************************************/
 fm_status fmCheckGlortRangeType(fm_switch *  switchPtr,
@@ -1161,32 +1251,49 @@ fm_status fmCheckGlortRangeType(fm_switch *  switchPtr,
     fm_uint32 glort;
     fm_uint32 rangeEnd;
 
+    FM_LOG_ENTRY(FM_LOG_CAT_GLORT,
+                 "sw=%d start=0x%X numGlorts=%d glortType=%d\n",
+                 (switchPtr != NULL) ? switchPtr->switchNumber : -1,
+                 start,
+                 numGlorts,
+                 glortType);
+
     err      = FM_OK;
     glort    = 0;
     rangeEnd = start + numGlorts - 1;
 
-    err = fmVerifyGlortRange(start, numGlorts);
 
+    if (switchPtr == NULL)
+    {
+        FM_LOG_EXIT(FM_LOG_CAT_GLORT, FM_ERR_UNINITIALIZED);
+    }
+
+    err = fmVerifyGlortRange(start, numGlorts);
     if (err != FM_OK)
     {
-        FM_LOG_EXIT(FM_LOG_CAT_PORT, FM_ERR_INVALID_ARGUMENT);
+        FM_LOG_EXIT(FM_LOG_CAT_GLORT, FM_ERR_INVALID_ARGUMENT);
     }
 
     for ( glort = start ; glort <= rangeEnd ; ++glort )
     {
         if (!IsGlortCorrect(glort))
         {
-            FM_LOG_EXIT(FM_LOG_CAT_PORT, FM_ERR_INVALID_ARGUMENT);
+            FM_LOG_EXIT(FM_LOG_CAT_GLORT, FM_ERR_INVALID_ARGUMENT);
         }
 
         if ( !IsGlortType(switchPtr, glort, glortType) &&
              !IsGlortReservedForType(switchPtr, glort, glortType) )
         {
-            FM_LOG_EXIT(FM_LOG_CAT_PORT, FM_FAIL);
+            FM_LOG_DEBUG_V2(FM_LOG_CAT_GLORT,
+                            glort,
+                            "Invalid type of GloRT 0x%X (expected %d)\n",
+                            glort,
+                            glortType);
+            FM_LOG_EXIT(FM_LOG_CAT_GLORT, FM_FAIL);
         }
     }
 
-    FM_LOG_EXIT(FM_LOG_CAT_PORT, FM_OK);
+    FM_LOG_EXIT(FM_LOG_CAT_GLORT, FM_OK);
 }   /* end fmCheckGlortRangeType */
 
 
@@ -1207,11 +1314,11 @@ fm_status fmCheckGlortRangeType(fm_switch *  switchPtr,
  *
  * \param[in]       glortType identifies the potential GloRT range owner.
  *
- * \return          FM_OK if successful
- * \return          FM_ERR_INVALID_SWITCH if the switch ID is invalid
- * \return          FM_ERR_SWITCH_NOT_UP if the switch in not up
- * \return          FM_ERR_INVALID_ARGUMENT if the range is invalid
- * \return          FM_ERR_GLORT_RANGE_TOO_SMALL if the range is too small
+ * \return          FM_OK if successful.
+ * \return          FM_ERR_INVALID_SWITCH if the switch ID is invalid.
+ * \return          FM_ERR_SWITCH_NOT_UP if the switch in not up.
+ * \return          FM_ERR_INVALID_ARGUMENT if the range is invalid.
+ * \return          FM_ERR_GLORT_RANGE_TOO_SMALL if the range is too small.
  * \return          FM_ERR_GLORT_IN_USE if any of GloRTs is already used
  *                  or not destined to be allocated by the caller.
  *
@@ -1231,6 +1338,13 @@ fm_status fmRequestGlortRange(fm_int       sw,
     fm_uint32           rangeBase;
     fm_uint32           rangeMax;
     fm_int              rangeCount;
+
+    FM_LOG_ENTRY(FM_LOG_CAT_GLORT,
+                 "sw=%d start=0x%X numGlorts=%d glortType=%d\n",
+                 sw,
+                 start,
+                 numGlorts,
+                 glortType);
 
 
     VALIDATE_AND_PROTECT_SWITCH(sw);
@@ -1255,17 +1369,17 @@ fm_status fmRequestGlortRange(fm_int       sw,
     err = fmVerifyGlortRange(start, numGlorts);
     if (err != FM_OK)
     {
-        FM_LOG_ABORT(FM_LOG_CAT_PORT, err = FM_ERR_INVALID_ARGUMENT);
+        FM_LOG_ABORT(FM_LOG_CAT_GLORT, err = FM_ERR_INVALID_ARGUMENT);
     }
 
     if (glortType >= FM_GLORT_TYPE_MAX)
     {
-        FM_LOG_ABORT(FM_LOG_CAT_PORT, err = FM_ERR_INVALID_ARGUMENT);
+        FM_LOG_ABORT(FM_LOG_CAT_GLORT, err = FM_ERR_INVALID_ARGUMENT);
     }
 
     if (numGlorts <= 0)
     {
-        FM_LOG_ABORT(FM_LOG_CAT_PORT, err = FM_ERR_INVALID_ARGUMENT);
+        FM_LOG_ABORT(FM_LOG_CAT_GLORT, err = FM_ERR_INVALID_ARGUMENT);
     }
 
     /***************************************************
@@ -1280,12 +1394,12 @@ fm_status fmRequestGlortRange(fm_int       sw,
          ( !IsGlortReservedForType(switchPtr, start, glortType) ||
            !IsGlortReservedForType(switchPtr, last, glortType) ) )
     {
-        FM_LOG_ABORT(FM_LOG_CAT_PORT, err = FM_ERR_GLORT_IN_USE);
+        FM_LOG_ABORT(FM_LOG_CAT_GLORT, err = FM_ERR_GLORT_IN_USE);
     }
 
     if (start > last)
     {
-        FM_LOG_ABORT(FM_LOG_CAT_PORT, err = FM_ERR_GLORT_RANGE_TOO_SMALL);
+        FM_LOG_ABORT(FM_LOG_CAT_GLORT, err = FM_ERR_GLORT_RANGE_TOO_SMALL);
     }
 
     /***************************************************
@@ -1295,12 +1409,24 @@ fm_status fmRequestGlortRange(fm_int       sw,
     for (glort = start ; glort <= last ; ++glort)
     {
         err = RequestGlort(switchPtr, glort, glortType);
-        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
+        if (err != FM_OK)
+        {
+            FM_LOG_DEBUG_V2(FM_LOG_CAT_GLORT,
+                            glort,
+                            "Failed to take GloRT 0x%X\n",
+                            glort);
+            FM_LOG_ABORT(FM_LOG_CAT_GLORT, err);
+        }
     }
 
 ABORT:
     if (glort != 0 && err == FM_ERR_GLORT_IN_USE)
     {
+        FM_LOG_DEBUG2(FM_LOG_CAT_GLORT,
+                      "Rolling back the reservation of GloRTs 0x%X-0x%X\n",
+                      start,
+                      glort - 1);
+
         for (--glort ; glort >= start ; --glort)
         {
             ReleaseGlort(switchPtr, glort, glortType, FALSE);
@@ -1309,7 +1435,7 @@ ABORT:
 
     UNPROTECT_SWITCH(sw);
 
-    return err;
+    FM_LOG_EXIT(FM_LOG_CAT_GLORT, err);
 
 }   /* end fmRequestGlortRange */
 
@@ -1336,15 +1462,15 @@ ABORT:
  * \param[in]       pending indicates whether the range should be released or
  *                  just marked as "free pending".
  *
- * \return          FM_OK if successful
- * \return          FM_ERR_INVALID_SWITCH if the switch ID is invalid
- * \return          FM_ERR_SWITCH_NOT_UP if the switch in not up
- * \return          FM_ERR_INVALID_ARGUMENT if the range is invalid
+ * \return          FM_OK if successful.
+ * \return          FM_ERR_INVALID_SWITCH if the switch ID is invalid.
+ * \return          FM_ERR_SWITCH_NOT_UP if the switch in not up.
+ * \return          FM_ERR_INVALID_ARGUMENT if the range is invalid.
  * \return          FM_ERR_GLORT_IN_USE if any of GloRTs is not destined to
  *                  be released by the caller.
- * \return          FM_ERR_GLORT_RANGE_TOO_SMALL if the range is too small
- * \return          FM_ERR_NO_GLORTS_ALLOCATED if any of GloRTs was not allocated
- *                  before (or was already released).
+ * \return          FM_ERR_GLORT_RANGE_TOO_SMALL if the range is too small.
+ * \return          FM_ERR_NO_GLORTS_ALLOCATED if any of GloRTs was not
+ *                  allocated before (or was already released).
  *
  *****************************************************************************/
 fm_status fmReleaseGlortRangeInt(fm_int       sw,
@@ -1364,6 +1490,14 @@ fm_status fmReleaseGlortRangeInt(fm_int       sw,
     fm_uint32           rangeBase;
     fm_uint32           rangeMax;
     fm_int              rangeCount;
+
+    FM_LOG_ENTRY(FM_LOG_CAT_GLORT,
+                 "sw=%d start=0x%X numGlorts=%d glortType=%d pending=%s\n",
+                 sw,
+                 start,
+                 numGlorts,
+                 glortType,
+                 FM_BOOLSTRING(pending));
 
 
     VALIDATE_AND_PROTECT_SWITCH(sw);
@@ -1389,17 +1523,17 @@ fm_status fmReleaseGlortRangeInt(fm_int       sw,
     err = fmVerifyGlortRange(start, numGlorts);
     if (err != FM_OK)
     {
-        FM_LOG_ABORT(FM_LOG_CAT_PORT, err = FM_ERR_INVALID_ARGUMENT);
+        FM_LOG_ABORT(FM_LOG_CAT_GLORT, err = FM_ERR_INVALID_ARGUMENT);
     }
 
     if (glortType >= FM_GLORT_TYPE_MAX)
     {
-        FM_LOG_ABORT(FM_LOG_CAT_PORT, err = FM_ERR_INVALID_ARGUMENT);
+        FM_LOG_ABORT(FM_LOG_CAT_GLORT, err = FM_ERR_INVALID_ARGUMENT);
     }
 
     if (numGlorts <= 0)
     {
-        FM_LOG_ABORT(FM_LOG_CAT_PORT, err = FM_ERR_INVALID_ARGUMENT);
+        FM_LOG_ABORT(FM_LOG_CAT_GLORT, err = FM_ERR_INVALID_ARGUMENT);
     }
 
     /***************************************************
@@ -1414,12 +1548,12 @@ fm_status fmReleaseGlortRangeInt(fm_int       sw,
          ( !IsGlortReservedForType(switchPtr, start, glortType) ||
            !IsGlortReservedForType(switchPtr, last, glortType) ) )
     {
-        FM_LOG_ABORT(FM_LOG_CAT_PORT, err = FM_ERR_GLORT_IN_USE);
+        FM_LOG_ABORT(FM_LOG_CAT_GLORT, err = FM_ERR_GLORT_IN_USE);
     }
 
     if (start > last)
     {
-        FM_LOG_ABORT(FM_LOG_CAT_PORT, err = FM_ERR_GLORT_RANGE_TOO_SMALL);
+        FM_LOG_ABORT(FM_LOG_CAT_GLORT, err = FM_ERR_GLORT_RANGE_TOO_SMALL);
     }
 
     /***************************************************
@@ -1431,6 +1565,11 @@ fm_status fmReleaseGlortRangeInt(fm_int       sw,
         err = ReleaseGlort(switchPtr, glort, glortType, pending);
         if ( (err != FM_OK) && (tempErr == FM_OK) )
         {
+            FM_LOG_DEBUG_V2(FM_LOG_CAT_GLORT,
+                            glort,
+                            "Failed to release GloRT 0x%X, next failures will "
+                            "be not reported\n",
+                            glort);
             tempErr = err;
         }
     }
@@ -1444,7 +1583,7 @@ ABORT:
 
     UNPROTECT_SWITCH(sw);
 
-    return err;
+    FM_LOG_EXIT(FM_LOG_CAT_GLORT, err);
 
 }   /* end fmReleaseGlortRangeInt */
 
@@ -1470,10 +1609,10 @@ ABORT:
  *
  * \param[in]       glortType identifies the potential GloRT range owner.
  *
- * \return          FM_OK if successful
- * \return          FM_ERR_INVALID_SWITCH if the switch ID is invalid
- * \return          FM_ERR_SWITCH_NOT_UP if the switch in not up
- * \return          FM_ERR_INVALID_ARGUMENT if the range is invalid
+ * \return          FM_OK if successful.
+ * \return          FM_ERR_INVALID_SWITCH if the switch ID is invalid.
+ * \return          FM_ERR_SWITCH_NOT_UP if the switch in not up.
+ * \return          FM_ERR_INVALID_ARGUMENT if the range is invalid.
  * \return          FM_ERR_GLORT_IN_USE if any of GloRTs is not destined to
  *                  be released by the caller.
  * \return          FM_ERR_NO_GLORTS_ALLOCATED if any of GloRTs was not allocated
@@ -1521,13 +1660,13 @@ fm_status fmReleaseGlortRange(fm_int       sw,
  *
  * \param[in]       glortType identifies the new GloRT range owner.
  *
- * \return          FM_OK if successful
- * \return          FM_ERR_INVALID_SWITCH if the switch ID is invalid
- * \return          FM_ERR_SWITCH_NOT_UP if the switch in not up
- * \return          FM_ERR_INVALID_ARGUMENT if the range is invalid
+ * \return          FM_OK if successful.
+ * \return          FM_ERR_INVALID_SWITCH if the switch ID is invalid.
+ * \return          FM_ERR_SWITCH_NOT_UP if the switch in not up.
+ * \return          FM_ERR_INVALID_ARGUMENT if the range is invalid.
  * \return          FM_ERR_UNSUPPORTED if it is not possible to reserve
- *                  for the given type
- * \return          FM_ERR_GLORT_RANGE_TOO_SMALL if the range is too small
+ *                  for the given type.
+ * \return          FM_ERR_GLORT_RANGE_TOO_SMALL if the range is too small.
  * \return          FM_ERR_GLORT_IN_USE if any of GloRTs is already used
  *                  or not destined to be allocated by the caller.
  *
@@ -1547,6 +1686,13 @@ fm_status fmReserveGlortRange(fm_int       sw,
     fm_uint32           rangeBase;
     fm_uint32           rangeMax;
     fm_int              rangeCount;
+
+    FM_LOG_ENTRY(FM_LOG_CAT_GLORT,
+                 "sw=%d start=0x%X numGlorts=%d glortType=%d\n",
+                 sw,
+                 start,
+                 numGlorts,
+                 glortType);
 
 
     VALIDATE_AND_PROTECT_SWITCH(sw);
@@ -1571,24 +1717,24 @@ fm_status fmReserveGlortRange(fm_int       sw,
     err = fmVerifyGlortRange(start, numGlorts);
     if (err != FM_OK)
     {
-        FM_LOG_ABORT(FM_LOG_CAT_PORT, err = FM_ERR_INVALID_ARGUMENT);
+        FM_LOG_ABORT(FM_LOG_CAT_GLORT, err = FM_ERR_INVALID_ARGUMENT);
     }
 
     if (glortType >= FM_GLORT_TYPE_MAX)
     {
-        FM_LOG_ABORT(FM_LOG_CAT_PORT, err = FM_ERR_INVALID_ARGUMENT);
+        FM_LOG_ABORT(FM_LOG_CAT_GLORT, err = FM_ERR_INVALID_ARGUMENT);
     }
 
     if (numGlorts <= 0)
     {
-        FM_LOG_ABORT(FM_LOG_CAT_PORT, err = FM_ERR_INVALID_ARGUMENT);
+        FM_LOG_ABORT(FM_LOG_CAT_GLORT, err = FM_ERR_INVALID_ARGUMENT);
     }
 
     if ( glortType != FM_GLORT_TYPE_MULTICAST &&
          glortType != FM_GLORT_TYPE_LAG       &&
          glortType != FM_GLORT_TYPE_LBG )
     {
-        FM_LOG_ABORT(FM_LOG_CAT_PORT, err = FM_ERR_UNSUPPORTED);
+        FM_LOG_ABORT(FM_LOG_CAT_GLORT, err = FM_ERR_UNSUPPORTED);
     }
 
     /***************************************************
@@ -1598,12 +1744,12 @@ fm_status fmReserveGlortRange(fm_int       sw,
     if ( start < rangeBase ||
          last > rangeMax )
     {
-        FM_LOG_ABORT(FM_LOG_CAT_PORT, err = FM_ERR_GLORT_IN_USE);
+        FM_LOG_ABORT(FM_LOG_CAT_GLORT, err = FM_ERR_GLORT_IN_USE);
     }
 
     if (start > last)
     {
-        FM_LOG_ABORT(FM_LOG_CAT_PORT, err = FM_ERR_GLORT_RANGE_TOO_SMALL);
+        FM_LOG_ABORT(FM_LOG_CAT_GLORT, err = FM_ERR_GLORT_RANGE_TOO_SMALL);
     }
 
     /***************************************************
@@ -1613,12 +1759,23 @@ fm_status fmReserveGlortRange(fm_int       sw,
     for (glort = start ; glort <= last ; ++glort)
     {
         err = ReserveGlort(switchPtr, glort, glortType);
-        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
+        if (err != FM_OK)
+        {
+            FM_LOG_DEBUG_V2(FM_LOG_CAT_GLORT,
+                            glort,
+                            "Failed to reserve GloRT 0x%X\n",
+                            glort);
+            FM_LOG_ABORT(FM_LOG_CAT_GLORT, err);
+        }
     }
 
 ABORT:
     if (glort != 0 && err == FM_ERR_GLORT_IN_USE)
     {
+        FM_LOG_DEBUG2(FM_LOG_CAT_GLORT,
+                      "Rolling back the reservation of GloRTs 0x%X-0x%X\n",
+                      start,
+                      glort - 1);
         for (--glort ; glort >= start ; --glort)
         {
             UnreserveGlort(switchPtr, glort, glortType);
@@ -1627,7 +1784,7 @@ ABORT:
 
     UNPROTECT_SWITCH(sw);
 
-    return err;
+    FM_LOG_EXIT(FM_LOG_CAT_GLORT, err);
 
 }   /* end ReserveGlortRange */
 
@@ -1653,14 +1810,14 @@ ABORT:
  *
  * \param[in]       glortType identifies the GloRT range owner.
  *
- * \return          FM_OK if successful
- * \return          FM_ERR_INVALID_SWITCH if the switch ID is invalid
- * \return          FM_ERR_SWITCH_NOT_UP if the switch in not up
- * \return          FM_ERR_INVALID_ARGUMENT if the range is invalid
- * \return          FM_ERR_GLORT_RANGE_TOO_SMALL if the range is too small
- * \return          FM_ERR_GLORT_IN_USE if any of GloRTs is still used
+ * \return          FM_OK if successful.
+ * \return          FM_ERR_INVALID_SWITCH if the switch ID is invalid.
+ * \return          FM_ERR_SWITCH_NOT_UP if the switch in not up.
+ * \return          FM_ERR_INVALID_ARGUMENT if the range is invalid.
+ * \return          FM_ERR_GLORT_RANGE_TOO_SMALL if the range is too small.
+ * \return          FM_ERR_GLORT_IN_USE if any of GloRTs is still used.
  * \return          FM_ERR_NO_GLORTS_ALLOCATED if any of GloRTs was not reserved
- *                  before or was reserved by someone else.
+ *                  before or was reserved by someone else..
  *
  *****************************************************************************/
 fm_status fmUnreserveGlortRange(fm_int       sw,
@@ -1679,6 +1836,13 @@ fm_status fmUnreserveGlortRange(fm_int       sw,
     fm_uint32           rangeBase;
     fm_uint32           rangeMax;
     fm_int              rangeCount;
+
+    FM_LOG_ENTRY(FM_LOG_CAT_GLORT,
+                 "sw=%d start=0x%X numGlorts=%d glortType=%d\n",
+                 sw,
+                 start,
+                 numGlorts,
+                 glortType);
 
 
     VALIDATE_AND_PROTECT_SWITCH(sw);
@@ -1704,24 +1868,24 @@ fm_status fmUnreserveGlortRange(fm_int       sw,
     err = fmVerifyGlortRange(start, numGlorts);
     if (err != FM_OK)
     {
-        FM_LOG_ABORT(FM_LOG_CAT_PORT, err = FM_ERR_INVALID_ARGUMENT);
+        FM_LOG_ABORT(FM_LOG_CAT_GLORT, err = FM_ERR_INVALID_ARGUMENT);
     }
 
     if (glortType >= FM_GLORT_TYPE_MAX)
     {
-        FM_LOG_ABORT(FM_LOG_CAT_PORT, err = FM_ERR_INVALID_ARGUMENT);
+        FM_LOG_ABORT(FM_LOG_CAT_GLORT, err = FM_ERR_INVALID_ARGUMENT);
     }
 
     if (numGlorts <= 0)
     {
-        FM_LOG_ABORT(FM_LOG_CAT_PORT, err = FM_ERR_INVALID_ARGUMENT);
+        FM_LOG_ABORT(FM_LOG_CAT_GLORT, err = FM_ERR_INVALID_ARGUMENT);
     }
 
     if ( glortType != FM_GLORT_TYPE_MULTICAST &&
          glortType != FM_GLORT_TYPE_LAG       &&
          glortType != FM_GLORT_TYPE_LBG )
     {
-        FM_LOG_ABORT(FM_LOG_CAT_PORT, err = FM_ERR_INVALID_ARGUMENT);
+        FM_LOG_ABORT(FM_LOG_CAT_GLORT, err = FM_ERR_INVALID_ARGUMENT);
     }
 
     /***************************************************
@@ -1731,12 +1895,12 @@ fm_status fmUnreserveGlortRange(fm_int       sw,
     if ( start < rangeBase ||
          last > rangeMax )
     {
-        FM_LOG_ABORT(FM_LOG_CAT_PORT, err = FM_ERR_GLORT_IN_USE);
+        FM_LOG_ABORT(FM_LOG_CAT_GLORT, err = FM_ERR_GLORT_IN_USE);
     }
 
     if (start > last)
     {
-        FM_LOG_ABORT(FM_LOG_CAT_PORT, err = FM_ERR_GLORT_RANGE_TOO_SMALL);
+        FM_LOG_ABORT(FM_LOG_CAT_GLORT, err = FM_ERR_GLORT_RANGE_TOO_SMALL);
     }
 
     /***************************************************
@@ -1748,6 +1912,11 @@ fm_status fmUnreserveGlortRange(fm_int       sw,
         err = UnreserveGlort(switchPtr, glort, glortType);
         if ( (err != FM_OK) && (tempErr == FM_OK) )
         {
+            FM_LOG_DEBUG_V2(FM_LOG_CAT_GLORT,
+                            glort,
+                            "Failed to unreserve GloRT 0x%X, next failures "
+                            "will be not reported\n",
+                            glort);
             tempErr = err;
         }
     }
@@ -1761,7 +1930,7 @@ ABORT:
 
     UNPROTECT_SWITCH(sw);
 
-    return err;
+    FM_LOG_EXIT(FM_LOG_CAT_GLORT, err);
 
 }   /* end fmUnreserveGlortRange */
 
@@ -1796,12 +1965,12 @@ ABORT:
  *                  If startGlort is NULL then the return value is the only
  *                  indicator if the wanted range was found.
  *
- * \return          FM_OK if successful
- * \return          FM_ERR_INVALID_SWITCH if the switch ID is invalid
- * \return          FM_ERR_SWITCH_NOT_UP if the switch in not up
- * \return          FM_ERR_INVALID_ARGUMENT if the range is invalid
- * \return          FM_ERR_GLORT_RANGE_TOO_SMALL if the range is too small
- * \return          FM_ERR_NOT_FOUND if the contiguous block was not found
+ * \return          FM_OK if successful.
+ * \return          FM_ERR_INVALID_SWITCH if the switch ID is invalid.
+ * \return          FM_ERR_SWITCH_NOT_UP if the switch in not up.
+ * \return          FM_ERR_INVALID_ARGUMENT if the range is invalid.
+ * \return          FM_ERR_GLORT_RANGE_TOO_SMALL if the range is too small.
+ * \return          FM_ERR_NOT_FOUND if the contiguous block was not found.
  *
  *****************************************************************************/
 fm_status fmFindFreeGlortRangeInt(fm_int       sw,
@@ -1823,6 +1992,16 @@ fm_status fmFindFreeGlortRangeInt(fm_int       sw,
     fm_uint32           rangeMax;
     fm_int              rangeCount;
     fm_uint32           rangeEnd;
+
+    FM_LOG_ENTRY(FM_LOG_CAT_GLORT,
+                 "sw=%d numGlorts=%d glortType=%d rangeStart=0x%X rangeSize=%d "
+                 "reserved=%s\n",
+                 sw,
+                 numGlorts,
+                 glortType,
+                 rangeStart,
+                 rangeSize,
+                 FM_BOOLSTRING(reserved));
 
 
     VALIDATE_AND_PROTECT_SWITCH(sw);
@@ -1848,17 +2027,17 @@ fm_status fmFindFreeGlortRangeInt(fm_int       sw,
     err = fmVerifyGlortRange(rangeStart, rangeSize);
     if (err != FM_OK)
     {
-        FM_LOG_ABORT(FM_LOG_CAT_PORT, err = FM_ERR_INVALID_ARGUMENT);
+        FM_LOG_ABORT(FM_LOG_CAT_GLORT, err = FM_ERR_INVALID_ARGUMENT);
     }
 
     if (glortType >= FM_GLORT_TYPE_MAX)
     {
-        FM_LOG_ABORT(FM_LOG_CAT_PORT, err = FM_ERR_INVALID_ARGUMENT);
+        FM_LOG_ABORT(FM_LOG_CAT_GLORT, err = FM_ERR_INVALID_ARGUMENT);
     }
 
     if (numGlorts <= 0)
     {
-        FM_LOG_ABORT(FM_LOG_CAT_PORT, err = FM_ERR_INVALID_ARGUMENT);
+        FM_LOG_ABORT(FM_LOG_CAT_GLORT, err = FM_ERR_INVALID_ARGUMENT);
     }
 
     /***************************************************
@@ -1885,7 +2064,7 @@ fm_status fmFindFreeGlortRangeInt(fm_int       sw,
 
     if (rangeStart > rangeEnd)
     {
-        FM_LOG_ABORT(FM_LOG_CAT_PORT, err = FM_ERR_GLORT_RANGE_TOO_SMALL);
+        FM_LOG_ABORT(FM_LOG_CAT_GLORT, err = FM_ERR_GLORT_RANGE_TOO_SMALL);
     }
 
     /***************************************************
@@ -1904,7 +2083,7 @@ fm_status fmFindFreeGlortRangeInt(fm_int       sw,
 
         if (!IsGlortCorrect(glort))
         {
-            FM_LOG_ABORT(FM_LOG_CAT_PORT, FM_ERR_INVALID_ARGUMENT);
+            FM_LOG_ABORT(FM_LOG_CAT_GLORT, FM_ERR_INVALID_ARGUMENT);
         }
 
         if ( FM_IS_GLORT_FREE(lportInfo, glort) &&
@@ -1944,7 +2123,12 @@ fm_status fmFindFreeGlortRangeInt(fm_int       sw,
 ABORT:
     UNPROTECT_SWITCH(sw);
 
-    return err;
+    FM_LOG_EXIT_CUSTOM_V2(FM_LOG_CAT_GLORT,
+                          (startGlort) ? *startGlort : start,
+                          err,
+                          "*startGlort=%d%s\n",
+                          (startGlort) ? *startGlort : start,
+                          (startGlort) ? "" : " (NULL pointer)");
 
 }   /* end fmFindFreeGlortRangeInt */
 
@@ -1973,12 +2157,12 @@ ABORT:
  *                  If startGlort is NULL then the return value is the only
  *                  indicator if the wanted range was found.
  *
- * \return          FM_OK if successful
- * \return          FM_ERR_INVALID_SWITCH if the switch ID is invalid
- * \return          FM_ERR_SWITCH_NOT_UP if the switch in not up
- * \return          FM_ERR_INVALID_ARGUMENT if the range is invalid
- * \return          FM_ERR_GLORT_RANGE_TOO_SMALL if the range is too small
- * \return          FM_ERR_NOT_FOUND if the contiguous block was not found
+ * \return          FM_OK if successful.
+ * \return          FM_ERR_INVALID_SWITCH if the switch ID is invalid.
+ * \return          FM_ERR_SWITCH_NOT_UP if the switch in not up.
+ * \return          FM_ERR_INVALID_ARGUMENT if the range is invalid.
+ * \return          FM_ERR_GLORT_RANGE_TOO_SMALL if the range is too small.
+ * \return          FM_ERR_NOT_FOUND if the contiguous block was not found.
  *
  *****************************************************************************/
 fm_status fmFindFreeGlortRange(fm_int       sw,

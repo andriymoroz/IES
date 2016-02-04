@@ -5,7 +5,7 @@
  * Creation Date:   March 13, 2014
  * Description:     FM10000 NAT API.
  *
- * Copyright (c) 2014, Intel Corporation
+ * Copyright (c) 2014 - 2016, Intel Corporation
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -29,14 +29,15 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
+ *****************************************************************************/
 
 #include <fm_sdk_fm10000_int.h>
 
 /*****************************************************************************
  * Macros, Constants & Types
  *****************************************************************************/
-
+#define ENCAP_TUNNEL                    0
+#define DECAP_TUNNEL                    1
 
 /*****************************************************************************
  * Global Variables
@@ -406,6 +407,7 @@ static fm_status TranslateNatCondToTunCond(fm_natCondition     natCond,
                                            fm_tunnelCondition *tunCond)
 {
     *tunCond = 0;
+
     if (natCond & FM_NAT_MATCH_SRC_MAC)
     {
         *tunCond |= FM_TUNNEL_MATCH_SMAC;
@@ -507,9 +509,12 @@ static fm_status TranslateNatActToTunAct(fm_int                sw,
                                          fm_tunnelActionParam *tunActParam)
 {
     fm_uint32 glort;
-    fm_status err = FM_OK;
+    fm_status err;
+
+    err = FM_OK;
 
     *tunAction = 0;
+
     if (action & FM_NAT_ACTION_SET_DMAC)
     {
         *tunAction |= FM_TUNNEL_SET_DMAC;
@@ -587,6 +592,41 @@ static fm_status TranslateNatActToTunAct(fm_int                sw,
                         actParam->ngeData,
                         sizeof(actParam->ngeData));
             action &= ~FM_NAT_ACTION_SET_TUNNEL_NGE;
+        }
+
+        if (action & FM_NAT_ACTION_SET_TUNNEL_GPE_VNI)
+        {
+            *tunAction |= FM_TUNNEL_SET_GPE_VNI;
+            tunActParam->gpeVni = actParam->gpeVni;
+            action &= ~FM_NAT_ACTION_SET_TUNNEL_GPE_VNI;
+        }
+
+        if (action & FM_NAT_ACTION_SET_TUNNEL_NSH_BASE_HDR)
+        {
+            *tunAction |= FM_TUNNEL_SET_NSH_BASE_HDR;
+            tunActParam->nshCritical = actParam->nsh.critical;
+            tunActParam->nshLength   = actParam->nsh.length;
+            tunActParam->nshMdType   = actParam->nsh.mdType;
+            action &= ~FM_NAT_ACTION_SET_TUNNEL_NSH_BASE_HDR;
+        }
+
+        if (action & FM_NAT_ACTION_SET_TUNNEL_NSH_SERVICE_HDR)
+        {
+            *tunAction |= FM_TUNNEL_SET_NSH_SERVICE_HDR;
+            tunActParam->nshSvcPathId = actParam->nsh.svcPathId;
+            tunActParam->nshSvcIndex  = actParam->nsh.svcIndex;
+            action &= ~FM_NAT_ACTION_SET_TUNNEL_NSH_SERVICE_HDR;
+        }
+
+        if (action & FM_NAT_ACTION_SET_TUNNEL_NSH_DATA)
+        {
+            *tunAction |= FM_TUNNEL_SET_NSH_DATA;
+            tunActParam->nshDataMask = actParam->nsh.dataMask;
+            FM_MEMCPY_S(tunActParam->nshData,
+                        sizeof(tunActParam->nshData),
+                        actParam->nsh.data,
+                        sizeof(actParam->nsh.data));
+            action &= ~FM_NAT_ACTION_SET_TUNNEL_NSH_DATA;
         }
     }
     else if (action & FM_NAT_ACTION_SET_TUNNEL_VSI)
@@ -728,11 +768,14 @@ static fm_status SetNatTunnelDefault(fm_int               sw,
                                      fm_int               te,
                                      fm_natTunnelDefault *tunnelDefault)
 {
-    fm_status                err = FM_OK;
+    fm_status                err;
     fm_fm10000TeTunnelCfg    teTunnelCfg;
     fm_fm10000TeDefTunnelSel teTunnelCfgSel;
 
+    err            = FM_OK;
     teTunnelCfgSel = 0;
+
+    FM_CLEAR(teTunnelCfg);
 
     if (tunnelDefault->type == FM_TUNNEL_TYPE_NGE)
     {
@@ -750,6 +793,30 @@ static fm_status SetNatTunnelDefault(fm_int               sw,
                            FM10000_TE_DEFAULT_TUNNEL_NGE_MASK |
                            FM10000_TE_DEFAULT_TUNNEL_NGE_TIME |
                            FM10000_TE_DEFAULT_TUNNEL_PROTOCOL);
+    }
+    else if ( (tunnelDefault->type == FM_TUNNEL_TYPE_GPE) ||
+              (tunnelDefault->type == FM_TUNNEL_TYPE_GPE_NSH) )
+    {
+        teTunnelCfg.gpeNextProt = tunnelDefault->gpeCfg.nextProt;
+        teTunnelCfg.gpeVni = tunnelDefault->gpeCfg.vni;
+
+        teTunnelCfgSel |= FM10000_TE_DEFAULT_TUNNEL_GPE_ALL;
+
+        if (tunnelDefault->type == FM_TUNNEL_TYPE_GPE_NSH)
+        {
+            teTunnelCfg.nshLength = tunnelDefault->nshCfg.length;
+            teTunnelCfg.nshCritical = tunnelDefault->nshCfg.critical;
+            teTunnelCfg.nshMdType = tunnelDefault->nshCfg.mdType;
+            teTunnelCfg.nshSvcPathId = tunnelDefault->nshCfg.svcPathId;
+            teTunnelCfg.nshSvcIndex = tunnelDefault->nshCfg.svcIndex;
+            FM_MEMCPY_S(teTunnelCfg.nshData,
+                        sizeof(teTunnelCfg.nshData),
+                        tunnelDefault->nshCfg.data,
+                        sizeof(tunnelDefault->nshCfg.data));
+            teTunnelCfg.nshDataMask = tunnelDefault->nshCfg.dataMask;
+
+            teTunnelCfgSel |= FM10000_TE_DEFAULT_TUNNEL_NSH_ALL;
+        }
     }
     else if ( (tunnelDefault->type != FM_TUNNEL_TYPE_VXLAN) &&
               (tunnelDefault->type != FM_TUNNEL_TYPE_NVGRE) )
@@ -1594,9 +1661,9 @@ fm_status fm10000NatFree(fm_int sw)
  *****************************************************************************/
 fm_status fm10000CreateNatTable(fm_int sw, fm_int table, fm_natParam *natParam)
 {
-    fm_switch *          switchPtr = GET_SWITCH_PTR(sw);
-    fm10000_switch *     switchExt = (fm10000_switch *) switchPtr->extension;
-    fm_status            err = FM_OK;
+    fm_switch *          switchPtr;
+    fm10000_switch *     switchExt;
+    fm_status            err;
     fm_int               group;
     fm_tunnelParam       tunnelParam;
     fm_int               aclSize;
@@ -1611,10 +1678,19 @@ fm_status fm10000CreateNatTable(fm_int sw, fm_int table, fm_natParam *natParam)
     fm_fm10000NatTable * natTable;
     fm_char              statusText[1024];
     const fm_uint32      allScenarios = (FM_ACL_SCENARIO_ANY_FRAME_TYPE |
-                                         FM_ACL_SCENARIO_ANY_ROUTING_TYPE |
-                                         FM_ACL_SCENARIO_ANY_ROUTING_GLORT_TYPE);
+                                         FM_ACL_SCENARIO_ANY_ROUTING_TYPE );
 
     FM_LOG_ENTRY(FM_LOG_CAT_NAT, "sw = %d, table = %d\n", sw, table);
+
+    switchPtr = GET_SWITCH_PTR(sw);
+    switchExt = (fm10000_switch *) switchPtr->extension;
+    err       = FM_OK;
+
+    FM_CLEAR(tunnelParam);
+    FM_CLEAR(aclCondMask);
+    FM_CLEAR(aclActParam);
+    FM_CLEAR(statusText);
+
 
     tunnelParam.te = (natParam->direction) ? 0 : 1;
     tunnelParam.size = natParam->size;
@@ -1711,7 +1787,7 @@ fm_status fm10000CreateNatTable(fm_int sw, fm_int table, fm_natParam *natParam)
      * always uses the same number of resource during the whole process. Rule
      * will be inserted/removed using update function for performance
      * enhancement. */
-    FM_MEMSET_S(&aclCondMask, sizeof(fm_aclValue), 0, sizeof(fm_aclValue));
+    FM_CLEAR(aclCondMask);
 
     aclCondMask.srcMask = 0xffffffffffffLL;
     aclCondMask.dstMask = 0xffffffffffffLL;
@@ -1871,7 +1947,6 @@ fm_status fm10000DeleteNatTable(fm_int sw, fm_int table)
     {
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_NAT, err);
     }
-    err = FM_OK;
 
     err = fm10000DeleteTunnel(sw, natTable->tunnelGrp);
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_NAT, err);
@@ -1954,17 +2029,27 @@ fm_status fm10000CreateNatTunnel(fm_int        sw,
                                  fm_int        tunnel,
                                  fm_natTunnel *param)
 {
-    fm_switch *             switchPtr = GET_SWITCH_PTR(sw);
-    fm10000_switch *        switchExt = (fm10000_switch *) switchPtr->extension;
-    fm_status               err = FM_OK;
+    fm_status               err;
+    fm_switch *             switchPtr;
+    fm10000_switch *        switchExt;
     fm_fm10000NatTable *    natTable;
     fm_tunnelEncapFlow      encapField;
     fm_tunnelEncapFlowParam encapParam;
     fm_fm10000NatTunnel *   natTunnel;
+    fm_tunnelModeAttr       modeAttr;
+    fm_teMode               encapTeMode;
+    fm_teMode               decapTeMode;
 
     FM_LOG_ENTRY(FM_LOG_CAT_NAT,
                  "sw = %d, table = %d, tunnel = %d\n",
                  sw, table, tunnel);
+
+    err       = FM_OK;
+    switchPtr = GET_SWITCH_PTR(sw);
+    switchExt = switchPtr->extension;
+
+    FM_CLEAR(encapParam);
+    FM_CLEAR(modeAttr);
 
     err = fmTreeFind(&switchExt->natCfg->tables, table, (void**) &natTable);
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_NAT, err);
@@ -1976,8 +2061,44 @@ fm_status fm10000CreateNatTunnel(fm_int        sw,
     encapParam.shared = TRUE;
     encapParam.type = switchPtr->natInfo->tunnelDefault.type;
 
+    /**************************************************
+     * Validate TE modes
+     **************************************************/
+
+    modeAttr.te = ENCAP_TUNNEL;
+    err = fm10000GetTunnelApiAttribute(sw, FM_TUNNEL_API_MODE, &modeAttr);
+    FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_NAT, err);
+    encapTeMode = modeAttr.mode;
+
+    modeAttr.te = DECAP_TUNNEL;
+    err = fm10000GetTunnelApiAttribute(sw, FM_TUNNEL_API_MODE, &modeAttr);
+    FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_NAT, err);
+    decapTeMode = modeAttr.mode;
+
+    if ( (encapParam.type == FM_TUNNEL_TYPE_GPE)
+         || (encapParam.type == FM_TUNNEL_TYPE_GPE_NSH) )
+    {
+        if ( (encapTeMode != FM_TUNNEL_API_MODE_VXLAN_GPE_NSH)
+             || (decapTeMode != FM_TUNNEL_API_MODE_VXLAN_GPE_NSH) )
+        {
+            FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_NAT, FM_ERR_TUNNEL_TYPE);
+        }
+    }
+    else if ( (encapParam.type == FM_TUNNEL_TYPE_NVGRE)
+              || (encapParam.type == FM_TUNNEL_TYPE_NGE) )
+    {
+        if ( (encapTeMode != FM_TUNNEL_API_MODE_VXLAN_NVGRE_NGE)
+             || (decapTeMode != FM_TUNNEL_API_MODE_VXLAN_NVGRE_NGE) )
+        {
+            FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_NAT, FM_ERR_TUNNEL_TYPE);
+        }
+    }
+
+
     if ( (encapParam.type == FM_TUNNEL_TYPE_VXLAN) ||
-         (encapParam.type == FM_TUNNEL_TYPE_NGE) )
+         (encapParam.type == FM_TUNNEL_TYPE_NGE)   ||
+         (encapParam.type == FM_TUNNEL_TYPE_GPE)   ||
+         (encapParam.type == FM_TUNNEL_TYPE_GPE_NSH) )
     {
         if (param->l4Src != FM_NAT_TUNNEL_DEFAULT)
         {
@@ -2014,6 +2135,68 @@ fm_status fm10000CreateNatTunnel(fm_int        sw,
                     param->ngeData,
                     sizeof(param->ngeData));
     }
+
+    if ( (encapParam.type == FM_TUNNEL_TYPE_GPE) ||
+         (encapParam.type == FM_TUNNEL_TYPE_GPE_NSH) )
+    {
+
+        /**************************************************
+         * Set  the VNI that will be stored in the
+         * VXLAN-GPE header
+         **************************************************/
+
+        if (param->gpeVni != FM_NAT_TUNNEL_DEFAULT)
+        {
+            encapField |= FM_TUNNEL_ENCAP_FLOW_GPE_VNI;
+            encapParam.gpeVni = param->gpeVni;
+        }
+
+        if (encapParam.type == FM_TUNNEL_TYPE_GPE_NSH)
+        {
+
+            /**************************************************
+             * Set the NSH Base Header fields
+             **************************************************/
+
+            if (param->nshMask & FM_NAT_TUNNEL_NSH_BASE_HDR)
+            {
+                encapField |= FM_TUNNEL_ENCAP_FLOW_NSH_BASE_HDR;
+
+                encapParam.nshCritical = param->nsh.critical;
+                encapParam.nshLength   = param->nsh.length;
+                encapParam.nshMdType   = param->nsh.mdType;
+            }
+
+            /**************************************************
+             * Set the NSH Service Header fields
+             **************************************************/
+
+            if (param->nshMask & FM_NAT_TUNNEL_NSH_SERVICE_HDR)
+            {
+                encapField |= FM_TUNNEL_ENCAP_FLOW_NSH_SERVICE_HDR;
+
+                encapParam.nshSvcPathId = param->nsh.svcPathId;
+                encapParam.nshSvcIndex  = param->nsh.svcIndex;
+            }
+
+            /**************************************************
+             * Set the NSH header's data bytes field
+             **************************************************/
+
+            if (param->nshMask & FM_NAT_TUNNEL_NSH_DATA)
+            {
+                encapField |= FM_TUNNEL_ENCAP_FLOW_NSH_DATA;
+
+                encapParam.nshDataMask = param->nsh.dataMask;
+                FM_MEMCPY_S(encapParam.nshData,
+                            sizeof(encapParam.nshData),
+                            param->nsh.data,
+                            sizeof(param->nsh.data));
+            }
+
+        }   /* end if (encapParam.type == FM_TUNNEL_TYPE_GPE_NSH) */
+
+    }   /* end if ( (encapParam.type == FM_TUNNEL_TYPE_GPE) || ... */
 
     err = fm10000AddTunnelEncapFlow(sw,
                                     natTable->tunnelGrp,
@@ -2148,9 +2331,9 @@ fm_status fm10000AddNatRule(fm_int                sw,
                             fm_natAction          action,
                             fm_natActionParam *   actParam)
 {
-    fm_switch *             switchPtr = GET_SWITCH_PTR(sw);
-    fm10000_switch *        switchExt = (fm10000_switch *) switchPtr->extension;
-    fm_status               err = FM_OK;
+    fm_switch *             switchPtr;
+    fm10000_switch *        switchExt ;
+    fm_status               err;
     fm_fm10000NatTable *    natTable;
     fm_natTable *           publicNatTable;
     fm_tunnelCondition      tunCond;
@@ -2173,10 +2356,21 @@ fm_status fm10000AddNatRule(fm_int                sw,
     fm_int                  i;
     fm_int                  aclNumber;
     fm_bool                 referenced;
+    fm_bool                 isTunnelRuleAdded;
 
     FM_LOG_ENTRY(FM_LOG_CAT_NAT,
                  "sw = %d, table = %d, rule = %d\n",
                  sw, table, rule);
+
+    switchPtr = GET_SWITCH_PTR(sw);
+    switchExt = (fm10000_switch *) switchPtr->extension;
+    err       = FM_OK;
+
+    FM_CLEAR(aclCondParam);
+    FM_CLEAR(aclActParam);
+    FM_CLEAR(tunCondParam);
+    FM_CLEAR(tunActParam);
+    FM_CLEAR(ecmpNextHop);
 
     err = fmTreeFind(&switchExt->natCfg->tables, table, (void**) &natTable);
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_NAT, err);
@@ -2203,6 +2397,15 @@ fm_status fm10000AddNatRule(fm_int                sw,
         err = FM_ERR_UNSUPPORTED;
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_NAT, err);
     }
+
+    if  ( (action & FM_NAT_ACTION_TRAP) &&
+          (publicNatTable->natParam.mode == FM_NAT_MODE_RESOURCE) )
+    {
+        err =  FM_ERR_UNSUPPORTED;
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_NAT, err);
+    }
+    
+    isTunnelRuleAdded = FALSE;
 
     if (publicNatTable->natParam.mode == FM_NAT_MODE_RESOURCE)
     {
@@ -2248,7 +2451,7 @@ fm_status fm10000AddNatRule(fm_int                sw,
                 }
             }
         }
-
+    
         err = TranslateNatActToTunAct(sw,
                                       action,
                                       actParam,
@@ -2272,6 +2475,8 @@ fm_status fm10000AddNatRule(fm_int                sw,
             err = FM_ERR_NO_MEM;
             FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_NAT, err);
         }
+
+        FM_CLEAR(*natRule);
 
         natRule->aclRule = -1;
         natRule->tunnelRule = rule;
@@ -2332,6 +2537,7 @@ fm_status fm10000AddNatRule(fm_int                sw,
             cndParam->srcIp.addr[0] = cndParam->srcIp.addr[0] &
                                       cndParam->srcIpMask.addr[0];
         }
+
         if (condition & FM_NAT_MATCH_DST_IP)
         {
             /* Can't match on IPv6 for now */
@@ -2344,32 +2550,41 @@ fm_status fm10000AddNatRule(fm_int                sw,
                                       cndParam->dstIpMask.addr[0];
         }
 
+
         aclCondParam.srcIp = cndParam->srcIp;
         aclCondParam.srcIpMask = cndParam->srcIpMask;
         aclCondParam.dstIp = cndParam->dstIp;
         aclCondParam.dstIpMask = cndParam->dstIpMask;
 
-        err = TranslateNatActToTunAct(sw,
-                                      action,
-                                      actParam,
-                                      &tunAction,
-                                      &tunActParam);
-        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_NAT, err);
+        if (!(action & FM_NAT_ACTION_TRAP) ) 
+        {
+            err = TranslateNatActToTunAct(sw,
+                                          action,
+                                          actParam,
+                                          &tunAction,
+                                          &tunActParam);
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_NAT, err);
 
-        err = fm10000AddTunnelRule(sw,
-                                   natTable->tunnelGrp,
-                                   rule,
-                                   0,
-                                   &tunCondParam,
-                                   tunAction,
-                                   &tunActParam);
-        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_NAT, err);
+            err = fm10000AddTunnelRule(sw,
+                                       natTable->tunnelGrp,
+                                       rule,
+                                       0,
+                                       &tunCondParam,
+                                       tunAction,
+                                       &tunActParam);
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_NAT, err);
+
+            isTunnelRuleAdded = TRUE;
+        }
 
         natRuleCondKey = fmAlloc( sizeof(fm_fm10000NatRuleCond) );
 
         if (natRuleCondKey == NULL)
         {
-            fm10000DeleteTunnelRule(sw, natTable->tunnelGrp, rule);
+            if (isTunnelRuleAdded)
+            {
+                fm10000DeleteTunnelRule(sw, natTable->tunnelGrp, rule);
+            }
             err = FM_ERR_NO_MEM;
             FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_NAT, err);
         }
@@ -2589,20 +2804,30 @@ fm_status fm10000AddNatRule(fm_int                sw,
         /* New entry */
         else if (err == FM_ERR_NOT_FOUND)
         {
-            aclAction = FM_ACL_ACTIONEXT_REDIRECT_TUNNEL;
-            aclActParam.tunnelGroup = natTable->tunnelGrp;
-            aclActParam.tunnelRule = rule;
-
-            err = FindProperNatIndex(sw,
-                                     natTable,
-                                     &natIndex,
-                                     aclCond,
-                                     &aclCondParam);
-            if (err != FM_OK)
+            if (action == FM_NAT_ACTION_TRAP)
             {
-                fm10000DeleteTunnelRule(sw, natTable->tunnelGrp, rule);
-                fmFree(natRuleCondKey);
-                FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_NAT, err);
+                aclAction = FM_ACL_ACTIONEXT_REDIRECT;
+                aclActParam.logicalPort = (publicNatTable->natParam.direction == TRUE) ?
+                                          FM_PORT_NAT_UNDEF_FLOW :
+                                          FM_PORT_DENAT_UNDEF_FLOW;
+            }
+            else
+            {
+                aclAction = FM_ACL_ACTIONEXT_REDIRECT_TUNNEL;
+                aclActParam.tunnelGroup = natTable->tunnelGrp;
+                aclActParam.tunnelRule = rule;
+
+                err = FindProperNatIndex(sw,
+                                         natTable,
+                                         &natIndex,
+                                         aclCond,
+                                         &aclCondParam);
+                if (err != FM_OK)
+                {
+                    fm10000DeleteTunnelRule(sw, natTable->tunnelGrp, rule);
+                    fmFree(natRuleCondKey);
+                    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_NAT, err);
+                }
             }
 
             err = fmUpdateACLRule(sw,
@@ -2659,6 +2884,8 @@ fm_status fm10000AddNatRule(fm_int                sw,
             FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_NAT, err);
         }
 
+        FM_CLEAR(*natRule);
+
         natRule->aclRule = natIndex;
         natRule->tunnelRule = rule;
 
@@ -2695,6 +2922,8 @@ fm_status fm10000AddNatRule(fm_int                sw,
                     err = FM_ERR_NO_MEM;
                     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_NAT, err);
                 }
+
+                FM_CLEAR(*natPrefix);
 
                 fmTreeInit(&natPrefix->aclRule);
 
@@ -2839,19 +3068,18 @@ fm_status fm10000DeleteNatRule(fm_int sw, fm_int table, fm_int rule)
                                              natRuleCondVal->ecmpGrp,
                                              &firstTunnel,
                                              &firstNextHop);
-            if (err == FM_ERR_NO_MORE)
-            {
-                err = FM_OK;
-            }
-            else if (err != FM_OK)
-            {
-                FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_NAT, err);
-            }
-            /* FM_OK */
-            else
+            if (err == FM_OK)
             {
                 /* Other rule(s) share this ECMP Group */
                 lastRule = FALSE;
+            }
+            else if (err == FM_ERR_NO_MORE)
+            {
+                /* no action */
+            }
+            else
+            {
+                FM_LOG_ABORT(FM_LOG_CAT_NAT, err);
             }
         }
 
@@ -2884,10 +3112,13 @@ fm_status fm10000DeleteNatRule(fm_int sw, fm_int table, fm_int rule)
             }
         }
 
-        err = fm10000DeleteTunnelRule(sw,
-                                      natTable->tunnelGrp,
-                                      natRule->tunnelRule);
-        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_NAT, err);
+        if (publicNatRule->action != FM_NAT_ACTION_TRAP)
+        {    
+            err = fm10000DeleteTunnelRule(sw,
+                                          natTable->tunnelGrp,
+                                          natRule->tunnelRule);
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_NAT, err);
+        }
 
         if (lastRule)
         {

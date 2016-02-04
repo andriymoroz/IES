@@ -6,7 +6,7 @@
  * Description:     Functions to encode/decode API/platform
  *                  properties to TLVs.
  *
- * Copyright (c) 2015, Intel Corporation
+ * Copyright (c) 2015 - 2016, Intel Corporation
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -79,6 +79,9 @@
 #define FM_TLV_API_RT_MAINT_EN                      0x0027
 #define FM_TLV_API_AUTO_VLAN2_TAG                   0x0028
 #define FM_TLV_API_EVENT_ON_ADDR_CHG                0x0029
+#define FM_TLV_API_HNI_GLORTS_PER_PEP               0x002a
+/* 0x2b..0x2f free */
+#define FM_TLV_API_CPU_PORT_XCAST_MODE              0x0030
 
 
 /* Undocumented API properties */
@@ -141,6 +144,12 @@
 #define FM_TLV_API_PLAT_MODEL_CHIP_VERSION          0x1037
 #define FM_TLV_API_ADD_ALLOW_FTAG_VLAN_TAG          0x1038
 #define FM_TLV_API_AN_TIMER_ALLOW_OUT_SPEC          0x1039
+#define FM_TLV_API_SERDES_VALIDATE                  0x103a
+#define FM_TLV_API_SBMASTER_VALIDATE                0x103b
+#define FM_TVL_API_SERDES_VALIDATE_TIMER            0x103c
+#define FM_TVL_API_SERDES_ACTION_UP_ALLOWED         0x103d
+#define FM_TLV_API_HNI_FLOW_ENTRIES_PER_VF          0x103e
+
 
 /* FM10K properties */
 #define FM_TLV_FM10K_WMSELECT                       0x2000
@@ -196,6 +205,7 @@
 #define FM_TLV_FM10K_SERDES_OP_MODE                 0x2805
 #define FM_TLV_FM10K_SERDES_DBG_LVL                 0x2806
 #define FM_TLV_FM10K_PARITY_INTERRUPTS              0x2807
+/* 0x2808..0x280b deleted */
 #define FM_TLV_FM10K_SCHED_OVERSPEED                0x280c
 #define FM_TLV_FM10K_INTR_LINK_IGNORE_MASK          0x280d
 #define FM_TLV_FM10K_INTR_AUTONEG_IGNORE_MASK       0x280e
@@ -364,9 +374,9 @@
 #define FM_TLV_PLAT_LIB_XCVR_RESETL_PIN             0x5022
 
 #define FM_TLV_PLAT_LIB_XCVR_I2C_DEF_BUSSELTYPE     0x5023
-#define FM_TLV_PLAT_LIB_XCVR_I2_BUSSELTYPE          0x5024
-#define FM_TLV_PLAT_LIB_XCVR_MUX_IDX                0x5025
-#define FM_TLV_PLAT_LIB_XCVR_MUX_VAL                0x5026
+#define FM_TLV_PLAT_LIB_XCVR_I2C_BUSSELTYPE         0x5024
+#define FM_TLV_PLAT_LIB_XCVR_I2C_MUX_IDX            0x5025
+#define FM_TLV_PLAT_LIB_XCVR_I2C_MUX_VAL            0x5026
 #define FM_TLV_PLAT_LIB_PORTLED_TYPE                0x5027
 #define FM_TLV_PLAT_LIB_PORTLED_IO_IDX              0x5028
 #define FM_TLV_PLAT_LIB_PORTLED_IO_PIN              0x5029
@@ -386,6 +396,11 @@
 #define FM_TLV_PLAT_LIB_VRM_MUX_ADDR                0x5037
 #define FM_TLV_PLAT_LIB_VRM_MUX_BUS                 0x5038
 #define FM_TLV_PLAT_LIB_BUS_I2C_EN_WR_RD            0x5039
+#define FM_TLV_PLAT_LIB_XCVR_I2C_IO_IDX             0x503a
+#define FM_TLV_PLAT_LIB_XCVR_I2C_IO_PIN             0x503b
+#define FM_TLV_PLAT_LIB_XCVR_I2C_IO_PIN_POL         0x503c
+#define FM_TLV_PLAT_LIB_PORTLED_IO_BRIGHTNESS       0x503d
+#define FM_TLV_PLAT_LIB_PORTLED_IO_LANE_BRIGHTNESS  0x503e
 
 fm_status fmUtilConfigPropertyEncodeTlv(fm_text property,
                                         fm_byte *tlv,

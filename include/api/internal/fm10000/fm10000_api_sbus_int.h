@@ -60,6 +60,8 @@ fm_status fm10000SbusWrite(fm_int sw,
                            fm_uint sbusAddr,
                            fm_uint sbusReg,
                            fm_uint32 data);
+fm_status fm10000SbusReceiverReset(fm_int    sw,
+                                   fm_int    serDes);
 fm_status fm10000SbusReset(fm_int    sw,
                            fm_bool   eplRing);
 fm_status fm10000SbusSbmReset(fm_int    sw,

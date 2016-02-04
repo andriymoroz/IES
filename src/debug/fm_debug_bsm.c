@@ -121,6 +121,64 @@ ABORT:
 
 
 /*****************************************************************************/
+/** fmDbgPollReset
+ * \ingroup diagBsm
+ * 
+ * \chips           FM10000
+ *
+ * \desc            Reset polling function.
+ *                  Examines the PCIE_RESET_N and LTSSM to determine how
+ *                  long it took from reset to start of link training.
+ *                  Registers value change detection dumps the corresponding
+ *                  dbg message. 
+ *
+ * \param[in]       sw switch the LTSSM will be examined.
+ * 
+ * \param[in]       pep is the PEP to poll LTSSM for, use -1 to poll all PEPs.
+ * 
+ * \param[in]       miliSec polling time in milliseconds.
+ * 
+ * \return          FM_OK if successful.
+ * \return          Other ''Status Codes'' as appropriate in case of
+ *                  failure.
+ *
+ *****************************************************************************/
+fm_status fmDbgPollReset(fm_int    sw,
+                         fm_int    pep,
+                         fm_uint32 miliSec)
+{
+    fm_status  err;
+    fm_switch *switchPtr;
+
+    FM_LOG_ENTRY(FM_LOG_CAT_PLATFORM, "sw=%d\n", sw);
+    
+    PROTECT_SWITCH( sw );
+    
+    switchPtr = GET_SWITCH_PTR(sw);
+    if (switchPtr == NULL)
+    {
+        err = FM_ERR_INVALID_ARGUMENT;
+        FM_LOG_ABORT(FM_LOG_CAT_PLATFORM, err);
+    }
+    
+    FM_API_CALL_FAMILY( err,
+                        switchPtr->DbgPollReset,
+                        sw,
+                        switchPtr->ReadUINT32,
+                        pep,
+                        miliSec )
+    
+ABORT:
+    UNPROTECT_SWITCH( sw );
+    
+    FM_LOG_EXIT(FM_LOG_CAT_PLATFORM, err);
+    
+}   /* end fmDbgPollReset */
+
+
+
+
+/*****************************************************************************/
 /** fmDbgPollBsmStatus
  * \ingroup diagBsm
  * 

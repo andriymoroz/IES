@@ -77,4 +77,11 @@ fm_status fmConvertTEToFlowValue(fm_tunnelConditionParam *teValue,
 fm_status fmConvertTEToFlowCounters(fm_tunnelCounters   *tunnelCounters,
                                     fm_flowCounters     *flowCounters);
 
+fm_status fmGetFlowTableIndexUnused(fm_int  sw,
+                                    fm_int *tableIndex);
+
+fm_status fmGetFlowTableSupportedActions(fm_int           sw,
+                                         fm_flowTableType flowTableType,
+                                         fm_flowAction *  flowAction);
+
 #endif /* __FM_FM_API_FLOW_INT_H */

@@ -882,6 +882,69 @@ fm_status fm10000SbusWrite(fm_int    sw,
 
 
 /*****************************************************************************/
+/** fm10000SbusReceiverReset
+ * \ingroup intSBus
+ *
+ * \desc            Sends a reset command to the specified SBUS receiver.
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \param[in]       serDes identifes the receiver the Reset is directed to.
+ *
+ * \return          FM_OK if successful.
+ * \return          Other ''Status Codes'' as appropriate in case of failure.
+ *
+ *****************************************************************************/
+fm_status fm10000SbusReceiverReset(fm_int    sw,
+                                   fm_int    serDes)
+{
+    fm_status       err;
+    fm10000_sbusReq sbusReq;
+    fm_timestamp    timeStamp;
+    fm_serdesRing   ring;
+    fm_bool         eplRing;
+
+    FM_LOG_ENTRY_VERBOSE(FM_LOG_CAT_SWITCH, "sw=%d serDes=%d\n", sw, serDes);
+
+    err = FM_OK;
+    fmGetTime(&timeStamp);
+
+    sbusReq.opCode      = FM10000_SBUS_OP_RESET;
+    sbusReq.resultCode  = FM10000_SBUS_RESULT_RESET;
+    sbusReq.regAddr     = 0;
+    sbusReq.data        = 0;
+
+    /*  Do not do any SBUS request in bypass mode as the write
+     *  accesses are not performed to the real hardware */
+    if (!fmPlatformBypassEnabled(sw))
+    {
+        err = fm10000MapSerdesToSbus(sw, serDes, &sbusReq.devAddr, &ring);
+        
+        eplRing = ( ring == FM10000_SERDES_RING_EPL);
+        
+        if (sbusDebug)
+        {
+            FM_LOG_PRINT("sw=%d ring=%d addr=0x%2.2x reg=0x%2.2x <= 0x%8.8x  t=%4.4d.%3.3d\n",
+                         sw, 
+                         eplRing, 
+                         sbusReq.devAddr, 
+                         sbusReq.regAddr, 
+                         sbusReq.data,
+                         (fm_int)(timeStamp.sec%10000), 
+                         (fm_int)(timeStamp.usec/1000));
+        }
+    
+        err = SBusRequest(sw, eplRing, &sbusReq);
+    }
+
+    FM_LOG_EXIT_VERBOSE(FM_LOG_CAT_SWITCH, err);
+
+}   /* end fm10000SbusReceiverReset */
+
+
+
+
+/*****************************************************************************/
 /** fm10000SbusReset
  * \ingroup intSBus
  *
@@ -907,7 +970,7 @@ fm_status fm10000SbusReset(fm_int    sw,
     err = FM_OK;
     fmGetTime(&timeStamp);
 
-
+    /* use broadcast address to reset all SerDes */
     sbusReq.opCode      = FM10000_SBUS_OP_RESET;
     sbusReq.resultCode  = FM10000_SBUS_RESULT_RESET;
     sbusReq.devAddr     = 0xFFU;

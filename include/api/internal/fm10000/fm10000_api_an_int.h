@@ -34,9 +34,11 @@
 #ifndef __FM_FM10000_API_AN_INT_H
 #define __FM_FM10000_API_AN_INT_H
 
-#define BREAK_LINK_TIMER_MILLISEC           65 /* From Table 73-7 */
-#define LINK_INHIBIT_TIMER_MILLISEC        500 /* From Table 73-7 */
-#define LINK_INHIBIT_TIMER_MILLISEC_KX      50 /* KX or KX4 */
+#define BREAK_LINK_TIMER_MILLISEC           65 /* From Table 73-7 [ms] */
+#define LINK_INHIBIT_TIMER_MILLISEC        500 /* From Table 73-7 [ms] */
+#define LINK_INHIBIT_TIMER_MILLISEC_KX      50 /* KX or KX4 [ms] */
+
+#define LINK_INHIBIT_TIMER_FORCE_TX_DISA     2 /* delay to force Transmit disabled [ms] */
 
 #define FM10000_AN37_INT_MASK (                           \
     (1U << FM10000_AN_IP_b_An37AnRestart)           |     \
@@ -74,6 +76,23 @@
 #define FM10000_AN73_ABILITY_25GBASE_KR     (1 << 10)
 #define FM10000_AN73_ABILITY_25GBASE_CR     (1 << 10)
 
+/* IEEE undefined abilities with reserved ability bits 
+ * should be treated as unsupported */
+#define FM10000_AN73_ABILITY_UNDEFINED      ((1 <<  9) | \
+                                             (1 << 11) | \
+                                             (1 << 12) | \
+                                             (1 << 13) | \
+                                             (1 << 14) | \
+                                             (1 << 15) | \
+                                             (1 << 16) | \
+                                             (1 << 17) | \
+                                             (1 << 18) | \
+                                             (1 << 19) | \
+                                             (1 << 20) | \
+                                             (1 << 21) | \
+                                             (1 << 22) | \
+                                             (1 << 23) | \
+                                             (1 << 24))
 
 /* supported abilities */
 #define FM10000_AN73_SUPPORTED_ABILITIES      \
@@ -89,7 +108,8 @@
 #define FM10000_AN73_UNSUPPORTED_ABILITIES    \
     ( FM10000_AN73_ABILITY_10GBASE_KX4      | \
       FM10000_AN73_ABILITY_100GBASE_CR10    | \
-      FM10000_AN73_ABILITY_100GBASE_KP4 ) 
+      FM10000_AN73_ABILITY_100GBASE_KP4     | \
+      FM10000_AN73_ABILITY_UNDEFINED )
    
 /* 100G abilities */
 #define FM10000_AN73_ABILITIES_100G           \
@@ -130,6 +150,10 @@ enum
 
 /* Organizationally Unique Identifier (OUI) tag code */
 #define FM10000_AN_NEXTPAGE_OUI_MSG_CODE        0x5
+
+/* AN-73 polling defines */ 
+#define FM10000_AN_73_FAST_POLLING_DELAY_US     500000
+#define FM10000_AN_73_POLLING_DELAY_SEC         2
 
 /* EEE technology message code (10)*/
 #define FM10000_AN_NEXTPAGE_EEE_MSG_CODE        0xA
@@ -217,6 +241,16 @@ fm_status fm10000AnGetNextPageExtTechAbilityIndex(fm_int sw,
                                                   fm_int numPages,
                                                   fm_uint *extTechAbIndex,
                                                   fm_text dbgStr);
+fm_status fm10000An73UpdateLinkInhibitTimer( fm_int  sw,
+                                             fm_int  port,
+                                             fm_int  epl,
+                                             fm_int  physLane,
+                                             fm_uint timeout );
+fm_status fm10000An73UpdateBreakLinkTimer( fm_int  sw,
+                                           fm_int  port,
+                                           fm_int  epl,
+                                           fm_int  physLane,
+                                           fm_uint timeout );
 
 #endif /* __FM_FM10000_API_AN_INT_H */
 

@@ -5,7 +5,7 @@
  * Creation Date:   May 13th, 2013
  * Description:     Functions for manipulating high level attributes of a switch
  *
- * Copyright (c) 2005 - 2015, Intel Corporation
+ * Copyright (c) 2005 - 2016, Intel Corporation
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -847,7 +847,6 @@ static fm_status SetReservedMacAction(fm_int    sw,
     fm_uint32       firstBit;
     fm_uint32       arrayIndex;
     fm_uint32       arrayBit;
-    fm_bool         regLockTaken;
 
     FM_LOG_ENTRY(FM_LOG_CAT_SWITCH,
                  "sw = %d, first = %d, last = %d, action = %d, usePri = %d\n",
@@ -872,8 +871,7 @@ static fm_status SetReservedMacAction(fm_int    sw,
     switchPtr = GET_SWITCH_PTR(sw);
     switchExt = GET_SWITCH_EXT(sw);
 
-    regLockTaken = FALSE;
-    FM_FLAG_TAKE_REG_LOCK(sw);
+    TAKE_REG_LOCK(sw);
 
     err = switchPtr->ReadUINT32Mult(sw,
                                     FM10000_IEEE_RESERVED_MAC_ACTION(0),
@@ -914,10 +912,7 @@ static fm_status SetReservedMacAction(fm_int    sw,
 
 ABORT:
 
-    if (regLockTaken)
-    {
-        DROP_REG_LOCK(sw);
-    }
+    DROP_REG_LOCK(sw);
 
     FM_LOG_EXIT(FM_LOG_CAT_SWITCH, err);
 
@@ -2666,7 +2661,7 @@ fm_status fm10000GetSwitchAttribute(fm_int sw, fm_int attr, void *value)
             break;
 
         case FM_DROP_PAUSE:
-            *( (fm_bool *) value ) = switchExt->dropPause;
+            err = FM_ERR_UNSUPPORTED;
             break;
 
         case FM_DROP_INVALID_SMAC:
@@ -3495,35 +3490,7 @@ fm_status fm10000SetSwitchAttribute(fm_int sw, fm_int attr, void *value)
             break;
 
         case FM_DROP_PAUSE:
-            VALIDATE_VALUE_IS_BOOL(value);
-            tmpBool = (*( (fm_bool *) value) != 0);
-
-            err = switchPtr->ReadUINT32(sw,
-                                        FM10000_SYS_CFG_1(),
-                                        &reg32);
-            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
-
-            FM_SET_BIT(reg32, FM10000_SYS_CFG_1, dropPause, tmpBool);
-            FM_SET_BIT(reg32, FM10000_SYS_CFG_1, dropMacCtrlEthertype, tmpBool);
-
-            err = switchPtr->WriteUINT32(sw,
-                                         FM10000_SYS_CFG_1(),
-                                         reg32);
-            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
-
-            tmpUint32 =
-                (tmpBool) ?
-                FM_RES_MAC_ACTION_DROP :
-                FM_RES_MAC_ACTION_SWITCH;
-
-            err = SetReservedMacAction(sw,
-                                       FM_RES_MAC_INDEX_PAUSE,
-                                       FM_RES_MAC_INDEX_PAUSE,
-                                       tmpUint32,
-                                       FALSE);
-            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
-
-            switchExt->dropPause = tmpBool;
+            err = FM_ERR_UNSUPPORTED;
             break;
 
         case FM_DROP_INVALID_SMAC:
@@ -3680,6 +3647,13 @@ fm_status fm10000SetSwitchAttribute(fm_int sw, fm_int attr, void *value)
                 resMac = (fm_reservedMacCfg *) value;
 
                 if (resMac == NULL)
+                {
+                    err = FM_ERR_INVALID_ARGUMENT;
+                    goto ABORT;
+                }
+
+                if ( (resMac->index == FM_RES_MAC_INDEX_PAUSE) &&
+                     (resMac->action != FM_RES_MAC_ACTION_DROP) )
                 {
                     err = FM_ERR_INVALID_ARGUMENT;
                     goto ABORT;
@@ -4351,7 +4325,6 @@ ABORT:
  *****************************************************************************/
 fm_status fm10000InitSwitchAttributes(fm_int sw)
 {
-    fm_switch *         switchPtr;
     fm10000_switch *    switchExt;
     fm_status           err;
     fm_int              index;
@@ -4360,7 +4333,6 @@ fm_status fm10000InitSwitchAttributes(fm_int sw)
 
     FM_LOG_ENTRY(FM_LOG_CAT_SWITCH, "sw=%d\n", sw);
 
-    switchPtr = GET_SWITCH_PTR(sw);
     switchExt = GET_SWITCH_EXT(sw);
 
     /**********************************************************************
@@ -4427,12 +4399,17 @@ fm_status fm10000InitSwitchAttributes(fm_int sw)
     err = fm10000SetBoolSwitchAttribute(sw, FM_TRAP_IEEE_GARP, TRUE);
     FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_SWITCH, err);
 
-    err = fm10000SetBoolSwitchAttribute(sw, FM_DROP_PAUSE, TRUE);
-    FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_SWITCH, err);
-
     switchExt->trapMtuViolations    = TRUE;
     switchExt->trapPlusLog          = TRUE;
     switchExt->dropInvalidSmac      = TRUE;
+
+    /* Initialize to drop PAUSE frames */
+    err = SetReservedMacAction(sw,
+                               FM_RES_MAC_INDEX_PAUSE,
+                               FM_RES_MAC_INDEX_PAUSE,
+                               FM_RES_MAC_ACTION_DROP,
+                               FALSE);
+    FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_SWITCH, err);
 
     switchExt->bcastFlooding        = FM_BCAST_FWD_EXCPU;
     switchExt->mcastFlooding        = FM_MCAST_FWD_EXCPU;
@@ -4443,3 +4420,93 @@ fm_status fm10000InitSwitchAttributes(fm_int sw)
     FM_LOG_EXIT(FM_LOG_CAT_SWITCH, FM_OK);
 
 }   /* end fm10000InitSwitchAttributes */
+
+
+
+
+/*****************************************************************************/
+/** fm10000EnableSwitchMacFiltering
+ * \ingroup intSwitch
+ * 
+ * \desc            Configures switch to handle inner/outer MAC filtering
+ *                  request coming from mailbox.
+ *
+ * \param[in]       sw is the switch number to operate on.
+ *
+ * \return          FM_OK if successful.
+ *
+ *****************************************************************************/
+fm_status fm10000EnableSwitchMacFiltering(fm_int sw)
+{
+    fm_status       err;
+    fm_switch *     switchPtr;
+    fm_mailboxInfo *mailboxInfo;
+    fm_parserDiCfg  parserDiCfg;
+    fm_int          cpi;
+    fm_int          port;
+    fm_bool         isEpl;
+    fm_bool         isInternalPort;
+    fm_uint32       parseCfg;
+
+    FM_LOG_ENTRY(FM_LOG_CAT_SWITCH, "sw=%d\n", sw);
+
+    err         = FM_OK;
+    switchPtr   = GET_SWITCH_PTR(sw);
+    mailboxInfo = GET_MAILBOX_INFO(sw);
+    isEpl       = FALSE;
+
+    if (mailboxInfo->innerOuterMacConfigurationSet == FALSE)
+    {
+        /* Set DI profile. */
+        FM_CLEAR(parserDiCfg);
+        parserDiCfg.index = FM10000_MAILBOX_MAC_FILTER_DI_PROFILE;
+        parserDiCfg.parserDiCfgFields.protocol        = 0;
+        parserDiCfg.parserDiCfgFields.l4Port          = 0;
+        parserDiCfg.parserDiCfgFields.l4Compare       = FALSE;
+        parserDiCfg.parserDiCfgFields.captureTcpFlags = FALSE;
+        parserDiCfg.parserDiCfgFields.enable          = TRUE;
+        parserDiCfg.parserDiCfgFields.wordOffset      = 0x76543210;
+
+        err = fm10000SetSwitchAttribute(sw,
+                                        FM_SWITCH_PARSER_DI_CFG,
+                                        &parserDiCfg);
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
+
+        /* Set parser for all EPL ports to L4. */
+        parseCfg = FM_PORT_PARSER_STOP_AFTER_L4;
+
+        for (cpi = 0 ; cpi < switchPtr->numCardinalPorts ; cpi++)
+        {
+            port = GET_LOGICAL_PORT(sw, cpi);
+            
+            err = fmIsEplPort(sw, port, &isEpl);
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
+
+            err = fm10000GetPortAttribute(sw,
+                                          port,
+                                          FM_PORT_ACTIVE_MAC,
+                                          FM_PORT_LANE_NA,
+                                          FM_PORT_INTERNAL,
+                                          &isInternalPort);
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
+
+            if (isEpl && !isInternalPort)
+            {
+                err = fm10000SetPortAttribute(sw,
+                                              port,
+                                              FM_PORT_ACTIVE_MAC,
+                                              FM_PORT_LANE_NA,
+                                              FM_PORT_PARSER,
+                                              &parseCfg);
+                FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_SWITCH, err);
+            }
+        }
+
+        mailboxInfo->innerOuterMacConfigurationSet = TRUE;
+    }
+
+ABORT:
+
+    FM_LOG_EXIT(FM_LOG_CAT_SWITCH, err);
+
+}   /* end fm10000EnableSwitchMacFiltering */

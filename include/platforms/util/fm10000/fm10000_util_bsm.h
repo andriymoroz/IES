@@ -81,5 +81,9 @@ fm_status fm10000DbgPollLtssm(fm_int                    sw,
                               fm_registerReadUINT32Func readFunc,
                               fm_int                    pep, 
                               fm_uint32                 miliSec);
+fm_status fm10000DbgPollReset(fm_int                    sw,
+                              fm_registerReadUINT32Func readFunc,
+                              fm_int                    pep, 
+                              fm_uint32                 miliSec);
 
 #endif /* __FM_FM10000_UTIL_BSM_H */

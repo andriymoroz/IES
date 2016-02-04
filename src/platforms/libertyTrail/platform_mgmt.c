@@ -286,6 +286,27 @@ void SetPortConfig(fm_int sw, fm_int portIndex)
         portCfg->an73Ability = FM_PLAT_AN73_ABILITY_40GBASE_CR4;
     }
 
+    if (!(portCfg->cap & FM_PLAT_PORT_CAP_SPEED_40G))
+    {
+        MOD_STATE_DEBUG("Port %d 40G capability is not set. Not advertising 40G-CR4.\n",
+                      portCfg->port);
+        portCfg->an73Ability &= ~FM_PLAT_AN73_ABILITY_40GBASE_CR4;
+    }
+
+    if (!(portCfg->cap & FM_PLAT_PORT_CAP_SPEED_100G))
+    {
+        MOD_STATE_DEBUG( "Port %d 100G capability is not set. Not advertising 100G-CR4.\n",
+                      portCfg->port);
+        portCfg->an73Ability &= ~FM_PLAT_AN73_ABILITY_100GBASE_CR4;
+    }
+
+    if (portCfg->an73Ability == 0)
+    {
+        FM_LOG_ERROR( FM_LOG_CAT_PLATFORM,
+            "Port %d capabilities do not allow any valid AN-73 ability.\n",
+            portCfg->port);
+    }
+
     MOD_STATE_DEBUG("Port %d:%d module autodetected (%s)\n"
                     "          ethMode: %s\n",
                     sw,
@@ -613,6 +634,8 @@ static fm_status NotifyXcvrDetection(fm_int sw, fm_int portIndex)
     fm_ethMode          mode;
     fm_int              idx;
     fm_int              lane;
+    fm_bool             autodetected;
+    fm_bool             modeMismatch; 
 
     portCfg = FM_PLAT_GET_PORT_CFG(sw, portIndex);
     xcvrInfo = &GET_PLAT_STATE(sw)->xcvrInfo[portIndex];
@@ -676,6 +699,14 @@ static fm_status NotifyXcvrDetection(fm_int sw, fm_int portIndex)
     }
     else
     {
+
+        fmPlatformGetPortEthModeState(sw, portCfg->port, &autodetected, &modeMismatch);
+        if (modeMismatch)
+        {
+            fmPlatformSendCableMismatchEvent(sw,
+                                             portCfg->port,
+                                             FM_EVENT_PRIORITY_LOW);
+        }
         UpdateSerdesSettings(sw, portIndex);
         UpdateXcvrConfig(sw, portIndex, MAX_CONFIG_RETRY);
     }
@@ -2399,6 +2430,10 @@ fm_status fmPlatformMgmtEnableXcvr(fm_int sw, fm_int port, fm_bool enable)
                         port,
                         data);
 
+        /* Back to back write to this register to disable/enable another lane
+         * might cause I2C not responding on the second write */
+        fmDelay(0, 1000*1000);
+
         status = WriteEepromTxDisableBits(sw, port, data);
     }
     else
@@ -2502,4 +2537,225 @@ ABORT:
     FM_LOG_EXIT(FM_LOG_CAT_PLATFORM, status);
 
 }   /* end fmPlatformMgmtEnableCableAutoDetection */
+
+
+
+
+/*****************************************************************************/
+/* fmPlatformMgmtIsEthModeSupportedByXcvrType
+ * \ingroup intPlatform
+ *
+ * \desc            Returns if the transceiver type supports the ethernet mode
+ *                  currently set. Also reports the ethernet mode the
+ *                  autodetect module would set based on the transceiver type.
+ * 
+ * \param[in]       *xcvrInfo is the structure containing all the transceiver
+ *                  configuration.
+ * 
+ * \param[in]       anBasePage is the basepage configured on the port. Used
+ *                  to distinguish the AN-73 negotiated speed.
+ * 
+ * \param[out]      ethModeSupported is a pointer to a user allocated variable
+ *                  to store the ethernet mode supported status.
+ * 
+ * \param[out]      autoEthMode is a pointer to a user allocated variable to
+ *                  store the ethernet the autodetect module would set.
+ *
+ * \return          fm_status. return FM_OK
+ *
+ *****************************************************************************/
+fm_status fmPlatformMgmtIsEthModeSupportedByXcvrType(fm_platXcvrInfo    *xcvrInfo,
+                                                     fm_uint64           anBasePage,
+                                                     fm_bool            *ethModeSupported,
+                                                     fm_ethMode         *autoEthMode)
+{
+    fm_status err;
+
+    err                 = FM_OK;
+
+    /*Validating pointers*/
+    if (xcvrInfo         == NULL ||
+        ethModeSupported == NULL ||
+        autoEthMode      == NULL)
+    {
+        return FM_ERR_INVALID_ARGUMENT;
+    }
+
+    *ethModeSupported   = FALSE;
+
+    /*for each type of transceiver check if */
+    switch (xcvrInfo->type)
+    {    
+        case FM_PLATFORM_XCVR_TYPE_1000BASE_T:
+            if ( xcvrInfo->ethMode == FM_ETH_MODE_SGMII )
+            {
+                *ethModeSupported = TRUE;
+            }
+            break;
+
+        case FM_PLATFORM_XCVR_TYPE_SFP_DAC:
+
+            /* Verifying if the transceiver support the ethernet * 
+             * mode                                              */
+            if ( (xcvrInfo->ethMode == FM_ETH_MODE_DISABLED)   ||
+                (xcvrInfo->ethMode == FM_ETH_MODE_1000BASE_X)  ||
+                (xcvrInfo->ethMode == FM_ETH_MODE_1000BASE_KX) ||
+                (xcvrInfo->ethMode == FM_ETH_MODE_2500BASE_X)  ||
+                (xcvrInfo->ethMode == FM_ETH_MODE_10GBASE_KR)  ||
+                (xcvrInfo->ethMode == FM_ETH_MODE_10GBASE_CR)  ||
+                (xcvrInfo->ethMode == FM_ETH_MODE_10GBASE_SR) )
+            {           
+                *ethModeSupported = TRUE;
+            } 
+            else if (xcvrInfo->ethMode == FM_ETH_MODE_AN_73)
+            {
+                /* If ethernet mode is set to AN_73 we need to verify   *
+                 * that the negociated speed is supported by the cable. *
+                 * The listed ability below are not supported by the    *
+                 * type of transceiver used.                            */
+             if ( ((anBasePage & FM_PLAT_AN73_ABILITY_40GBASE_CR4)  == 0) &&
+                  ((anBasePage & FM_PLAT_AN73_ABILITY_40GBASE_KR4)  == 0) &&
+                  ((anBasePage & FM_PLAT_AN73_ABILITY_100GBASE_CR4) == 0) &&
+                  ((anBasePage & FM_PLAT_AN73_ABILITY_100GBASE_KR4) == 0) )
+                {
+                    *ethModeSupported = TRUE;
+                }
+            }
+            break;
+
+
+            
+        case FM_PLATFORM_XCVR_TYPE_SFP_OPT:
+            if ( fmPlatformXcvrIs1G(xcvrInfo->eeprom) )
+            {
+                if(xcvrInfo->ethMode == FM_ETH_MODE_1000BASE_X) 
+                {
+                    *ethModeSupported = TRUE;
+                }
+            }
+            else
+            {
+                if( (xcvrInfo->ethMode == FM_ETH_MODE_1000BASE_X) ||
+                    (xcvrInfo->ethMode == FM_ETH_MODE_2500BASE_X) ||
+                    (xcvrInfo->ethMode == FM_ETH_MODE_10GBASE_SR) )
+                {	
+                    *ethModeSupported = TRUE;
+                }
+            }
+
+            break;
+                                         
+        case FM_PLATFORM_XCVR_TYPE_QSFP_DAC:
+
+            /* Verifying if the transceiver support the ethernet * 
+             * mode                                              */
+            if ( (xcvrInfo->ethMode == FM_ETH_MODE_DISABLED)      ||
+                 (xcvrInfo->ethMode == FM_ETH_MODE_AN_73)         ||
+                 (xcvrInfo->ethMode == FM_ETH_MODE_1000BASE_X)    ||
+                 (xcvrInfo->ethMode == FM_ETH_MODE_1000BASE_KX)   ||
+                 (xcvrInfo->ethMode == FM_ETH_MODE_2500BASE_X)    ||
+                 (xcvrInfo->ethMode == FM_ETH_MODE_6GBASE_KR)     ||
+                 (xcvrInfo->ethMode == FM_ETH_MODE_6GBASE_CR)     ||
+                 (xcvrInfo->ethMode == FM_ETH_MODE_10GBASE_KR)    ||
+                 (xcvrInfo->ethMode == FM_ETH_MODE_10GBASE_CR)    ||
+                 (xcvrInfo->ethMode == FM_ETH_MODE_10GBASE_SR)    ||
+                 (xcvrInfo->ethMode == FM_ETH_MODE_25GBASE_KR)    ||
+                 (xcvrInfo->ethMode == FM_ETH_MODE_25GBASE_CR)    ||
+                 (xcvrInfo->ethMode == FM_ETH_MODE_25GBASE_SR)    ||
+                 (xcvrInfo->ethMode == FM_ETH_MODE_10GBASE_KX4)   ||
+                 (xcvrInfo->ethMode == FM_ETH_MODE_10GBASE_CX4)   ||
+                 (xcvrInfo->ethMode == FM_ETH_MODE_24GBASE_KR4)   ||
+                 (xcvrInfo->ethMode == FM_ETH_MODE_24GBASE_CR4)   ||
+                 (xcvrInfo->ethMode == FM_ETH_MODE_40GBASE_KR4)   ||
+                 (xcvrInfo->ethMode == FM_ETH_MODE_40GBASE_CR4)   ||
+                 (xcvrInfo->ethMode == FM_ETH_MODE_40GBASE_SR4) )
+            {
+                *ethModeSupported = TRUE;
+            }
+            else if (xcvrInfo->ethMode == FM_ETH_MODE_AN_73)
+            {
+                /* If ethernet mode is set to AN_73 we need to verify   *
+                 * that the negociated speed is supported by the cable. *
+                 * The listed ability below are not supported by the    *
+                 * type of transceiver used.                            */
+                if ( ((anBasePage & FM_PLAT_AN73_ABILITY_100GBASE_CR4) == 0) &&
+                     ((anBasePage & FM_PLAT_AN73_ABILITY_100GBASE_KR4) == 0) )
+                {
+                    *ethModeSupported = TRUE;
+                }
+            }  
+            break;
+                                         
+        case FM_PLATFORM_XCVR_TYPE_QSFP_AOC:
+        case FM_PLATFORM_XCVR_TYPE_QSFP_OPT:
+            if ( (xcvrInfo->ethMode == FM_ETH_MODE_DISABLED)      ||
+                 (xcvrInfo->ethMode == FM_ETH_MODE_1000BASE_X)    ||
+                 (xcvrInfo->ethMode == FM_ETH_MODE_1000BASE_KX)   ||
+                 (xcvrInfo->ethMode == FM_ETH_MODE_2500BASE_X)    ||
+                 (xcvrInfo->ethMode == FM_ETH_MODE_10GBASE_SR)    ||
+                 (xcvrInfo->ethMode == FM_ETH_MODE_25GBASE_SR)    ||
+                 (xcvrInfo->ethMode == FM_ETH_MODE_40GBASE_SR4) )
+            {
+                *ethModeSupported = TRUE;			
+            }
+            break;
+                                         
+        case FM_PLATFORM_XCVR_TYPE_QSFP28_DAC:
+            if ( (xcvrInfo->ethMode == FM_ETH_MODE_DISABLED)      ||
+                 (xcvrInfo->ethMode == FM_ETH_MODE_AN_73)         ||
+                 (xcvrInfo->ethMode == FM_ETH_MODE_1000BASE_X)    ||
+                 (xcvrInfo->ethMode == FM_ETH_MODE_1000BASE_KX)   ||
+                 (xcvrInfo->ethMode == FM_ETH_MODE_2500BASE_X)    ||
+                 (xcvrInfo->ethMode == FM_ETH_MODE_6GBASE_KR)     ||
+                 (xcvrInfo->ethMode == FM_ETH_MODE_6GBASE_CR)     ||
+                 (xcvrInfo->ethMode == FM_ETH_MODE_10GBASE_KR)    ||
+                 (xcvrInfo->ethMode == FM_ETH_MODE_10GBASE_CR)    ||
+                 (xcvrInfo->ethMode == FM_ETH_MODE_10GBASE_SR)    ||
+                 (xcvrInfo->ethMode == FM_ETH_MODE_25GBASE_KR)    ||
+                 (xcvrInfo->ethMode == FM_ETH_MODE_25GBASE_CR)    ||
+                 (xcvrInfo->ethMode == FM_ETH_MODE_25GBASE_SR)    ||
+                 (xcvrInfo->ethMode == FM_ETH_MODE_10GBASE_KX4)   ||
+                 (xcvrInfo->ethMode == FM_ETH_MODE_10GBASE_CX4)   ||
+                 (xcvrInfo->ethMode == FM_ETH_MODE_24GBASE_KR4)   ||
+                 (xcvrInfo->ethMode == FM_ETH_MODE_24GBASE_CR4)   ||
+                 (xcvrInfo->ethMode == FM_ETH_MODE_40GBASE_KR4)   ||
+                 (xcvrInfo->ethMode == FM_ETH_MODE_40GBASE_CR4)   ||
+                 (xcvrInfo->ethMode == FM_ETH_MODE_40GBASE_SR4)   ||
+                 (xcvrInfo->ethMode == FM_ETH_MODE_100GBASE_KR4)  ||
+                 (xcvrInfo->ethMode == FM_ETH_MODE_100GBASE_CR4)  ||
+                 (xcvrInfo->ethMode == FM_ETH_MODE_100GBASE_SR4) )
+            {
+                *ethModeSupported = TRUE;
+            }
+            break;
+                                         
+        case FM_PLATFORM_XCVR_TYPE_QSFP28_AOC:
+        case FM_PLATFORM_XCVR_TYPE_QSFP28_OPT:
+            if ( (xcvrInfo->ethMode == FM_ETH_MODE_DISABLED)      ||
+                 (xcvrInfo->ethMode == FM_ETH_MODE_1000BASE_X)    ||    
+                 (xcvrInfo->ethMode == FM_ETH_MODE_1000BASE_KX)   ||
+                 (xcvrInfo->ethMode == FM_ETH_MODE_2500BASE_X)    ||
+                 (xcvrInfo->ethMode == FM_ETH_MODE_10GBASE_SR)    ||
+                 (xcvrInfo->ethMode == FM_ETH_MODE_25GBASE_SR)    ||
+                 (xcvrInfo->ethMode == FM_ETH_MODE_40GBASE_SR4)   ||
+                 (xcvrInfo->ethMode == FM_ETH_MODE_100GBASE_SR4))
+            {
+                *ethModeSupported  = TRUE;			
+            }
+            break;
+
+        case FM_PLATFORM_XCVR_TYPE_UNKNOWN:
+        case FM_PLATFORM_XCVR_TYPE_NOT_PRESENT:
+            *ethModeSupported  = TRUE;
+            break;
+        default:
+            *ethModeSupported  = TRUE;
+            break;		
+    }
+
+    *autoEthMode = GetEthModeFromXcvrType(xcvrInfo->type,xcvrInfo->eeprom);
+    
+
+    return FM_OK;
+}   /* end fmPlatformMgmtIsEthModeSupportedByXcvrType */
 

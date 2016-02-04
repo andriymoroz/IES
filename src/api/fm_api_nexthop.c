@@ -2526,6 +2526,8 @@ fm_int fmCompareInternalNextHops(const void *first,
     fm_nextHop *        arpHop2;
     fm_mplsArpNextHop * mplsHop1;
     fm_mplsArpNextHop * mplsHop2;
+    fm_portNextHop    * portHop1;
+    fm_portNextHop    * portHop2;
     fm_tunnelNextHop *  tunnelHop1;
     fm_tunnelNextHop *  tunnelHop2;
     fm_vnTunnelNextHop *vnTunnelHop1;
@@ -2698,6 +2700,49 @@ fm_int fmCompareInternalNextHops(const void *first,
                 retval = -1;
             }
             else if (!vnTunnelHop1->encap && vnTunnelHop2->encap)
+            {
+                retval = 1;
+            }
+            else
+            {
+                retval = 0;
+            }
+
+            break;
+
+        case FM_NEXTHOP_TYPE_LOGICAL_PORT:
+            portHop1 = &hop1->nextHop.data.port;
+            portHop2 = &hop2->nextHop.data.port;
+
+            if (portHop1->logicalPort < portHop2->logicalPort)
+            {
+                retval = -1;
+            }
+            else if (portHop1->logicalPort > portHop2->logicalPort)
+            {
+                retval = 1;
+            }
+            else if (portHop1->routed && !portHop2->routed)
+            {
+                retval = 1;
+            }
+            else if (!portHop1->routed && portHop2->routed)
+            {
+                retval = -1;
+            }
+            else if (portHop1->routerId < portHop2->routerId)
+            {
+                retval = -1;
+            }
+            else if (portHop1->routerId > portHop2->routerId)
+            {
+                retval = 1;
+            }
+            else if (portHop1->vlan < portHop2->vlan)
+            {
+                retval = -1;
+            }
+            else if (portHop1->vlan > portHop2->vlan)
             {
                 retval = 1;
             }
@@ -3606,6 +3651,7 @@ fm_status fmAddECMPGroupNextHopsInternal(fm_int          sw,
             case FM_NEXTHOP_TYPE_RAW_NARROW:
             case FM_NEXTHOP_TYPE_TUNNEL:
             case FM_NEXTHOP_TYPE_VN_TUNNEL:
+            case FM_NEXTHOP_TYPE_LOGICAL_PORT:
                 wideGroup = FALSE;
                 break;
     
@@ -3638,6 +3684,7 @@ fm_status fmAddECMPGroupNextHopsInternal(fm_int          sw,
             case FM_NEXTHOP_TYPE_DROP:
             case FM_NEXTHOP_TYPE_TUNNEL:
             case FM_NEXTHOP_TYPE_VN_TUNNEL:
+            case FM_NEXTHOP_TYPE_LOGICAL_PORT:
                 if (wideGroup)
                 {
                     status = FM_ERR_MIXING_NARROW_AND_WIDE_NEXTHOPS;
@@ -4452,6 +4499,7 @@ fm_status fmReplaceECMPGroupNextHopInternal(fm_int          sw,
         case FM_NEXTHOP_TYPE_RAW_NARROW:
         case FM_NEXTHOP_TYPE_TUNNEL:
         case FM_NEXTHOP_TYPE_VN_TUNNEL:
+        case FM_NEXTHOP_TYPE_LOGICAL_PORT:
             if (group->wideGroup)
             {
                 FM_LOG_EXIT(FM_LOG_CAT_ROUTING, FM_ERR_MIXING_NARROW_AND_WIDE_NEXTHOPS);
@@ -4480,6 +4528,7 @@ fm_status fmReplaceECMPGroupNextHopInternal(fm_int          sw,
         case FM_NEXTHOP_TYPE_RAW_NARROW:
         case FM_NEXTHOP_TYPE_TUNNEL:
         case FM_NEXTHOP_TYPE_VN_TUNNEL:
+        case FM_NEXTHOP_TYPE_LOGICAL_PORT:
             if (wideHop)
             {
                 FM_LOG_EXIT(FM_LOG_CAT_ROUTING, FM_ERR_MIXING_NARROW_AND_WIDE_NEXTHOPS);
@@ -4840,6 +4889,7 @@ fm_status fmSetECMPGroupNextHopsInternal(fm_int          sw,
             case FM_NEXTHOP_TYPE_DMAC:
             case FM_NEXTHOP_TYPE_TUNNEL:
             case FM_NEXTHOP_TYPE_VN_TUNNEL:
+            case FM_NEXTHOP_TYPE_LOGICAL_PORT:
                 if (wideGroup)
                 {
                     status = FM_ERR_MIXING_NARROW_AND_WIDE_NEXTHOPS;

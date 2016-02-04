@@ -6,7 +6,7 @@
  * Description:     Contains functions dealing with the raw management
  *                  of the glort table for the FM10000 switch chip.
  *
- * Copyright (c) 2005 - 2014, Intel Corporation
+ * Copyright (c) 2005 - 2016, Intel Corporation
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -72,10 +72,10 @@
 #endif
 
 /**************************************************
- * Glorts.
+ * GloRTs.
  **************************************************/
 
-/* CPU glorts */
+/* CPU GloRTs */
 #define FM10000_GLORT_CPU_BASE              0x7F00      /* 0x7E00 */
 #define FM10000_GLORT_CPU_MASK              0xFF00      /* 0xFE00 */
 
@@ -91,18 +91,23 @@
 #define FM10000_GLORT_BCAST                 0x7FFB
 #define FM10000_GLORT_MCAST                 0x7FFA
 #define FM10000_GLORT_NOP_FLOW              0x7FF9
+#define FM10000_GLORT_NAT_UNDEF_FLOW        0x7f41
+#define FM10000_GLORT_DENAT_UNDEF_FLOW      0x7f45
 
-/* Lag glorts */
+/* Lag GloRTs */
 #define FM10000_GLORT_LAG_BASE              0x2000
-#define FM10000_GLORT_LAG_SIZE              0x1000   /* Last Glort = 0x2FFF */
+#define FM10000_GLORT_LAG_SIZE              0x1000   /* Last GloRT = 0x2FFF */
 
-/* Multicast glorts */
+/* Multicast GloRTs */
 #define FM10000_GLORT_MCAST_BASE            0x3000
-#define FM10000_GLORT_MCAST_SIZE            0x1000   /* Last Glort = 0x3FFF */
+#define FM10000_GLORT_MCAST_SIZE            0x1000   /* Last GloRT = 0x3FFF */
 
-/* Lbg glorts */
+/* Lbg GloRTs */
 #define FM10000_GLORT_LBG_BASE              0x7600
-#define FM10000_GLORT_LBG_SIZE              0x7ff    /* Last Glort = 0x7DFF */
+#define FM10000_GLORT_LBG_SIZE              0x7ff    /* Last GloRT = 0x7DFF */
+
+/* Tunnel GloRTs */
+#define FM10000_GLORT_TUNNEL_BASE           0x8000   /* Last GloRT = 0xFFFF */
 
 
 /*****************************************************************************

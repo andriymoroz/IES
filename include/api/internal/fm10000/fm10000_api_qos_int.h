@@ -202,9 +202,48 @@ typedef struct _fm10000_eschedGroupProperty
 
 } fm10000_eschedGroupProperty;
 
+/* Enumeration for qos queue configuration attributes types */
+enum _fm10000_qosQueueConfigAttr
+{
+    /* Used for adding new queue */
+    FM10000_QOS_ADD_QUEUE,
+
+    /* Used for specyfing minimum bandwidth configuration for the queue */
+    FM10000_QOS_SET_QUEUE_MIN_BW,
+
+    /* Used for specyfing maximum bandwidth configuration for the queue */
+    FM10000_QOS_SET_QUEUE_MAX_BW,
+
+    /* Used for specyfing traffic class for the queue */
+    FM10000_QOS_SET_QUEUE_TRAFFIC_CLASS,
+
+    /* Used for deleting new queue */
+    FM10000_QOS_DEL_QUEUE
+};
+
+/* Qos queue configuration structure */
+typedef struct _fm10000_qosQueueProperty
+{
+    /** Number of qos queues configured */
+    fm_uint16 numQoSQueues;
+
+    /** Free bandwidth not allocated by qos queue methods */
+    fm_uint16 freeQoSQueueBw;
+
+    /** Mask indicates which traffic classes are in use */
+    fm_uint16 tcMask;
+
+    /** Structure for holding queues parameters  */
+    fm_qosQueueParam qosQueuesParams[FM_MAX_TRAFFIC_CLASSES];
+
+} fm10000_qosQueueProperty;
+
 /* Egress scheduler per port configuration structure */
 typedef struct _fm10000_eschedConfigPerPort
 {
+    /** Flag indicating egress scheduler configuration mode */
+    fm_bool qosQueueEnabled;
+
     /** Number of scheduling groups in new configuration */
     fm_uint32 numGroupsNew;
 
@@ -218,6 +257,9 @@ typedef struct _fm10000_eschedConfigPerPort
     /** Active scheduling group configuration */
     fm10000_eschedGroupProperty
             activeSchedGroup[FM10000_QOS_MAX_NUM_SCHED_GROUPS];
+
+    /** Qos queues configuration */
+    fm10000_qosQueueProperty qosQueuesConfig;
 
 } fm10000_eschedConfigPerPort;
 
@@ -270,6 +312,24 @@ fm_status fm10000QOSPriorityMapperFreeResources(fm_int sw);
 
 fm_status fm10000GetSMPPauseState(fm_int sw, 
                                   fm_uint32 *pauseEnable);
+
+fm_status fm10000AddQueueQOS(fm_int sw, fm_int port, fm_qosQueueParam *param);
+
+fm_status fm10000DeleteQueueQOS(fm_int sw, fm_int port, fm_int queueId);
+
+fm_status fm10000SetAttributeQueueQOS(fm_int sw,
+                                 fm_int port,
+                                 fm_int queueId, 
+                                 fm_int attr, 
+                                 void  *value);
+
+fm_status fm10000GetAttributeQueueQOS(fm_int sw,
+                                 fm_int port,
+                                 fm_int queueId, 
+                                 fm_int attr, 
+                                 void  *value);
+
+fm_status fm10000DbgDumpQueueQOS(fm_int sw);
 
 fm_status fm10000DbgDumpWatermarks(fm_int sw);
 

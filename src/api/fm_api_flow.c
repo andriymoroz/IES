@@ -5,7 +5,7 @@
  * Creation Date:   July 20, 2010 
  * Description:     OpenFlow API interface.
  *
- * Copyright (c) 2005 - 2015, Intel Corporation
+ * Copyright (c) 2005 - 2016, Intel Corporation
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -91,7 +91,9 @@
  *                  FM6000_MAX_RULE_PER_FLOW_TCAM_TABLE (FM6000 devices) or
  *                  ''FM10000_MAX_RULE_PER_FLOW_TABLE'' (FM10000 devices).
  * 
- * \param[in]       maxAction is not used.
+ * \param[in]       maxAction is the maximum number of actions that can be 
+ *                  set for a flow in the created table. FM_FLOW_ACTION_COUNT
+ *                  is excluded from the maxAction calculation.
  *
  * \return          FM_OK if successful.
  * \return          FM_ERR_INVALID_SWITCH if sw is invalid.
@@ -2094,6 +2096,8 @@ fm_status fmConvertFlowToACLValue(fm_flowValue   *flowValue,
     aclValue->vlanPri2 = flowValue->vlanPri2;
     aclValue->vlanPri2Mask = flowValue->vlanPri2Mask;
     aclValue->fragType = flowValue->fragType;
+    aclValue->ttl = flowValue->ttl;
+    aclValue->ttlMask = flowValue->ttlMask;
 
     FM_MEMCPY_S(aclValue->L4DeepInspectionExt,
                 sizeof(aclValue->L4DeepInspectionExt),
@@ -2198,6 +2202,8 @@ fm_status fmConvertACLToFlowValue(fm_aclValue    *aclValue,
     flowValue->vlanPri2 = aclValue->vlanPri2;
     flowValue->vlanPri2Mask = aclValue->vlanPri2Mask;
     flowValue->fragType = aclValue->fragType;
+    flowValue->ttl = aclValue->ttl;
+    flowValue->ttlMask = aclValue->ttlMask;
 
     FM_MEMCPY_S(flowValue->L4DeepInspection,
                 sizeof(flowValue->L4DeepInspection),
@@ -2452,3 +2458,94 @@ ABORT:
     return err;
 
 }   /* end fmConvertTEToFlowCounters */
+
+
+
+
+/*****************************************************************************/
+/** fmGetFlowTableIndexUnused
+ * \ingroup intFlow
+ *
+ * \desc            Gets the first unused flow table index.
+ *
+ * \note            This functions assumes that the FLOW lock have already
+ *                  been taken.
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \param[out]      tableIndex points to a caller-supplied location where
+ *                  the unused table index should be stored.
+ *
+ * \return          FM_OK if successful.
+ * \return          FM_ERR_INVALID_ARGUMENT if tableIndex is invalid.
+ * \return          FM_ERR_NO_MORE if no unused table indexes was found.
+ *
+ *****************************************************************************/
+fm_status fmGetFlowTableIndexUnused(fm_int  sw,
+                                    fm_int *tableIndex)
+{
+    fm_status  err = FM_OK;
+    fm_switch *switchPtr;
+
+    FM_LOG_ENTRY_API(FM_LOG_CAT_FLOW,
+                     "sw = %d\n",
+                     sw);
+
+    switchPtr = GET_SWITCH_PTR(sw);
+
+    FM_API_CALL_FAMILY(err,
+                       switchPtr->GetFlowTableIndexUnused,
+                       sw,
+                       tableIndex);
+
+    FM_LOG_EXIT_API(FM_LOG_CAT_FLOW, err);
+
+}   /* end fmGetFlowTableIndexUnused */
+
+
+
+
+/*****************************************************************************/
+/** fmGetFlowTableSupportedActions
+ * \ingroup intFlow
+ *
+ * \desc            Gets the bit mask of actions supported by given flow table
+ *                  type.
+ *
+ * \note            This functions assumes that the FLOW lock have already
+ *                  been taken.
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \param[in]       flowTableType is the flow table type.
+ *
+ * \param[out]      flowAction points to caller-supplied storage where the flow
+ *                  table action mask should be stored.
+ *
+ * \return          FM_OK if successful.
+ * \return          FM_ERR_UNSUPPORTED if flowTableType is not supported.
+ *
+ *****************************************************************************/
+fm_status fmGetFlowTableSupportedActions(fm_int           sw,
+                                         fm_flowTableType flowTableType,
+                                         fm_flowAction *  flowAction)
+{
+    fm_status  err = FM_OK;
+    fm_switch *switchPtr;
+
+    FM_LOG_ENTRY_API(FM_LOG_CAT_FLOW,
+                     "sw = %d flowTableType=%d\n",
+                     sw,
+                     flowTableType);
+
+    switchPtr = GET_SWITCH_PTR(sw);
+
+    FM_API_CALL_FAMILY(err,
+                       switchPtr->GetFlowTableSupportedActions,
+                       sw,
+                       flowTableType,
+                       flowAction);
+
+    FM_LOG_EXIT_API(FM_LOG_CAT_FLOW, err);
+
+}   /* end fmGetFlowTableSupportedActions */

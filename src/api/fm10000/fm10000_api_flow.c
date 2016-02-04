@@ -186,8 +186,14 @@ static fm_status InitFlowApiCommon(fm_int sw)
         condMasks->dstMask = FM_LITERAL_U64(0xffffffffffff);
         condMasks->vlanIdMask = 0xffff;
         condMasks->vlanPriMask = 0x0f;
+        condMasks->srcIpMask.addr[3] = 0xffffffff;
+        condMasks->srcIpMask.addr[2] = 0xffffffff;
+        condMasks->srcIpMask.addr[1] = 0xffffffff;
         condMasks->srcIpMask.addr[0] = 0xffffffff;
         condMasks->srcIpMask.isIPv6 = FALSE;
+        condMasks->dstIpMask.addr[3] = 0xffffffff;
+        condMasks->dstIpMask.addr[2] = 0xffffffff;
+        condMasks->dstIpMask.addr[1] = 0xffffffff;
         condMasks->dstIpMask.addr[0] = 0xffffffff;
         condMasks->dstIpMask.isIPv6 = FALSE;
         condMasks->tosMask = 0xff;
@@ -202,6 +208,7 @@ static fm_status InitFlowApiCommon(fm_int sw)
         condMasks->protocolMask = 0xff;
         condMasks->tcpFlagsMask = 0x3f;
         condMasks->ethTypeMask = 0xffff;
+        condMasks->ttlMask = 0xff;
         FM_MEMSET_S(condMasks->L4DeepInspectionMask,
                     sizeof(condMasks->L4DeepInspectionMask),
                     0xff,
@@ -395,7 +402,7 @@ static fm_status TranslateFlowToACLAction(fm_int           sw,
     if ( *action & FM_FLOW_ACTION_FORWARD_NORMAL )
     {
         param->logicalPort = switchExt->flowInfo.fwdNormalLogicalPort;
-        /* Translate the Forward-Normal action into a Redirect */
+        /* Translate the Forward-Normal action into a Set Flood Dest */
         *aclAction |= FM_ACL_ACTIONEXT_SET_FLOOD_DEST;
     }
 
@@ -438,6 +445,11 @@ static fm_status TranslateFlowToACLAction(fm_int           sw,
     if ( *action & FM_FLOW_ACTION_SET_VLAN )
     {
         *aclAction |= FM_ACL_ACTIONEXT_SET_VLAN;
+    }
+
+    if ( *action & FM_FLOW_ACTION_UPD_OR_ADD_VLAN )
+    {
+        *aclAction |= FM_ACL_ACTIONEXT_UPD_OR_ADD_VLAN;
     }
 
     if ( *action & FM_FLOW_ACTION_REDIRECT_TUNNEL )
@@ -584,31 +596,35 @@ static fm_status TranslateACLToFlowAction(fm_int           sw,
         *action |= FM_FLOW_ACTION_FORWARD;
     }
 
-    if ( *action & FM_ACL_ACTIONEXT_REDIRECT &&
-          param->logicalPort == switchExt->flowInfo.fwdNormalLogicalPort )
+    if ( ( *aclAction & FM_ACL_ACTIONEXT_REDIRECT ) &&
+         ( param->logicalPort == switchExt->flowInfo.fwdNormalLogicalPort ) )
     {
         /* Translate the Forward-Normal action into a Redirect */
+        *action &= ~FM_FLOW_ACTION_FORWARD;
         *action |= FM_FLOW_ACTION_FORWARD_NORMAL;
     }
 
-    if ( *aclAction & FM_ACL_ACTIONEXT_REDIRECT &&
-         param->logicalPort == switchExt->flowInfo.dropLogicalPort)
+    if ( ( *aclAction & FM_ACL_ACTIONEXT_REDIRECT ) &&
+         ( param->logicalPort == switchExt->flowInfo.dropLogicalPort) )
     {
         /* Translate the drop action into a Redirect */
+        *action &= ~FM_FLOW_ACTION_FORWARD;
         *action |= FM_FLOW_ACTION_DROP;
     }
 
-    if ( *aclAction & FM_ACL_ACTIONEXT_REDIRECT &&
-         param->logicalPort == switchExt->flowInfo.trapLogicalPort )
+    if ( ( *aclAction & FM_ACL_ACTIONEXT_REDIRECT ) &&
+         ( param->logicalPort == switchExt->flowInfo.trapLogicalPort ) )
     {
         /* Translate the trap action into a Redirect */
+        *action &= ~FM_FLOW_ACTION_FORWARD;
         *action |= FM_FLOW_ACTION_TRAP;
     }
 
-    if ( *action & FM_ACL_ACTIONEXT_REDIRECT &&
-         param->logicalPort == switchExt->flowInfo.defaultLogicalPort )
+    if ( ( *aclAction & FM_ACL_ACTIONEXT_REDIRECT ) &&
+         ( param->logicalPort == switchExt->flowInfo.defaultLogicalPort ) )
     {
         /* Translate the default action into a Redirect */
+        *action &= ~FM_FLOW_ACTION_FORWARD;
         *action |= FM_FLOW_ACTION_DEFAULT;
     }
 
@@ -630,6 +646,11 @@ static fm_status TranslateACLToFlowAction(fm_int           sw,
     if ( *aclAction & FM_ACL_ACTIONEXT_SET_VLAN )
     {
         *action |= FM_FLOW_ACTION_SET_VLAN;
+    }
+
+    if ( *aclAction & FM_ACL_ACTIONEXT_UPD_OR_ADD_VLAN )
+    {
+        *action |= FM_FLOW_ACTION_UPD_OR_ADD_VLAN;
     }
 
     if ( *aclAction & FM_ACL_ACTIONEXT_REDIRECT_TUNNEL )
@@ -885,6 +906,11 @@ static fm_status TranslateFlowToACLCondition(fm_int            sw,
         *aclCondition |= FM_ACL_MATCH_SRC_GLORT;
     }
 
+    if ( *condition & FM_FLOW_MATCH_TTL )
+    {
+        *aclCondition |= FM_ACL_MATCH_TTL;
+    }
+
     return err;
 
 }   /* end TranslateFlowToACLCondition */
@@ -1033,6 +1059,11 @@ static fm_status TranslateACLToFlowCondition(fm_int            sw,
     if ( *aclCondition & FM_ACL_MATCH_SRC_GLORT )
     {
         *condition |= FM_FLOW_MATCH_LOGICAL_PORT;
+    }
+
+    if ( *aclCondition & FM_ACL_MATCH_TTL )
+    {
+        *condition |= FM_FLOW_MATCH_TTL;
     }
 
     return err;
@@ -1516,8 +1547,7 @@ static fm_status VerifyFlowConditionsMasks(fm_int           sw,
     if ( (condition & FM_FLOW_MATCH_DST_IP) &&
             (((condVal->dstIpMask.addr[0] |
                switchExt->flowInfo.table[tableIndex].condMasks.dstIpMask.addr[0]) !=
-              switchExt->flowInfo.table[tableIndex].condMasks.dstIpMask.addr[0]) ||
-             (condVal->dstIpMask.isIPv6 != FALSE)) )
+               switchExt->flowInfo.table[tableIndex].condMasks.dstIpMask.addr[0]) ) )
     {
         /* Flow condition mask must be a subset of a table condition mask. */
         err = FM_ERR_INVALID_ARGUMENT;
@@ -1527,8 +1557,7 @@ static fm_status VerifyFlowConditionsMasks(fm_int           sw,
     if ( (condition & FM_FLOW_MATCH_SRC_IP) &&
             (((condVal->srcIpMask.addr[0] |
                switchExt->flowInfo.table[tableIndex].condMasks.srcIpMask.addr[0]) !=
-              switchExt->flowInfo.table[tableIndex].condMasks.srcIpMask.addr[0]) ||
-             (condVal->srcIpMask.isIPv6 != FALSE)) )
+               switchExt->flowInfo.table[tableIndex].condMasks.srcIpMask.addr[0]) ) )
     {
         /* Flow condition mask must be a subset of a table condition mask. */
         err = FM_ERR_INVALID_ARGUMENT;
@@ -1645,6 +1674,16 @@ static fm_status VerifyFlowConditionsMasks(fm_int           sw,
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_FLOW, err);
     }
 
+    if ( (condition & FM_FLOW_MATCH_TTL) &&
+            ( (condVal->ttlMask |
+               switchExt->flowInfo.table[tableIndex].condMasks.ttlMask) !=
+              switchExt->flowInfo.table[tableIndex].condMasks.ttlMask) )
+    {
+        /* Flow condition mask must be a subset of a table condition mask. */
+        err = FM_ERR_INVALID_ARGUMENT;
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_FLOW, err);
+    }
+
 ABORT:
 
     FM_LOG_EXIT(FM_LOG_CAT_FLOW, err);
@@ -1666,7 +1705,7 @@ ABORT:
  * \param[out]      tunnelAction refers to the tunnel action that stores result.
  *
  * \param[out]      encapAction refers to the encap action that stores result.
- * 
+ *
  * \param[in]       tunnelEncapFlowParam points to the encapsulation flow
  *                  parameters.
  *
@@ -2051,6 +2090,104 @@ static fm_status TranslateTEToFlowCondition(fm_tunnelCondition *tunnelCondition,
 
 
 
+/*****************************************************************************/
+/** ACLActionsToPreallocate
+ * \ingroup intFlow
+ *
+ * \desc            Return ACL actions to preallocate.
+ *
+ * \param[in]       maxAction is the number of actions to preallocate.
+ *
+ * \param[in]       countEnabled indicate whether the table supports counting.
+ *
+ * \param[out]      actions refers to result that stores ACL actions to
+ *                  preallocate.
+ *
+ * \param[in]       param is not used.
+ *
+ * \return          FM_OK if successful.
+ *
+ *****************************************************************************/
+static fm_status ACLActionsToPreallocate(fm_int           maxAction,
+                                         fm_bool          countEnabled,
+                                         fm_aclActionExt *actions,
+                                         fm_aclParamExt  *param)
+{
+    fm_status err;
+
+    err = FM_OK;
+
+    switch (maxAction)
+    {
+        case 1:
+            *actions = FM_ACL_ACTIONEXT_REDIRECT;
+            break;
+        case 2:
+            *actions = FM_ACL_ACTIONEXT_REDIRECT |
+                       FM_ACL_ACTIONEXT_SET_VLAN;
+            break;
+        case 3:
+            *actions = FM_ACL_ACTIONEXT_LOG |
+                       FM_ACL_ACTIONEXT_SET_VLAN |
+                       FM_ACL_ACTIONEXT_SET_FLOOD_DEST;
+            break;
+        default:
+            err = FM_ERR_INVALID_ARGUMENT;
+            FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_FLOW, err);
+    }
+
+    if (countEnabled)
+    {
+        *actions = *actions | FM_ACL_ACTIONEXT_COUNT;
+    }
+
+    return err;
+
+}   /* end ACLActionsToPreallocate */
+
+
+
+
+/*****************************************************************************/
+/** CountActionSlicesNeeded
+ * \ingroup intFlow
+ *
+ * \desc            Count number of action slieces needed in FFU.
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \param[in]       action is a bit mask of ACL actions.
+ *
+ * \param[in]       param is a parameter associated with the action.
+ *
+ * \param[out]      slicesCount refers to result that stores number of action
+ *                  slices needed.
+ *
+ * \return          FM_OK if successful.
+ *
+ *****************************************************************************/
+static fm_status CountActionSlicesNeeded(fm_int          sw,
+                                         fm_aclActionExt action,
+                                         fm_aclParamExt  param,
+                                         fm_int         *slicesCount)
+{
+    fm_aclRule rule;
+    fm_status  err;
+
+    FM_CLEAR(rule);
+    rule.action = action;
+    rule.param = param;
+
+    err = fm10000CountActionSlicesNeeded(sw, NULL, &rule, slicesCount);
+    FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_FLOW, err);
+
+    return err;
+
+}   /* end CountActionSlicesNeeded */
+
+
+
+
 /*****************************************************************************
  * Public Functions
  *****************************************************************************/
@@ -2081,7 +2218,9 @@ static fm_status TranslateTEToFlowCondition(fm_tunnelCondition *tunnelCondition,
  * \param[in]       maxEntries is the size of the flow table and must be
  *                  no larger than ''FM10000_MAX_RULE_PER_FLOW_TABLE''.
  *
- * \param[in]       maxAction is not used.
+ * \param[in]       maxAction is the maximum number of actions that can be
+ *                  set for a flow in created table. FM_FLOW_ACTION_COUNT
+ *                  is excluded from maxAction calculation.
  *
  * \return          FM_OK if successful.
  * \return          FM_ERR_INVALID_SWITCH if sw is invalid.
@@ -2123,13 +2262,12 @@ fm_status fm10000CreateFlowTCAMTable(fm_int           sw,
                  maxEntries,
                  maxAction);
 
-    FM_NOT_USED(maxAction);
-
     acl        = FM10000_FLOW_BASE_ACL + tableIndex;
-    err        = FM_OK;
     switchPtr  = GET_SWITCH_PTR(sw);
     switchExt  = GET_SWITCH_EXT(sw);
     aclCreated = FALSE;
+    action     = 0;
+    FM_CLEAR(aclParam);
 
     if ( (tableIndex >= FM_FLOW_MAX_TABLE_TYPE) || (tableIndex < 0) )
     {
@@ -2150,14 +2288,19 @@ fm_status fm10000CreateFlowTCAMTable(fm_int           sw,
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_FLOW, err);
     }
 
-    if (switchExt->flowInfo.table[tableIndex].countSupported == FM_ENABLED)
-    {
-        action = FM_FLOW_ACTION_FORWARD | FM_FLOW_ACTION_COUNT;
-    }
-    else
-    {
-        action = FM_FLOW_ACTION_FORWARD;
-    }
+    err = ACLActionsToPreallocate(maxAction,
+                                  switchExt->flowInfo.table[tableIndex].countSupported,
+                                  &action,
+                                  &aclParam);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_FLOW, err);
+
+    err = CountActionSlicesNeeded(sw,
+                                  action,
+                                  aclParam,
+                                  &switchExt->flowInfo.table[tableIndex].preallocatedSlices);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_FLOW, err);
+
+    switchExt->flowInfo.table[tableIndex].maxAction = maxAction;
 
     condMasks = &switchExt->flowInfo.table[tableIndex].condMasks;
 
@@ -2221,8 +2364,23 @@ fm_status fm10000CreateFlowTCAMTable(fm_int           sw,
     err = fmConvertFlowToACLValue(condMasks, &aclConditionMask);
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_FLOW, err);
 
-    aclConditionMask.dstIpMask.isIPv6 = FALSE;
-    aclConditionMask.frameType = FM_ACL_FRAME_TYPE_IPV4;
+    if (aclConditionMask.dstIp.isIPv6)
+    {
+        aclConditionMask.dstIpMask.isIPv6 = TRUE;
+        aclConditionMask.frameType = FM_ACL_FRAME_TYPE_IPV6;
+    }
+    else if (aclConditionMask.srcIp.isIPv6)
+    {
+        aclConditionMask.srcIpMask.isIPv6 = TRUE;
+        aclConditionMask.frameType = FM_ACL_FRAME_TYPE_IPV6;
+    }
+    else
+    {
+        aclConditionMask.dstIpMask.isIPv6 = FALSE;
+        aclConditionMask.srcIpMask.isIPv6 = FALSE;
+        aclConditionMask.frameType = FM_ACL_FRAME_TYPE_IPV4;
+    }
+
     aclConditionMask.srcGlortMask = 0xffff;
 
     aclParam.logicalPort = switchPtr->cpuPort;
@@ -2604,12 +2762,15 @@ fm_status fm10000CreateFlowTETable(fm_int           sw,
                         FM_FLOW_MATCH_VLAN2 |
                         FM_FLOW_MATCH_PRIORITY2 |
                         FM_FLOW_MATCH_FRAG |
-                        FM_FLOW_MATCH_LOGICAL_PORT) ) != 0 )
+                        FM_FLOW_MATCH_LOGICAL_PORT |
+                        FM_FLOW_MATCH_TTL) ) != 0 )
     {
         /* Above listed conditions are TCAM table specific */
         err = FM_ERR_UNSUPPORTED;
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_FLOW, err);
     }
+
+    switchExt->flowInfo.table[tableIndex].maxAction = maxAction;
 
     switchExt->flowInfo.table[tableIndex].condition = condition;
     err = TranslateFlowToTECondition(&condition, &tunnelCondition);
@@ -2728,7 +2889,6 @@ fm_status fm10000DeleteFlowTETable(fm_int sw,
     fm_status       err = FM_OK;
     fm_int          flowIndex;
     fm10000_switch *switchExt;
-    fm_int          mappedFlow;
 
     FM_LOG_ENTRY(FM_LOG_CAT_FLOW,
                  "sw=%d, tableIndex=%d\n",
@@ -2769,8 +2929,6 @@ fm_status fm10000DeleteFlowTETable(fm_int sw,
 
     while (flowIndex >= 0)
     {
-        mappedFlow = switchExt->flowInfo.table[tableIndex].mapping[flowIndex];
-
         /* Clear flow ID bit */
         err = fmSetBitArrayBit(&switchExt->flowInfo.table[tableIndex].idInUse,
                                flowIndex,
@@ -2897,6 +3055,7 @@ fm_status fm10000AddFlow(fm_int           sw,
     fm_flowTableType         tableType;
     fm_int                   ortoActions;
     fm_uint32                glort;
+    fm_int                   slicesCount;
 
     FM_LOG_ENTRY(FM_LOG_CAT_FLOW,
                  "sw = %d, tableIndex = %d, priority = %d, precedence = %d, "
@@ -2946,6 +3105,7 @@ fm_status fm10000AddFlow(fm_int           sw,
                         FM_FLOW_ACTION_SET_VLAN |
                         FM_FLOW_ACTION_PUSH_VLAN |
                         FM_FLOW_ACTION_POP_VLAN |
+                        FM_FLOW_ACTION_UPD_OR_ADD_VLAN |
                         FM_FLOW_ACTION_SET_VLAN_PRIORITY |
                         FM_FLOW_ACTION_SET_SWITCH_PRIORITY |
                         FM_FLOW_ACTION_SET_DSCP |
@@ -3105,6 +3265,15 @@ fm_status fm10000AddFlow(fm_int           sw,
         /* Translate actions. */
         err = TranslateFlowToACLAction(sw, &action, &aclAction, &aclParam);
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_FLOW, err);
+
+        err = CountActionSlicesNeeded(sw, aclAction, aclParam, &slicesCount);
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_FLOW, err);
+
+        if (slicesCount > switchExt->flowInfo.table[tableIndex].preallocatedSlices)
+        {
+            err = FM_ERR_INVALID_ACL_PARAM;
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_FLOW, err);
+        }
 
         acl = FM10000_FLOW_BASE_ACL + tableIndex;
 
@@ -3267,9 +3436,9 @@ fm_status fm10000AddFlow(fm_int           sw,
         err = fmConvertFlowToTEValue(condVal, &tunnelConditionParam);
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_FLOW, err);
 
-        err = TranslateFlowToTEAction(&action, 
-                                      &tunnelAction, 
-                                      &tunnelEncapFlow, 
+        err = TranslateFlowToTEAction(&action,
+                                      &tunnelAction,
+                                      &tunnelEncapFlow,
                                       &tunnelEncapFlowParam);
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_FLOW, err);
 
@@ -3431,7 +3600,6 @@ fm_status fm10000GetFlow(fm_int             sw,
     fm_int                   logicalPort;
     fm_int                   TEIndex;
 
-    FM_NOT_USED(priority);
     FM_NOT_USED(precedence);
 
     FM_LOG_ENTRY(FM_LOG_CAT_FLOW,
@@ -3555,6 +3723,17 @@ fm_status fm10000GetFlow(fm_int             sw,
         else if (*action & FM_FLOW_ACTION_ROUTE)
         {
             param->ecmpGroup = aclParam.groupId;
+        }
+
+        /* Get flow priority from rule value */
+        if (switchExt->flowInfo.table[tableIndex].withPriority)
+        {
+            if (priority == NULL)
+            {
+                err = FM_ERR_INVALID_ARGUMENT;
+                FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_FLOW, err);
+            }
+            *priority = (((~rule) >> 14) & 0xffff);
         }
     }
     else if ( tableType == FM_FLOW_TE_TABLE )
@@ -4075,6 +4254,7 @@ fm_status fm10000ModifyFlow(fm_int           sw,
     fm_flowTableType         tableType;
     fm_int                   ortoActions;
     fm_uint32                glort;
+    fm_int                   slicesCount;
 
     FM_LOG_ENTRY(FM_LOG_CAT_FLOW,
                  "sw = %d, tableIndex = %d, flowId = %d, priority = %d, "
@@ -4293,6 +4473,15 @@ fm_status fm10000ModifyFlow(fm_int           sw,
         err = TranslateFlowToACLAction(sw, &action, &aclAction, &aclParam);
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_FLOW, err);
 
+        err = CountActionSlicesNeeded(sw, aclAction, aclParam, &slicesCount);
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_FLOW, err);
+
+        if (slicesCount > switchExt->flowInfo.table[tableIndex].preallocatedSlices)
+        {
+            err = FM_ERR_INVALID_ACL_PARAM;
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_FLOW, err);
+        }
+
         err = fmUpdateACLRule(sw,
                               acl,
                               mappedFlow,
@@ -4361,9 +4550,9 @@ fm_status fm10000ModifyFlow(fm_int           sw,
         err = fmConvertFlowToTEValue(condVal, &tunnelConditionParam);
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_FLOW, err);
 
-        err = TranslateFlowToTEAction(&action, 
-                                      &tunnelAction, 
-                                      &tunnelEncapFlow, 
+        err = TranslateFlowToTEAction(&action,
+                                      &tunnelAction,
+                                      &tunnelEncapFlow,
                                       &tunnelEncapFlowParam);
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_FLOW, err);
 
@@ -4487,16 +4676,19 @@ ABORT:
  *****************************************************************************/
 fm_status fm10000DeleteFlow(fm_int sw, fm_int tableIndex, fm_int flowId)
 {
-    fm_status       err = FM_OK;
-    fm_int          acl;
-    fm_bool         bitValue;
-    fm10000_switch *switchExt;
-    fm_aclCondition aclCond;
-    fm_aclValue     aclValue;
-    fm_aclActionExt aclAction;
-    fm_aclParamExt  aclParam;
-    fm_int          mappedFlow;
-    fm_char         statusText[1024];
+    fm_status        err = FM_OK;
+    fm_int           acl;
+    fm_bool          bitValue;
+    fm_switch *      switchPtr;
+    fm10000_switch * switchExt;
+    fm_flowCondition condition;
+    fm_flowValue     condMasks;
+    fm_aclCondition  aclCond;
+    fm_aclValue      aclValue;
+    fm_aclActionExt  aclAction;
+    fm_aclParamExt   aclParam;
+    fm_int           mappedFlow;
+    fm_char          statusText[1024];
 
     FM_LOG_ENTRY(FM_LOG_CAT_FLOW,
                  "sw = %d, tableIndex = %d, flowId = %d\n",
@@ -4504,6 +4696,7 @@ fm_status fm10000DeleteFlow(fm_int sw, fm_int tableIndex, fm_int flowId)
                  tableIndex,
                  flowId);
 
+    switchPtr = GET_SWITCH_PTR(sw);
     switchExt = GET_SWITCH_EXT(sw);
 
     if ( (tableIndex >= FM_FLOW_MAX_TABLE_TYPE) || (tableIndex < 0) )
@@ -4612,6 +4805,49 @@ fm_status fm10000DeleteFlow(fm_int sw, fm_int tableIndex, fm_int flowId)
                 err = fmApplyACL(sw, 0);
                 FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_FLOW, err);
             }
+        }
+        else
+        {
+            /* Reset ACL rule */
+
+            condition = switchExt->flowInfo.table[tableIndex].condition;
+            condMasks = switchExt->flowInfo.table[tableIndex].condMasks;
+
+            err = TranslateFlowToACLCondition(sw, &condition, &aclCond);
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_FLOW, err);
+
+            err = TranslateConditionMask(sw, &aclCond);
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_FLOW, err);
+
+            err = fmConvertFlowToACLValue(&condMasks, &aclValue);
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_FLOW, err);
+
+            aclValue.dstIpMask.isIPv6 = FALSE;
+            aclValue.frameType = FM_ACL_FRAME_TYPE_IPV4;
+            aclValue.srcGlortMask = 0xffff;
+
+            if ( (switchExt->flowInfo.table[tableIndex].countSupported == FM_ENABLED) &&
+                 (aclAction & FM_ACL_ACTIONEXT_COUNT) )
+            {
+                /* Set action count only if the original rule already used it
+                   to avoid time consuming full ACL recompile/apply sequence */
+                aclAction = FM_ACL_ACTIONEXT_REDIRECT | FM_ACL_ACTIONEXT_COUNT;
+            }
+            else
+            {
+                aclAction = FM_ACL_ACTIONEXT_REDIRECT;
+            }
+
+            aclParam.logicalPort = switchPtr->cpuPort;
+
+            err = fmUpdateACLRule(sw,
+                                  acl,
+                                  mappedFlow,
+                                  aclCond,
+                                  &aclValue,
+                                  aclAction,
+                                  &aclParam);
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_FLOW, err);
         }
 
         /* Clear flow ID bit */
@@ -5257,8 +5493,10 @@ fm_status fm10000GetFlowAttribute(fm_int sw,
                                   fm_int attr,
                                   void  *value)
 {
-    fm_status       err = FM_OK;
-    fm10000_switch *switchExt;
+    fm_status        err = FM_OK;
+    fm10000_switch * switchExt;
+    fm_flowTableType tableType;
+    fm_int           bitCount;
 
     FM_LOG_ENTRY(FM_LOG_CAT_FLOW,
                  "sw = %d, tableIndex = %d, attr = %d, value = %p\n",
@@ -5341,6 +5579,67 @@ fm_status fm10000GetFlowAttribute(fm_int sw,
             *( (fm_uint32 *) value ) =
                 switchExt->flowInfo.table[tableIndex].scenario;
             break;
+
+        case FM_FLOW_TABLE_CONDITION:
+            *( (fm_flowCondition *) value ) =
+                switchExt->flowInfo.table[tableIndex].condition;
+            break;
+
+        case FM_FLOW_TABLE_MAX_ACTIONS:
+            *( (fm_uint32 *) value ) =
+                switchExt->flowInfo.table[tableIndex].maxAction;
+            break;
+
+        case FM_FLOW_TABLE_MAX_ENTRIES:
+            err = fmGetBitArrayBitCount(
+                    &switchExt->flowInfo.table[tableIndex].idInUse,
+                    (fm_int *) value);
+            break;
+
+        case FM_FLOW_TABLE_EMPTY_ENTRIES:
+            err = fmGetBitArrayBitCount(
+                    &switchExt->flowInfo.table[tableIndex].idInUse,
+                    (fm_int *) value);
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_FLOW, err);
+
+            err = fmGetBitArrayNonZeroBitCount(
+                    &switchExt->flowInfo.table[tableIndex].idInUse,
+                    &bitCount);
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_FLOW, err);
+
+            *( (fm_int *) value ) -= bitCount;
+            break;
+
+        case FM_FLOW_TABLE_SUPPORTED_ACTIONS:
+            err = fmGetFlowTableType(sw,
+                                     tableIndex,
+                                     &tableType);
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_FLOW, err);
+
+            switch (tableType)
+            {
+                case FM_FLOW_TCAM_TABLE:
+                    *( (fm_flowAction *) value ) =
+                            FM10000_FLOW_SUPPORTED_TCAM_ACTIONS;
+                    break;
+
+                case FM_FLOW_BST_TABLE:
+                    *( (fm_flowAction *) value ) =
+                            FM10000_FLOW_SUPPORTED_BST_ACTIONS;
+                    break;
+
+                case FM_FLOW_TE_TABLE:
+                    *( (fm_flowAction *) value ) =
+                            FM10000_FLOW_SUPPORTED_TE_ACTIONS;
+                    break;
+
+                default:
+                    err = FM_ERR_UNSUPPORTED;
+                    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_FLOW, err);
+            }
+
+            break;
+
 
         default:
             err = FM_ERR_UNSUPPORTED;
@@ -5892,3 +6191,124 @@ fm_status fm10000DelFlowUser(fm_int sw,
     FM_LOG_EXIT(FM_LOG_CAT_FLOW, err);
 
 }   /* end fm10000DelFlowUser */
+
+
+
+
+/*****************************************************************************/
+/** fm10000GetFlowTableIndexUnused
+ * \ingroup intFlow
+ *
+ * \desc            Gets the first unused flow table index.
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \param[out]      tableIndex points to caller-supplied location where
+ *                  the unused table index should be stored.
+ *
+ * \return          FM_OK if successful.
+ * \return          FM_ERR_INVALID_ARGUMENT if tableIndex is invalid.
+ * \return          FM_ERR_NO_MORE if no unused tables indexes have been found.
+ *
+ *****************************************************************************/
+fm_status fm10000GetFlowTableIndexUnused(fm_int  sw,
+                                         fm_int *tableIndex)
+{
+    fm_status         err;
+    fm10000_switch *  switchExt;
+    fm10000_flowInfo *flowInfo;
+    fm_bool           found;
+    fm_int            index;
+
+    FM_LOG_ENTRY(FM_LOG_CAT_FLOW,
+                 "sw = %d\n",
+                 sw);
+
+    err       = FM_OK;
+    switchExt = GET_SWITCH_EXT(sw);
+    found     = FALSE;
+
+    if ( tableIndex == NULL )
+    {
+        err = FM_ERR_INVALID_ARGUMENT;
+        FM_LOG_EXIT_ON_ERR(FM_LOG_CAT_FLOW, err);
+    }
+
+    flowInfo = &switchExt->flowInfo;
+
+    for (index = 0 ; index < FM_FLOW_MAX_TABLE_TYPE ; index++)
+    {
+        if (flowInfo->table[index].created == FALSE)
+        {
+            *tableIndex = index;
+            found = TRUE;
+            break;
+        }
+    }
+
+    if (found == FALSE)
+    {
+        err = FM_ERR_NO_MORE;
+    }
+
+    FM_LOG_EXIT(FM_LOG_CAT_FLOW, err);
+
+}   /* end fm10000GetFlowTableIndexUnused */
+
+
+
+
+/*****************************************************************************/
+/** fm10000GetFlowTableSupportedActions
+ * \ingroup intFlow
+ *
+ * \desc            Gets the bit mask of actions supported by given flow table
+ *                  type.
+ *
+ * \note            This functions assumes that the FLOW lock have already
+ *                  been taken.
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \param[in]       flowTableType is the flow table type.
+ *
+ * \param[out]      flowAction points to caller-supplied storage where the flow
+ *                  table action mask should be stored.
+ *
+ * \return          FM_OK if successful.
+ * \return          FM_ERR_UNSUPPORTED if flowTableType is not supported.
+ *
+ *****************************************************************************/
+fm_status fm10000GetFlowTableSupportedActions(fm_int           sw,
+                                              fm_flowTableType flowTableType,
+                                              fm_flowAction *  flowAction)
+{
+    fm_status err = FM_OK;
+
+    FM_LOG_ENTRY_API(FM_LOG_CAT_FLOW,
+                     "sw = %d flowTableType=%d\n",
+                     sw,
+                     flowTableType);
+
+    switch (flowTableType)
+    {
+        case FM_FLOW_TCAM_TABLE:
+            *flowAction = FM10000_FLOW_SUPPORTED_TCAM_ACTIONS;
+            break;
+
+        case FM_FLOW_BST_TABLE:
+            *flowAction = FM10000_FLOW_SUPPORTED_BST_ACTIONS;
+            break;
+
+        case FM_FLOW_TE_TABLE:
+            *flowAction = FM10000_FLOW_SUPPORTED_TE_ACTIONS;
+            break;
+
+        default:
+            err = FM_ERR_UNSUPPORTED;
+            break;
+    }
+
+    FM_LOG_EXIT(FM_LOG_CAT_FLOW, err);
+
+}   /* end fm10000GetFlowTableSupportedActions */

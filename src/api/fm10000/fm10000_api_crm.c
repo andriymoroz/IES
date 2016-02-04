@@ -5,7 +5,7 @@
  * Creation Date:   February 18, 2015
  * Description:     FM10000 Counter Rate Monitor (CRM) support.
  *
- * Copyright (c) 2009 - 2015, Intel Corporation
+ * Copyright (c) 2009 - 2016, Intel Corporation
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -444,7 +444,6 @@ static fm_status InitMonitors(fm_int sw, fm_bool setChk)
     fm_bool             isValid;
     fm_char             crmTimerName[16];
     fm10000_switch     *switchExt;
-    fm10000_parityInfo *parityInfo;
 
     FM_LOG_ENTRY(FM_LOG_CAT_CRM,
                  "sw=%d setChk=%s\n",
@@ -453,7 +452,6 @@ static fm_status InitMonitors(fm_int sw, fm_bool setChk)
 
     crmInfo = GET_CRM_INFO(sw);
     switchExt = GET_SWITCH_EXT(sw);
-    parityInfo = GET_PARITY_INFO(sw);
 
     FM_CLEAR(*crmInfo);
 
@@ -2148,8 +2146,8 @@ fm_status fm10000NotifyCRMEvent(fm_int sw, fm_int crmId, fm_int eventId)
 
     if (crmId >= FM10000_NUM_CRM_IDS)
     {
-        err = FM_ERR_INVALID_ARGUMENT;
-        FM_LOG_ERROR(FM_LOG_CAT_CRM, "Invalid crmId\n");
+        FM_LOG_ERROR(FM_LOG_CAT_CRM, "Invalid crmId (%d)\n", crmId);
+        FM_LOG_EXIT(FM_LOG_CAT_CRM, FM_ERR_INVALID_ARGUMENT);
     }
 
     switchExt = GET_SWITCH_EXT(sw);

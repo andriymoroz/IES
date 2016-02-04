@@ -6,7 +6,7 @@
  * Description:     Contains functions dealing with the state of individual
  *                  ports, and attributes thereof.
  *
- * Copyright (c) 2005 - 2015, Intel Corporation
+ * Copyright (c) 2005 - 2016, Intel Corporation
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -50,6 +50,9 @@
 #define FM10000_MIN_TRUNC_LEN       64
 #define FM10000_MAX_TRUNC_LEN       192
 #define F56_NB_BYTES                8
+
+#define FM10000_AM_TIMEOUT                      16384
+#define FM10000_COMP_PPM_SCALE_CONST            1000000
 
 #define FM10000_PORT_EEE_TX_ACT_MAX_VAL         2550
 #define FM10000_PORT_EEE_TX_LPI_MAX_VAL         255
@@ -104,7 +107,7 @@
 
 
 #define VALIDATE_ATTRIBUTE_WRITE_ACCESS(attr)                                \
-    if( !IS_ATTRIBUTE_WRITABLE(attr) )                                       \
+    if ( !IS_ATTRIBUTE_WRITABLE(attr) )                                      \
     {                                                                        \
         err = FM_ERR_UNSUPPORTED;                                            \
         FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);                  \
@@ -125,27 +128,62 @@
 
 #define IS_ATTRIBUTE_APPLICABLE(attr) IS_ATTRIBUTE_READABLE(attr)
 
-#define VALIDATE_ATTRIBUTE_READ_ACCESS(attr)                                 \
-    if( !IS_ATTRIBUTE_READABLE(attr) )                                       \
-    {                                                                        \
-        err = FM_ERR_UNSUPPORTED;                                            \
-        FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);                  \
+#define VALIDATE_ATTRIBUTE_READ_ACCESS(attr)                                \
+    if ( !IS_ATTRIBUTE_READABLE(attr) )                                     \
+    {                                                                       \
+        err = FM_ERR_UNSUPPORTED;                                           \
+        FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);                 \
     }
 
-#define VALIDATE_VALUE_IS_BOOL(value)                                          \
-    if (!(*((fm_bool *) (value)) == FM_ENABLED ||                              \
-        *((fm_bool *) (value)) == FM_DISABLED))                                \
-    {                                                                          \
-        err = FM_ERR_INVALID_VALUE;                                            \
-        FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);                    \
+#define VALIDATE_VALUE_IS_BOOL(value)                                       \
+    if (!(*((fm_bool *) (value)) == FM_ENABLED ||                           \
+        *((fm_bool *) (value)) == FM_DISABLED))                             \
+    {                                                                       \
+        err = FM_ERR_INVALID_VALUE;                                         \
+        FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);                 \
     }
 
 #define DUMP_FORMAT "%15s %-5s %-7s %-29s %-36s %-28s %s\n"
+
+/* Macros for State Machine diagram */
+#define SM_DIAGRAM_MAX              4
+
+/* Definitions of the State Machine positions on the SM diagram */
+#define SM_DIAGRAM_UNRECOGNIZED     0
+#define SM_DIAGRAM_PORT             1
+#define SM_DIAGRAM_SERDES           2
+#define SM_DIAGRAM_DFE              3
+#define SM_DIAGRAM_AN               4
+
+/* SM diagram elements width definitions*/
+#define SMDIAGRAM_BOXWIDTH          28  /* SM diagram box width */
+#define SMDIAGRAM_MARGINLEFT        22  /* SM diagram left margin width */
+#define SMDIAGRAM_TEXTWIDTH         26  /* SM diagram text width */
+#define SMDIAGRAM_COLUMNWIDTH       36  /* SM diagram column width */
+/* SM diagram box margin */
+#define SMDIAGRAM_BOXMARGIN   ((SMDIAGRAM_COLUMNWIDTH - SMDIAGRAM_BOXWIDTH) / 2)
+/* SM diagram text margin */
+#define SMDIAGRAM_TEXTMARGIN  ((SMDIAGRAM_BOXWIDTH - SMDIAGRAM_TEXTWIDTH) / 2)
+/* SM diagram vertical line position */
+#define SMDIAGRAM_VLINEPOS    (SMDIAGRAM_COLUMNWIDTH / 2)
+
+#define TBOX_TOP "-----------------------------------------------------------"\
+"----------------------------------------------------------------------------"
+
+typedef struct 
+{
+    fm_text   smHeader;
+    fm_text   smFooter;
+    fm_uint32 smHistorySize;
+    fm_uint32 smMaxHistorySize;
+    fm_bool   valid;
+} smTypeInfo;
 
 typedef struct
 {
     fm_uint64     timestamp;
     fm_text       type;
+    fm_text       srcType;
     fm_text       currentState;
     fm_text       nextState;
     fm_text       event;
@@ -1528,10 +1566,12 @@ static fm_int CountOnes( fm_uint64 value );
 static fm_int CmpTimestamp(const void *p1, const void *p2)
 {
 
-   return( ( *(fm10000_portStateTDump * const *) p1)->timestamp -
-           ( *(fm10000_portStateTDump * const *) p2)->timestamp );
+   return ( ( *(fm10000_portStateTDump * const *) p1)->timestamp -
+            ( *(fm10000_portStateTDump * const *) p2)->timestamp );
 
 }   /* end CmpTimestamp */
+
+
 
 
 /*****************************************************************************/
@@ -1571,7 +1611,8 @@ static fm_text fm10000SmTypeStr(fm_int type)
 
     return "UNKN";
 
-} /* end fm10000SmTypeStr */
+}   /* end fm10000SmTypeStr */
+
 
 
 
@@ -2242,14 +2283,16 @@ static fm_status SetLAGPortAttribute(fm_int sw,
     {
         tmpMaskBitArray = *( (fm_bitArray *) value );
 
-        status = fmSetBitArrayBit(&tmpMaskBitArray,
-                                  switchExt->tunnelCfg->tunnelPort[0],
-                                  0);
+        status = fmSetPortInBitArray(sw,
+                                     &tmpMaskBitArray,
+                                     switchExt->tunnelCfg->tunnelPort[0],
+                                     0);
         FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, status);
         
-        status = fmSetBitArrayBit(&tmpMaskBitArray,
-                                  switchExt->tunnelCfg->tunnelPort[1],
-                                  0);
+        status = fmSetPortInBitArray(sw,
+                                     &tmpMaskBitArray,
+                                     switchExt->tunnelCfg->tunnelPort[1],
+                                     0);
         FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, status);
     }
 
@@ -2708,7 +2751,6 @@ static fm_status ValidateLane( fm_int sw, fm_int port, fm_int lane )
     fm_int            numLanes;
     fm_port          *portPtr;
     fm10000_port     *portExt;
-    fm10000_portAttr *portAttrExt;
 
     FM_LOG_ENTRY_V2( FM_LOG_CAT_PORT, 
                      port,
@@ -2720,7 +2762,6 @@ static fm_status ValidateLane( fm_int sw, fm_int port, fm_int lane )
     err         = FM_OK;
     portPtr     = GET_PORT_PTR( sw, port );
     portExt     = GET_PORT_EXT( sw, port );
-    portAttrExt = GET_FM10000_PORT_ATTR( sw, port );
 
     if ( lane == FM_PORT_LANE_NA )
     {
@@ -2854,9 +2895,6 @@ static fm_status ValidateEthMode( fm_int sw, fm_int port, fm_ethMode ethMode )
     fm_int            otherFabricPort;
     fm_int            otherPort;
     fm_port          *portPtr;
-    fm10000_port     *portExt;
-    fm10000_port     *otherPortExt;
-    fm10000_portAttr *portAttrExt;
     fm10000_portAttr *otherPortAttrExt;
     fm_bool           isAnotherPortEnabled;
     fm_bool           isAnotherPort4Lanes; 
@@ -2886,9 +2924,7 @@ static fm_status ValidateEthMode( fm_int sw, fm_int port, fm_ethMode ethMode )
         goto ABORT;
     }
 
-    portPtr     = GET_PORT_PTR( sw, port );
-    portExt     = GET_PORT_EXT( sw, port );
-    portAttrExt = GET_FM10000_PORT_ATTR( sw, port );
+    portPtr = GET_PORT_PTR( sw, port );
 
     /* Convert logical port number to physical port number. */
     err = fm10000MapLogicalPortToFabricPort( sw, port, &fabricPort );
@@ -2900,11 +2936,10 @@ static fm_status ValidateEthMode( fm_int sw, fm_int port, fm_ethMode ethMode )
                          port );
         goto ABORT;
     }
-    else if( err != FM_OK )
+    else if ( err != FM_OK )
     {
         FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, err );
     }
-
 
 
     /* Now make sure it's an ethernet port */
@@ -2916,18 +2951,82 @@ static fm_status ValidateEthMode( fm_int sw, fm_int port, fm_ethMode ethMode )
         goto ABORT;
     }
 
-    /****************************************************
-     * First, if we want to configure for 40G/100G, make 
-     * sure this port has the capability to do so.
-     ****************************************************/
-
-    if ( ( ethMode & FM_ETH_MODE_4_LANE_BIT_MASK ) &&
-         ((portPtr->capabilities & FM_PORT_CAPABILITY_SPEED_40G) == 0) &&
-         ((portPtr->capabilities & FM_PORT_CAPABILITY_SPEED_100G) == 0) )
+    switch (fm10000GetPortSpeed(ethMode))
     {
-        err = FM_ERR_INVALID_PORT_STATE;
-        FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, err );
-    }
+        case 1000:
+            if (!(portPtr->capabilities & FM_PORT_CAPABILITY_SPEED_1G))
+            {
+                FM_LOG_ERROR(FM_LOG_CAT_PORT,
+                             "Port %d does not support 1G speed.\n",
+                              port);
+                err = FM_ERR_UNSUPPORTED;
+            }
+            break;
+
+        case 2500:
+            if (!(portPtr->capabilities & FM_PORT_CAPABILITY_SPEED_2PT5G))
+            {
+                FM_LOG_ERROR(FM_LOG_CAT_PORT,
+                             "Port %d does not support 2.5G speed.\n",
+                              port);
+                err = FM_ERR_UNSUPPORTED;
+            }
+            break;
+
+         case 10000:
+            if (!(portPtr->capabilities & FM_PORT_CAPABILITY_SPEED_10G))
+            {
+                FM_LOG_ERROR(FM_LOG_CAT_PORT,
+                             "Port %d does not support 10G speed.\n",
+                              port);
+                err = FM_ERR_UNSUPPORTED;
+            }
+            break;
+
+       case 25000:
+            if (!(portPtr->capabilities & FM_PORT_CAPABILITY_SPEED_25G))
+            {
+                FM_LOG_ERROR(FM_LOG_CAT_PORT,
+                             "Port %d does not support 25G speed.\n",
+                              port);
+                err = FM_ERR_UNSUPPORTED;
+            }
+            break;
+
+       case 40000:
+            if (!(portPtr->capabilities & FM_PORT_CAPABILITY_SPEED_40G))
+            {
+                FM_LOG_ERROR(FM_LOG_CAT_PORT,
+                             "Port %d does not support 40G speed.\n",
+                              port);
+                err = FM_ERR_UNSUPPORTED;
+            }
+            break;
+
+       case 100000:
+            if (!(portPtr->capabilities & FM_PORT_CAPABILITY_SPEED_100G))
+            {
+                FM_LOG_ERROR(FM_LOG_CAT_PORT,
+                             "Port %d does not support 100G speed.\n",
+                              port);
+                err = FM_ERR_UNSUPPORTED;
+            }
+            break;
+
+        case 0:
+            break;
+
+        default:
+            FM_LOG_ERROR(FM_LOG_CAT_PORT,
+                         "Port %d does not support %d Mbps speed.\n",
+                          port,
+                          fm10000GetPortSpeed(ethMode));
+            err = FM_ERR_UNSUPPORTED;
+            break;
+
+    }   /* end switch (fm10000GetPortSpeed(ethMode)) */
+
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, err );
 
     /**************************************************
      * Second catalog how all other ports sharing this
@@ -2965,7 +3064,6 @@ static fm_status ValidateEthMode( fm_int sw, fm_int port, fm_ethMode ethMode )
         }
 
         /* Get that port's configuration */
-        otherPortExt     = GET_PORT_EXT( sw, otherPort );
         otherPortAttrExt = GET_FM10000_PORT_ATTR( sw, otherPort );
 
         /* Check for enabled port on any of this port's EPL */
@@ -3259,7 +3357,6 @@ static fm_status ConfigureFabricLoopback(fm_int     sw,
     fm_status         err;
     fm_int            currentFabricLoopback;
     fm10000_port *    portExt;
-    fm_portAttr *     portAttr;
     fm_smEventInfo    eventInfo;
     fm10000_portAttr *portAttrExt;
     fm_port          *portPtr;
@@ -3278,7 +3375,6 @@ static fm_status ConfigureFabricLoopback(fm_int     sw,
                      loopbackMode);
 
     err         = FM_OK;
-    portAttr    = GET_PORT_ATTR( sw, port );
     portExt     = GET_PORT_EXT( sw, port );
     portAttrExt = GET_FM10000_PORT_ATTR(sw, port);
     portPtr     = GET_PORT_PTR(sw, port);
@@ -3361,8 +3457,8 @@ static fm_status ConfigureFabricLoopback(fm_int     sw,
 
                 /* save the new mode and, if required sent an event to the sm */
                 portAttrExt->fabricLoopback = loopbackMode;
-        
                 eventInfo.smType         = portExt->smType;
+                eventInfo.srcSmType      = 0;
                 eventInfo.lock           = FM_GET_STATE_LOCK( sw );
                 eventInfo.dontSaveRecord = FALSE;
 
@@ -3454,8 +3550,6 @@ static fm_status ConfigureAnMode( fm_int     sw,
     }
     else
     {
-    
-        err         = FM_OK;
         switchPtr   = GET_SWITCH_PTR(sw);
         portPtr     = GET_PORT_PTR(sw, port);
         portExt     = GET_PORT_EXT( sw, port );
@@ -3465,7 +3559,6 @@ static fm_status ConfigureAnMode( fm_int     sw,
     
         VALIDATE_ATTRIBUTE_WRITE_ACCESS(&portAttributeTable.autoNegMode);
         VALIDATE_PORT_ATTRIBUTE(&portAttributeTable.autoNegMode);
-    
     
         /* validate the current base page against the new autoneg mode */
         err = fm10000AnValidateBasePage( sw, 
@@ -3527,6 +3620,7 @@ static fm_status ConfigureAnMode( fm_int     sw,
                     /* we switched the port state machine, we need to restore
                        the current ethMode and admin mode */
                     eventInfo.smType = newPortSmType;
+                    eventInfo.srcSmType = 0;
                     eventInfo.eventId = FM10000_PORT_EVENT_CONFIG_REQ;
                     eventInfo.lock    = FM_GET_STATE_LOCK( sw );
                     eventInfo.dontSaveRecord = FALSE;
@@ -3665,7 +3759,6 @@ static fm_status ConfigureRxTermination(fm_int     sw,
                                         fm_rxTermination rxTermination)
 {
     fm_status         err;
-    fm10000_port *    portExt;
     fm_laneAttr *     laneAttr;
     fm10000_lane       *pLaneExt;
     fm10000SerdesRxTerm serdesRxTerm;
@@ -3679,9 +3772,7 @@ static fm_status ConfigureRxTermination(fm_int     sw,
                      lane, 
                      rxTermination);
 
-    err         = FM_OK;
     laneAttr    = NULL;
-    portExt     = GET_PORT_EXT( sw, port );
 
     err = fm10000MapPortLaneToSerdes(sw, port, lane, &serdes);
 
@@ -3767,7 +3858,6 @@ static fm_status ConfigureDfeMode(fm_int     sw,
                      lane, 
                      dfeMode);
 
-    err         = FM_OK;
     laneAttr    = NULL;
     portExt     = GET_PORT_EXT( sw, port );
 
@@ -3796,6 +3886,7 @@ static fm_status ConfigureDfeMode(fm_int     sw,
             /* send an event to configure DFE mode */
             eventInfo.eventId = FM10000_PORT_EVENT_CONFIGURE_DFE_REQ;
             eventInfo.smType  = portExt->smType;
+            eventInfo.srcSmType = 0;
             eventInfo.lock    = FM_GET_STATE_LOCK(sw);
             eventInfo.dontSaveRecord = FALSE;
     
@@ -4356,6 +4447,7 @@ static fm_status SwapPortStateMachineType( fm_int sw,
             {
                 /* ...notify the DISABLE event to the port state machine... */
                 eventInfo.smType = curType;
+                eventInfo.srcSmType = 0;
                 eventInfo.eventId = FM10000_PORT_EVENT_DISABLE_REQ;
                 eventInfo.lock    = FM_GET_STATE_LOCK( sw );
                 eventInfo.dontSaveRecord = FALSE;
@@ -4604,6 +4696,7 @@ static fm_status HandleEeePcSilent(fm_int   sw,
         {
             /* The port is Idle */
             eventInfo.smType = portExt->smType;
+            eventInfo.srcSmType = 0;
             eventInfo.lock   = FM_GET_STATE_LOCK( sw );
             eventInfo.dontSaveRecord = TRUE;
 
@@ -4684,16 +4777,16 @@ static fm_status SetSerDesSmType( fm_int sw, fm_int port, fm_int *smType )
     fm10000_serDesSmMode serdesSmMode;
 
     err = fm10000MapPortLaneToSerdes(sw, port, 0, &serDesLane0);
-    if( err == FM_OK )
+    if ( err == FM_OK )
     {
         err = fm10000SerdesGetOpMode( sw, 
                                       serDesLane0, 
                                       NULL, 
                                       &serdesSmMode, 
                                       NULL );
-        if( err == FM_OK )
+        if ( err == FM_OK )
         {
-            if( serdesSmMode == FM10000_SERDES_USE_STUB_STATE_MACHINE )
+            if ( serdesSmMode == FM10000_SERDES_USE_STUB_STATE_MACHINE )
             {
                 *smType = FM10000_STUB_SERDES_STATE_MACHINE;
             }
@@ -4706,7 +4799,8 @@ static fm_status SetSerDesSmType( fm_int sw, fm_int port, fm_int *smType )
 
     return err;
 
-}   /* end SetSerDesSmType() */
+}   /* end SetSerDesSmType */
+
 
 
 
@@ -4732,15 +4826,10 @@ static fm_uint16 ConvertPpmToTxClkCompensationTimeout( fm_uint32  pcsType,
                                                        fm_uint32  speed,
                                                        fm_uint32  num_ppm )
 {
-    fm_float  f;             /* SerDes data rate in baud/sec.              */
-    fm_float  ppm = 1E-6;    /* clock deviation in parts per million (ppm) */
-    fm_float  e;             /* encoding compression factor                */
-    fm_float  c;             /* number of MII columns processed per tick   */
-    fm_float  T;             /* tick period in sec.                        */
-    fm_float  d;             /* clock deviation                            */
-    fm_float  timeout;       /* TxClockCompensationTimeout value           */
-    fm_float  default40Gppm;
-    fm_float  default100Gppm;
+    fm_uint   scaleConst;    /* scaling factor */
+    fm_uint   ppm;           /* clock deviation in parts per million (ppm) */
+    fm_uint   timeout;       /* TxClockCompensationTimeout value           */
+    fm_uint   amPpm;         /* compensation for aligment markers */
     fm_uint16 txClockCompensationTimeout;
 
     /**************************************************
@@ -4756,14 +4845,11 @@ static fm_uint16 ConvertPpmToTxClkCompensationTimeout( fm_uint32  pcsType,
 
     if (num_ppm == 0 || pcsType == FM10000_PCS_SEL_DISABLE)
     {
-        if ( pcsType == FM10000_PCS_SEL_40GBASER )
+        if ( pcsType == FM10000_PCS_SEL_40GBASER ||
+             pcsType == FM10000_PCS_SEL_100GBASER )
         {
-            return 4*2048;
-        }
-        else if ( pcsType == FM10000_PCS_SEL_100GBASER )
-        {
-            /* Same value for 40G and 100G? */
-            return 20*2048;
+            /* One tick for 2 columns */
+            return FM10000_AM_TIMEOUT/2;
         }
         else
         {
@@ -4773,135 +4859,28 @@ static fm_uint16 ConvertPpmToTxClkCompensationTimeout( fm_uint32  pcsType,
     }
 
     /**************************************************
-     * Select the SerDes data rate in baud/sec based
-     * on PCS type. It is the data rate at the
-     * differential pair (analog) side of the SerDes.
-     *
-     * The SerDes operates at
-     *    1.25E9 baud/s for 1000BASE-X and SGMII
-     *  10.312E9 baud/s for 10GBASE-R and 40GBASE-R
-     *  25.78125 baud/s for 100GBASE-R
-     *
-     * Select tick period in sec according to the
-     * FM10000 datasheet.
-     * See MAC_CFG.txClockCompensationTimeout:
-     *
-     * 100GBASER   count unit is 1.28 ns
-     * 40GBASER    count unit is 3.2 ns
-     * 10GBASER    count unit is 3.2 ns
-     * 1000BASEX   count unit is 8 ns
-     * SGMII 1000  count unit is 8 ns
-     * SGMII 100   count unit is 80 ns
-     * SGMII 10    count unit is 800 ns
-     **************************************************/
-
-    switch (pcsType)
-    {
-        case FM10000_PCS_SEL_SGMII_10:
-            f = 1.25E9 / 100;
-            T = 800.0E-9;
-            break;
-
-        case FM10000_PCS_SEL_SGMII_100:
-            f = 1.25E9 / 10;
-            T = 80.0E-9;
-            break;
-
-        case FM10000_PCS_SEL_SGMII_1000:
-        case FM10000_PCS_SEL_1000BASEX:
-            if ( speed == 1000 )
-            {
-                /* 1G */
-                f = 1.25E9;
-                T = 8.0E-9;
-            }
-            else
-            {
-                /* 2.5G */
-                f = 3.125E9;
-                T = 3.2E-9;
-            }
-            break;
-
-        case FM10000_PCS_SEL_100GBASER:
-            f = 25.78125E9;
-            T = 1.28E-9;
-            break;
-
-        case FM10000_PCS_SEL_10GBASER:
-        case FM10000_PCS_SEL_40GBASER:
-        default:
-            f = 10.3125E9;
-            T = 3.2E-9;
-            break;
-    }
-
-    /**************************************************
-     * Select the encoding compression factor based on
-     * the PCS type.
-     *
-     *  64/66 for <S>BASE-R
-     *   8/10 for <S>BASE-X
-     *
-     *  SGMII runs on top of 1000BASE-X
-     **************************************************/
-    if ( pcsType == FM10000_PCS_SEL_10GBASER ||
-         pcsType == FM10000_PCS_SEL_40GBASER ||
-         pcsType == FM10000_PCS_SEL_100GBASER )
-    {
-        /* Is this correct for 100G? */
-        e = 64.0 / 66.0;
-    }
-    else
-    {
-        e = 8.0 / 10.0;
-    }
-
-    /* Number of MII columns processed per tick (also for 100G) */
-    if ( pcsType == FM10000_PCS_SEL_40GBASER ||
-         pcsType == FM10000_PCS_SEL_100GBASER )
-    {
-        c = 2;
-    }
-    else
-    {
-        c = 1;
-    }
-
-    /**************************************************
-     * For 40GBASE-R and 20GBASE-R PCS types the
+     * For 40GBASE-R and 100GBASE-R PCS types the
      * num_ppm must be set on top of the minimal ppm
-     * value required.
+     * value required for aligment marker compensation.
      **************************************************/
 
-    if (pcsType == FM10000_PCS_SEL_40GBASER)
+    if (pcsType == FM10000_PCS_SEL_40GBASER ||
+        pcsType == FM10000_PCS_SEL_100GBASER )
     {
-        /* Convert the default timeout in pmm */
-        default40Gppm = c / (T * f * 4*2048 * (e / 8.0));
-        ppm = (num_ppm * ppm) + default40Gppm;
-    }
-    else if ( pcsType == FM10000_PCS_SEL_100GBASER )
-    {
-        /* Convert the default timeout in pmm */
-        default100Gppm = c / (T * f * 20 * 2048 * (e / 8.0));
-        ppm = (num_ppm * ppm) + default100Gppm;
+        /* One for every AM interval */
+        amPpm = 1000000/FM10000_AM_TIMEOUT;
+        scaleConst = FM10000_COMP_PPM_SCALE_CONST/2;
     }
     else
     {
-        ppm = ppm * num_ppm;
+        scaleConst = FM10000_COMP_PPM_SCALE_CONST;
+        amPpm = 0;
     }
 
-    /* Compute the clock deviation in baud/s. */
-    d = ppm * f;
+    ppm = num_ppm + amPpm;
 
-    /* Convert the clock deviation to bytes/s.
-       Note: The PCS encoding scheme needs to be taken into account here as the
-             clock compensation operates on decoded bytes.
-    */
-    d = d * (e / 8.0);
-
-    /* Compute the periodic rate at which a single Idle byte should be deleted. */
-    timeout = (c / T) / d;
+    /* Compute the periodic rate idle bytes should be deleted. */
+    timeout = scaleConst/ppm;
 
     /* MAC_CFG.txClockCompensationTimeout is 16-bit long */
     if (timeout > 0xFFFF)
@@ -4914,17 +4893,16 @@ static fm_uint16 ConvertPpmToTxClkCompensationTimeout( fm_uint32  pcsType,
     }
 
     FM_LOG_DEBUG2(FM_LOG_CAT_PORT,
-                 "f %f ppm %f c %f e %f T %f ns timeout %d\n",
-                 f,
-                 ppm/1E-6,
-                 c,
-                 e,
-                 T/1e-9,
+                 "scaleConst %d ppm %d amPpm %d timeout %d\n",
+                 scaleConst,
+                 ppm,
+                 amPpm,
                  txClockCompensationTimeout);
 
     return txClockCompensationTimeout;
 
 }   /* end ConvertPpmToTxClkCompensationTimeout */
+
 
 
 
@@ -4958,6 +4936,7 @@ static fm_int CountOnes(fm_uint64 value)
     return count;
 
 }   /* end CountOnes */
+
 
 
 
@@ -5014,6 +4993,7 @@ static fm_status GetPortLpiStatus(fm_int sw, fm_int  port, fm_int *lpiStatus)
 
 
 
+
 /*****************************************************************************/
 /** GetPcieSpeedFromReg
  * \ingroup intPort
@@ -5035,7 +5015,7 @@ static fm_status GetPortLpiStatus(fm_int sw, fm_int  port, fm_int *lpiStatus)
  * \return          FM_ERR_UNSUPPORTED if unrecognized clock speed.
  *
  *****************************************************************************/
-fm_status GetPcieSpeedFromReg(fm_int sw, fm_int port, fm_uint32 *speed)
+static fm_status GetPcieSpeedFromReg(fm_int sw, fm_int port, fm_uint32 *speed)
 {
     fm_status      status;
     fm_uint32      addr;
@@ -5098,7 +5078,8 @@ fm_status GetPcieSpeedFromReg(fm_int sw, fm_int port, fm_uint32 *speed)
     }
 
     return status;
-}
+
+}   /* end GetPcieSpeedFromReg */
 
 
 
@@ -5124,7 +5105,7 @@ fm_status GetPcieSpeedFromReg(fm_int sw, fm_int port, fm_uint32 *speed)
  * \return          FM_ERR_UNSUPPORTED if unrecognized link width.
  *
  *****************************************************************************/
-fm_status GetPcieModeFromReg(fm_int sw, fm_int port, fm_uint32 *mode)
+static fm_status GetPcieModeFromReg(fm_int sw, fm_int port, fm_uint32 *mode)
 {
     fm_status      status;
     fm_uint32      addr;
@@ -5191,7 +5172,580 @@ fm_status GetPcieModeFromReg(fm_int sw, fm_int port, fm_uint32 *mode)
     }
 
     return status;
-}
+
+}   /* end GetPcieModeFromReg */
+
+
+
+
+/*****************************************************************************/
+/** fm10000SMDiagramHeader
+ * \ingroup intPort
+ *
+ * \desc            Function to dump a State Machine diagram headers.
+ *                  Used at the begin and end of the SM diagram.
+ *                  Shows the SM boxes with associated SM names in the each box.
+ * 
+ * \param[in]       smList is NOT DOCUMENTED.
+ *
+ * \param[in]       header is an array of pointers to the SM names.
+ *                  Each array entry corresponds to a single State Machine name.
+ *
+ * \param[in]       smCnt is the number of active SM columns.
+ * 
+ * \return          Nothing.
+ *
+ *****************************************************************************/
+static void fm10000SMDiagramHeader(smTypeInfo smList[],
+                                   fm_int     smCnt,
+                                   fm_bool    header)
+{
+    fm_int  cor;
+    fm_int  dop;
+    fm_int  len;
+    fm_int  i;
+    fm_text s;
+
+    FM_LOG_PRINT("%*s", SMDIAGRAM_MARGINLEFT + SMDIAGRAM_BOXMARGIN, " ");
+    for ( i = 1 ; i < smCnt + 1 ; i++)
+    {
+        
+        FM_LOG_PRINT("%.*s%*s",
+                     SMDIAGRAM_BOXWIDTH, TBOX_TOP,
+                     (SMDIAGRAM_COLUMNWIDTH - SMDIAGRAM_BOXWIDTH), " ");
+    }
+
+    FM_LOG_PRINT("\n");
+    FM_LOG_PRINT("%*s", SMDIAGRAM_MARGINLEFT, " ");
+    for ( i = 1 ; i < smCnt + 1 ; i++)
+    {
+        s = header ? smList[i].smHeader : smList[i].smFooter;
+        if (!s)
+        {
+            len = FM_STRNLEN_S("unspecified", SMDIAGRAM_TEXTWIDTH);
+            dop = (SMDIAGRAM_TEXTWIDTH > len) ? (SMDIAGRAM_TEXTWIDTH - len) / 2 : 0; 
+            cor = SMDIAGRAM_TEXTWIDTH - (len + 2 * dop);
+            FM_LOG_PRINT("%*s|%*s%.*s%*s%*s|%*s",
+                         (SMDIAGRAM_BOXMARGIN), " ",
+                         (SMDIAGRAM_TEXTMARGIN + dop - 1 ), " ",
+                         (SMDIAGRAM_TEXTWIDTH), "unspecified",
+                         (dop - 1 + cor), " ",
+                         (SMDIAGRAM_TEXTMARGIN), " ",
+                         (SMDIAGRAM_BOXMARGIN), " ");
+        }
+        else
+        {
+            len = FM_STRNLEN_S(s, SMDIAGRAM_TEXTWIDTH);
+            dop = (SMDIAGRAM_TEXTWIDTH > len) ? (SMDIAGRAM_TEXTWIDTH - len) / 2 : 0; 
+            cor = SMDIAGRAM_TEXTWIDTH - (len + 2 * dop);
+            FM_LOG_PRINT("%*s|%*s%.*s%*s%*s|%*s",
+                         (SMDIAGRAM_BOXMARGIN), " ",
+                         (SMDIAGRAM_TEXTMARGIN + dop - 1 ), " ",
+                         (SMDIAGRAM_TEXTWIDTH), s,
+                         (dop - 1 + cor), " ",
+                         (SMDIAGRAM_TEXTMARGIN), " ",
+                         (SMDIAGRAM_BOXMARGIN), " ");
+        }
+    }
+
+    FM_LOG_PRINT("\n");
+    FM_LOG_PRINT("%*s", SMDIAGRAM_MARGINLEFT + SMDIAGRAM_BOXMARGIN, " ");
+    for ( i = 1 ; i < smCnt + 1 ; i++)
+    {
+        FM_LOG_PRINT("%.*s%*s",
+                     SMDIAGRAM_BOXWIDTH, TBOX_TOP,
+                     (SMDIAGRAM_COLUMNWIDTH - SMDIAGRAM_BOXWIDTH), " ");
+    }
+
+    FM_LOG_PRINT("\n");
+    
+}   /* end fm10000SMDiagramHeader */
+
+
+
+
+/*****************************************************************************/
+/** fm10000SMDiagramSpace
+ * \ingroup intPort
+ *
+ * \desc            Function to dump a State Machine space separating
+ *                  events and states. It prints the vertical lines,
+ *                  each line is dumped in the middle of the SM associated
+ *                  column. 
+ *                  Additionally in the left margin it shows the associated text
+ *                  which could be used as additional information field.
+ * 
+ * \param[in]       smList is NOT DOCUMENTED.
+ *
+ * \param[in]       smCnt is the number of active SM columns.
+ * 
+ * \param[in]       s additional text string which might be dumped as associated
+ *                  with the state transitions.
+ *                  It could be a port and lane number with a timestamp. 
+ *
+ * \return          Nothing.
+ *
+ *****************************************************************************/
+static void fm10000SMDiagramSpace(smTypeInfo smList[], fm_int smCnt, fm_text s)
+{
+    fm_int i;
+    fm_int len;
+
+    len = FM_STRNLEN_S(s, 32);
+    if (!len)
+    {
+        FM_LOG_PRINT(" ");
+    }
+
+    FM_LOG_PRINT("%*s%*s", len, s, SMDIAGRAM_MARGINLEFT - len - 1, " ");
+    for ( i = 0 ; i < smCnt ; i++)
+    {
+        FM_LOG_PRINT("%*s%*s", 
+                     SMDIAGRAM_VLINEPOS , ( smList[i+1].valid ? "|" : "?" ),
+                     SMDIAGRAM_VLINEPOS , " ");
+    }
+
+    FM_LOG_PRINT("\n");
+    
+}   /* end fm10000SMDiagramSpace */
+
+
+
+
+/*****************************************************************************/
+/** fm10000SMDiagramState
+ * \ingroup intPort
+ *
+ * \desc            Dumps a State for a given State Machine column.
+ *                  Columns not associated with the sm are indicated as a 
+ *                  vertical lines.
+ * 
+ * \param[in]       smList is NOT DOCUMENTED.
+ *
+ * \param[in]       sm is the SM column number the state is associated with.
+ * 
+ * \param[in]       state points to a string.
+ * 
+ * \param[in]       s additional text string which might be dumped as associated
+ *                  with the state transitions.
+ *                  It could be a port and lane number with a timestamp. 
+ *
+ * \param[in]       smCnt is the number of active SM associated with the diagram.
+ *
+ * \return          Nothing.
+ *
+ *****************************************************************************/
+static void fm10000SMDiagramState(smTypeInfo smList[],
+                                  fm_int     sm,
+                                  fm_char   *state,
+                                  fm_text    s,
+                                  fm_int     smCnt)
+{
+    fm_int i;
+    fm_int dop;
+    fm_int cor;
+    fm_int len;
+
+    FM_LOG_PRINT("%*s", SMDIAGRAM_MARGINLEFT, " ");
+    for ( i = 1 ; i < smCnt + 1 ; i++)
+    {
+        if (i == sm)
+        {
+            FM_LOG_PRINT("%*s%.*s%*s",
+                         SMDIAGRAM_BOXMARGIN + 1, " ",
+                         SMDIAGRAM_BOXWIDTH - 2, TBOX_TOP,
+                         SMDIAGRAM_BOXMARGIN + 1, " ");
+        }
+        else
+        {
+            FM_LOG_PRINT("%*s%*s",
+                         SMDIAGRAM_VLINEPOS , ( smList[i].valid ? "|" : "?" ), 
+                         SMDIAGRAM_VLINEPOS, " ");
+        }
+    }
+
+    FM_LOG_PRINT("\n");
+    FM_LOG_PRINT("%*s", SMDIAGRAM_MARGINLEFT, " ");
+    if (sm > 1)
+    {
+        for ( i = 1 ; i < sm ; i++ )
+        {
+            FM_LOG_PRINT("%*s%*s",
+                         SMDIAGRAM_VLINEPOS , ( smList[i].valid ? "|" : "?" ), 
+                         SMDIAGRAM_VLINEPOS, " ");
+        }
+    }
+    
+    len = FM_STRNLEN_S(state, SMDIAGRAM_TEXTWIDTH);
+    dop = (SMDIAGRAM_TEXTWIDTH > len) ? (SMDIAGRAM_TEXTWIDTH - len) / 2 : 0;
+    cor = SMDIAGRAM_TEXTWIDTH - (len + 2 * dop);
+    FM_LOG_PRINT("%*s(%*s%.*s%*s)%*s",
+                 (SMDIAGRAM_BOXMARGIN), " ", 
+                 (SMDIAGRAM_TEXTMARGIN + dop - 1), " ",
+                 (SMDIAGRAM_TEXTWIDTH), state,
+                 (SMDIAGRAM_TEXTMARGIN + dop - 1 + cor), " ",
+                 (SMDIAGRAM_BOXMARGIN), " ");
+
+    if (sm < SM_DIAGRAM_MAX)
+    {
+        for ( i = sm ; i < smCnt ; i++ )
+        {
+            FM_LOG_PRINT("%*s%*s",
+                         SMDIAGRAM_VLINEPOS , ( smList[i+1].valid ? "|" : "?" ), 
+                         SMDIAGRAM_VLINEPOS, " ");
+        }
+    }
+
+    FM_LOG_PRINT("\n");
+    FM_LOG_PRINT("%*s", SMDIAGRAM_MARGINLEFT, " ");
+    for ( i = 1 ; i < smCnt + 1 ; i++)
+    {
+        if (i == sm)
+        {
+            FM_LOG_PRINT("%*s%.*s%*s",
+                         SMDIAGRAM_BOXMARGIN + 1, " ",
+                         SMDIAGRAM_BOXWIDTH - 2, TBOX_TOP,
+                         SMDIAGRAM_BOXMARGIN + 1, " ");
+        }
+        else
+        {
+            FM_LOG_PRINT("%*s%*s",
+                         SMDIAGRAM_VLINEPOS , ( smList[i].valid ? "|" : "?" ), 
+                         SMDIAGRAM_VLINEPOS, " ");
+        }
+    }
+
+    FM_LOG_PRINT("\n");
+    
+    fm10000SMDiagramSpace(smList, smCnt, s);
+    
+}   /* end fm10000SMDiagramState */
+
+
+
+
+/*****************************************************************************/
+/** fm10000SMDiagramEvent
+ * \ingroup intPort
+ *
+ * \desc            Function to dump a State Machine event. 
+ *                  Dumps an Event with corresponding arrow indicating
+ *                  the source and destination columns SM.
+ * 
+ * \param[in]       smList is NOT DOCUMENTED.
+ *
+ * \param[in]       smFrom is the source SM column number.
+ * 
+ * \param[in]       smTo is the destination SM column number.
+ * 
+ * \param[in]       event points to the event string string.
+ * 
+ * \param[in]       smCnt is the number of SM columns in the diagram.
+ *                  It allows elimination of the unused SM columns.
+ *
+ * \return          Nothing.
+ *
+ *****************************************************************************/
+static void fm10000SMDiagramEvent(smTypeInfo smList[], 
+                                  fm_int     smFrom,
+                                  fm_int     smTo,
+                                  fm_char   *event,
+                                  fm_int     smCnt)
+{
+    fm_int  arrowSmStart;
+    fm_int  arrowSmEnd;
+    fm_int  smDiff;
+    fm_char rightArrowSign;
+    fm_char leftArrowSign;
+    fm_int  dop;
+    fm_int  len;
+    fm_int  i;
+
+    smDiff = (smTo > smFrom) ? (smTo - smFrom) : (smFrom - smTo);
+    if (smTo > smFrom)
+    {
+        rightArrowSign  = '>';
+        leftArrowSign   =  ' ';
+        arrowSmStart = smFrom;
+        arrowSmEnd   = smTo;
+    }
+    else
+    {
+        rightArrowSign  = ' ';
+        leftArrowSign   = '<';
+        arrowSmStart = smTo;
+        arrowSmEnd   = smFrom;
+    }
+
+    if (arrowSmStart > 0)
+    {
+        FM_LOG_PRINT("%*s", SMDIAGRAM_MARGINLEFT + SMDIAGRAM_VLINEPOS, 
+                     ( smList[1].valid ? "|" : "?" ));
+        for ( i = 1 ; i < arrowSmStart ; i++ )
+        {
+            FM_LOG_PRINT("%*s",
+                         SMDIAGRAM_COLUMNWIDTH , ( smList[i].valid ? "|" : "?" ));
+        }
+    }
+    
+    len = FM_STRNLEN_S(event, SMDIAGRAM_TEXTWIDTH);
+    dop = (SMDIAGRAM_TEXTWIDTH > len) ? (SMDIAGRAM_TEXTWIDTH - len) : 0;
+    FM_LOG_PRINT("%c%s%.*s%.*s%c%c",
+                  leftArrowSign,
+                  "-- ",
+                  SMDIAGRAM_TEXTWIDTH, event,
+                  (SMDIAGRAM_MARGINLEFT + SMDIAGRAM_VLINEPOS) * (arrowSmStart > 0 ? 0 : 1) + 
+                  (smDiff - (arrowSmStart > 0 ? 0 : 1)) *  SMDIAGRAM_COLUMNWIDTH
+                  - (2 + 4  + SMDIAGRAM_TEXTWIDTH) + dop, TBOX_TOP,
+                  rightArrowSign,
+                  ( smList[arrowSmEnd].valid ? '|' : '?' ));
+
+    if (arrowSmEnd < SM_DIAGRAM_MAX)
+    {
+        for ( i = arrowSmEnd ; i < smCnt ; i++ )
+        {
+            FM_LOG_PRINT("%*s",
+                         SMDIAGRAM_COLUMNWIDTH ,
+                         ( smList[i+1].valid ? "|" : "?" ));
+        }
+    }
+
+    FM_LOG_PRINT("\n");
+    
+    fm10000SMDiagramSpace(smList, smCnt, "");
+
+}   /* end fm10000SMDiagramEvent */
+
+
+
+
+/*****************************************************************************/
+/** fm10000SmTypeToSmPosition
+ * \ingroup intPort
+ *
+ * \desc            Function returns the SM column number based on the
+ *                  given SM type. 
+ *
+ * \param[in]       smType name of the State Machine.
+ *
+ * \return          SM column number of the given SM type.
+ * \return          0 (SM_DIAGRAM_UNRECOGNIZED) if SM not recognised.
+ *
+ *****************************************************************************/
+static fm_int fm10000SmTypeToSmPosition(fm_text smType)
+{
+    fm_int smPos;
+    
+    if ((strcmp(smType, "BASIC") == 0) ||
+        (strcmp(smType, "AN_PORT") == 0) ||
+        (strcmp(smType, "PCIE") == 0))
+    {
+        smPos = SM_DIAGRAM_PORT;
+    }
+    else if ((strcmp(smType, "SERDES") == 0) ||
+             (strcmp(smType, "PCIE_S") == 0) ||
+             (strcmp(smType, "STUB") == 0))
+    {
+        smPos = SM_DIAGRAM_SERDES;
+    }
+    else if ((strcmp(smType, "AN73") == 0) ||
+             (strcmp(smType, "AN37") == 0))
+    {
+        smPos = SM_DIAGRAM_AN;
+    }
+    else if (strcmp(smType, "DFE") == 0)
+    {
+        smPos = SM_DIAGRAM_DFE;
+    }
+    else
+    {
+        smPos = SM_DIAGRAM_UNRECOGNIZED;
+    }
+
+    return smPos;
+    
+}   /* end fm10000SmTypeToSmPosition */
+
+
+
+
+/*****************************************************************************/
+/** fm10000SMDiagram
+ * \ingroup intPort
+ *
+ * \desc            Function to dump a Port's State Transition Diagram.
+ *                  It identifies the number of State machines and 'draws'
+ *                  states and events diagram for each SM. Each state machine 
+ *                  up to 4 is represented by the name and the column.
+ *                  Handles following state machines STUB, PORT, SERDES, PCIE,
+ *                  DFE, AN.
+ *                  SerDes SM represents all lanes associated with the PORT,
+ *                  this implies that PORT may send duplicate events to a single
+ *                  SERDES SM instance.  
+ *
+ * \param[in]       numEntry number of sortedPstd entries.
+ *
+ * \param[in]       sortPstd pointer to the sorted SM transitions array entries.
+ *
+ * \return          Nothing.
+ *
+ *****************************************************************************/
+static void fm10000SMDiagram(fm_int                   numEntry,
+                             fm10000_portStateTDump **sortPstd)
+{
+    smTypeInfo smList[SM_DIAGRAM_MAX + 1];
+    fm_int     i;
+    fm_int     smFrom;
+    fm_int     smTo;
+    fm_char    tmpStr[32];
+    fm_int     smCnt;
+    fm_int     lastSm;
+
+    smList[SM_DIAGRAM_PORT].smMaxHistorySize   = FM10000_PORT_SM_HISTORY_SIZE;
+    smList[SM_DIAGRAM_SERDES].smMaxHistorySize = FM10000_SERDES_SM_HISTORY_SIZE;
+    smList[SM_DIAGRAM_DFE].smMaxHistorySize    = FM10000_SERDES_DFE_SM_HISTORY_SIZE;
+    smList[SM_DIAGRAM_AN].smMaxHistorySize     = FM10000_AN_SM_HISTORY_SIZE;
+    
+    for (i = 0; i < SM_DIAGRAM_MAX + 1; i++)
+    {
+        smList[i].smHeader = NULL;
+        smList[i].smFooter = NULL;
+        smList[i].valid    = TRUE;
+        smList[i].smHistorySize = 0;
+    }
+
+    lastSm = 0;
+    for (i = 0; i < numEntry; i++)
+    {
+        smTo   = fm10000SmTypeToSmPosition(sortPstd[i]->type);
+        if (smTo > lastSm)
+        {
+            lastSm = smTo;
+        }
+
+        /* identify the valid time span for each diagram */
+        smList[smTo].smHistorySize++;
+        if (smList[smTo].smHistorySize < smList[smTo].smMaxHistorySize)
+        {
+            smList[smTo].valid = TRUE;
+        }
+        else
+        {
+            smList[smTo].valid = FALSE;
+        }
+
+        if (smTo &&
+            smList[smTo].smHeader != NULL)
+        {
+            continue;
+        }
+        else
+        {
+            smList[smTo].smHeader = sortPstd[i]->type;
+            smList[smTo].smFooter = "END";
+        } 
+
+    }
+
+    /* count number of SMs */
+    for (i = 1; i < SM_DIAGRAM_MAX + 1; i++)
+    {
+        if (!smList[i].smHeader)
+        {
+            break;
+        }
+    }
+
+    smCnt = i - 1;
+    if (lastSm > smCnt)
+    {
+        smCnt = lastSm;
+    }
+
+    /* show the SMs header with identified State Machines */ 
+    fm10000SMDiagramHeader(smList, smCnt, TRUE);
+    
+    /* show simple space lines for identified State Machines*/
+    fm10000SMDiagramSpace(smList, smCnt, "");
+
+    /* show the diagram for identified State Machines */
+    for (i = 0; i < numEntry; i++)
+    {
+        if (strcmp(sortPstd[i]->event, "N/A") == 0)
+        {
+            /* ignore empty states/events */
+            continue;
+        }
+        
+        /* get the sourceSmType */
+        smFrom = fm10000SmTypeToSmPosition(sortPstd[i]->srcType);
+        
+        /* get the destination smType */
+        smTo   = fm10000SmTypeToSmPosition(sortPstd[i]->type);
+
+        if (smTo == SM_DIAGRAM_UNRECOGNIZED)
+        {
+            FM_LOG_PRINT("event ignored type=%s state=%s event=%s\n",
+                         sortPstd[i]->type,
+                         sortPstd[i]->currentState,
+                         sortPstd[i]->event);
+            continue;
+        }
+        else
+        {
+            smList[smTo].valid = TRUE;
+        }
+
+        /* check the SM restart */
+        if (strcmp(sortPstd[i]->type, smList[smTo].smHeader) != 0)
+        {
+            FM_LOG_PRINT("SM%d restarted, %s ==> %s\n",
+                          smTo,
+                          smList[smTo].smHeader,
+                          sortPstd[i]->type);
+            
+            smList[smTo].smHeader = sortPstd[i]->type;
+            smList[smTo].smFooter = "END";
+            
+            fm10000SMDiagramSpace(smList, smCnt, "");
+
+            fm10000SMDiagramHeader(smList, smCnt, TRUE);
+            fm10000SMDiagramSpace(smList, smCnt, "");
+        }
+
+        FM_SNPRINTF_S(tmpStr,
+                      32,
+                      "%2d.%d  %15.6f",
+                      sortPstd[i]->port,
+                      sortPstd[i]->lane,
+                      ((sortPstd[i]->timestamp - sortPstd[0]->timestamp)/1000000.0));
+
+        if (i == 0)
+        {
+            /* show the initial states */
+            fm10000SMDiagramState(smList, smTo, sortPstd[i]->currentState, tmpStr, smCnt);
+        }
+
+        if (smTo != smFrom)
+        {
+            /* draw the Event */
+            fm10000SMDiagramEvent(smList, smFrom, smTo, sortPstd[i]->event, smCnt);
+            
+            /* draw the state */
+            fm10000SMDiagramState(smList, smTo, sortPstd[i]->nextState, tmpStr, smCnt);
+        }
+        else
+        {
+            FM_LOG_PRINT("%s -> %s event %s (event sent to it self, ignore)\n", 
+                         sortPstd[i]->type,
+                         sortPstd[i]->srcType,
+                         sortPstd[i]->event);
+        }
+    }
+
+    fm10000SMDiagramHeader(smList, smCnt, FALSE);
+
+}   /* end fm10000SMDiagram */
 
 
 
@@ -5947,7 +6501,6 @@ fm_status fm10000SetPortAttribute(fm_int sw,
                                   void * value)
 {
     fm_status         status;
-    fm10000_portAttr *portAttrExt;
     fm_bool           doLaneIterate;
     fm_int            startLane;
     fm_int            endLane;
@@ -6003,8 +6556,6 @@ fm_status fm10000SetPortAttribute(fm_int sw,
 
     if (doLaneIterate)
     {
-        portAttrExt = GET_FM10000_PORT_ATTR(sw, port);
-
         if (doLaneIterate)
         {
             startLane = 0;
@@ -6037,10 +6588,10 @@ fm_status fm10000SetPortAttribute(fm_int sw,
             lane = FM_PORT_LANE_NA;
         }
         return fm10000SetPortAttributeInt(sw,
-                                         port,
-                                         lane,
-                                         attr,
-                                         value);
+                                          port,
+                                          lane,
+                                          attr,
+                                          value);
     }
 
 }   /* end fm10000SetPortAttribute */
@@ -6203,14 +6754,16 @@ fm_status fm10000SetPortAttributeInt(fm_int sw,
                                    switchPtr->numCardinalPorts);
         FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
 
-        err = fmSetBitArrayBit(&portMaskBitArray,
-                               switchExt->tunnelCfg->tunnelPort[0],
-                               allowTeAccess);
+        err = fmSetPortInBitArray(sw,
+                                  &portMaskBitArray,
+                                  switchExt->tunnelCfg->tunnelPort[0],
+                                  allowTeAccess);
         FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
 
-        err = fmSetBitArrayBit(&portMaskBitArray,
-                               switchExt->tunnelCfg->tunnelPort[1],
-                               allowTeAccess);
+        err = fmSetPortInBitArray(sw,
+                                  &portMaskBitArray,
+                                  switchExt->tunnelCfg->tunnelPort[1],
+                                  allowTeAccess);
         FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
 
         err = fm10000SetPortAttributeInt(sw,
@@ -6931,7 +7484,7 @@ fm_status fm10000SetPortAttributeInt(fm_int sw,
         VALIDATE_ATTRIBUTE_WRITE_ACCESS(&portAttributeTable.dot1xState);
         VALIDATE_PORT_ATTRIBUTE(&portAttributeTable.dot1xState);
 
-        switch(*( (fm_dot1xState *) value) )
+        switch (*( (fm_dot1xState *) value) )
         {
             case FM_DOT1X_STATE_NOT_ACTIVE:
             case FM_DOT1X_STATE_NOT_AUTH:
@@ -7074,13 +7627,30 @@ fm_status fm10000SetPortAttributeInt(fm_int sw,
                 oldSpeed             = portExt->speed;
                 portExt->speed       = portAttr->speed;
 
-                err = fm10000SetPauseQuantaCoefficients(sw, port);
-                FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, err );
+                /***********************************************************
+                 * Update Pause Quanta for Non-AN-73 modes. For AN-73, Pause
+                 * Quanta is updated based on the negotiated speed. 
+                 ***********************************************************/
+                if (portAttrExt->ethMode != FM_ETH_MODE_AN_73)
+                {
+                    err = fm10000SetPauseQuantaCoefficients(sw, port);
+                    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, err );
+                }
 
                 if (oldSpeed != portExt->speed)
                 {
                     err = fm10000UpdateAllSAFValues(sw);
                     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, err );
+                }
+
+                if (portPtr->mode == FM_PORT_MODE_UP)
+                {
+                    /* restore the port state */
+                    err = fm10000SetPortState(sw,
+                                              port,
+                                              0,
+                                              portPtr->mode,
+                                              portPtr->submode);
                 }
             }
 
@@ -9651,6 +10221,7 @@ fm_status fm10000SetPortAttributeInt(fm_int sw,
             {
                 /* Prepare the event notification for the port state machine */
                 eventInfo.smType = portExt->smType;
+                eventInfo.srcSmType = 0;
                 eventInfo.eventId = FM10000_PORT_EVENT_EEE_CONFIG_REQ;
 
                 eventInfo.lock = FM_GET_STATE_LOCK( sw );
@@ -10240,6 +10811,8 @@ fm_status fm10000GetPortAttribute(fm_int sw,
     fm_uint32         i;
     fm10000_schedSpeedInfo speedInfo;
     fm_bool           isPciePort;
+    fm_int            physPort;
+    fm_int            physSwitch;
 
     FM_NOT_USED(mac);
 
@@ -10871,8 +11444,14 @@ fm_status fm10000GetPortAttribute(fm_int sw,
             }
             else
             {
+                err =  fmPlatformMapLogicalPortToPhysical(sw,
+                                                          port,
+                                                          &physSwitch,
+                                                          &physPort);
+                FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
+
                 err =  fm10000GetSchedPortSpeed(sw, 
-                                                port, 
+                                                physPort,
                                                 &speedInfo);
 
                 *( (fm_int *) value) = speedInfo.assignedSpeed;
@@ -11292,10 +11871,8 @@ fm_status fm10000GetPortState( fm_int   sw,
                                fm_int  *info )
 {
     fm_status        err = FM_OK;
-    fm_switch *      switchPtr;
     fm_port *        portPtr;
     fm10000_port *   portExt;
-    fm10000_portAttr *portAttrExt;
     fm_int           totalLanes;
     fm_uint32        pcsRxStatus;
     fm_bool          rxPllRdy;
@@ -11308,6 +11885,8 @@ fm_status fm10000GetPortState( fm_int   sw,
     fm_bool          isBistActive;
     fm_bool          truncated = FALSE;
     fm_bool          isDisabled = TRUE;
+    fm_bool          autodetectedMode = FALSE;
+    fm_bool          modeMismatch = FALSE;
 
     FM_LOG_ENTRY_V2( FM_LOG_CAT_PORT, 
                      port,
@@ -11326,8 +11905,7 @@ fm_status fm10000GetPortState( fm_int   sw,
 
     VALIDATE_AND_PROTECT_SWITCH(sw);
 
-    portAttrExt = GET_FM10000_PORT_ATTR(sw, port);
-    portPtr   = GET_PORT_PTR(sw, port);
+    portPtr = GET_PORT_PTR(sw, port);
 
     err = fm10000IsPortDisabled( sw, port, 0, &isDisabled );
     if ( err != FM_OK || isDisabled == TRUE )
@@ -11338,7 +11916,7 @@ fm_status fm10000GetPortState( fm_int   sw,
         goto ABORT;
     }
 
-    portExt   = GET_PORT_EXT(sw, port);
+    portExt = GET_PORT_EXT(sw, port);
     if ( portExt->ring == FM10000_SERDES_RING_NONE )
     {
         /* Special internal ports */
@@ -11350,8 +11928,7 @@ fm_status fm10000GetPortState( fm_int   sw,
     err = fm10000GetNumLanes( sw, port, &totalLanes ); 
     FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
 
-    switchPtr = GET_SWITCH_PTR(sw);
-    *mode     = portPtr->mode;
+    *mode = portPtr->mode;
 
     if ( numBuffers < totalLanes )
     {
@@ -11376,9 +11953,9 @@ fm_status fm10000GetPortState( fm_int   sw,
 
     /* Read the number of errors for BIST per lane if in rx or txrx submode */
 #if 0
-/* isBistActive is not managed by the states machines, review this
- * also fm10000IsPortBistActive accesses lane structures from port level:
- * it should call a function at serdes level instead */
+    /* isBistActive is not managed by the states machines, review this
+     * also fm10000IsPortBistActive accesses lane structures from port level:
+     * it should call a function at serdes level instead. */
     if (*mode == FM_PORT_MODE_BIST && isBistActive == TRUE)
 #endif
     if (*mode == FM_PORT_MODE_BIST)
@@ -11414,11 +11991,22 @@ fm_status fm10000GetPortState( fm_int   sw,
             err = fm10000SerdesGetSignalOk(sw, serdes, &rxSignalOk);
             FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
 
+            /* ethMode status */
+            err = fmPlatformGetPortEthModeState(sw, 
+                                                port, 
+                                                &autodetectedMode, 
+                                                &modeMismatch);
+            FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
+
             info[i] |= ((rxPllRdy ? 1 : 0) << 0);
             info[i] |= ((txPllRdy ? 1 : 0) << 1);
             /* Similar to FM6000 convention */
             info[i] |= ((rxSigStrengthEn ? 1 : 0) << 2);
             info[i] |= ((rxSignalOk ? 3 : 0) << 3); 
+            /* Setting ethernet mode status */
+            info[i] |= ((autodetectedMode ? 1 : 0) << 6);
+            info[i] |= ((modeMismatch ? 1 : 0) << 7); 
+
         }
 
         /* This needs to be implemented */
@@ -11463,6 +12051,8 @@ ABORT:
 }   /* end fm10000GetPortState */
 
 
+
+
 /*****************************************************************************/
 /** fm10000SetPortState
  * \ingroup intPort
@@ -11493,7 +12083,6 @@ fm_status fm10000SetPortState( fm_int sw,
                                fm_int submode )
 {
     fm_port         *portPtr;
-    fm_portAttr     *portAttr;
     fm10000_port    *portExt;
     fm10000_portAttr *portAttrExt;
     fm_status        err = FM_OK;
@@ -11514,8 +12103,6 @@ fm_status fm10000SetPortState( fm_int sw,
 
     FM_NOT_USED(mac);
 
-    portPtr = GET_PORT_PTR( sw, port );
-
     /* Update LAGs depending on if port is going UP or not. */
     if (mode != FM_PORT_STATE_UP)
     {
@@ -11527,19 +12114,19 @@ fm_status fm10000SetPortState( fm_int sw,
     if (!fmPlatformBypassEnabled(sw))
     {
         portPtr = GET_PORT_PTR( sw, port );
-        portAttr = GET_PORT_ATTR( sw, port );
         portExt = GET_PORT_EXT( sw, port );
         portAttrExt = GET_FM10000_PORT_ATTR(sw, port);
 
-        if ( (portPtr->portType == FM_PORT_TYPE_PHYSICAL)
-             || ( (portPtr->portType == FM_PORT_TYPE_CPU) && (port != 0) ) )
+        if ( (portPtr->portType == FM_PORT_TYPE_PHYSICAL) ||
+             ( (portPtr->portType == FM_PORT_TYPE_CPU) && (port != 0) ) )
         {
             err = fm10000MapPhysicalPortToSerdes( sw,
                                                   portPtr->physicalPort,
                                                   &serDes,
                                                   &ring );
             FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, err );
-            if( ring == FM10000_SERDES_RING_EPL )
+
+            if ( ring == FM10000_SERDES_RING_EPL )
             {
 
                 /* Unconditionally configure PHY interface as UP or not. */
@@ -11565,6 +12152,7 @@ fm_status fm10000SetPortState( fm_int sw,
                 portExt->eventInfo.info.admin.submode = submode;
 
                 eventInfo.smType = portExt->smType;
+                eventInfo.srcSmType = 0;
 
                 /* map the desired mode to the port-level state machine event ID */
                 switch ( mode )
@@ -11644,6 +12232,7 @@ fm_status fm10000SetPortState( fm_int sw,
                 portExt->eventInfo.info.admin.submode = submode;
 
                 eventInfo.smType = portExt->smType;
+				eventInfo.srcSmType = 0;
 
                 /* map the desired mode to the port-level state machine event ID */
                 switch ( mode )
@@ -11760,8 +12349,6 @@ fm_status fm10000GetPortLowLevelState(fm_int  sw,
         err = FM_ERR_INVALID_ARGUMENT;
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
     }
-    
-    err = FM_OK;
     
     PROTECT_SWITCH(sw);
     err = fm10000MapPortLaneToSerdes(sw, port, 0, &serDes);
@@ -12839,7 +13426,6 @@ fm_status fm10000StartPortLaneBistCounter(fm_int sw,
                                           fm_int port,
                                           fm_int lane)
 {
-    fm10000_portAttr *portAttrExt;
     fm_status         err;
     fm_int            serdes;
 
@@ -12857,9 +13443,6 @@ fm_status fm10000StartPortLaneBistCounter(fm_int sw,
         FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
     }
 
-    /* Get all port-related structure pointers we need */
-    portAttrExt = GET_FM10000_PORT_ATTR(sw, port);
-
     /* Retrieve the Serdes number */
     err = fm10000MapPortLaneToSerdes(sw, port, lane, &serdes);
     FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
@@ -12871,7 +13454,7 @@ fm_status fm10000StartPortLaneBistCounter(fm_int sw,
 ABORT:
     FM_LOG_EXIT_V2(FM_LOG_CAT_PORT, port, err);
 
-}  /* end fm10000StartPortLaneBistCounter */
+}   /* end fm10000StartPortLaneBistCounter */
 
 
 
@@ -12896,12 +13479,9 @@ ABORT:
  *****************************************************************************/
 fm_status fm10000DisablePortLaneBistMode( fm_int sw, fm_int port, fm_int lane )
 {
-    fm10000_port     *portExt;
-    fm10000_portAttr *portAttrExt;
     fm_status        err;
     fm_int           serdes = 0;
     fm10000_lane     *laneExt;
-
 
     FM_LOG_ENTRY_V2(FM_LOG_CAT_PORT,
                     port,
@@ -12917,10 +13497,6 @@ fm_status fm10000DisablePortLaneBistMode( fm_int sw, fm_int port, fm_int lane )
         FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
     }
 
-    /* Get all port-related structure pointers we need */
-    portExt     = GET_PORT_EXT(sw, port);
-    portAttrExt = GET_FM10000_PORT_ATTR(sw, port);
-
     /* retrieve the Serdes ID */
     err = fm10000MapPortLaneToSerdes(sw, port, lane, &serdes);
     FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err );
@@ -12935,10 +13511,11 @@ fm_status fm10000DisablePortLaneBistMode( fm_int sw, fm_int port, fm_int lane )
     FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, err);
 
     laneExt->bistActive = FALSE;
+
 ABORT:
     FM_LOG_EXIT_V2(FM_LOG_CAT_PORT, port, err );
 
-}  /* end fm10000DisablePortLaneBistMode */
+}   /* end fm10000DisablePortLaneBistMode */
 
 
 
@@ -13032,7 +13609,6 @@ fm_status fm10000DrainPhysPort( fm_int  sw,
 {
     fm_switch        *switchPtr;
     fm10000_port     *portExt;
-    fm10000_portAttr *portAttrExt;
     fm_status         err;
     fm_timestamp      end;
     fm_timestamp      delta;
@@ -13067,8 +13643,7 @@ fm_status fm10000DrainPhysPort( fm_int  sw,
     err = fmMapPhysicalPortToLogical(switchPtr, physPort, &logPort);
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PORT, err);
 
-    portExt     = GET_PORT_EXT(sw, logPort);
-    portAttrExt = GET_FM10000_PORT_ATTR(sw, logPort);
+    portExt = GET_PORT_EXT(sw, logPort);
 
     if (portExt->ring == FM10000_SERDES_RING_EPL) 
     {
@@ -13235,8 +13810,6 @@ fm_status fm10000SetPortModuleState( fm_int     sw,
 {
     fm_status         status;
     fm10000_port     *portExt;
-    fm10000_portAttr *portAttrExt;
-
 
     FM_LOG_ENTRY_API_V2( FM_LOG_CAT_PORT,
                          port,
@@ -13256,9 +13829,7 @@ fm_status fm10000SetPortModuleState( fm_int     sw,
             status = FM_ERR_INVALID_PORT_LANE;
         }
 
-        portExt     = GET_PORT_EXT(sw, port);
-        portAttrExt = GET_FM10000_PORT_ATTR(sw, port);
-
+        portExt = GET_PORT_EXT(sw, port);
 
         if (status == FM_OK)
         {
@@ -13292,6 +13863,7 @@ fm_status fm10000SetPortModuleState( fm_int     sw,
 
 
 
+
 /*****************************************************************************/
 /** fm10000DbgDumpPortStateTransitionsV2
  * \ingroup intPort
@@ -13302,7 +13874,7 @@ fm_status fm10000SetPortModuleState( fm_int     sw,
  * \param[in]       sw is the switch number to operate on.
  *
  * \param[in]       portList is an array of ports for which state transitions
- *                  are displayed..
+ *                  are displayed.
  *
  * \param[in]       portCnt is the size of portList array.
  *
@@ -13342,6 +13914,7 @@ fm_status fm10000DbgDumpPortStateTransitionsV2( fm_int  sw,
     fm_bool                 showSerdesDfeST;
     fm_bool                 showAbsTime;
     fm_bool                 showUsecTime;
+    fm_bool                 showSMDiagram;
     fm_int                  cnt;
     fm_int                  i;
     fm_int                  port;
@@ -13350,15 +13923,14 @@ fm_status fm10000DbgDumpPortStateTransitionsV2( fm_int  sw,
     fm10000_portStateTDump **sortPstd;
 
     status          = FM_OK;
-    history         = NULL;
     portExt         = NULL;
-    pstd            = NULL;
     showPortST      = FALSE;
     showAnST        = FALSE;
     showSerdesST    = FALSE;
     showSerdesDfeST = FALSE;
     showAbsTime     = FALSE;
     showUsecTime    = FALSE;
+    showSMDiagram   = FALSE;
 
     if (optionStr)
     {
@@ -13373,6 +13945,7 @@ fm_status fm10000DbgDumpPortStateTransitionsV2( fm_int  sw,
                          "    serdesDfe   - Include SERDES DFE state transitions\n"
                          "    absTime     - Absolute instead of relative timestamp from first entry\n"
                          "    usecTime    - Show timestamp in usec instead of msec resolution\n"
+                         "    diagram     - Show the SM diagram\n"
                          );
             FM_LOG_EXIT( FM_LOG_CAT_PORT, FM_OK );
         }
@@ -13404,6 +13977,11 @@ fm_status fm10000DbgDumpPortStateTransitionsV2( fm_int  sw,
         {
             showSerdesDfeST = TRUE;
         }
+        if (strcasestr(optionStr, "diagram") != NULL)
+        {
+            showSMDiagram = TRUE;
+        }
+
     }
 
     if (!showPortST && !showAnST && !showSerdesST && !showSerdesDfeST)
@@ -13439,6 +14017,7 @@ fm_status fm10000DbgDumpPortStateTransitionsV2( fm_int  sw,
             laneExt = FM_DLL_GET_NEXT( laneExt, nextLane );
         }
     }
+
     maxEntry = numEntry;
     pstd = fmAlloc( maxEntry * sizeof(fm10000_portStateTDump) );
     if ( pstd == NULL )
@@ -13504,6 +14083,7 @@ fm_status fm10000DbgDumpPortStateTransitionsV2( fm_int  sw,
                         pstd[numEntry].event = naStr;
                     }
                     pstd[numEntry].type = fm10000SmTypeStr(history[i].eventInfo.smType);
+                    pstd[numEntry].srcType = fm10000SmTypeStr(history[i].eventInfo.srcSmType);
                     pstd[numEntry].nextState = fm10000PortStatesMap[history[i].nextState];
                     pstd[numEntry].status = history[i].status;
                     pstd[numEntry].port = port;
@@ -13575,6 +14155,7 @@ fm_status fm10000DbgDumpPortStateTransitionsV2( fm_int  sw,
                             pstd[numEntry].event = naStr;
                         }
                         pstd[numEntry].type = fm10000SmTypeStr(history[i].eventInfo.smType);
+                        pstd[numEntry].srcType = fm10000SmTypeStr(history[i].eventInfo.srcSmType);
                         pstd[numEntry].nextState = fm10000AnStatesMap[history[i].nextState];
                         pstd[numEntry].status = history[i].status;
                         pstd[numEntry].port = port;
@@ -13641,6 +14222,7 @@ fm_status fm10000DbgDumpPortStateTransitionsV2( fm_int  sw,
                             pstd[numEntry].event = naStr;
                         }
                         pstd[numEntry].type = fm10000SmTypeStr(history[i].eventInfo.smType);
+                        pstd[numEntry].srcType = fm10000SmTypeStr(history[i].eventInfo.srcSmType);
                         pstd[numEntry].nextState = fm10000SerDesStatesMap[history[i].nextState];
                         pstd[numEntry].status = history[i].status;
                         pstd[numEntry].port = port;
@@ -13704,6 +14286,7 @@ fm_status fm10000DbgDumpPortStateTransitionsV2( fm_int  sw,
                             pstd[numEntry].event = naStr;
                         }
                         pstd[numEntry].type = fm10000SmTypeStr(history[i].eventInfo.smType);
+                        pstd[numEntry].srcType = fm10000SmTypeStr(history[i].eventInfo.srcSmType);
                         pstd[numEntry].nextState = fm10000SerDesDfeStatesMap[history[i].nextState];
                         pstd[numEntry].status = history[i].status;
                         pstd[numEntry].port = port;
@@ -13720,7 +14303,8 @@ fm_status fm10000DbgDumpPortStateTransitionsV2( fm_int  sw,
             laneExt = FM_DLL_GET_NEXT( laneExt, nextLane );
 
         }   /* end while (laneExt != NULL ) */
-    } /* end for (cnt = 0; cnt < portCnt; cnt++) */
+
+    }   /* end for (cnt = 0; cnt < portCnt; cnt++) */
 
     if (numEntry)
     {
@@ -13804,6 +14388,11 @@ fm_status fm10000DbgDumpPortStateTransitionsV2( fm_int  sw,
                          sortPstd[cnt]->status ? fmErrorMsg(sortPstd[cnt]->status):"OK");
         }
 
+        if (showSMDiagram)
+        {
+            fm10000SMDiagram(numEntry, sortPstd);
+        }
+        
         fmFree(sortPstd);
     }
     else
@@ -14452,6 +15041,39 @@ fm_status fm10000IsSpecialPort( fm_int sw, fm_int port, fm_bool *isSpecialPort )
 
 
 /*****************************************************************************/
+/** fm10000IsEplPort
+ * \ingroup intlport
+ *
+ * \desc            Helper function to check whether a logical port belongs to
+ *                  an EPL.
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \param[in]       port is the logical port on which to operate.
+ * 
+ * \param[out]      isEplPort is the pointer to a caller-provided boolean
+ *                  variable where this function will return TRUE if the
+ *                  indicated logical port belongs to an EPL.
+ *
+ * \return          FM_OK if successful
+ * 
+ *****************************************************************************/
+fm_status fm10000IsEplPort(fm_int sw, fm_int port, fm_bool *isEplPort)
+{
+    fm10000_port *portExt;
+
+    portExt = GET_PORT_EXT( sw, port );
+
+    *isEplPort = (portExt->ring == FM10000_SERDES_RING_EPL);
+
+    return FM_OK;
+
+}   /* end fm10000IsEplPort */
+
+
+
+
+/*****************************************************************************/
 /** fm10000ConfigurePepMode
  * \ingroup intPort
  *
@@ -14468,8 +15090,6 @@ fm_status fm10000ConfigurePepMode( fm_int sw, fm_int port )
 {
     fm_status            status;
     fm_port             *portPtr;
-    fm_lane             *lanePtr;
-    fm_laneAttr         *laneAttr;
     fm10000_port        *portExt;
     fm10000_lane        *laneExt;
     fm_int               pep;
@@ -14623,8 +15243,8 @@ fm_status fm10000ConfigurePepMode( fm_int sw, fm_int port )
      * this port
      **************************************************/
     
-    /* the following block will be executed only for unused (odd numbered)
-       PEPs for 1x8 Host Interfaces */
+    /* The following block will be executed only for unused (odd numbered)
+     * PEPs for 1x8 Host Interfaces */
     if ( numSerDes == 0 )
     {
         /**************************************************
@@ -14650,8 +15270,6 @@ fm_status fm10000ConfigurePepMode( fm_int sw, fm_int port )
     for ( i = 0 ; i < numSerDes  ; i++ )
     {
         /* fill the serdes-level event info structure */
-        lanePtr  = GET_LANE_PTR( sw, serDes + i );
-        laneAttr = GET_LANE_ATTR( sw, serDes + i );
         laneExt  = GET_LANE_EXT( sw, serDes + i );
         FM_DLL_INIT_NODE( laneExt, nextLane, prevLane );
 
@@ -14713,6 +15331,7 @@ fm_status fm10000ConfigurePepMode( fm_int sw, fm_int port )
         /* yes, fill out the event info */
         eventInfo.eventId        = FM10000_PORT_EVENT_CONFIG_REQ;
         eventInfo.smType         = portExt->smType;
+        eventInfo.srcSmType      = 0;
         eventInfo.lock           = FM_GET_STATE_LOCK( sw );
         eventInfo.dontSaveRecord = FALSE;
         portExt->eventInfo.info.config.pepMode = newPepMode;
@@ -14763,6 +15382,7 @@ fm_status fm10000PepRecoveryHandler( fm_int sw,
     /* Notify the port state machine of a PCIE port going down */
     portExt = GET_PORT_EXT(sw, port);
     eventInfo.smType         = portExt->smType;
+    eventInfo.srcSmType      = 0;
     eventInfo.lock           = FM_GET_STATE_LOCK( sw );
     eventInfo.dontSaveRecord = FALSE;
     eventInfo.eventId        = FM10000_PORT_EVENT_LINK_DOWN_IND;
@@ -14802,7 +15422,6 @@ fm_status fm10000PepEventHandler( fm_int sw,
                                   fm_int port, 
                                   fm_uint32 pepIp )
 {
-    fm_switch      *switchPtr;
     fm_status       status;
     fm_uint32       addr;
     fm_uint32       reg;
@@ -14810,16 +15429,12 @@ fm_status fm10000PepEventHandler( fm_int sw,
     fm10000_port   *portExt;
     fm_int          pep;
 
-    status = FM_OK;
-
     /* Map the logical port to its pep */
     status = fm10000MapLogicalPortToPep(sw, port, &pep);
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
 
     if ( FM_GET_BIT( pepIp, FM10000_PCIE_IP, DeviceStateChange ) )
     {
-        switchPtr = GET_SWITCH_PTR( sw );
-
         addr = FM10000_PCIE_FACTPS();
         status = fm10000ReadPep( sw, addr, pep, &reg );
         
@@ -14838,6 +15453,7 @@ fm_status fm10000PepEventHandler( fm_int sw,
 
         portExt = GET_PORT_EXT(sw, port);
         eventInfo.smType         = portExt->smType;
+        eventInfo.srcSmType      = 0;
         eventInfo.lock           = FM_GET_STATE_LOCK( sw );
         eventInfo.dontSaveRecord = FALSE;
 
@@ -14974,6 +15590,7 @@ fm_status fm10000LinkEventHandler( fm_int    sw,
                                                LinkFaultDebounced );
 
                 eventInfo.smType = portExt->smType;
+                eventInfo.srcSmType = 0;
                 eventInfo.lock   = FM_GET_STATE_LOCK( sw );
                 eventInfo.dontSaveRecord = FALSE;
 
@@ -16379,7 +16996,6 @@ fm_status fm10000ConfigureEthMode( fm_int      sw,
     fm_int               newSerdesSmType;
     fm_int               curPortSmType;
     fm_int               curSerdesSmType;
-    fm_port             *portPtr;
     fm10000_port        *portExt;
     fm_portAttr         *portAttr;
     fm10000_lane        *laneExt[FM10000_PORTS_PER_EPL];
@@ -16400,8 +17016,6 @@ fm_status fm10000ConfigureEthMode( fm_int      sw,
                      port, 
                      ethMode );
 
-    err      = FM_OK;
-    portPtr  = GET_PORT_PTR( sw, port );
     portAttr = GET_PORT_ATTR( sw, port );
     portExt  = GET_PORT_EXT( sw, port );
     speed    = fm10000GetPortSpeed( ethMode );
@@ -16593,6 +17207,7 @@ fm_status fm10000ConfigureEthMode( fm_int      sw,
                 {
                     /* notify the DISABLE event.. */
                     eventInfo.smType  = laneExt[i]->smType;
+                    eventInfo.srcSmType = FM10000_BASIC_PORT_STATE_MACHINE;
                     eventInfo.eventId = FM10000_SERDES_EVENT_DISABLE_REQ;
                     eventInfo.lock    = FM_GET_STATE_LOCK( sw );
                     eventInfo.dontSaveRecord = FALSE;
@@ -16652,6 +17267,15 @@ fm_status fm10000ConfigureEthMode( fm_int      sw,
 
     }   /* end if ( newSerdesSmType != FM_SMTYPE_UNSPECIFIED ) */
 
+    if (ethMode != FM_ETH_MODE_DISABLED)
+    {
+        /* release the lock and allow the serdes state machine
+         * to complete the serdes powerdown sequence */
+        FM_DROP_PORT_ATTR_LOCK(sw);
+        fmDelay(0, FM10000_ETHERNET_MODE_CONFIG_PAUSE);
+        /* take the lock again and continue changing the ethMode */
+        FM_TAKE_PORT_ATTR_LOCK(sw);
+    }
 
     /**************************************************
      * we have now made the changes, if needed, in the 
@@ -16664,6 +17288,7 @@ fm_status fm10000ConfigureEthMode( fm_int      sw,
     {
         /* notify the new configuration */
         eventInfo.smType = newPortSmType;
+        eventInfo.srcSmType = 0;
         if ( ethMode == FM_ETH_MODE_DISABLED )
         {
             eventInfo.eventId = FM10000_PORT_EVENT_DISABLE_REQ;
@@ -17123,6 +17748,7 @@ fm_status fm10000GetMultiLaneCapabilities(fm_int   sw,
                                           fm_bool *is100GCapable)
 {
     fm_status              status;
+    fm_port               *portPtr;
     fm_int                 epl;
     fm_int                 lane;
     fm_int                 masterEplLane;
@@ -17139,12 +17765,12 @@ fm_status fm10000GetMultiLaneCapabilities(fm_int   sw,
                      port,
                      (void *)is40GCapable,
                      (void *)is100GCapable);
-    lane = -1;
+
+    lane         = -1;
+    portPtr      = GET_PORT_PTR( sw, port );
+    capabilities = portPtr->capabilities;
 
     status = fmPlatformMapLogicalPortToPhysical(sw, port, &physSw, &physPort);
-    FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, status);
-
-    status = fmPlatformGetPortCapabilities(sw, physPort, &capabilities);
     FM_LOG_ABORT_ON_ERR_V2(FM_LOG_CAT_PORT, port, status);
 
     if ( (capabilities & FM_PORT_CAPABILITY_SPEED_40G) ||

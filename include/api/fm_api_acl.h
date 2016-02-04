@@ -5,7 +5,7 @@
  * Creation Date:   March 27, 2006
  * Description:     Structures and functions for dealing with ACLs
  *
- * Copyright (c) 2005 - 2015, Intel Corporation
+ * Copyright (c) 2005 - 2016, Intel Corporation
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -639,8 +639,9 @@ typedef enum
  *  frame, only the action of the highest precedence ACL will take effect.
  *                                                                      \lb\lb
  *  For FM10000 devices this action also pop VLAN2 header and must always be
- *  paired with ''FM_ACL_ACTIONEXT_SET_VLAN'' to specify the new VLAN that
- *  would be used for filtering.
+ *  paired with ''FM_ACL_ACTIONEXT_SET_VLAN'' or
+ *  ''FM_ACL_ACTIONEXT_UPD_OR_ADD_VLAN'' to specify the new VLAN
+ *  that would be used for filtering.
  *
  *  This action is not supported in the SWAG environment due to the
  *  possibility of not removing the tag when passing a frame from
@@ -733,6 +734,16 @@ typedef enum
  *  \chips FM10000 */
 #define FM_ACL_ACTIONEXT_CAPTURE_EGRESS_TIMESTAMP (FM_LITERAL_U64(1) << 37)
 
+/** Either change the frame's VLAN1 if a VLAN tag is present or add a
+ *  VLAN1 tag to an untagged frame. The ''fm_aclParamExt'' param
+ *  argument to the ''fmAddACLRuleExt'' function specifies the new VLAN
+ *  value to set. fmApplyAcl should return FM_ERR_INVALID_ACL_RULE if
+ *  two or more of these actions are to be configured in the same ACL
+ *  rule.
+ *
+ *  \chips  FM10000 */
+#define FM_ACL_ACTIONEXT_UPD_OR_ADD_VLAN        (FM_LITERAL_U64(1) << 38)
+
 /** @} (end of Doxygen group) */
 
 
@@ -778,8 +789,11 @@ typedef struct _fm_aclParamExt
     fm_uint16 vlan;
 
     /** New VLAN1 priority, for use with ''FM_ACL_ACTIONEXT_SET_VLAN_PRIORITY''.
-     *  The VLAN priority is 4 bits and will be remapped by
-     *  the ''FM_QOS_TX_PRIORITY_MAP'' port QoS attribute on egress.
+     *  The VLAN priority is a 4 bit value which includes the CFI bit (bit
+     *  0). The actual VLAN priority is in bits 1:3.
+     *  
+     *  The value will be remapped by the ''FM_QOS_TX_PRIORITY_MAP''
+     *  port QoS attribute on egress.
      *  (Also see the ''FM_PORT_TXCFI'' port attribute.) */
     fm_byte   vlanPriority;
 
@@ -3191,7 +3205,7 @@ typedef struct _fm_aclRuleSliceUsage
         fmGetACLPortNext( (sw), (acl), (portAndType) ) 
         
 /** A legacy synonym for ''fmGetACLRuleFirst''. */
-#define fmGetFirstACLRule(sw, acl, firstRule, cond, value, action, param)) \
+#define fmGetFirstACLRule(sw, acl, firstRule, cond, value, action, param) \
         fmGetACLRuleFirst( (sw), (acl), (firstRule), (cond), \
                            (value), (action), (param) ) 
         

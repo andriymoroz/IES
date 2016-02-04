@@ -6,7 +6,7 @@
  * Description:     Functions for initialization and switch status/information
  *                  retrieval functions for the API
  *
- * Copyright (c) 2005 - 2015, Intel Corporation
+ * Copyright (c) 2005 - 2016, Intel Corporation
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -30,7 +30,7 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
+ *****************************************************************************/
 
 #include <fm_sdk_int.h>
 
@@ -123,7 +123,7 @@ void fmDistributeEvent(fm_event *event)
                 pktDeliveryCount++;
             }
 
-            node = FM_DLL_GET_NEXT(node, next);
+            node = FM_DLL_GET_NEXT(node, nextPtr);
         }
 
         /**************************************************
@@ -795,6 +795,7 @@ void *fmGlobalEventHandler(void *args)
             case FM_EVENT_EGRESS_TIMESTAMP:
             case FM_EVENT_PLATFORM:
             case FM_EVENT_LOGICAL_PORT:
+            case FM_EVENT_CABLE_MISMATCH:
                 distributeEvent = TRUE;
                 break;
 
@@ -878,12 +879,10 @@ void *fmLocalEventHandler(void *args)
     fm_thread *thread;
     fm_event * event;
     fm_status  status;
-    fm_bool    enablePrioritySchedule; 
 
     /* grab arguments */
     thread = FM_GET_THREAD_HANDLE(args);
 
-    enablePrioritySchedule = GET_PROPERTY()->priorityBufQueues;
     while (1)
     {
         if (fmGetThreadEvent(thread, &event, FM_WAIT_FOREVER) != FM_OK)
@@ -971,7 +970,7 @@ fm_status fmSetProcessEventMask(fm_uint32 mask)
 
         for ( node = FM_DLL_GET_FIRST( (&fmRootApi->localDeliveryThreads), head ) ;
              node != NULL ;
-             node = FM_DLL_GET_NEXT(node, next) )
+             node = FM_DLL_GET_NEXT(node, nextPtr) )
         {
             count++;
             delivery = (fm_localDelivery *) node->data;
@@ -1035,7 +1034,7 @@ fm_status fmRemoveEventHandler(fm_localDelivery ** delivery)
 
         for ( node = FM_DLL_GET_FIRST( (&fmRootApi->localDeliveryThreads), head ) ;
              node != NULL ;
-             node = FM_DLL_GET_NEXT(node, next) )
+             node = FM_DLL_GET_NEXT(node, nextPtr) )
         {
             cur = (fm_localDelivery *) node->data;
 

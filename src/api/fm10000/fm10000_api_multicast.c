@@ -5,7 +5,7 @@
  * Creation Date:   August 19, 2013
  * Description:     FM10000-specific multicast services.
  *
- * Copyright (c) 2007 - 2015, Intel Corporation
+ * Copyright (c) 2007 - 2016, Intel Corporation
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -29,7 +29,7 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
+ *****************************************************************************/
 
 #include <fm_sdk_fm10000_int.h>
 
@@ -765,14 +765,12 @@ static fm_status AddFloodingPortsToMcastGroup(fm_int sw,
     fm_portmask           mcastFloodDestMask;
     fm_int                i;
 
-    FM_LOG_ENTRY_API(FM_LOG_CAT_MULTICAST,
-                     "sw = %d, mcastGroup = %d\n",
-                     sw,
-                     mcastGroup);
+    FM_LOG_ENTRY(FM_LOG_CAT_MULTICAST,
+                 "sw = %d, mcastGroup = %d\n",
+                 sw,
+                 mcastGroup);
 
     info          = GET_MAILBOX_INFO(sw);
-    status        = FM_OK;
-    cleanupStatus = FM_OK;
 
     FM_PORTMASK_DISABLE_ALL(&mcastFloodDestMask);
 
@@ -793,7 +791,7 @@ static fm_status AddFloodingPortsToMcastGroup(fm_int sw,
             tempListener.listenerType = FM_MCAST_GROUP_LISTENER_PORT_VLAN;
             tempListener.info.portVlanListener.vlan = 
                          FM_MAILBOX_DEF_VLAN_FOR_FLOOD_MCAST_GROUPS;
-            tempListener.info.portVlanListener.port = i;
+            tempListener.info.portVlanListener.port = GET_LOGICAL_PORT(sw, i);
 
             status = fmAddMcastGroupListenerInternalForFlood(sw,
                                                              mcastGroup,
@@ -862,7 +860,7 @@ ABORT:
                 tempListener.listenerType = FM_MCAST_GROUP_LISTENER_PORT_VLAN;
                 tempListener.info.portVlanListener.vlan =
                              FM_MAILBOX_DEF_VLAN_FOR_FLOOD_MCAST_GROUPS;
-                tempListener.info.portVlanListener.port = i;
+                tempListener.info.portVlanListener.port = GET_LOGICAL_PORT(sw, i);
 
 
                 cleanupStatus = fmDeleteMcastGroupListenerInternalForFlood(sw,
@@ -941,7 +939,7 @@ ABORT:
         }
     }
 
-    FM_LOG_EXIT_API(FM_LOG_CAT_MULTICAST, status);
+    FM_LOG_EXIT(FM_LOG_CAT_MULTICAST, status);
 
 }   /* end AddFloodingPortsToMcastGroup */
 
@@ -978,14 +976,12 @@ static fm_status RemoveFloodingPortsFromMcastGroup(fm_int sw,
     fm_portmask           mcastFloodDestMask;
     fm_int                i;
 
-    FM_LOG_ENTRY_API(FM_LOG_CAT_MULTICAST,
-                     "sw = %d, mcastGroup = %d\n",
-                     sw,
-                     mcastGroup);
+    FM_LOG_ENTRY(FM_LOG_CAT_MULTICAST,
+                 "sw = %d, mcastGroup = %d\n",
+                 sw,
+                 mcastGroup);
 
     info          = GET_MAILBOX_INFO(sw);
-    status        = FM_OK;
-    cleanupStatus = FM_OK;
 
     FM_PORTMASK_DISABLE_ALL(&mcastFloodDestMask);
 
@@ -1006,7 +1002,7 @@ static fm_status RemoveFloodingPortsFromMcastGroup(fm_int sw,
             tempListener.listenerType = FM_MCAST_GROUP_LISTENER_PORT_VLAN;
             tempListener.info.portVlanListener.vlan =
                          FM_MAILBOX_DEF_VLAN_FOR_FLOOD_MCAST_GROUPS;
-            tempListener.info.portVlanListener.port = i;
+            tempListener.info.portVlanListener.port = GET_LOGICAL_PORT(sw, i);
 
 
             status = fmDeleteMcastGroupListenerInternalForFlood(sw,
@@ -1076,7 +1072,7 @@ ABORT:
                 tempListener.listenerType = FM_MCAST_GROUP_LISTENER_PORT_VLAN;
                 tempListener.info.portVlanListener.vlan =
                              FM_MAILBOX_DEF_VLAN_FOR_FLOOD_MCAST_GROUPS;
-                tempListener.info.portVlanListener.port = i;
+                tempListener.info.portVlanListener.port = GET_LOGICAL_PORT(sw, i);
 
                 cleanupStatus = fmAddMcastGroupListenerInternalForFlood(sw,
                                                                         mcastGroup,
@@ -1154,7 +1150,7 @@ ABORT:
         }
     }
 
-    FM_LOG_EXIT_API(FM_LOG_CAT_MULTICAST, status);
+    FM_LOG_EXIT(FM_LOG_CAT_MULTICAST, status);
 
 }   /* end RemoveFloodingPortsFromMcastGroup */
 
@@ -1186,9 +1182,6 @@ fm_status fm10000McastGroupInit(fm_int sw, fm_bool swagInit)
 {
     fm_status       status;
     fm_switch      *switchPtr;
-    fm10000_switch *switchExt;
-    fm_uint32       rangeBase;
-    fm_uint32       rangeMax;
     fm_glortRange  *glorts;
     fm_int          baseHandle;
     fm_int          numHandles;
@@ -1197,7 +1190,6 @@ fm_status fm10000McastGroupInit(fm_int sw, fm_bool swagInit)
     FM_LOG_ENTRY(FM_LOG_CAT_MULTICAST, "sw=%d, swagInit=%d\n", sw, swagInit);
 
     switchPtr = GET_SWITCH_PTR(sw);
-    switchExt = GET_SWITCH_EXT(sw);
     glorts    = &switchPtr->glortRange;
 
     /* If the switch is in a SWAG, defer execution until after SWAG
@@ -1208,20 +1200,9 @@ fm_status fm10000McastGroupInit(fm_int sw, fm_bool swagInit)
         FM_LOG_EXIT(FM_LOG_CAT_MULTICAST, FM_OK);
     }
 
-    /* Only allocate when there is adequate glort range
-     * If not, the user is doing stacking and is responsible
-     * for calling allocate multicast groups
-     */
-    rangeBase = switchPtr->glortRange.glortBase;
-    rangeMax  = rangeBase | switchPtr->glortRange.glortMask;
-
     if (glorts->mcastCount > 0)
     {
-        /* This is preallocated at startup and never freed. 
-         * We don't care about the return values, since
-         * these are only used for non-stacking which
-         * the code will automatically allocate free entries
-         */
+        /* This is preallocated at startup and never freed. */
         status = fmAllocateMcastHandles(sw,
                                         glorts->mcastBaseGlort, 
                                         glorts->mcastCount, 
@@ -2339,28 +2320,26 @@ fm_status fm10000ConfigureMcastGroupAsHNIFlooding(fm_int  sw,
 {
     fm_status             status;
 
-    FM_LOG_ENTRY_API(FM_LOG_CAT_MULTICAST,
-                     "sw = %d, mcastGroup = %d, isHNIFlooding = %d\n",
-                     sw,
-                     mcastGroup,
-                     isHNIFlooding);
+    FM_LOG_ENTRY(FM_LOG_CAT_MULTICAST,
+                 "sw = %d, mcastGroup = %d, isHNIFlooding = %d\n",
+                 sw,
+                 mcastGroup,
+                 isHNIFlooding);
 
     if (isHNIFlooding)
     {
-        status = AddFloodingPortsToMcastGroup(sw,
-                                              mcastGroup);
+        status = AddFloodingPortsToMcastGroup(sw, mcastGroup);
         FM_LOG_ABORT(FM_LOG_CAT_MULTICAST, status);
     }
     else
     {
-        status = RemoveFloodingPortsFromMcastGroup(sw,
-                                                   mcastGroup);
+        status = RemoveFloodingPortsFromMcastGroup(sw, mcastGroup);
         FM_LOG_ABORT(FM_LOG_CAT_MULTICAST, status);
     }
 
 ABORT:
 
-    FM_LOG_EXIT_API(FM_LOG_CAT_MULTICAST, status);
+    FM_LOG_EXIT(FM_LOG_CAT_MULTICAST, status);
 
 }   /* end fm10000ConfigureMcastGroupAsHNIFlooding */
 
@@ -2371,7 +2350,7 @@ ABORT:
 /** fm10000UpdateMcastHNIFloodingGroups
  * \ingroup intMulticast
  *
- * \desc            Updates mcast groups configured as HNI flooding.This is a
+ * \desc            Updates mcast groups configured as HNI flooding. This is a
  *                  chip specific function calling the top-level function to
  *                  update multicast groups.
  *
@@ -2397,23 +2376,23 @@ fm_status fm10000UpdateMcastHNIFloodingGroups(fm_int  sw,
     fm_switch *switchPtr;
     fm_int     swToExecute;
 
-    FM_LOG_ENTRY_API(FM_LOG_CAT_MULTICAST,
-                     "sw = %d, port=%d, state=%d\n",
-                     sw,
-                     port,
-                     state);
+    FM_LOG_ENTRY(FM_LOG_CAT_MULTICAST,
+                 "sw = %d, port=%d, state=%d\n",
+                 sw,
+                 port,
+                 state);
 
-    status      = FM_OK;
-    swToExecute = sw;
-    switchPtr   = GET_SWITCH_PTR(sw);
+    switchPtr = GET_SWITCH_PTR(sw);
 
     if (switchPtr->state != FM_SWITCH_STATE_UP)
     {
-        FM_LOG_EXIT_API(FM_LOG_CAT_MULTICAST, status);
+        FM_LOG_EXIT(FM_LOG_CAT_MULTICAST, FM_OK);
     }
 
 #if FM_SUPPORT_SWAG
     swToExecute = GET_SWITCH_AGGREGATE_ID_IF_EXIST(sw);
+#else
+    swToExecute = sw;
 #endif
 
     status = fmUpdateMcastHNIFloodingGroups(swToExecute,
@@ -2423,6 +2402,6 @@ fm_status fm10000UpdateMcastHNIFloodingGroups(fm_int  sw,
 
 ABORT:
 
-    FM_LOG_EXIT_API(FM_LOG_CAT_MULTICAST, status);
+    FM_LOG_EXIT(FM_LOG_CAT_MULTICAST, status);
 
 }   /* end fm10000UpdateMcastHNIFloodingGroups */

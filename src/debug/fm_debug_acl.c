@@ -1158,7 +1158,13 @@ void fmDbgDumpACLsAsC(fm_int sw, const char *fileName)
                 actionList[numActions++] = "FM_ACL_ACTIONEXT_SET_VLAN";
                 fprintf(dest, "        param.vlan = 0x%03x;\n", param.vlan);
             }
-            
+
+            if ((action & FM_ACL_ACTIONEXT_UPD_OR_ADD_VLAN) != 0)
+            {
+                actionList[numActions++] = "FM_ACL_ACTIONEXT_UPD_OR_ADD_VLAN";
+                fprintf(dest, "        param.vlan = 0x%03x;\n", param.vlan);
+            }
+
             if ((action & FM_ACL_ACTIONEXT_SET_VLAN_PRIORITY) != 0)
             {
                 actionList[numActions++] = "FM_ACL_ACTIONEXT_SET_VLAN_PRIORITY";

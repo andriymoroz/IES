@@ -962,20 +962,24 @@ fm_status fm10000AnValidateBasePage( fm_int     sw,
                                      fm_uint64 *modBasePage )
 {
     fm_status status;
+    fm_port  *portPtr;
     fm_uint   ability;
-    fm_uint   supported;
     fm_uint   unsupported;
+    fm_uint32 capabilities;
 
-    status = FM_OK;
+    status       = FM_OK;
+    portPtr      = GET_PORT_PTR( sw, port );
+    capabilities = portPtr->capabilities;
 
-    /* for the time being do validate the ability field for Clause 73 */
+    /* Note if AN basepage is configured before ethernet mode
+     * the validation can't be done */
     if ( mode == FM_PORT_AUTONEG_CLAUSE_73 )
     {
         ability = FM_GET_FIELD64( basepage, FM10000_AN_73_BASE_PAGE_TX, A );
+
         if ( ability != 0 )
         {
             unsupported = ( ability & FM10000_AN73_UNSUPPORTED_ABILITIES );
-            supported   = ( ability & FM10000_AN73_SUPPORTED_ABILITIES );
 
             /* check if any unsupported abilities have been requested */
             if ( unsupported != 0 )
@@ -987,21 +991,89 @@ fm_status fm10000AnValidateBasePage( fm_int     sw,
                                  port,
                                  unsupported );
             }
+            ability &= ( ~FM10000_AN73_UNSUPPORTED_ABILITIES );
 
             /* check if at least one supported ability has been requested */
-            if ( supported == 0 )
+            if ( ability == 0 )
             {
-                FM_LOG_ERROR_V2( FM_LOG_CAT_PORT_AUTONEG,
-                                 port,
-                                 "No supported Clause 73 abilities configured "
-                                 "on port %d: 0x%08x\n",
-                                 port,
-                                 ability );
-                status = FM_ERR_UNSUPPORTED;
+                FM_LOG_ERROR( FM_LOG_CAT_PORT_AUTONEG,
+                              "No supported Clause 73 abilities configured "
+                              "on port %d\n",
+                              port);
+                return FM_ERR_UNSUPPORTED;
+            }
+
+            if ((ability & FM10000_AN73_ABILITY_1000BASE_KX) &&
+                !(capabilities & FM_PORT_CAPABILITY_SPEED_1G))
+            {
+                FM_LOG_ERROR( FM_LOG_CAT_PORT_AUTONEG,
+                              "Request to advertise 1G-KX but port %d "
+                              "does not support 1G speed.\n",
+                              port);
+                return FM_ERR_UNSUPPORTED;
+            }
+
+            if ((ability & FM10000_AN73_ABILITY_10GBASE_KR) &&
+                !(capabilities & FM_PORT_CAPABILITY_SPEED_10G))
+            {
+                FM_LOG_ERROR( FM_LOG_CAT_PORT_AUTONEG,
+                              "Request to advertise 10G-KR but port %d "
+                              "does not support 10G speed.\n",
+                              port);
+                return FM_ERR_UNSUPPORTED;
+            }
+
+            if ((ability & FM10000_AN73_ABILITY_25GBASE_KR) &&
+                !(capabilities & FM_PORT_CAPABILITY_SPEED_25G))
+            {
+                FM_LOG_ERROR( FM_LOG_CAT_PORT_AUTONEG,
+                              "Request to advertise 25G-CR/KR but port %d "
+                              "does not support 25G speed.\n",
+                              port);
+                return FM_ERR_UNSUPPORTED;
+            }
+
+            if ((ability & FM10000_AN73_ABILITY_40GBASE_KR4) &&
+                !(capabilities & FM_PORT_CAPABILITY_SPEED_40G))
+            {
+                FM_LOG_ERROR( FM_LOG_CAT_PORT_AUTONEG,
+                              "Request to advertise 40G-KR4 but port %d "
+                              "does not support 40G speed.\n",
+                              port);
+                return FM_ERR_UNSUPPORTED;
+            }
+
+            if ((ability & FM10000_AN73_ABILITY_40GBASE_CR4) &&
+                !(capabilities & FM_PORT_CAPABILITY_SPEED_40G))
+            {
+                FM_LOG_ERROR( FM_LOG_CAT_PORT_AUTONEG,
+                              "Request to advertise 40G-CR4 but port %d "
+                              "does not support 40G speed.\n",
+                              port);
+                return FM_ERR_UNSUPPORTED;
+            }
+
+            if ((ability & FM10000_AN73_ABILITY_100GBASE_KR4) &&
+                !(capabilities & FM_PORT_CAPABILITY_SPEED_100G))
+            {
+                FM_LOG_ERROR( FM_LOG_CAT_PORT_AUTONEG,
+                              "Request to advertise 100G-KR4 but port %d "
+                              "does not support 100G speed.\n",
+                              port);
+                return FM_ERR_UNSUPPORTED;
+            }
+
+            if ((ability & FM10000_AN73_ABILITY_100GBASE_CR4) &&
+                !(capabilities & FM_PORT_CAPABILITY_SPEED_100G))
+            {
+                FM_LOG_ERROR( FM_LOG_CAT_PORT_AUTONEG,
+                              "Request to advertise 100G-CR4 but port %d "
+                              "does not support 100G speed.\n",
+                              port);
+                return FM_ERR_UNSUPPORTED;
             }
         }
 
-        ability &= ( ~FM10000_AN73_UNSUPPORTED_ABILITIES );
         FM_SET_FIELD64( *modBasePage, FM10000_AN_73_BASE_PAGE_TX, A, ability );
     }
 

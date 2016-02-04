@@ -5,7 +5,7 @@
  * Creation Date:   2005
  * Description:     Structures and functions for dealing with ACLs
  *
- * Copyright (c) 2005 - 2014, Intel Corporation
+ * Copyright (c) 2005 - 2016, Intel Corporation
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -29,7 +29,7 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
+ *****************************************************************************/
 
 #include <fm_sdk_int.h>
 
@@ -446,9 +446,10 @@ fm_status fmCreateACLInt(fm_int    sw,
      * Tunneling type bits are not required and will default to no tunnels.
      *************************************************************************/
     if ( (scenarios & FM_ACL_SCENARIO_ANY_FRAME_TYPE) == 0 ||
-         ( (scenarios & FM_ACL_SCENARIO_ANY_ROUTING_TYPE) == 0  &&
+         ( (scenarios & FM_ACL_SCENARIO_ANY_ROUTING_TYPE) == 0 &&
            (scenarios & FM_ACL_SCENARIO_ANY_ROUTING_GLORT_TYPE) == 0 &&
-           (scenarios & FM_ACL_SCENARIO_VNTAG) == 0 ) )
+           (scenarios & FM_ACL_SCENARIO_VNTAG) == 0 &&
+           (scenarios & FM_ACL_SCENARIO_SPECIAL_GLORT) == 0 ) )
     {
         err = FM_ERR_INVALID_ARGUMENT;
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_ACL, err);
@@ -1134,7 +1135,6 @@ fm_status fmAddACLRuleExt(fm_int                sw,
     fm_switch *     switchPtr;
     fm_aclRule *    aclRule;
     fm_portSet *    portSetEntry;
-    fm_bool         portSetLockTaken = FALSE;
 
     FM_LOG_ENTRY_API(FM_LOG_CAT_ACL,
                      "sw = %d, acl = %d, rule = %d, cond = %lld, value = %p, "
@@ -1223,7 +1223,6 @@ fm_status fmAddACLRuleExt(fm_int                sw,
     {
         /* Protect the software state of portSetTree and its entries */
         TAKE_PORTSET_LOCK(sw);
-        portSetLockTaken = TRUE;
 
         /* dynamic port set */
         if (fmTreeFind(&switchPtr->portSetInfo.portSetTree,
@@ -1249,7 +1248,6 @@ fm_status fmAddACLRuleExt(fm_int                sw,
         }   /* end if (fmTreeFind(&switchPtr->portSetInfo.portSet, ...) */
 
         DROP_PORTSET_LOCK(sw);
-        portSetLockTaken = FALSE;
 
     }   /* end if ( (err == FM_OK) && (cond & FM_ACL_MATCH_INGRESS_PORT_SET) ) */
 
@@ -1269,10 +1267,6 @@ fm_status fmAddACLRuleExt(fm_int                sw,
     }
 
 ABORT:
-    if (portSetLockTaken)
-    {
-        DROP_PORTSET_LOCK(sw);
-    }
 
     FM_DROP_ACL_LOCK(sw);
     UNPROTECT_SWITCH(sw);

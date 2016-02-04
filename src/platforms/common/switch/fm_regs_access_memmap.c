@@ -32,6 +32,7 @@
 *****************************************************************************/
 
 #include <fm_sdk_int.h>
+#include <platforms/common/instrument/platform_instrument.h>
 
 /*****************************************************************************
  * Macros, Constants & Types

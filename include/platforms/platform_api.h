@@ -287,6 +287,11 @@ fm_status fmPlatformSetRemoteGlortToLogicalPortMapping(fm_int  sw,
 
 fm_status fmPlatformSetCpuPortVlanTag(fm_int sw, fm_uint16 vlanId, fm_bool tag);
 
+fm_status fmPlatformSendCableMismatchEvent(fm_int           sw,
+                                           fm_int           port,
+                                           fm_eventPriority priority);
+
+
 #if defined(FM_SUPPORT_FM2000) || defined(FM_SUPPORT_FM4000)
 fm_status fmPlatformGetPortClockSel(fm_int  sw,
                                     fm_int  physPort,

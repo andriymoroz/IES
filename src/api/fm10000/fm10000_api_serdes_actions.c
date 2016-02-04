@@ -63,9 +63,10 @@ static fm_status ConfigureWidthMode( fm_smEventInfo *eventInfo,
 static fm_status CompleteConfigureSerdes(fm_smEventInfo *eventInfo,
                                          void           *userInfo,
                                          fm_int         *nextState);
-static fm_status SerDesInterruptThrotle( fm_smEventInfo *eventInfo,
+static fm_status SerDesInterruptThrottle(fm_smEventInfo *eventInfo,
                                          void           *userInfo,
                                          fm_int         increment);
+static fm_status StartSerDesErrorValidationShortTimer(fm10000_lane *pLaneExt);
 
 
 /*****************************************************************************
@@ -90,8 +91,8 @@ static fm_int transactionLogDebugMode = 0;
 /** SendDfeEventReq
  * \ingroup intSerdes
  *
- * \desc            Send a DFE-level event notification to the dfe state
- *                  machines belonging to the current serdes
+ * \desc            Sends a DFE-level event notification to the dfe state
+ *                  machines associated to the current serdes
  *
  * \param[in]       eventInfo is a pointer the generic event descriptor.
  *
@@ -119,6 +120,7 @@ fm_status SendDfeEventReq( fm_smEventInfo *eventInfo,
     pLaneExt = ((fm10000_serDesSmEventInfo *)userInfo)->laneExt;
 
     dfeEventInfo.smType  = pLaneExt->dfeExt.smType;
+    dfeEventInfo.srcSmType = pLaneExt->smType;
     dfeEventInfo.eventId = eventId;
     dfeEventInfo.lock    = FM_GET_STATE_LOCK( sw );
     dfeEventInfo.dontSaveRecord = FALSE;
@@ -160,6 +162,7 @@ static void HandlePllTimeout( void *arg )
 
     laneExt           = arg;
     eventInfo.smType  = laneExt->smType;
+    eventInfo.srcSmType = 0;
     eventInfo.eventId = FM10000_SERDES_EVENT_RXTX_PLLS_LOCKED_IND;
     serDesEventInfo   = &laneExt->eventInfo;
     sw                = serDesEventInfo->switchPtr->switchNumber;
@@ -204,6 +207,7 @@ static void HandleSignalTimeout( void *arg )
 
     laneExt           = arg;
     eventInfo.smType  = laneExt->smType;
+    eventInfo.srcSmType = 0;
     eventInfo.eventId = FM10000_SERDES_EVENT_SIGNALOK_ASSERTED_IND;
     serDesEventInfo   = &laneExt->eventInfo;
     sw                = serDesEventInfo->switchPtr->switchNumber;
@@ -249,6 +253,7 @@ static void HandleTuningTimeout( void *arg )
 
     laneExt           = arg;
     eventInfo.smType  = laneExt->smType;
+    eventInfo.srcSmType = 0;
     if ( laneExt->krTrainingEn == TRUE )
     {
 
@@ -310,6 +315,7 @@ void HandleSerDesTimeout( void *arg )
 
     laneExt           = arg;
     eventInfo.smType  = laneExt->smType;
+    eventInfo.srcSmType = 0;
     eventInfo.eventId = FM10000_SERDES_EVENT_TIMEOUT_IND;
     serDesEventInfo   = &laneExt->eventInfo;
     sw                = serDesEventInfo->switchPtr->switchNumber;
@@ -331,10 +337,270 @@ void HandleSerDesTimeout( void *arg )
 
 
 /*****************************************************************************/
+/** HandleSerDesErrorValidationTimeout
+ * \ingroup intSerdes
+ *
+ * \desc            Handles a timeout required for the SerDes Error Validation.
+ *                  Requests appropriate event depending of the Error
+ *                  Handling state.
+ *
+ * \param[in]       arg is the pointer to the argument passed when the timer
+ *                  was started, in this case the pointer to the lane extension
+ *                  structure (type ''fm10000_lane'')
+ *
+ * \return          None
+ *
+ *****************************************************************************/
+void HandleSerDesErrorValidationTimeout( void *arg )
+{
+    fm_status                  status;
+    fm_smEventInfo             eventInfo;
+    fm10000_serDesSmEventInfo *serDesEventInfo;
+    fm10000_lane              *laneExt;
+    fm_int                     sw;
+    fm_int                     serDes;
+
+
+    laneExt           = arg;
+    eventInfo.smType  = laneExt->smType;
+    eventInfo.srcSmType = 0;
+    serDesEventInfo   = &laneExt->eventInfo;
+    sw                = serDesEventInfo->switchPtr->switchNumber;
+    serDes            = laneExt->serDes;
+
+
+    if ( laneExt->powerDownPending )
+    {
+
+        eventInfo.eventId = FM10000_SERDES_EVENT_POWERDOWN_REQ;
+        laneExt->powerDownPending = FALSE;
+
+
+        if ( laneExt->powerUpPending )
+        {
+
+            status = StartSerDesErrorValidationShortTimer(laneExt);
+            if ( status != FM_OK )
+            {
+                FM_LOG_ERROR_V2( FM_LOG_CAT_SERDES,
+                                 serDes,
+                                 "Failed to start Err Validation short timer\n" );
+            }
+        }
+    }
+    else if ( laneExt->powerUpPending )
+    {
+
+        laneExt->powerUpPending = FALSE;
+        eventInfo.eventId = FM10000_SERDES_EVENT_POWERUP_REQ;
+    }
+    else
+    {
+
+        eventInfo.eventId = FM10000_SERDES_EVENT_VALIDATE_TIMEOUT_IND;
+    }
+
+    PROTECT_SWITCH( sw );
+    eventInfo.lock = FM_GET_STATE_LOCK( sw );
+    eventInfo.dontSaveRecord = FALSE;
+    fmNotifyStateMachineEvent( laneExt->smHandle,
+                               &eventInfo,
+                               serDesEventInfo,
+                               &laneExt->serDes );
+    UNPROTECT_SWITCH( sw );
+
+}
+
+
+
+
+/*****************************************************************************/
+/** StartSerDesErrorValidationShortTimer
+ * \ingroup intSerdes
+ *
+ * \desc            Starts SerDes Error Validation Short timer.
+ *                  Short timer is related to SerDes Error Validation when
+ *                  Error Handling action is in progress and validation ocurred
+ *                  in UP state. In that case, a SerDes Power-Down
+ *                  and Power-Up sequence is required to complete the action.
+ *
+ * \param[in]       pLaneExt pointer to the fm10000_lane timer is related to
+ *
+ * \return          FM_OK if successful
+ * \return          Other ''Status Codes'' as appropriate in case of failure.
+ *
+ *****************************************************************************/
+fm_status StartSerDesErrorValidationShortTimer(fm10000_lane *pLaneExt)
+{
+    fm_status     status;
+    fm_int        serDes;
+    fm_timestamp  timeout;
+
+    if (!pLaneExt)
+    {
+        FM_LOG_ERROR(FM_LOG_CAT_SERDES,
+                     "Unable to start Err Validation short timer\n");
+        status = FM_FAIL;
+        FM_LOG_ABORT(FM_LOG_CAT_SERDES, status);
+    }
+
+    serDes = pLaneExt->serDes;
+    status = FM_OK;
+
+
+    timeout.sec  = 0;
+    if ( pLaneExt->powerDownPending )
+    {
+        timeout.usec = FM10000_SERDES_ERROR_POWERDOWN_DELAY;
+    }
+    else if ( pLaneExt->powerUpPending )
+    {
+        timeout.usec = FM10000_SERDES_ERROR_POWERUP_DELAY;
+    }
+    else
+    {
+        status = FM_FAIL;
+        FM_LOG_ABORT(FM_LOG_CAT_SERDES, status);
+    }
+
+    FM_LOG_DEBUG(FM_LOG_CAT_SERDES,
+             "SerDes%02d Start Validation short timer %lld.%06lldsec\n",
+             serDes,
+             timeout.sec,
+             timeout.usec);
+
+
+    status = fmStartTimer( pLaneExt->timerHandleErrorValidation,
+                           &timeout,
+                           1,
+                           HandleSerDesErrorValidationTimeout,
+                           pLaneExt );
+
+ABORT:
+    return status;
+
+}
+
+
+
+
+/*****************************************************************************/
+/** fm10000SerDesStartErrorValidationTimer
+ * \ingroup intSerdes
+ *
+ * \desc            Starts SerDes Error Validation timer.
+ *                  Timer is controllend by api attribute
+ *                  FM_AAK_API_SERDES_VALIDATE_TIMER.
+ *                  The number of repetitions is always set to 1.
+ *                  Timer is restarted when new SerDes Error Validation cycle is
+ *                  required according to api settings.
+ *
+ * \param[in]       eventInfo is a pointer the generic event descriptor (unused
+ *                  in this function)
+ *
+ * \param[in]       userInfo pointer a purpose specific event descriptor (must
+ *                  be casted to ''fm10000_serdesSmEventInfo'')
+ *
+ * \return          FM_OK if successful
+ * \return          Other ''Status Codes'' as appropriate in case of failure.
+ *
+ *****************************************************************************/
+fm_status fm10000SerDesStartErrorValidationTimer(fm_smEventInfo *eventInfo,
+                                                 void           *userInfo)
+{
+    fm_status     status;
+    fm10000_lane *pLaneExt;
+    fm_int        serDes;
+    fm_timestamp  timeout;
+    fm_bool       serDesValidateEnabled;
+    fm_bool       sbmValidateEnabled;
+
+
+    FM_NOT_USED(eventInfo);
+
+    pLaneExt = ((fm10000_serDesSmEventInfo *)userInfo)->laneExt;
+    serDes   = pLaneExt->serDes;
+
+    status = FM_OK;
+    timeout.usec = 0;
+    timeout.sec = GET_PROPERTY()->serdesValidateTimer;
+
+    serDesValidateEnabled = GET_PROPERTY()->serdesValidate;
+    sbmValidateEnabled    = GET_PROPERTY()->sbmasterValidate;
+
+    if ( (timeout.sec < FM10000_SERDES_VALIDATION_TIMER_MIN) ||
+         (timeout.sec >= FM10000_SERDES_VALIDATION_TIMER_MAX) )
+    {
+
+        timeout.sec = FM_AAD_API_SERDES_VALIDATE_TIMER;
+        FM_LOG_ERROR_V2(FM_LOG_CAT_SERDES,
+                        serDes,
+                        "Setting default Validation Timer time=%lld\n",
+                        timeout.sec);
+    }
+
+    FM_LOG_DEBUG(FM_LOG_CAT_SERDES,
+                 "SerDes%02d Start Error Validation timer, time=%lld.%06lldsec\n",
+                 serDes,
+                 timeout.sec,
+                 timeout.usec);
+
+
+    status = fmStartTimer( pLaneExt->timerHandleErrorValidation,
+                           &timeout,
+                           1,
+                           HandleSerDesErrorValidationTimeout,
+                           pLaneExt );
+    return status;
+
+}
+
+
+
+
+/*****************************************************************************/
+/** fm10000SerDesStopErrorValidationTimer
+ * \ingroup intSerdes
+ *
+ * \desc            Stops the SerDes Error Validation timer.
+ *
+ * \param[in]       eventInfo is a pointer the generic event descriptor (unused
+ *                  in this function)
+ *
+ * \param[in]       userInfo pointer a purpose specific event descriptor (must
+ *                  be casted to ''fm10000_serdesSmEventInfo'')
+ *
+ * \return          FM_OK if successful
+ * \return          Other ''Status Codes'' as appropriate in case of failure.
+ *
+ *****************************************************************************/
+fm_status fm10000SerDesStopErrorValidationTimer(fm_smEventInfo *eventInfo,
+                                         void           *userInfo)
+{
+    fm10000_lane *pLaneExt;
+	fm_int		  serDes;
+
+    FM_NOT_USED(eventInfo);
+
+
+    pLaneExt = ((fm10000_serDesSmEventInfo *)userInfo)->laneExt;
+	serDes   = pLaneExt->serDes;
+
+	FM_LOG_DEBUG(FM_LOG_CAT_SERDES,
+            	     "SerDes %d Stop Error Validation Timer\n",
+                	 serDes);
+    return fmStopTimer( pLaneExt->timerHandleErrorValidation );
+
+}
+
+
+
+
+/*****************************************************************************/
 /** StartTimeoutTimer
  * \ingroup intSerdes
  *
- * \desc            Start SerDes timeout timer. Timer is started using the
+ * \desc            Starts SerDes timeout timer. Timer is started using the
  *                  provided expiration time. The number of repetitions is
  *                  always set to 1.
  *
@@ -379,7 +645,7 @@ fm_status StartTimeoutTimer(fm_smEventInfo *eventInfo,
 /** EnableRxBistMode
  * \ingroup intSerdes
  *
- * \desc            Enable Bist on the Rx section of this SerDes. Only Rx and
+ * \desc            Enables Bist on the Rx section of this SerDes. Only Rx and
  *                  TxRx modes are supported. In the case of the latter, only
  *                  the Rx section is configured. Bist error counter is reset
  *                  to zero.
@@ -710,12 +976,12 @@ static fm_status CompleteConfigureSerdes(fm_smEventInfo *eventInfo,
 
 
 /*****************************************************************************/
-/** SerDesInterruptThrotle
+/** SerDesInterruptThrottle
  * \ingroup intSerdes
  *
  * \desc            Implements a simple interrupt moderation algorithm to
- *                  limit signalOk interrupts rate for Ethernet modes that
- *                  use static DFE in some particular setups.
+ *                  limit signalOk interrupt rate for Ethernet modes that
+ *                  use static DFE.
  *
  * \param[in]       eventInfo is a pointer the generic event descriptor.
  *
@@ -723,13 +989,13 @@ static fm_status CompleteConfigureSerdes(fm_smEventInfo *eventInfo,
  *                  be casted to ''fm10000_serdesSmEventInfo'')
  *
  * \param[in]       increment is the value to be added to the interrupt counter
- *                  used by the throtle system.
+ *                  used by the throttle system.
  *
  * \return          FM_OK if successful.
  * \return          Other ''Status Codes'' as appropriate in case of failure.
  *
  *****************************************************************************/
-static fm_status SerDesInterruptThrotle( fm_smEventInfo *eventInfo,
+static fm_status SerDesInterruptThrottle(fm_smEventInfo *eventInfo,
                                          void           *userInfo,
                                          fm_int         increment)
 {
@@ -747,16 +1013,16 @@ static fm_status SerDesInterruptThrotle( fm_smEventInfo *eventInfo,
     err = FM_OK;
 
 
-    if (laneExt->dfeMode == FM_DFE_MODE_STATIC)
+    if (laneExt->dfeMode != FM_DFE_MODE_KR)
     {
 
-        if (increment > MF10000_SERDES_INTR_THROTLE_MAX_INC)
+        if (increment > FM10000_SERDES_INTR_THROTTLE_MAX_INC)
         {
-            increment = MF10000_SERDES_INTR_THROTLE_MAX_INC;
+            increment = FM10000_SERDES_INTR_THROTTLE_MAX_INC;
         }
-        else if (increment < -MF10000_SERDES_INTR_THROTLE_MAX_INC)
+        else if (increment < -FM10000_SERDES_INTR_THROTTLE_MAX_INC)
         {
-            increment = -MF10000_SERDES_INTR_THROTLE_MAX_INC;
+            increment = -FM10000_SERDES_INTR_THROTTLE_MAX_INC;
         }
 
 
@@ -766,19 +1032,19 @@ static fm_status SerDesInterruptThrotle( fm_smEventInfo *eventInfo,
         {
             laneExt->interruptCounter = 0;
         }
-        else if (laneExt->interruptCounter > MF10000_SERDES_INTR_THROTLE_COUNT_MAX)
+        else if (laneExt->interruptCounter > FM10000_SERDES_INTR_THROTTLE_COUNT_MAX)
         {
-            laneExt->interruptCounter = MF10000_SERDES_INTR_THROTLE_COUNT_MAX;
+            laneExt->interruptCounter = FM10000_SERDES_INTR_THROTTLE_COUNT_MAX;
         }
 
 
-        if (laneExt->interruptCounter > MF10000_SERDES_INTR_THROTLE_THRESH_HI &&
+        if (laneExt->interruptCounter > FM10000_SERDES_INTR_THROTTLE_THRESH_HI &&
             laneExt->serdesInterruptMask != 0)
         {
 
             fm10000SerDesDisableInterrupts(eventInfo,userInfo);
         }
-        else if (laneExt->interruptCounter < MF10000_SERDES_INTR_THROTLE_THRESH_LO &&
+        else if (laneExt->interruptCounter < FM10000_SERDES_INTR_THROTTLE_THRESH_LO &&
                  laneExt->serdesInterruptMask == 0)
         {
 
@@ -840,7 +1106,8 @@ fm_int fm10000EnableSerDesTransitionDebugMode( fm_int debugMode )
 /** fm10000LogSerDesTransition
  * \ingroup intSerdes
  *
- * \desc            Provide a description of what the function does.
+ * \desc            Log callback for one or more registered serdes-level State
+ *                  Transition tables
  *
  * \param[in]       record is the pointer to a caller-allocated structure
  *                  containing the SerDes state transition information to be
@@ -1231,15 +1498,18 @@ fm_status fm10000SerDesStopStubTuningTimer( fm_smEventInfo *eventInfo, void *use
 fm_status fm10000SerDesSendPortLaneReadyInd( fm_smEventInfo *eventInfo, void *userInfo )
 {
     fm10000_port   *portExt;
+    fm10000_lane   *pLaneExt;
     fm_smEventInfo  portEventInfo;
     fm_int          sw;
     fm_int          physLane;
 
     sw       = ((fm10000_serDesSmEventInfo *)userInfo)->switchPtr->switchNumber;
+    pLaneExt = ((fm10000_serDesSmEventInfo *)userInfo)->laneExt;
     physLane = ((fm10000_serDesSmEventInfo *)userInfo)->laneExt->physLane;
     portExt  = ((fm10000_serDesSmEventInfo *)userInfo)->laneExt->parentPortExt;
 
     portEventInfo.smType  = portExt->smType;
+    portEventInfo.srcSmType = pLaneExt->smType;
     portEventInfo.eventId = FM10000_PORT_EVENT_LANE_READY_IND;
     portEventInfo.lock    = FM_GET_STATE_LOCK( sw );
     portExt->eventInfo.info.physLane = physLane;
@@ -1277,6 +1547,7 @@ fm_status fm10000SerDesSendPortLaneReadyInd( fm_smEventInfo *eventInfo, void *us
 fm_status fm10000SerDesSendPortLaneNotReadyInd( fm_smEventInfo *eventInfo, void *userInfo )
 {
     fm10000_port   *portExt;
+    fm10000_lane   *pLaneExt;
     fm_smEventInfo  portEventInfo;
     fm_int          sw;
     fm_int          physLane;
@@ -1284,9 +1555,11 @@ fm_status fm10000SerDesSendPortLaneNotReadyInd( fm_smEventInfo *eventInfo, void 
     sw      = ((fm10000_serDesSmEventInfo *)userInfo)->switchPtr->switchNumber;
     physLane = ((fm10000_serDesSmEventInfo *)userInfo)->laneExt->physLane;
     portExt  = ((fm10000_serDesSmEventInfo *)userInfo)->laneExt->parentPortExt;
+    pLaneExt = ((fm10000_serDesSmEventInfo *)userInfo)->laneExt;
 
 
     portEventInfo.smType = portExt->smType;
+    portEventInfo.srcSmType = pLaneExt->smType;
     portEventInfo.eventId = FM10000_PORT_EVENT_LANE_NOT_READY_IND;
     portEventInfo.lock    = FM_GET_STATE_LOCK( sw );
     portExt->eventInfo.info.physLane = physLane;
@@ -1325,6 +1598,7 @@ fm_status fm10000SerDesSendPortKrTrainingCompleteInd(fm_smEventInfo *eventInfo,
                                                      void           *userInfo )
 {
     fm10000_port   *portExt;
+    fm10000_lane   *pLaneExt;
     fm_smEventInfo  portEventInfo;
     fm_int          sw;
     fm_int          physLane;
@@ -1332,9 +1606,11 @@ fm_status fm10000SerDesSendPortKrTrainingCompleteInd(fm_smEventInfo *eventInfo,
     sw      = ((fm10000_serDesSmEventInfo *)userInfo)->switchPtr->switchNumber;
     physLane = ((fm10000_serDesSmEventInfo *)userInfo)->laneExt->physLane;
     portExt  = ((fm10000_serDesSmEventInfo *)userInfo)->laneExt->parentPortExt;
+    pLaneExt = ((fm10000_serDesSmEventInfo *)userInfo)->laneExt;
 
 
     portEventInfo.smType = portExt->smType;
+    portEventInfo.srcSmType = pLaneExt->smType;
     portEventInfo.eventId = FM10000_PORT_EVENT_LANE_KR_COMPLETE_IND;
     portEventInfo.lock    = FM_GET_STATE_LOCK( sw );
     portExt->eventInfo.info.physLane = physLane;
@@ -1372,6 +1648,7 @@ fm_status fm10000SerDesSendPortKrTrainingCompleteInd(fm_smEventInfo *eventInfo,
 fm_status fm10000SerDesSendPortKrTrainingFailedInd( fm_smEventInfo *eventInfo, void *userInfo )
 {
     fm10000_port   *portExt;
+    fm10000_lane   *pLaneExt;
     fm_smEventInfo  portEventInfo;
     fm_int          sw;
     fm_int          physLane;
@@ -1379,9 +1656,11 @@ fm_status fm10000SerDesSendPortKrTrainingFailedInd( fm_smEventInfo *eventInfo, v
     sw      = ((fm10000_serDesSmEventInfo *)userInfo)->switchPtr->switchNumber;
     physLane = ((fm10000_serDesSmEventInfo *)userInfo)->laneExt->physLane;
     portExt  = ((fm10000_serDesSmEventInfo *)userInfo)->laneExt->parentPortExt;
+    pLaneExt = ((fm10000_serDesSmEventInfo *)userInfo)->laneExt;
 
 
     portEventInfo.smType = portExt->smType;
+    portEventInfo.srcSmType = pLaneExt->smType;
     portEventInfo.eventId = FM10000_PORT_EVENT_LANE_KR_FAILED_IND;
     portEventInfo.lock    = FM_GET_STATE_LOCK( sw );
     portExt->eventInfo.info.physLane = physLane;
@@ -1419,6 +1698,7 @@ fm_status fm10000SerDesSendPortKrTrainingFailedInd( fm_smEventInfo *eventInfo, v
 fm_status fm10000SerDesSendPortDfeTuningCompleteInd( fm_smEventInfo *eventInfo, void *userInfo )
 {
     fm10000_port   *portExt;
+    fm10000_lane   *pLaneExt;
     fm_smEventInfo  portEventInfo;
     fm_int          sw;
     fm_int          physLane;
@@ -1426,9 +1706,11 @@ fm_status fm10000SerDesSendPortDfeTuningCompleteInd( fm_smEventInfo *eventInfo, 
     sw      = ((fm10000_serDesSmEventInfo *)userInfo)->switchPtr->switchNumber;
     physLane = ((fm10000_serDesSmEventInfo *)userInfo)->laneExt->physLane;
     portExt  = ((fm10000_serDesSmEventInfo *)userInfo)->laneExt->parentPortExt;
+    pLaneExt = ((fm10000_serDesSmEventInfo *)userInfo)->laneExt;
 
 
     portEventInfo.smType = portExt->smType;
+    portEventInfo.srcSmType = pLaneExt->smType;
     portEventInfo.eventId = FM10000_PORT_EVENT_LANE_DFE_COMPLETE_IND;
     portEventInfo.lock    = FM_GET_STATE_LOCK( sw );
     portExt->eventInfo.info.physLane = physLane;
@@ -1466,6 +1748,7 @@ fm_status fm10000SerDesSendPortDfeTuningCompleteInd( fm_smEventInfo *eventInfo, 
 fm_status fm10000SerDesSendPortDfeTuningFailedInd( fm_smEventInfo *eventInfo, void *userInfo )
 {
     fm10000_port   *portExt;
+    fm10000_lane   *pLaneExt;
     fm_smEventInfo  portEventInfo;
     fm_int          sw;
     fm_int          physLane;
@@ -1473,9 +1756,11 @@ fm_status fm10000SerDesSendPortDfeTuningFailedInd( fm_smEventInfo *eventInfo, vo
     sw      = ((fm10000_serDesSmEventInfo *)userInfo)->switchPtr->switchNumber;
     physLane = ((fm10000_serDesSmEventInfo *)userInfo)->laneExt->physLane;
     portExt  = ((fm10000_serDesSmEventInfo *)userInfo)->laneExt->parentPortExt;
+    pLaneExt = ((fm10000_serDesSmEventInfo *)userInfo)->laneExt;
 
 
     portEventInfo.smType = portExt->smType;
+    portEventInfo.srcSmType = pLaneExt->smType;
     portEventInfo.eventId = FM10000_PORT_EVENT_LANE_DFE_FAILED_IND;
     portEventInfo.lock    = FM_GET_STATE_LOCK( sw );
     portExt->eventInfo.info.physLane = physLane;
@@ -1699,12 +1984,428 @@ fm_status fm10000SerDesMarkRxPllDown(fm_smEventInfo *eventInfo,
 
 
 /*****************************************************************************/
+/** fm10000SerDesExecuteErrorActions
+ * \ingroup intSerdes
+ *
+ * \desc            Action executing SerDes or SBusMaster corrective sequence
+ *                  immediately. In a single timer cycle it could handle
+ *                  either SerDes action or SBus Master action. In case SerDes
+ *                  Action is requested SBus Master action will be pending
+ *                  until next cycle.
+ *
+ * \param[in]       eventInfo is a pointer the generic event descriptor.
+ *
+ * \param[in]       userInfo is pointer a purpose specific event descriptor
+ *                  (must be casted to ''fm10000_serdesSmEventInfo'')
+ *
+ * \param[in]       reqSerDesAction is TRUE for a SerDes error action,
+ *                  FALSE for an SBus Master error action.
+ *
+ * \return          FM_OK if successful
+ * \return          Other ''Status Codes'' as appropriate in case of failure.
+ *
+ *****************************************************************************/
+fm_status fm10000SerDesExecuteErrorActions(fm_smEventInfo *eventInfo,
+                                           void           *userInfo,
+                                           fm_bool         reqSerDesAction)
+{
+    fm_status      status;
+    fm_int         sw;
+    fm10000_lane  *pLaneExt;
+    fm_int         currentState;
+    fm_int        serDes;
+
+    FM_NOT_USED( eventInfo );
+
+    status   = FM_OK;
+    sw       = ((fm10000_serDesSmEventInfo *)userInfo)->switchPtr->switchNumber;
+    pLaneExt = ((fm10000_serDesSmEventInfo *)userInfo)->laneExt;
+    serDes   = pLaneExt->serDes;
+
+
+    if ( reqSerDesAction )
+    {
+        FM_LOG_DEBUG(FM_LOG_CAT_SERDES,
+                     "SerDes %02d Request Error Action\n",
+                     serDes);
+
+        status = fmGetStateMachineCurrentState(pLaneExt->smHandle, &currentState);
+        switch ( currentState )
+        {
+            case FM10000_SERDES_STATE_DISABLED:
+            case FM10000_SERDES_STATE_CONFIGURED:
+            case FM10000_SERDES_STATE_LOOPBACK:
+
+                pLaneExt->serdesErrorActionInprog  = TRUE;
+                pLaneExt->serdesErrorActionPending = FALSE;
+
+                pLaneExt->powerDownPending         = FALSE;
+                pLaneExt->powerUpPending           = FALSE;
+                break;
+            default:
+
+
+
+
+
+                if (GET_PROPERTY()->serdesErrActionUpState)
+                {
+
+                    pLaneExt->serdesErrorActionInprog  = TRUE;
+                    pLaneExt->serdesErrorActionPending = FALSE;
+
+                    pLaneExt->powerDownPending         = TRUE;
+                    pLaneExt->powerUpPending           = TRUE;
+                }
+                break;
+        }
+
+    }
+    else
+    {
+
+        FM_LOG_DEBUG(FM_LOG_CAT_SERDES,
+                     "SBus Master 0x%02x Execute Error Action\n",
+                     serDes);
+
+
+        pLaneExt->sbmErrorActionPending = FALSE;
+        pLaneExt->sbmErrorActionInprog = TRUE;
+
+
+        status = fm10000SmbSpicoSetup(sw, TRUE);
+        if ( status != FM_OK )
+        {
+            FM_LOG_ERROR( FM_LOG_CAT_SERDES, "Failed to Setup Sbm Spico\n" );
+        }
+        else
+        {
+
+            pLaneExt->sbmErrorActionInprog = FALSE;
+            if ( pLaneExt->sbmUErrActionCnt < 0xffffffff )
+            {
+                pLaneExt->sbmUErrActionCnt++;
+            }
+        }
+
+    }
+
+
+
+    if ( pLaneExt->powerDownPending ||
+         pLaneExt->powerUpPending )
+    {
+
+        status = StartSerDesErrorValidationShortTimer(pLaneExt);
+        if ( status != FM_OK )
+        {
+            FM_LOG_ERROR_V2( FM_LOG_CAT_SERDES,
+                             serDes,
+                             "SerDes Err Action, failed to start short timer\n" );
+        }
+    }
+    else
+    {
+        status = fm10000SerDesStartErrorValidationTimer(eventInfo, userInfo);
+        if ( status != FM_OK )
+        {
+            FM_LOG_ERROR_V2( FM_LOG_CAT_SERDES,
+                             serDes,
+                             "Failed to start Error Validation timer\n" );
+        }
+    }
+
+    return status;
+
+}
+
+
+
+
+/*****************************************************************************/
+/** fm10000SerDesExecuteErrorValidationWithActions
+ * \ingroup intSerdes
+ *
+ * \desc            Action processing the SerDes and SBus Master
+ *                  Error Validation and requests Pending Actions execution
+ *                  right away.
+ *
+ * \param[in]       eventInfo is a pointer the generic event descriptor.
+ *
+ * \param[in]       userInfo is pointer a purpose specific event descriptor
+ *                  (must be casted to ''fm10000_serdesSmEventInfo'')
+ *
+ *
+ * \return          FM_OK if successful
+ * \return          Other ''Status Codes'' as appropriate in case of failure.
+ *
+ *****************************************************************************/
+fm_status fm10000SerDesExecuteErrorValidationWithActions(fm_smEventInfo *eventInfo,
+                                                         void           *userInfo)
+{
+    fm_status err;
+    fm10000_lane *pLaneExt;
+    fm_int        serDes;
+
+    FM_NOT_USED( eventInfo );
+
+    err      = FM_OK;
+    pLaneExt = ((fm10000_serDesSmEventInfo *)userInfo)->laneExt;
+    serDes   = pLaneExt->serDes;
+
+    FM_LOG_DEBUG(FM_LOG_CAT_SERDES,
+                 "SerDes %d Error Validation, execute action if required %d %d\n",
+                 serDes,
+                 pLaneExt->serdesErrorActionPending,
+                 pLaneExt->sbmErrorActionPending);
+
+    if ( !pLaneExt->serdesErrorActionPending &&
+         !pLaneExt->sbmErrorActionPending )
+    {
+        err = fm10000SerDesExecuteErrorValidation(eventInfo, userInfo);
+    }
+
+    err = fm10000SerDesExecutePendingErrorActions(eventInfo, userInfo);
+
+
+    err = fm10000SerDesStartErrorValidationTimer(eventInfo, userInfo);
+    if ( err != FM_OK )
+    {
+        FM_LOG_DEBUG(FM_LOG_CAT_SERDES,
+                     "Failed to start Error Validation Timer\n");
+    }
+
+    return err;
+
+}
+
+
+
+
+/*****************************************************************************/
+/** fm10000SerDesExecuteErrorValidation
+ * \ingroup intSerdes
+ *
+ * \desc            Action processing the SerDes and SBus Master Error
+ *                  Validation.
+ *                  When validation is active, it processes the the error
+ *                  validation. It includes verification of the SerDes
+ *                  and SBus Master errors. When an error is detected, the
+ *                  Error Action Pending flags is set.
+ *
+ * \param[in]       eventInfo is a pointer the generic event descriptor.
+ *
+ * \param[in]       userInfo is pointer a purpose specific event descriptor
+ *                  (must be casted to ''fm10000_serdesSmEventInfo'')
+ *
+ *
+ * \return          FM_OK if successful
+ * \return          Other ''Status Codes'' as appropriate in case of failure.
+ *
+ *****************************************************************************/
+fm_status fm10000SerDesExecuteErrorValidation(fm_smEventInfo *eventInfo,
+                                              void           *userInfo)
+{
+    fm_status     status;
+    fm_int        sw;
+    fm_uint32     regVal;
+    fm10000_lane *pLaneExt;
+    fm_int        serDes;
+    fm_int        assocSerDes;
+    fm_bool       serDesValidateEnabled;
+    fm_bool       sbmValidateEnabled;
+
+    sw       = ((fm10000_serDesSmEventInfo *)userInfo)->switchPtr->switchNumber;
+    pLaneExt = ((fm10000_serDesSmEventInfo *)userInfo)->laneExt;
+    serDes   = pLaneExt->serDes;
+
+    status = FM_OK;
+
+    FM_LOG_DEBUG(FM_LOG_CAT_SERDES,
+                 "SerDes %02d Execute Error Validation\n",
+                 serDes);
+
+    serDesValidateEnabled = GET_PROPERTY()->serdesValidate;
+    sbmValidateEnabled    = GET_PROPERTY()->sbmasterValidate;
+
+    if ( serDesValidateEnabled )
+    {
+        status = fm10000SerdesReadExt(sw,
+                                      serDes,
+                                      FM10000_SERDES_REG_0C,
+                                      &regVal);
+
+        if ( pLaneExt->serdesUErrValidateCnt < 0xffffffff )
+        {
+            pLaneExt->serdesUErrValidateCnt++;
+        }
+
+
+        if ( FM_GET_BIT(regVal, FM10000_SERDES_REG_0C, BIT_31) )
+        {
+
+
+
+
+
+
+            if ( (FM_GET_FIELD(regVal, FM10000_SERDES_REG_0C, FIELD_1) & 0x01) ||
+                 (FM_GET_BIT(regVal, FM10000_SERDES_REG_0C, BIT_26)) )
+            {
+
+                FM_LOG_DEBUG(FM_LOG_CAT_SERDES,"SerDes%02d error detected\n",
+                             serDes);
+
+
+
+                pLaneExt->serdesErrorActionPending = TRUE;
+            }
+            else
+            {
+                regVal = 0;
+                FM_SET_BIT(regVal, FM10000_SERDES_REG_0C, BIT_31, 1);
+
+
+                status = fm10000SerdesWrite(sw, serDes, FM10000_SERDES_REG_0C, regVal);
+            }
+        }
+    }
+
+
+    if ( sbmValidateEnabled )
+    {
+
+        status = fm10000GetSbmAssocSerDes( sw, &assocSerDes);
+        if ( status != FM_OK )
+        {
+            FM_LOG_DEBUG(FM_LOG_CAT_SERDES,
+                         "Unable to find SBus Master associated SerDes\n");
+            FM_LOG_EXIT(FM_LOG_CAT_SERDES, status);
+        }
+
+        if ( serDes == assocSerDes )
+        {
+            if ( pLaneExt->sbmUErrValidateCnt < 0xffffffff )
+            {
+                pLaneExt->sbmUErrValidateCnt++;
+            }
+
+
+            status = fm10000SbusReadExt(sw,
+                                        TRUE,
+                                        FM10000_SBUS_SPICO_BCAST_ADDR,
+                                        FM10000_SPICO_REG_16,
+                                        &regVal);
+            if ( status != FM_OK )
+            {
+                FM_LOG_DEBUG(FM_LOG_CAT_SERDES,
+                             "SBus Read error Spico register \n");
+                FM_LOG_EXIT(FM_LOG_CAT_SERDES, status);
+            }
+
+            if ( (FM_GET_FIELD(regVal, FM10000_SPICO_REG_16, FIELD_1) & 0x01) ||
+                 (FM_GET_FIELD(regVal, FM10000_SPICO_REG_16, FIELD_2) & 0x01) )
+            {
+
+                pLaneExt->sbmErrorActionPending = TRUE;
+            }
+            else
+            {
+                regVal = 0;
+                FM_SET_BIT(regVal, FM10000_SPICO_REG_16, BIT_23, 1);
+                FM_SET_BIT(regVal, FM10000_SPICO_REG_16, BIT_27, 1);
+
+                status = fm10000SbusWrite(sw,
+                                         TRUE,
+                                         FM10000_SBUS_SPICO_BCAST_ADDR,
+                                         FM10000_SPICO_REG_16,
+                                         regVal);
+                if ( status != FM_OK )
+                {
+                    FM_LOG_DEBUG(FM_LOG_CAT_SERDES,
+                                 "SerDes %d Error writing to SerDes register\n",
+                                 serDes);
+                    FM_LOG_EXIT(FM_LOG_CAT_SERDES, status);
+                }
+            }
+        }
+    }
+
+
+
+
+
+    if ( (!pLaneExt->sbmErrorActionPending &&
+          !pLaneExt->serdesErrorActionPending) )
+    {
+        status = fm10000SerDesStartErrorValidationTimer(eventInfo, userInfo);
+    }
+
+    return status;
+
+}
+
+
+
+
+/*****************************************************************************/
+/** fm10000SerDesExecutePendingErrorActions
+ * \ingroup intSerdes
+ *
+ * \desc            Executes the recovery sequence for the pending actions.
+ *
+ * \param[in]       eventInfo is a pointer the generic event descriptor.
+ *
+ * \param[in]       userInfo is pointer a purpose specific event descriptor
+ *                  (must be casted to ''fm10000_serdesSmEventInfo'')
+ *
+ *
+ * \return          FM_OK if successful
+ * \return          Other ''Status Codes'' as appropriate in case of failure.
+ *
+ *****************************************************************************/
+fm_status fm10000SerDesExecutePendingErrorActions(fm_smEventInfo *eventInfo,
+                                                  void           *userInfo)
+{
+    fm_status     status;
+    fm10000_lane *pLaneExt;
+    fm_int        serDes;
+
+    FM_NOT_USED( eventInfo );
+
+    status   = FM_OK;
+    pLaneExt = ((fm10000_serDesSmEventInfo *)userInfo)->laneExt;
+    serDes   = pLaneExt->serDes;
+
+
+    if ( pLaneExt->serdesErrorActionPending )
+    {
+        FM_LOG_DEBUG(FM_LOG_CAT_SERDES,
+                     "SerDes %d Process Pending Error Action\n",
+                     serDes);
+        status = fm10000SerDesExecuteErrorActions(eventInfo, userInfo, TRUE);
+    }
+    else if ( pLaneExt->sbmErrorActionPending )
+    {
+        FM_LOG_DEBUG(FM_LOG_CAT_SERDES,
+                     "SerDes %d Process Pending SBus Master Error Action\n",
+                     serDes);
+        status = fm10000SerDesExecuteErrorActions(eventInfo, userInfo, FALSE);
+    }
+    return status;
+
+}
+
+
+
+
+/*****************************************************************************/
 /** fm10000SerDesProcessStubSignalTimer
  * \ingroup intSerdes
  *
  * \desc            Conditional transition callback processing a signal
  *                  detection event by switching to a configuration-dependent
- *                  state
+ *                  state. Stub SM.
  *
  * \param[in]       eventInfo pointer to a caller-allocated area containing
  *                  the generic event descriptor (unsed in this function)
@@ -1800,7 +2501,7 @@ fm_status fm10000SerDesProcessStubSignalTimer( fm_smEventInfo *eventInfo,
  *
  * \desc            Conditional transition callback processing the expiration
  *                  of the Stub PLL timer by switching to a state dependent
- *                  on the combination of PLLs that are powered up
+ *                  on the combination of PLLs that are powered up. Stub SM.
  *
  * \param[in]       eventInfo pointer to a caller-allocated area containing
  *                  the generic event descriptor (unsed in this function)
@@ -1882,7 +2583,7 @@ ABORT:
  *
  * \desc            Conditional transition callback processing the expiration
  *                  of the tuning timer by switching to a state dependent
- *                  on the combination of PLLs that are powered up
+ *                  on the combination of PLLs that are powered up. Stub SM.
  *
  * \param[in]       eventInfo pointer to a caller-allocated area containing
  *                  the generic event descriptor (unsed in this function)
@@ -2171,7 +2872,7 @@ fm_status fm10000SerDesSetFarLoopbackModeOn(fm_smEventInfo *eventInfo,
 /** fm10000SerDesSetFarLoopbackModeOff
  * \ingroup intSerdes
  *
- * \desc            Action disabling the far loopback mode (default).
+ * \desc            Action disabling the far loopback mode.
  *
  * \param[in]       eventInfo is a pointer the generic event descriptor.
  *
@@ -2444,7 +3145,7 @@ fm_status fm10000SerDesRstSignalOkDebounce(fm_smEventInfo *eventInfo,
 
     pLaneExt->signalOkDebounce = 0;
 
-    SerDesInterruptThrotle(eventInfo,userInfo,3);
+    SerDesInterruptThrottle(eventInfo,userInfo,3);
 
     return err;
 
@@ -2458,7 +3159,7 @@ fm_status fm10000SerDesRstSignalOkDebounce(fm_smEventInfo *eventInfo,
  * \ingroup intSerdes
  *
  * \desc            Action setting the field SdOverride of LANE_SIGNAL_DETECT_CFG
- *                  register to FORCE_BAD.
+ *                  register to FORCE_BAD to force a Local Faul condition.
  *
  * \param[in]       eventInfo is a pointer the generic event descriptor.
  *
@@ -2605,7 +3306,7 @@ fm_status fm10000SerDesSetStaticDfeSignalDtctNormal(fm_smEventInfo *eventInfo,
  * \ingroup intSerdes
  *
  * \desc            Action setting the field SdOverride of LANE_SIGNAL_DETECT_CFG
- *                  register to NORMAL. This is action performed inconditionally.
+ *                  register to NORMAL. This is action performed unconditionally.
  *
  * \param[in]       eventInfo is a pointer the generic event descriptor.
  *
@@ -2740,8 +3441,8 @@ fm_status fm10000SerDesConfigureBitRateAndWidthMode( fm_smEventInfo *eventInfo,
 /** fm10000SerDesConfigureDataSelect
  * \ingroup intSerdes
  *
- * \desc            Action marking the TX PLL down for a lane in the context
- *                  state machine associated to the parent port of a given lane
+ * \desc            Action selecting the core as the tx-data source for the
+ *                  current serdes.
  *
  * \param[in]       eventInfo is a pointer the generic event descriptor.
  *
@@ -3202,6 +3903,8 @@ fm_status fm10000SerDesResetSpico( fm_smEventInfo *eventInfo,
  *
  * \desc            Action resetting and restoring, if necessary,  the SerDes
  *                  SPICO processor.
+ *                  For SerDes Error Handling action in progress request for
+ *                  SoftReset and force to Restore the Spico with Image Upload
  *
  * \param[in]       eventInfo is a pointer the generic event descriptor.
  *
@@ -3227,16 +3930,35 @@ fm_status fm10000SerDesRestoreSpico( fm_smEventInfo *eventInfo,
     sw       = ((fm10000_serDesSmEventInfo *)userInfo)->switchPtr->switchNumber;
     serDes   = ((fm10000_serDesSmEventInfo *)userInfo)->laneExt->serDes;
 
-
     if ( pLaneExt->prevBitRate == FM10000_LANE_BITRATE_2500MBPS &&
          pLaneExt->bitRate     != FM10000_LANE_BITRATE_2500MBPS &&
-         pLaneExt->dfeMode     == FM_DFE_MODE_STATIC)
+         pLaneExt->dfeMode     == FM_DFE_MODE_STATIC &&
+         !pLaneExt->serdesErrorActionInprog )
     {
         err = FM_OK;
     }
     else
     {
-        err = fm10000SerdesSpicoSetup(sw,serDes);
+
+        if ( pLaneExt->serdesErrorActionInprog )
+        {
+
+            pLaneExt->serdesErrorActionInprog = FALSE;
+
+
+            err = fm10000SerdesSpicoSetup(sw, serDes, TRUE, TRUE);
+
+
+            if ( pLaneExt->serdesUErrActionCnt < 0xffffffff )
+            {
+                pLaneExt->serdesUErrActionCnt++;
+            }
+        }
+        else
+        {
+
+            err = fm10000SerdesSpicoSetup(sw,serDes, FALSE, FALSE);
+        }
     }
 
     return err;
@@ -3309,7 +4031,6 @@ fm_status fm10000SerDesDisableNearLoopback( fm_smEventInfo *eventInfo,
     serDes  = ((fm10000_serDesSmEventInfo *)userInfo)->laneExt->serDes;
 
     err = fm10000SerdesSetLoopbackMode(sw, serDes, FM10000_SERDES_LB_INTERNAL_OFF);
-
 
     return err;
 
@@ -3413,7 +4134,7 @@ fm_status fm10000SerDesSaveNearLoopbackOffConfig(fm_smEventInfo *eventInfo,
 /** fm10000SerDesEnableParallelLoopback
  * \ingroup intSerdes
  *
- * \desc            Action enabling the SerDes parallel near loopback.
+ * \desc            Action enabling the SerDes parallel loopback.
  *
  * \param[in]       eventInfo is a pointer the generic event descriptor.
  *
@@ -3518,8 +4239,9 @@ fm_status fm10000SerDesDisableParallelLoopback(fm_smEventInfo *eventInfo,
  * \ingroup intSerdes
  *
  * \desc            Action enabling Bist on this SerDes. This action can only
- *                  be called from MISSION state and supports all submodes:
- *                  TxRx, Tx and Rx. Error counter is reset to zero.
+ *                  be called from MISSION, LOOPBACK and BIST states and
+ *                  supports all submodes: TxRx, Tx and Rx. Error counter is
+ *                  reset to zero.
  *
  * \param[in]       eventInfo is a pointer to the generic event descriptor.
  *
@@ -3958,8 +4680,7 @@ fm_status fm10000SerDesEnableRxBistMode(fm_smEventInfo *eventInfo,
 /** fm10000SerDesRemoveBistConfig
  * \ingroup intSerdes
  *
- * \desc            Action removing Bist configuration on serdes control
- *                  structures.
+ * \desc            Action removing Bist configuration on current serdes.
  *
  * \param[in]       eventInfo is a pointer to the generic event descriptor.
  *
@@ -4012,7 +4733,7 @@ fm_status fm10000SerDesRemoveBistConfig(fm_smEventInfo *eventInfo,
 /** fm10000SerDesInitSignalOk
  * \ingroup intSerdes
  *
- * \desc            Action initializing the SerDes signalOK.
+ * \desc            Action initializing the SerDes signalOK detection logic.
  *
  * \param[in]       eventInfo is a pointer the generic event descriptor.
  *
@@ -4048,7 +4769,8 @@ fm_status fm10000SerDesInitSignalOk( fm_smEventInfo *eventInfo,
 /** fm10000SerDesDisableTxRx
  * \ingroup intSerdes
  *
- * \desc            Action disabling both Tx and Rx PLLs of the current SerDes.
+ * \desc            Action disabling both Tx and Rx sections on the current
+ *                  SerDes.
  *
  * \param[in]       eventInfo is a pointer the generic event descriptor.
  *
@@ -4098,8 +4820,7 @@ fm_status fm10000SerDesDisableTxRx( fm_smEventInfo *eventInfo,
 /** fm10000SerDesEnableRx
  * \ingroup intSerdes
  *
- * \desc            Action enabling the SerDes Rx PLL. When this PLL is
- *                  disabled, the Rx section of the SerDes remains inactive
+ * \desc            Action enabling Rx PLL.
  *
  * \param[in]       eventInfo is a pointer the generic event descriptor.
  *
@@ -4146,7 +4867,7 @@ fm_status fm10000SerDesEnableRx( fm_smEventInfo *eventInfo,
 /** fm10000SerDesEnableTxRx
  * \ingroup intSerdes
  *
- * \desc            Action enabling the SerDes Tx and Rx PLLs.
+ * \desc            Action enabling Tx and Rx PLLs.
  *
  * \param[in]       eventInfo is a pointer the generic event descriptor.
  *
@@ -4199,8 +4920,7 @@ fm_status fm10000SerDesEnableTxRx( fm_smEventInfo *eventInfo,
 /** fm10000SerDesDisableRx
  * \ingroup intSerdes
  *
- * \desc            Action disabling the SerDes Rx PLL. When this PLL is
- *                  disabled the Rx section of the SerDes remains inactive
+ * \desc            Action disabling the Rx PLL.
  *
  * \param[in]       eventInfo is a pointer the generic event descriptor.
  *
@@ -4241,8 +4961,7 @@ fm_status fm10000SerDesDisableRx( fm_smEventInfo *eventInfo,
 /** fm10000SerDesEnableTx
  * \ingroup intSerdes
  *
- * \desc            Action enabling the SerDes Tx PLL. When this PLL is
- *                  disabled, the Tx section of the SerDes remains inactive.
+ * \desc            Action enabling Tx PLL.
  *
  * \param[in]       eventInfo is a pointer the generic event descriptor.
  *
@@ -4290,8 +5009,7 @@ fm_status fm10000SerDesEnableTx( fm_smEventInfo *eventInfo,
  * \ingroup intSerdes
  *
  * \desc            Action disabling the SerDes Tx PLL and output enable for
- *                  the specified serdes. When Tx PLL is disabled, the serdes
- *                  Tx section remains inactive.
+ *                  the specified serdes.
  *
  * \param[in]       eventInfo is a pointer the generic event descriptor.
  *
@@ -4334,7 +5052,7 @@ fm_status fm10000SerDesDisableTx( fm_smEventInfo *eventInfo,
  * \ingroup intSerdes
  *
  * \desc            Action enabling the SerDes Tx output. TX_EN bit must be
- *                  already set before enabling the output.
+ *                  already enabled before calling this action.
  *
  * \param[in]       eventInfo is a pointer the generic event descriptor.
  *
@@ -4393,7 +5111,7 @@ fm_status fm10000SerDesEnableTxOutput( fm_smEventInfo *eventInfo,
 /** fm10000SerDesDisableTxOutput
  * \ingroup intSerdes
  *
- * \desc            Action disabling the SerDes Tx output.
+ * \desc            Action disabling Tx output.
  *
  * \param[in]       eventInfo is a pointer the generic event descriptor.
  *
@@ -4508,7 +5226,7 @@ fm_status fm10000SerDesDisableEeeOpMode( fm_smEventInfo *eventInfo,
 /** fm10000SerDesConfigureEee
  * \ingroup intSerdes
  *
- * \desc            Enable EEE support at serdes level.
+ * \desc            Action configuring EEE at serdes level.
  *
  * \param[in]       eventInfo is a pointer the generic event descriptor.
  *
@@ -4550,10 +5268,9 @@ fm_status fm10000SerDesConfigureEee( fm_smEventInfo *eventInfo,
 /** fm10000SerDesDumpBitRate
  * \ingroup intSerdes
  *
- * \desc            SerDes-level state machine actions that simply displays
- *                  a log message to record the bit rate required by the
- *                  port-level state machine upon a request to configure the
- *                  serdes.
+ * \desc            Action that simply displays a log message to record the
+ *                  bit rate required by the port-level state machine upon a
+ *                  request to configure the serdes.
  *
  * \param[in]       eventInfo is a pointer the generic event descriptor.
  *
@@ -4651,7 +5368,7 @@ fm_status fm10000SerDesStartKrTraining( fm_smEventInfo *eventInfo,
 /** fm10000SerDesStopKrTraining
  * \ingroup intSerdes
  *
- * \desc            Action stopping the KR training on this SerDes.
+ * \desc            Action stopping KR training.
  *
  * \param[in]       eventInfo is a pointer the generic event descriptor (unused
  *                  in this function)
@@ -4754,7 +5471,7 @@ fm_status fm10000SerDesSaveKrTimeoutStats(fm_smEventInfo *eventInfo,
  * \ingroup intSerdes
  *
  * \desc            Action sending a start-DFE tuning request to the dfe
- *                  state machine associated with the current serdes.
+ *                  state machine associated to the current serdes.
  *
  * \param[in]       eventInfo is a pointer the generic event descriptor.
  *
@@ -4768,10 +5485,29 @@ fm_status fm10000SerDesSaveKrTimeoutStats(fm_smEventInfo *eventInfo,
 fm_status fm10000SerDesSendDfeStartTuningReq(fm_smEventInfo *eventInfo,
                                              void           *userInfo )
 {
+    fm_int          serDes;
+    fm_status       err;
 
-    return SendDfeEventReq(eventInfo,
-                           userInfo,
-                           FM10000_SERDES_DFE_EVENT_START_TUNING_REQ);
+
+    serDes   = ((fm10000_serDesSmEventInfo *)userInfo)->laneExt->serDes;
+
+    err = SendDfeEventReq(eventInfo,
+                          userInfo,
+                          FM10000_SERDES_DFE_EVENT_RESET_MACHINE_REQ);
+    if (err != FM_OK)
+    {
+
+        FM_LOG_ERROR_V2( FM_LOG_CAT_SERDES,
+                         serDes,
+                         "Cannot reset DFE stat machine for serdes=%d\n",
+                         serDes);
+        err = FM_OK;
+    }
+
+    err = SendDfeEventReq(eventInfo,
+                          userInfo,
+                          FM10000_SERDES_DFE_EVENT_START_TUNING_REQ);
+    return err;
 
 }
 
@@ -4784,9 +5520,8 @@ fm_status fm10000SerDesSendDfeStartTuningReq(fm_smEventInfo *eventInfo,
  *
  * \desc            Action sending a stop-DFE tuning request to the dfe
  *                  state machine associated with the current serdes. This
- *                  action is only performed is the current DFE mode is
- *                  ''FM_DFE_MODE_ONE_SHOT'', ''FM_DFE_MODE_CONTINUOUS'' or
- *                  ''FM_DFE_MODE_ICAL_ONLY''
+ *                  action is only performed is the current DFE mode is not
+ *                  a KR mode or static-DFE mode.
  *
  * \param[in]       eventInfo is a pointer the generic event descriptor.
  *
@@ -4828,7 +5563,7 @@ fm_status fm10000SerDesSendDfeStopTuningReq(fm_smEventInfo *eventInfo,
 /** fm10000SerDesSendDfeSuspendTuningReq
  * \ingroup intSerdes
  *
- * \desc            Action sending a stop-DFE tuning request to the dfe
+ * \desc            Action sending a pause-DFE tuning request to the dfe
  *                  state machine associated with the current serdes.
  *
  * \param[in]       eventInfo is a pointer the generic event descriptor.
@@ -4857,7 +5592,7 @@ fm_status fm10000SerDesSendDfeSuspendTuningReq(fm_smEventInfo *eventInfo,
 /** fm10000SerDesSendDfeResumeTuningReq
  * \ingroup intSerdes
  *
- * \desc            Action sending a stop-DFE tuning request to the dfe
+ * \desc            Action sending a resume-DFE tuning request to the dfe
  *                  state machine associated with the current serdes.
  *
  * \param[in]       eventInfo is a pointer the generic event descriptor.
@@ -4887,7 +5622,8 @@ fm_status fm10000SerDesSendDfeResumeTuningReq(fm_smEventInfo *eventInfo,
  * \ingroup intSerdes
  *
  * \desc            Action sending a start-DFE pCal request to the dfe
- *                  state machine associated with the current serdes.
+ *                  state machine associated with the current serdes. Used
+ *                  only with KR modes.
  *
  * \param[in]       eventInfo is a pointer the generic event descriptor.
  *
@@ -4927,9 +5663,9 @@ fm_status fm10000SerDesSendKrStartPcalReq(fm_smEventInfo *eventInfo,
 /** fm10000SerDesDontSaveTransitionRecord
  * \ingroup intSerdesDfe
  *
- * \desc            Action setting the flag to do not save record for the
+ * \desc            Action setting the flag to do not save a record for the
  *                  current transaction. This tipically is used with timeouts
- *                  and periodically events to avoid saving redundant information
+ *                  and periodical events to avoid saving redundant information
  *                  and sweep the state machine history buffer.
  *
  * \param[in]       eventInfo is a pointer the generic event descriptor.
@@ -4962,11 +5698,8 @@ fm_status fm10000SerDesDontSaveTransitionRecord(fm_smEventInfo *eventInfo,
 /** fm10000SerDesSaveTransitionRecord
  * \ingroup intSerdesDfe
  *
- * \desc            Action setting to FALSE the flag to do not save record for
- *                  the current transaction. The default state for that flag
- *                  is FALSE so normally calling this function is not necessary.
- *                  This function may be called to cancel the action of a
- *                  previous call to fm10000SerDesDontSaveTransitionRecord.
+ * \desc            Action re-enabling logging for the current state machine.
+ *                  Note that, by default, logging is enabled.
  *
  * \param[in]       eventInfo is a pointer the generic event descriptor.
  *
@@ -4997,7 +5730,7 @@ fm_status fm10000SerDesSaveTransitionRecord(fm_smEventInfo *eventInfo,
  * \ingroup intSerdes
  *
  * \desc            Conditional transition callback processing PLL ready
- *                  events.
+ *                  interrupt events.
  *
  * \param[in]       eventInfo is a pointer the generic event descriptor.
  *
@@ -5068,11 +5801,10 @@ fm_status fm10000SerDesProcessRxTxPllLockEvents( fm_smEventInfo *eventInfo,
 /** fm10000SerDesProcessRxTxPllLockTimeout
  * \ingroup intSerdes
  *
- * \desc            Conditional transition callback processing a timeout
- *                  while waiting for Tx and/or Rx Pll lock. PLL status is
- *                  verified once more time to consider the case of missed
- *                  interrupts. If any of the PLL is still not locked, this
- *                  function will retry enabling them.
+ * \desc            Conditional transition callback processing a timer event
+ *                  while waiting for Tx and/or Rx Pll lock. This function
+ *                  implements an alternate polling mechanism for PLL lock
+ *                  events.
  *
  * \param[in]       eventInfo is a pointer the generic event descriptor.
  *
@@ -5119,6 +5851,7 @@ fm_status fm10000SerDesProcessRxTxPllLockTimeout( fm_smEventInfo *eventInfo,
             {
 
 
+                pLaneExt->serDesPllStatus |= 0x03;
                 err = CompleteConfigureSerdes(eventInfo,userInfo,nextState);
             }
             else
@@ -5171,11 +5904,9 @@ fm_status fm10000SerDesProcessRxTxPllLockTimeout( fm_smEventInfo *eventInfo,
 /** fm10000SerDesProcessRxPllLockTimeout
  * \ingroup intSerdes
  *
- * \desc            Conditional transition callback processing a timeout
- *                  while waiting for Rx Pll lock. The PLL status is
- *                  verified once more time to consider the case of missed
- *                  interrupts. If the PLL is still not locked, this function
- *                  will retry enabling it.
+ * \desc            Conditional transition callback processing a timer event
+ *                  while waiting for Rx Pll lock. This function implements
+ *                  an alternate polling mechanism for Rx PLL lock events.
  *
  * \param[in]       eventInfo is a pointer the generic event descriptor.
  *
@@ -5308,11 +6039,9 @@ fm_status fm10000SerDesProcessRxPllLockTimeout(fm_smEventInfo *eventInfo,
 /** fm10000SerDesProcessTxPllLockTimeout
  * \ingroup intSerdes
  *
- * \desc            Conditional transition callback processing a timeout
- *                  while waiting for Tx Pll lock. The PLL status is
- *                  verified once more time to consider the case of missed
- *                  interrupts. If the PLL is still not locked, this function
- *                  will retry enabling it.
+ * \desc            Conditional transition callback processing a timer event
+ *                  while waiting for Tx Pll lock. This function implements
+ *                  an alternate polling mechanism for Tx PLL lock events.
  *
  * \param[in]       eventInfo is a pointer the generic event descriptor.
  *
@@ -5440,7 +6169,7 @@ fm_status fm10000SerDesProcessTxPllLockTimeout(fm_smEventInfo *eventInfo,
  * \ingroup intSerdes
  *
  * \desc            Conditional transition callback processing signalOk
- *                  assertion events.
+ *                  assertion interrupt events.
  *
  * \param[in]       eventInfo is a pointer the generic event descriptor.
  *
@@ -5555,7 +6284,7 @@ fm_status fm10000SerDesProcessSignalOkAsserted(fm_smEventInfo *eventInfo,
 
     }
 
-    SerDesInterruptThrotle(eventInfo,userInfo,1);
+    SerDesInterruptThrottle(eventInfo,userInfo,1);
 
     if ( restartTimer )
     {
@@ -5582,9 +6311,9 @@ fm_status fm10000SerDesProcessSignalOkAsserted(fm_smEventInfo *eventInfo,
 /** fm10000SerDesProcessSignalOkAssertedRx
  * \ingroup intSerdes
  *
- * \desc            Conditional transition callback processing signalOk
- *                  assertion events when only Rx is enabled. No signalOk
- *                  debounce is supported by this action.
+ * \desc            Conditional transition callback processing a timer event
+ *                  to perform a signalOk polling actions when only Rx is
+ *                  enabled. No signalOk debounce is supported by this action.
  *
  * \param[in]       eventInfo is a pointer the generic event descriptor.
  *
@@ -5673,7 +6402,7 @@ fm_status fm10000SerDesProcessSignalOkAssertedRx(fm_smEventInfo *eventInfo,
  * \ingroup intSerdes
  *
  * \desc            Conditional transition callback processing signalOk
- *                  deassertion events.
+ *                  deassertion interrupt events.
  *
  * \param[in]       eventInfo is a pointer the generic event descriptor.
  *
@@ -5802,7 +6531,7 @@ fm_status fm10000SerDesProcessSignalOkDeasserted(fm_smEventInfo *eventInfo,
         locErr = fm10000SerDesStartTimeoutTimerLng(eventInfo,userInfo);
     }
 
-    SerDesInterruptThrotle(eventInfo,userInfo,1);
+    SerDesInterruptThrottle(eventInfo,userInfo,1);
 
 
     err = (err != FM_OK)? err : locErr;
@@ -5819,7 +6548,7 @@ fm_status fm10000SerDesProcessSignalOkDeasserted(fm_smEventInfo *eventInfo,
  * \ingroup intSerdes
  *
  * \desc            Conditional transition callback processing signalOk
- *                  deassertion events when only Rx is enabled.
+ *                  deassertion interrupt events when only Rx is enabled.
  *
  * \param[in]       eventInfo is a pointer the generic event descriptor.
  *
@@ -5909,10 +6638,8 @@ fm_status fm10000SerDesProcessSignalOkDeassertedRx(fm_smEventInfo *eventInfo,
 /** fm10000SerDesProcessSignalOkTimeout
  * \ingroup intSerdes
  *
- * \desc            Conditional transition callback processing timeout events
- *                  related to signalOk assertion detection. This is a signalOk
- *                  polling mechanism used used as a recovery when a signalOk
- *                  assertion interrupt is missed.
+ * \desc            Conditional transition callback processing timer events
+ *                  to perform a signalOk polling actions.
  *
  * \param[in]       eventInfo is a pointer the generic event descriptor.
  *
@@ -6074,7 +6801,7 @@ fm_status fm10000SerDesProcessSignalOkTimeout(fm_smEventInfo *eventInfo,
     }
 
 
-    SerDesInterruptThrotle(eventInfo,userInfo,-1);
+    SerDesInterruptThrottle(eventInfo,userInfo,-1);
 
 
 
@@ -6105,11 +6832,9 @@ fm_status fm10000SerDesProcessSignalOkTimeout(fm_smEventInfo *eventInfo,
 /** fm10000SerDesProcessSignalOkTimeoutRx
  * \ingroup intSerdes
  *
- * \desc            Conditional transition callback processing timeout events
- *                  related to signalOk assertion detection in Rx only
- *                  configurations.
- *                  This is a signalOk polling mechanism used used as a
- *                  recovery when a signalOk assertion interrupt is missed.
+ * \desc            Conditional transition callback processing timer events
+ *                  to perform a signalOk polling actions when only Rx is
+ *                  enabled.
  *
  * \param[in]       eventInfo is a pointer the generic event descriptor.
  *
@@ -6380,10 +7105,8 @@ fm_status fm10000SerDesProcessDfeICalComplete(fm_smEventInfo *eventInfo,
 /** fm10000SerDesProcessKrTrainingTimeout
  * \ingroup intSerdes
  *
- * \desc            Conditional transition callback processing timeout events
- *                  related to signalOk assertion detection. This is a signalOk
- *                  polling mechanism used used as a recovery when a signalOk
- *                  assertion interrupt is missed.
+ * \desc            Conditional transition callback processing timer events
+ *                  to perform KR-complete polling actions.
  *
  * \param[in]       eventInfo is a pointer the generic event descriptor.
  *
@@ -6561,8 +7284,9 @@ fm_status fm10000SerDesProcessKrTrainingTimeout(fm_smEventInfo *eventInfo,
  * \ingroup intSerdes
  *
  * \desc            Conditional transition callback processing signalOk
- *                  assertion events. When serdes is performing KR training
- *                  signalOk indicates that KR training is complete.
+ *                  assertion interrupt events. When serdes is performing KR
+ *                  training, a signalOk assertion indicates that KR training
+ *                  is complete.
  *
  * \param[in]       eventInfo is a pointer the generic event descriptor.
  *
@@ -6714,56 +7438,11 @@ fm_status fm10000SerDesProcessKrTrainingSignalOk(fm_smEventInfo *eventInfo,
 
 
 /*****************************************************************************/
-/** fm10000SerDesProcessKrTrainingComplete
- * \ingroup intSerdes
- *
- * \desc            Conditional transition callback processing signalOk
- *                  assertion during KR training. This is considered as an
- *                  indication that KR is complete. Currently this event is
- *                  processed in the same way than when KR training timeout
- *                  hits, so this function calls just calls
- *                  fm10000SerDesProcesskrTrainingTimeout.
- *
- * \param[in]       eventInfo is a pointer the generic event descriptor.
- *
- * \param[in]       userInfo is pointer a purpose specific event descriptor
- *                  (must be casted to ''fm10000_serdesSmEventInfo'')
- *
- * \param[out]      nextState is a pointer to a caller-allocated area where
- *                  this function will return the state the state machine
- *                  will transition to
- *
- * \return          FM_OK if successful
- * \return          Other ''Status Codes'' as appropriate in case of failure.
- *
- *****************************************************************************/
-fm_status fm10000SerDesProcessKrTrainingComplete(fm_smEventInfo *eventInfo,
-                                                 void           *userInfo,
-                                                 fm_int         *nextState )
-{
-    fm_status      err;
-
-    err = fm10000SerDesProcessKrTrainingTimeout(eventInfo, userInfo, nextState);
-
-    if (err == FM_OK)
-    {
-
-       err = fm10000SerDesSaveTransitionRecord(eventInfo,userInfo);
-    }
-
-    return err;
-
-}
-
-
-
-
-/*****************************************************************************/
 /** fm10000SerDesProcessDfeTuningTimeout
  * \ingroup intSerdes
  *
- * \desc            Conditional transition callback processing timeout events
- *                  waiting for DFE tuning completion, used mostly to revover
+ * \desc            Conditional transition callback processing timer events
+ *                  waiting for DFE tuning completion, used mostly to recover
  *                  from out of sync situations.
  *
  * \param[in]       eventInfo is a pointer the generic event descriptor.
@@ -6853,10 +7532,10 @@ fm_status fm10000SerDesProcessDfeTuningTimeout(fm_smEventInfo *eventInfo,
 /** fm10000SerDesProcessSignalNokTimeout
  * \ingroup intSerdes
  *
- * \desc            Conditional transition callback processing timeout events
+ * \desc            Conditional transition callback processing timer events
  *                  related to signalOk deassertion detection. This is a
- *                  signalOk polling mechanism used used as a recovery when a
- *                  signalOk deassertion interrupt is missed.
+ *                  alternate signalOk polling mechanism used used as a
+ *                  recovery when a signalOk deassertion interrupt is missed.
  *
  * \param[in]       eventInfo is a pointer the generic event descriptor.
  *
@@ -6970,7 +7649,7 @@ fm_status fm10000SerDesProcessSignalNokTimeout(fm_smEventInfo *eventInfo,
 
     }
 
-    SerDesInterruptThrotle(eventInfo,userInfo,-1);
+    SerDesInterruptThrottle(eventInfo,userInfo,-1);
 
 
 
@@ -6992,7 +7671,7 @@ fm_status fm10000SerDesProcessSignalNokTimeout(fm_smEventInfo *eventInfo,
     }
     else
     {
-        if (pLaneExt->interruptCounter >= MF10000_SERDES_INTR_THROTLE_THRESH_LO )
+        if (pLaneExt->interruptCounter >= FM10000_SERDES_INTR_THROTTLE_THRESH_LO )
         {
             err = fm10000SerDesStartTimeoutTimerLng(eventInfo,userInfo);
         }
@@ -7017,11 +7696,9 @@ fm_status fm10000SerDesProcessSignalNokTimeout(fm_smEventInfo *eventInfo,
 /** fm10000SerDesProcessSignalNokTimeoutRx
  * \ingroup intSerdes
  *
- * \desc            Conditional transition callback processing timeout events
- *                  related to signalOk deassertion detection in Rx only
+ * \desc            Conditional transition callback processing timer events
+ *                  used to poll for signalOk deassertion in Rx only
  *                  configurations.
- *                  This is a signalOk polling mechanism used used as a
- *                  recovery when a signalOk deassertion interrupt is missed.
  *
  * \param[in]       eventInfo is a pointer the generic event descriptor.
  *
@@ -7570,12 +8247,13 @@ fm_status fm10000SerDesProcessDisableBistMode(fm_smEventInfo *eventInfo,
 
     if ( err == FM_OK )
     {
-        err = fm10000SerdesSetWidthMode(sw,serDes,pLaneExt->widthMode);
+        err = fm10000SerDesRemoveBistConfig(eventInfo,userInfo);
     }
+
 
     if ( err == FM_OK )
     {
-        err = fm10000SerDesRemoveBistConfig(eventInfo,userInfo);
+        err = fm10000SerdesSetWidthMode(sw,serDes,pLaneExt->widthMode);
     }
 
     return err;

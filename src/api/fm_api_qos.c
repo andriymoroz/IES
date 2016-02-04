@@ -6,7 +6,7 @@
  * Description:     Contains functions dealing with the QOS settings,
  *                  i.e. watermarks, priority maps, etc.
  *
- * Copyright (c) 2005 - 2014, Intel Corporation
+ * Copyright (c) 2005 - 2015, Intel Corporation
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -30,7 +30,7 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
+ *****************************************************************************/
 
 #include <fm_sdk_int.h>
 
@@ -353,6 +353,316 @@ fm_status fmGetSwitchQOS(fm_int sw, fm_int attr, fm_int index, void *value)
 
 }   /* end fmGetSwitchQOS */
 
+
+
+
+/*****************************************************************************/
+/** fmAddQueueQOS
+ * \ingroup qos
+ *
+ * \chips           FM10000
+ *
+ * \desc            Creates qos queue for specified port.
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \param[in]       port is the port on which to operate.
+ *
+ * \param[in]       param points to a ''fm_qosQueueParam'' structure containing
+ *                  parameters of the requested queue.
+ *
+ * \return          FM_OK if successful.
+ * \return          FM_ERR_INVALID_SWITCH if sw is invalid.
+ * \return          FM_ERR_INVALID_PORT if port is invalid.
+ * \return          FM_ERR_INVALID_ARGUMENT if any argument is invalid.
+ * \return          FM_ERR_NO_FREE_RESOURCES if no resources avialable.
+ *
+ *****************************************************************************/
+fm_status fmAddQueueQOS(fm_int sw,
+                        fm_int port,
+                        fm_qosQueueParam *param)
+{
+    fm_switch *switchPtr;
+    fm_port *  portPtr;
+    fm_int     members[FM_MAX_NUM_LAG_MEMBERS];
+    fm_int     numMembers;
+    fm_int     cnt;
+    fm_status  err;
+
+    FM_LOG_ENTRY_API(FM_LOG_CAT_QOS,
+                     "sw=%d port=%d param=%p\n",
+                     sw,
+                     port,
+                     (void *)param);
+
+    err = FM_OK;
+    VALIDATE_AND_PROTECT_SWITCH(sw);
+    VALIDATE_LOGICAL_PORT(sw, port, ALLOW_CPU);
+
+    switchPtr = GET_SWITCH_PTR(sw);
+    
+    err = fmGetLAGCardinalPortList(sw,
+                                   port,
+                                   &numMembers,
+                                   members,
+                                   FM_MAX_NUM_LAG_MEMBERS);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_QOS, err);
+    
+    for (cnt = 0 ; cnt < numMembers ; cnt++)
+    {
+        port = members[cnt];
+
+        portPtr = switchPtr->portTable[port];
+
+        FM_API_CALL_FAMILY(err, portPtr->AddQueueQOS, sw, port, param);
+    }
+
+ABORT:
+    UNPROTECT_SWITCH(sw);
+
+    FM_LOG_EXIT_API(FM_LOG_CAT_QOS, err);
+
+}   /* end fmAddQueueQOS */
+
+
+
+
+/*****************************************************************************/
+/** fmDeleteQueueQOS
+ * \ingroup qos
+ *
+ * \chips           FM10000
+ *
+ * \desc            Deletes qos queue for specified port.
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \param[in]       port is the port on which to operate.
+ *
+ * \param[in]       queueId is the queue Id (unique for the port).
+ *
+ * \return          FM_OK if successful.
+ * \return          FM_ERR_INVALID_SWITCH if sw is invalid.
+ * \return          FM_ERR_INVALID_PORT if port is invalid.
+ * \return          FM_ERR_NOT_FOUND if the queue was not found.
+ * \return          FM_ERR_INVALID_ARGUMENT if any argument is invalid.
+ *
+ *****************************************************************************/
+fm_status fmDeleteQueueQOS(fm_int sw,
+                           fm_int port,
+                           fm_int queueId)
+{
+    fm_switch *switchPtr;
+    fm_port *  portPtr;
+    fm_int     members[FM_MAX_NUM_LAG_MEMBERS];
+    fm_int     numMembers;
+    fm_int     cnt;
+    fm_status  err;
+
+    FM_LOG_ENTRY_API(FM_LOG_CAT_QOS,
+                     "sw=%d port=%d queueId=%d\n",
+                     sw,
+                     port,
+                     queueId);
+
+    err = FM_OK;
+    VALIDATE_AND_PROTECT_SWITCH(sw);
+    VALIDATE_LOGICAL_PORT(sw, port, ALLOW_CPU);
+
+    switchPtr = GET_SWITCH_PTR(sw);
+    
+    err = fmGetLAGCardinalPortList(sw,
+                                   port,
+                                   &numMembers,
+                                   members,
+                                   FM_MAX_NUM_LAG_MEMBERS);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_QOS, err);
+    
+    for (cnt = 0 ; cnt < numMembers ; cnt++)
+    {
+        port = members[cnt];
+
+        portPtr = switchPtr->portTable[port];
+
+        FM_API_CALL_FAMILY(err, portPtr->DeleteQueueQOS, sw, port, queueId);
+    }
+
+ABORT:
+    UNPROTECT_SWITCH(sw);
+
+    FM_LOG_EXIT_API(FM_LOG_CAT_QOS, err);
+
+}   /* end fmDeleteQueueQOS */
+
+
+
+
+/*****************************************************************************/
+/** fmSetAttributeQueueQOS
+ * \ingroup qos
+ *
+ * \chips           FM10000
+ *
+ * \desc            Set a QoS queue's attribute.
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \param[in]       port is the port on which to operate.
+ *
+ * \param[in]       queueId is the queue Id.
+ *
+ * \param[in]       attr is the QoS queue attribute (see ''fm_qosQueueAttr'')
+ *                  to set.
+ *
+ * \param[in]       value points to the attribute value to set.
+ *
+ * \return          FM_OK if successful.
+ * \return          FM_ERR_INVALID_SWITCH if sw is invalid.
+ * \return          FM_ERR_INVALID_PORT if port is invalid.
+ * \return          FM_ERR_INVALID_ATTRIB if attr is invalid.
+ * \return          FM_ERR_INVALID_ARGUMENT if queueId or value is invalid.
+ *
+ *****************************************************************************/
+fm_status fmSetAttributeQueueQOS(fm_int sw,
+                                 fm_int port,
+                                 fm_int queueId, 
+                                 fm_int attr, 
+                                 void  *value)
+{
+    fm_switch *switchPtr;
+    fm_port *  portPtr;
+    fm_int     members[FM_MAX_NUM_LAG_MEMBERS];
+    fm_int     numMembers;
+    fm_int     cnt;
+    fm_status  err;
+
+    FM_LOG_ENTRY_API(FM_LOG_CAT_QOS,
+                     "sw=%d port=%d queueId=%d attr=%d value=%p\n",
+                     sw,
+                     port,
+                     queueId,
+                     attr,
+                     value);
+
+    err = FM_OK;
+    VALIDATE_AND_PROTECT_SWITCH(sw);
+    VALIDATE_LOGICAL_PORT(sw, port, ALLOW_CPU);
+
+    switchPtr = GET_SWITCH_PTR(sw);
+    
+    err = fmGetLAGCardinalPortList(sw,
+                                   port,
+                                   &numMembers,
+                                   members,
+                                   FM_MAX_NUM_LAG_MEMBERS);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_QOS, err);
+    
+    for (cnt = 0 ; cnt < numMembers ; cnt++)
+    {
+        port = members[cnt];
+
+        portPtr = switchPtr->portTable[port];
+
+        FM_API_CALL_FAMILY(err, 
+                           portPtr->SetAttributeQueueQOS, 
+                           sw, 
+                           port,
+                           queueId,
+                           attr, 
+                           value);
+    }
+
+ABORT:
+    UNPROTECT_SWITCH(sw);
+
+    FM_LOG_EXIT_API(FM_LOG_CAT_QOS, err);
+
+}   /* end fmSetAttributeQueueQOS */
+
+
+
+
+/*****************************************************************************/
+/** fmGetAttributeQueueQOS
+ * \ingroup qos
+ *
+ * \chips           FM10000
+ *
+ * \desc            Get a QoS queue's attribute.
+ *
+ * \param[in]       sw is the switch on which to operate.
+ *
+ * \param[in]       port is the port on which to operate.
+ *
+ * \param[in]       queueId is the queue Id.
+ *
+ * \param[in]       attr is the QoS queue attribute (see ''fm_qosQueueAttr'')
+ *                  to set.
+ *
+ * \param[in]       value points to the attribute value to get.
+ *
+ * \return          FM_OK if successful.
+ * \return          FM_ERR_INVALID_SWITCH if sw is invalid.
+ * \return          FM_ERR_INVALID_PORT if port is invalid.
+ * \return          FM_ERR_INVALID_ATTRIB if attr is invalid.
+ * \return          FM_ERR_INVALID_ARGUMENT if queueId or value is invalid.
+ *
+ *****************************************************************************/
+fm_status fmGetAttributeQueueQOS(fm_int sw,
+                                 fm_int port,
+                                 fm_int queueId, 
+                                 fm_int attr, 
+                                 void  *value)
+{
+    fm_switch *switchPtr;
+    fm_port *  portPtr;
+    fm_int     members[FM_MAX_NUM_LAG_MEMBERS];
+    fm_int     numMembers;
+    fm_int     cnt;
+    fm_status  err;
+
+    FM_LOG_ENTRY_API(FM_LOG_CAT_QOS,
+                     "sw=%d port=%d queueId=%d attr=%d value=%p\n",
+                     sw,
+                     port,
+                     queueId,
+                     attr,
+                     value);
+
+    err = FM_OK;
+    VALIDATE_AND_PROTECT_SWITCH(sw);
+    VALIDATE_LOGICAL_PORT(sw, port, ALLOW_CPU);
+
+    switchPtr = GET_SWITCH_PTR(sw);
+    
+    err = fmGetLAGCardinalPortList(sw,
+                                   port,
+                                   &numMembers,
+                                   members,
+                                   FM_MAX_NUM_LAG_MEMBERS);
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_QOS, err);
+    
+    for (cnt = 0 ; cnt < numMembers ; cnt++)
+    {
+        port = members[cnt];
+
+        portPtr = switchPtr->portTable[port];
+
+        FM_API_CALL_FAMILY(err, 
+                           portPtr->GetAttributeQueueQOS, 
+                           sw,
+                           port,
+                           queueId,
+                           attr, 
+                           value);
+    }
+
+ABORT:
+    UNPROTECT_SWITCH(sw);
+
+    FM_LOG_EXIT_API(FM_LOG_CAT_QOS, err);
+
+}   /* end fmGetAttributeQueueQOS */
 
 
 

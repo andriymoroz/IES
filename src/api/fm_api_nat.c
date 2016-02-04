@@ -5,7 +5,7 @@
  * Creation Date:   March 13, 2014
  * Description:     NAT API.
  *
- * Copyright (c) 2014, Intel Corporation
+ * Copyright (c) 2014 - 2016, Intel Corporation
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -635,11 +635,14 @@ ABORT:
  *****************************************************************************/
 fm_status fmSetNatTunnelDefault(fm_int sw, fm_natTunnelDefault *tunnelDefault)
 {
-    fm_status       err = FM_OK;
+    fm_status       err;
     fm_switch *     switchPtr;
-    fm_bool         natLockTaken = FALSE;
+    fm_bool         natLockTaken;
 
     FM_LOG_ENTRY_API(FM_LOG_CAT_NAT, "sw = %d\n", sw);
+
+    err          = FM_OK;
+    natLockTaken = FALSE;
 
     VALIDATE_AND_PROTECT_SWITCH(sw);
     switchPtr = GET_SWITCH_PTR(sw);
@@ -707,11 +710,14 @@ ABORT:
  *****************************************************************************/
 fm_status fmGetNatTunnelDefault(fm_int sw, fm_natTunnelDefault *tunnelDefault)
 {
-    fm_status       err = FM_OK;
+    fm_status       err;
     fm_switch *     switchPtr;
-    fm_bool         natLockTaken = FALSE;
+    fm_bool         natLockTaken;
 
     FM_LOG_ENTRY_API(FM_LOG_CAT_NAT, "sw = %d\n", sw);
+
+    err          = FM_OK;
+    natLockTaken = FALSE;
 
     VALIDATE_AND_PROTECT_SWITCH(sw);
     switchPtr = GET_SWITCH_PTR(sw);
@@ -782,14 +788,17 @@ fm_status fmCreateNatTunnel(fm_int        sw,
                             fm_int        tunnel,
                             fm_natTunnel *param)
 {
-    fm_status       err = FM_OK;
+    fm_status       err;
     fm_switch *     switchPtr;
-    fm_bool         natLockTaken = FALSE;
+    fm_bool         natLockTaken;
     fm_natTable *   natTable;
     fm_natTunnel *  natTunnel;
 
     FM_LOG_ENTRY_API(FM_LOG_CAT_NAT, "sw = %d, table = %d, tunnel = %d\n",
                      sw, table, tunnel);
+
+    err          = FM_OK;
+    natLockTaken = FALSE;
 
     VALIDATE_AND_PROTECT_SWITCH(sw);
     switchPtr = GET_SWITCH_PTR(sw);
@@ -1255,9 +1264,9 @@ fm_status fmAddNatRule(fm_int                sw,
                        fm_natAction          action,
                        fm_natActionParam *   actParam)
 {
-    fm_status       err = FM_OK;
+    fm_status       err;
     fm_switch *     switchPtr;
-    fm_bool         natLockTaken = FALSE;
+    fm_bool         natLockTaken;
     fm_natTable *   natTable;
     fm_natRule *    natRule;
 
@@ -1265,6 +1274,9 @@ fm_status fmAddNatRule(fm_int                sw,
                      "sw = %d, table = %d, rule = %d, "
                      "condition = 0x%x, action = 0x%x\n",
                      sw, table, rule, condition, action);
+
+    err          = FM_OK;
+    natLockTaken = FALSE;
 
     VALIDATE_AND_PROTECT_SWITCH(sw);
     switchPtr = GET_SWITCH_PTR(sw);
@@ -1308,6 +1320,8 @@ fm_status fmAddNatRule(fm_int                sw,
         err = FM_ERR_NO_MEM;
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_NAT, err);
     }
+
+    FM_CLEAR(*natRule);
 
     /* Structure field might be updated by chip specific function if needed */
     natRule->condition = condition;

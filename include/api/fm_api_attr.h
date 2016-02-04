@@ -5,7 +5,7 @@
  * Creation Date:   April 20, 2005
  * Description:     Constants for attributes and attribute values
  *
- * Copyright (c) 2005 - 2015, Intel Corporation
+ * Copyright (c) 2005 - 2016, Intel Corporation
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -216,10 +216,12 @@ enum _fm_switchAttr
      *  Note that if disabled, frames with Ethertype 8808 and MAC control
      *  address 01-80-c2-00-00-01 are treated as ordinary multicast.
      *  
-     *  For FM6000 and FM10000 devices, the frames will be dropped if the
+     *  For FM6000, the frames will be dropped if the
      *  MAC matches 01-80-c2-00-00-01 OR if the Ethertype matches 8808.
      *
-     *  \chips  FM2000, FM3000, FM4000, FM6000, FM10000 */
+     *  For FM10000 devices, PAUSE frames are dropped unconditionally.
+     *
+     *  \chips  FM2000, FM3000, FM4000, FM6000 */
     FM_DROP_PAUSE,
 
     /** Type fm_int: Broadcast flooding control. Specifies the set of ports
@@ -985,15 +987,20 @@ enum _fm_switchAttr
      *  \chips  FM10000 */
     FM_SWITCH_PARSER_CUSTOM_TAG,
 
-    /** Type ''fm_parserDiCfg'': Configurations for all fields of Deep 
-     *  Inspection (DI) filters. A maximum of 6 DI filters can be configured. When 
-     *  multiple filters are matching for a frame then the one with the highest
-     *  index will be chosen. When L4 Parsing is enabled via the ''FM_PORT_PARSER'' port
-     *  attribute and none of the DI filters are matching, then DI filter 0 is 
-     *  applied automatically. Since DI filter 0 could be seen as the default
-     *  profile, it is not possible to configure any matching condition for
-     *  this specific index.
+    /** Type ''fm_parserDiCfg'': Configurations for all fields of Deep
+     *  Inspection (DI) filters. A maximum of 6 DI filters can be
+     *  configured. When multiple filters are matching for a frame then the
+     *  one with the highest index will be chosen. When L4 Parsing is
+     *  enabled via the ''FM_PORT_PARSER'' port attribute and none of the DI
+     *  filters are matching, then DI filter 0 is applied automatically.
+     *  Since DI filter 0 could be seen as the default profile, it is not
+     *  possible to configure any matching condition for this specific
+     *  index.
      * 
+     *  Some deep inspection filters are used internally when other
+     *  features are enabled (see ''FM10000_FLOW_DI_PROFILE'' and
+     *  ''FM10000_MAILBOX_MAC_FILTER_DI_PROFILE'').
+     *
      *  \chips  FM10000 */
     FM_SWITCH_PARSER_DI_CFG,
 
@@ -1021,6 +1028,10 @@ enum _fm_switchAttr
      *  reserved multicast addresses. These are MAC addresses of the form
      *  01-80-C2-00-00-XX. A maximum of ''FM_NUM_RESERVED_MACS'' (64)
      *  addresses may be specified.
+     *  
+     *  For Pause DMAC address 01-80-C2-00-00-01, the only supported value
+     *  is FM_RES_MAC_ACTION_DROP, since the FM10000 unconditionally drops
+     *  Pause frames.
      *  
      *  \chips  FM10000 */
     FM_SWITCH_RESERVED_MAC_CFG,
@@ -2505,9 +2516,12 @@ enum _fm_portAttr
 
     /** Type fm_bool: Learning of source addresses on this port: FM_ENABLED
      *  (default) or FM_DISABLED (default for PEP and TE ports).
-     *                                                                  \lb\lb
-     *  Note: the ''fmSetPortSecurity'' API service will override the value of
-     *  this attribute. 
+     *
+     *  Note: This attribute must be enabled for the address table security
+     *  features to apply to frames received on the port.
+     *
+     *  On FM2000 and FM4000 devices, the ''fmSetPortSecurity'' API service
+     *  will override the value of this attribute.
      *
      *  \portType ETH, PCIE, TE, LPBK, LAG
      *  \chips  FM2000, FM3000, FM4000, FM6000, FM10000 */
@@ -2896,8 +2910,8 @@ enum _fm_portAttr
      *  SMP0 only. 
      *                                                                  \lb\lb  
      *
-     *  \portType6K ETH
-     *  \portType10K ETH, PCIE, TE, LPBK
+     *  \portType6K ETH, LAG
+     *  \portType10K ETH, PCIE, TE, LPBK, LAG
      *  \chips  FM3000, FM4000, FM6000, FM10000 */
     FM_PORT_SMP_LOSSLESS_PAUSE,
 
@@ -3628,9 +3642,16 @@ enum _fm_portAttr
      *  Valid values are:
      *                                                                  \lb\lb
      *  FM_PORT_BCAST_FWD_EXCPU (default) to flood the broadcast frames to
-     *  all ports except CPU.
+     *  all ports. The switch application instance attached to the CPU
+     *  management port will not receive these frames. Note that these
+     *  frames can reach the host system attached to the CPU management port
+     *  depending on the API property ''api.allowXcastToCpuPortHostSystem''.
      *                                                                  \lb\lb
-     *  FM_PORT_BCAST_FWD to flood the broadcast frame (including CPU port)
+     *  FM_PORT_BCAST_FWD to flood the broadcast frames to all ports
+     *  (including the switch application instance attached to the CPU
+     *  management port). Note that these frames can reach the host system
+     *  attached to the CPU management port depending on the API property
+     *  ''api.allowXcastToCpuPortHostSystem''.
      *                                                                  \lb\lb
      *  FM_PORT_BCAST_DISCARD to drop broadcast frames.
      *                                                                  \lb\lb
@@ -3650,13 +3671,19 @@ enum _fm_portAttr
      *  Valid values are:
      *                                                                  \lb\lb
      *  FM_PORT_MCAST_FWD_EXCPU (default) to flood the unknown multicast
-     *  frames to all ports except CPU.
+     *  frames to all ports. The switch application instance attached to the
+     *  CPU management port will not receive these frames. Note that these
+     *  frames can reach the host system attached to the CPU management port
+     *  depending on the API property ''api.allowXcastToCpuPortHostSystem''.
      *                                                                  \lb\lb
      *  FM_PORT_MCAST_TRAP to intercept unknown multicast frames and send
      *  them to the CPU instead of flooding them to other ports.
      *                                                                  \lb\lb
      *  FM_PORT_MCAST_FWD to send a copy of unknown multicast frames to
-     *  the CPU. The frames are still flooded to other ports.
+     *  the switch application instance attached to the CPU management port.
+     *  These frames are still flooded to other ports. Note that these
+     *  frames can reach the host system attached to the CPU management port
+     *  depending on the API property ''api.allowXcastToCpuPortHostSystem''.
      *                                                                  \lb\lb
      *  FM_PORT_MCAST_DISCARD to drop unknown multicast frames.
      *                                                                  \lb\lb
@@ -3681,13 +3708,19 @@ enum _fm_portAttr
      *  Valid values are:
      *                                                                  \lb\lb
      *  FM_PORT_UCAST_FWD_EXCPU (default) to flood the unicast frames to all
-     *  ports (in the associated VLAN) except the CPU port.
+     *  ports in the associated VLAN, but not to the switch application
+     *  instance attached to the CPU management port. Note that these frames
+     *  can reach the host system attached to the CPU management port
+     *  depending on the API property ''api.allowXcastToCpuPortHostSystem''.
      *                                                                  \lb\lb
      *  FM_PORT_UCAST_TRAP to trap the unicast frames to the CPU. Frames are
      *  not flooded to any other ports.
      *                                                                  \lb\lb
-     *  FM_PORT_UCAST_FWD to log the unicast frames to the CPU. Frames are
-     *  also flooded to all ports (in the associated VLAN).
+     *  FM_PORT_UCAST_FWD to copy the unicast frames to flooded to all ports
+     *  in the associated VLAN, and to the switch application instance
+     *  attached to the CPU management port. Note that these frames can
+     *  reach the host system attached to the CPU management port depending
+     *  on the API property ''api.allowXcastToCpuPortHostSystem''.
      *                                                                  \lb\lb
      *  FM_PORT_UCAST_DISCARD to drop the unicast frames. 
      *                                                                  \lb\lb
@@ -6572,7 +6605,38 @@ enum _fm_qosPortAttr
      *
      *  \chips  FM6000, FM10000 */
     FM_QOS_RETRIEVE_ACTIVE_SCHED,
-    
+
+    /** Type fm_bool: Whether egress scheduler configuration using 
+     *  QOS queue methods is enabled (FM_ENABLED) or disabled
+     *  (FM_DISABLED). When enabled, all attributes used for egress
+     *  scheduler groups configuration are invalid. List of these invalid
+     *  attributes:
+     *                                                          \lb
+     *  ''FM_QOS_NUM_SCHED_GROUPS''                             \lb
+     *  ''FM_QOS_SCHED_GROUP_PRISET_NUM''                       \lb
+     *  ''FM_QOS_SCHED_GROUP_STRICT''                           \lb
+     *  ''FM_QOS_SCHED_GROUP_WEIGHT''                           \lb
+     *  ''FM_QOS_SCHED_GROUP_TCBOUNDARY_A''                     \lb
+     *  ''FM_QOS_SCHED_GROUP_TCBOUNDARY_B''                     \lb
+     *  ''FM_QOS_RETRIEVE_ACTIVE_SCHED''                        \lb
+     *  ''FM_QOS_SHAPING_GROUP_MAX_BURST''                      \lb
+     *  ''FM_QOS_SHAPING_GROUP_RATE''                           \lb
+     *  ''FM_QOS_TC_SHAPING_GROUP_MAP''                         \lb
+     *                                                                  \lb\lb
+     *  Default value is FM_DISABLED.
+     *
+     *  \chips  FM10000 */
+    FM_QOS_QUEUE,
+
+    /** Type fm_uint32: Free egress bandwidth of specified port not
+     *  allocated by any QOS queue. The attribute value is in percentage of
+     *  port's rate and may range from 1 to 100 with a default value of 100.
+     *                                                                  \lb\lb 
+     *  This attribute is read only.
+     *                                                                  \lb\lb 
+     *  \chips  FM10000 */ 
+    FM_QOS_QUEUE_FREE_BW,
+
     /** UNPUBLISHED: For internal use only. */
     FM_QOS_PORT_ATTRIBUTE_MAX
 
@@ -6981,7 +7045,9 @@ enum _fm_qosSwAttr
      *  On the FM10000 devices, the traffic class value may range from 0 to 7.
      *  The default maps switch priorities 0 through 7 to traffic classes 0 
      *  through 7, respectively and swtich priorities 8 through 15 to traffic 
-     *  classes  0 through 7, respectively.     
+     *  classes  0 through 7, respectively.
+     *  To apply watermark recalculation, this attribute requires that the
+     *  ''FM_AUTO_PAUSE_MODE'' switch QoS attribute be enabled.
      *
      *  \chips  FM3000, FM4000, FM6000, FM10000 */
     FM_QOS_SWPRI_TC_MAP,
@@ -7032,6 +7098,8 @@ enum _fm_qosSwAttr
      *  FM_QOS_TC_SMP_1 for SMP 1.
      *                                                                  \lb\lb
      *  The attribute index is the traffic class (0 - 7).
+     *  To apply watermark recalculation, this attribute requires that the
+     *  ''FM_AUTO_PAUSE_MODE'' switch QoS attribute be enabled.
      *
      *  \chips  FM3000, FM4000, FM6000, FM10000 */
     FM_QOS_TC_SMP_MAP,
@@ -7411,23 +7479,23 @@ typedef enum
     /** Single-loop Dynamic DFE Tuning. This is the default value for
      *  ''FM_PORT_DFE_MODE'' for non-KR configurations on FM10000
      *  devices. */
-    FM_DFE_MODE_ONE_SHOT,
+    FM_DFE_MODE_ONE_SHOT = 1,
 
     /** Dynamic DFE tuning, featuring continuous fine tuning adaptations.
      *  This is the default value for ''FM_PORT_DFE_MODE'' for non-KR
      *  configurations on FM6000 devices. */
-    FM_DFE_MODE_CONTINUOUS,
+    FM_DFE_MODE_CONTINUOUS = 2,
 
     /** Adaptive hardware-assisted DFE tuning. Supported only by KR-type
      *  interfaces. This is the default value for ''FM_PORT_DFE_MODE'' for
      *  KR configurations. It is chosen automatically for KR-type
      *  interfaces, and should not be set manually. */
-    FM_DFE_MODE_KR,
+    FM_DFE_MODE_KR = 3,
 
     /** Dynamic DFE Tuning, perform only the iCal (initial calibration)
      *  tuning stage. This is only for debugging purposes on FM10000
      *  devices. */
-    FM_DFE_MODE_ICAL_ONLY
+    FM_DFE_MODE_ICAL_ONLY = 4
 
 
 } fm_dfeMode;
@@ -7590,12 +7658,18 @@ typedef enum
  **************************************************/
 typedef enum
 {
-    /** Flood unicast frames to all ports (in the associated VLAN) except
-     *  the CPU port. (default) */
+    /** Flood unicast frames to all ports in the associated VLAN, but not to
+     *  the switch application instance attached to the CPU management. Note
+     *  that these frames can reach the host system attached to the CPU
+     *  management port depending on the API property
+     *  ''api.allowXcastToCpuPortHostSystem''. (default) */
     FM_PORT_UCAST_FWD_EXCPU = 0,
 
-    /** Flood unicast frames to all ports (in the associated VLAN) including
-     *  the CPU port. */
+    /** Flood unicast frames to all ports (in the associated VLAN), and to
+     *  the switch application instance attached to the CPU management port.
+     *  Note that these frames can reach the host system attached to the CPU
+     *  management port depending on the API property
+     *  ''api.allowXcastToCpuPortHostSystem''. */
     FM_PORT_UCAST_FWD,
 
     /** Drop unicast frames. */
@@ -7622,10 +7696,18 @@ typedef enum
  **************************************************/
 typedef enum
 {
-    /** Flood unknown multicast frames to all ports except CPU. (default) */
+    /** Flood unknown multicast frames to all ports, but not to the switch
+     *  application instance attached to the CPU management port. Note that
+     *  these frames can reach the host system attached to the CPU
+     *  management port depending on the API property
+     *  ''api.allowXcastToCpuPortHostSystem''. (default) */
     FM_PORT_MCAST_FWD_EXCPU = 0,
 
-    /** Flood unknown multicast frames (including CPU port).*/
+    /** Flood unknown multicast frames to all ports, and to the switch
+     *  application instance attached to the CPU management port. Note that
+     *  these frames can reach the host system attached to the CPU
+     *  management port depending on the API property
+     *  ''api.allowXcastToCpuPortHostSystem''. */
     FM_PORT_MCAST_FWD,
 
     /** Drop unknown multicast frames. */
@@ -7652,10 +7734,18 @@ typedef enum
  **************************************************/
 typedef enum
 {
-    /** Flood broadcast frames to all ports except CPU. (default) */
+    /** Flood broadcast frames to all ports, but not to the switch
+     *  application instance attached to the CPU management port. Note that
+     *  these frames can reach the host system attached to the CPU
+     *  management port depending on the API property
+     *  ''api.allowXcastToCpuPortHostSystem''. (default) */
     FM_PORT_BCAST_FWD_EXCPU = 0,
 
-    /** Flood the broadcast frame (including CPU port). */
+    /** Flood the broadcast frames to all ports, and to the switch
+     *  application instance attached to the CPU management port. Note that
+     *  these frames can reach the host system attached to the CPU
+     *  management port depending on the API property
+     *  ''api.allowXcastToCpuPortHostSystem''. */
     FM_PORT_BCAST_FWD,
 
     /** Drop broadcast frames. */

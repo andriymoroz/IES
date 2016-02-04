@@ -3394,9 +3394,9 @@ fm_status fmDbgDumpWatermarksV3(fm_int sw, fm_int rxPort, fm_int txPort,
 
 /*****************************************************************************/
 /** fmDbgDumpQOS
- * \ingroup diagPorts 
+ * \ingroup diagMisc 
  *
- * \chips           FM6000
+ * \chips           FM6000, FM10000
  *
  * \desc            Dumps the QoS hardware debug states.
  *
@@ -3424,6 +3424,39 @@ fm_status fmDbgDumpQOS(fm_int sw, fm_int port)
     return err;
 
 }   /* end fmDbgDumpQOS */
+
+
+
+
+/*****************************************************************************/
+/** fmDbgDumpQueueQOS
+ * \ingroup diagMisc
+ *
+ * \chips           FM10000
+ *
+ * \desc            Dumps QOS queue configuration.
+ *
+ * \param[in]       sw is the switch to operate on.
+ * 
+ * \return          FM_OK if successful.
+ *
+ *****************************************************************************/
+fm_status fmDbgDumpQueueQOS(fm_int sw)
+{
+    fm_switch * switchPtr;
+    fm_status   err;
+
+    VALIDATE_AND_PROTECT_SWITCH(sw);
+
+    switchPtr = GET_SWITCH_PTR(sw);
+
+    FM_API_CALL_FAMILY(err, switchPtr->DbgDumpQueueQOS, sw);
+
+    UNPROTECT_SWITCH(sw);
+
+    return err;
+
+}   /* end fmDbgDumpQueueQOS */
 
 
 

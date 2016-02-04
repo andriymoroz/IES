@@ -5,7 +5,7 @@
  * Creation Date:   June 18, 2007
  * Description:     The SDK logging subsystem
  *
- * Copyright (c) 2005 - 2015, Intel Corporation
+ * Copyright (c) 2005 - 2016, Intel Corporation
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -459,8 +459,8 @@ typedef struct _fm_logCallBackSpec
 /** Parity error management. */
 #define FM_LOG_CAT_PARITY             (FM_LITERAL_U64(1) << 23)
 
-/** (Unused) */
-#define FM_LOG_CAT_SPARE24            (FM_LITERAL_U64(1) << 24)
+/** GloRT management. */
+#define FM_LOG_CAT_GLORT              (FM_LITERAL_U64(1) << 24)
 
 /** (Unused) */
 #define FM_LOG_CAT_SPARE25            (FM_LITERAL_U64(1) << 25)

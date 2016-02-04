@@ -5,7 +5,7 @@
  * Creation Date:   June 2, 2014
  * Description:     Platform specific definitions
  *
- * Copyright (c) 2005 - 2015, Intel Corporation
+ * Copyright (c) 2005 - 2016, Intel Corporation
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -277,7 +277,7 @@ typedef enum _fm_platformSwitchType
 /** The number of event buffers to allocate.
  *  \ingroup constSystem
  */
-#define FM_MAX_EVENTS                       8192
+#define FM_MAX_EVENTS                       4096
 
 
 /** The event queue size for API threads that require a large event queue.
@@ -567,7 +567,9 @@ typedef enum _fm_platformSwitchType
  * Customer-Configurable Debug Constants
  *****************************************************************************/
 #define FM_DBG_MAX_MONITORED_REGS           16
-#define FM_DBG_MAX_SNAPSHOT_REGS            700000
+
+/* At least 1 170 878 regs are needed for RRC */
+#define FM_DBG_MAX_SNAPSHOT_REGS            1400000
 
 /*
  * Note that the calling-sequence to the fmDbgCompareChipSnapshots function
@@ -592,9 +594,6 @@ typedef enum _fm_platformSwitchType
 /*****************************************************************************
  * Platform-Specific Constants
  *****************************************************************************/
-
-/* Max number of hw ports supported */
-#define FM_NUM_HW_RES_ID                    72
 
 /* Default HW_RES_IS, used only if api.platform.config.default.hwResourceId is
  * not defined */

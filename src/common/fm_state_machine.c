@@ -5,7 +5,7 @@
  * Creation Date:   October 8, 2013
  * Description:     Generic State Machine implementation
  *
- * Copyright (c) 2007 - 2014, Intel Corporation
+ * Copyright (c) 2007 - 2015, Intel Corporation
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -1473,6 +1473,14 @@ fm_status fmNotifyStateMachineEvent( fm_smHandle     handle,
                              sm->curState,
                              eventInfo->eventId,
                              sm->type->nrEvents );
+
+    /* 
+     * Save event timestamp here. 
+     * Further processing may request another events which would be saved 
+     * with earlier time.
+     */
+    SaveEventTime( sm, &record.eventTime );
+
     if ( entry.nextState         == FM_STATE_UNSPECIFIED && 
          entry.conditionCallback != NULL )
     {
@@ -1543,7 +1551,6 @@ fm_status fmNotifyStateMachineEvent( fm_smHandle     handle,
     if (eventInfo->dontSaveRecord == FALSE)
     {
         /* fill out the transition record */
-        SaveEventTime( sm, &record.eventTime );
         record.eventInfo    = *eventInfo;
         record.currentState =  sm->curState;
         record.status       =  status;

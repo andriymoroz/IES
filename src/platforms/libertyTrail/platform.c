@@ -5,7 +5,7 @@
  * Creation Date:   June 2, 2014
  * Description:     Platform specific implementation.
  *
- * Copyright (c) 2014 - 2015, Intel Corporation
+ * Copyright (c) 2014 - 2016, Intel Corporation
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -1376,7 +1376,9 @@ static fm_status fmPlatformRootInit(void)
     fm_text               attrFile;
     fm_text               attrFile2;
     fm_char               nvmHeaderName[FM_UIO_MAX_NAME_SIZE];
-
+    fm_text               uioDevName;
+    fm_platformCfgSwitch *swCfg;
+    
     FM_LOG_ENTRY_NOARGS(FM_LOG_CAT_PLATFORM);
 
     /* Allocate and initialize fm_rootPlatform */
@@ -1410,19 +1412,36 @@ static fm_status fmPlatformRootInit(void)
                      sizeof(nvmHeaderName),
                      "-",
                      sizeof("-"));
-                     
+
+        uioDevName = NULL;
+
+        /* NVM */             
         if (strcmp(attrFile, NVM_NAME) == 0)
         {
             status = fmPlatformLoadPropertiesFromNVM(NULL);
         }
+        /* NVM-<uioDevName> */
         else if (strncmp(attrFile,
                          nvmHeaderName,
                          FM_STRNLEN_S(nvmHeaderName, sizeof(nvmHeaderName))) == 0)
         {
-            status =
-                fmPlatformLoadPropertiesFromNVM(attrFile +
-                                                FM_STRNLEN_S(nvmHeaderName,
-                                                             sizeof(nvmHeaderName)));
+            uioDevName = attrFile + 
+                         FM_STRNLEN_S(nvmHeaderName, sizeof(nvmHeaderName));
+
+            status = fmPlatformLoadPropertiesFromNVM(uioDevName);
+
+            if (status == FM_OK)
+            {
+                for (sw = FM_FIRST_FOCALPOINT ; sw < fmRootPlatform->cfg.numSwitches ; sw++)
+                {   
+                    /* Use the specified uio for MGMT as well */
+                    swCfg = FM_PLAT_GET_SWITCH_CFG(sw);
+                    FM_SPRINTF_S(swCfg->uioDevName,
+                                 sizeof(swCfg->uioDevName),
+                                 "/dev/%s",
+                                 uioDevName);
+                }
+            }
         }
         else
         {
@@ -2981,17 +3000,20 @@ ABORT:
  *****************************************************************************/
 fm_status fmPlatformEnableInterrupt(fm_int sw, fm_uint intrTypes)
 {
-    fm_status        status;
+    fm_status             status;
+    fm_platformCfgSwitch *swCfg;
 
     FM_LOG_ENTRY_VERBOSE(FM_LOG_CAT_EVENT_INTR,
                          "sw = %d, intrTypes = %u\n",
                          sw,
                          intrTypes);
 
+    swCfg = FM_PLAT_GET_SWITCH_CFG(sw);
+
     /* MSI interrupts are edge triggered, so the interrupt must be cleared
      * before the driver will get another interrupt
      */
-    if (CheckInterrupt(sw, "CHECK1"))
+    if ( !swCfg->msiEnabled || CheckInterrupt(sw, "CHECK1"))
     {
         status = FM_OK;
     }
@@ -3034,16 +3056,22 @@ fm_status fmPlatformEnableInterrupt(fm_int sw, fm_uint intrTypes)
  *****************************************************************************/
 fm_status fmPlatformDisableInterrupt(fm_int sw, fm_uint intrTypes)
 {
-    fm_status status;
+    fm_status             status=FM_OK;
+    fm_platformCfgSwitch *swCfg;
 
     FM_LOG_ENTRY_VERBOSE(FM_LOG_CAT_EVENT_INTR,
                          "sw = %d, intrTypes = %u\n",
                          sw,
                          intrTypes);
 
+    swCfg = FM_PLAT_GET_SWITCH_CFG(sw);
+
     FM_LOG_DEBUG(FM_LOG_CAT_EVENT_INTR, "Disable Host driver interrupt\n");
 
-    status = fmPlatformHostDrvDisableInterrupt(sw, intrTypes);
+    if (swCfg->msiEnabled)
+    {
+        status = fmPlatformHostDrvDisableInterrupt(sw, intrTypes);
+    }
 
     FM_LOG_EXIT_VERBOSE(FM_LOG_CAT_EVENT_INTR, status);
 
@@ -3919,4 +3947,61 @@ fm_status fmPlatformTerminate(void)
     FM_LOG_EXIT(FM_LOG_CAT_PLATFORM, FM_OK);
 
 }   /* end fmPlatformTerminate */
+
+
+
+
+/*****************************************************************************/
+/** fmPlatformSendCableMismatchEvent
+ * \ingroup intPlatform
+ *
+ * \desc            Send the application a notification that the
+ *                  ethernet mode configured is not supported by the type of
+ *                  cable used.
+ *
+ * \param[in]       sw is the switch number.
+ *
+ * \param[in]       port is the logical port number.
+ *
+ * \param[in]       priority is the priority of event.
+ *
+ * \return          FM_OK if successful.
+ *
+ *****************************************************************************/
+fm_status fmPlatformSendCableMismatchEvent(fm_int           sw,
+                                           fm_int           port,
+                                           fm_eventPriority priority)
+{
+    fm_status               status;
+    fm_event *              event;
+    fm_eventCableMismatch   *mismatchEvent;
+    fm_platXcvrInfo         *xcvrInfo;
+	fm_int                  portIdx;
+
+    portIdx = fmPlatformCfgPortGetIndex(sw, port);
+    xcvrInfo = &GET_PLAT_STATE(sw)->xcvrInfo[portIdx];
+
+    event = fmAllocateEvent(sw, FM_EVID_CABLE_MISMATCH, FM_EVENT_CABLE_MISMATCH, priority);
+
+    if (event == NULL)
+    {
+        FM_LOG_EXIT(FM_LOG_CAT_PLATFORM, FM_ERR_NO_EVENTS_AVAILABLE);
+    }
+
+    mismatchEvent               = &event->info.cableMismatchEvent;
+    mismatchEvent->port         = port;
+
+    status = fmSendThreadEvent(&fmRootApi->eventThread, event);
+
+    FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PLATFORM, status);
+
+ABORT:
+    if (status != FM_OK)
+    {
+        fmReleaseEvent(event);
+    }
+
+    FM_LOG_EXIT(FM_LOG_CAT_PLATFORM, status);
+
+}   /* end fmPlatformSendCableMismatchEvent */
 

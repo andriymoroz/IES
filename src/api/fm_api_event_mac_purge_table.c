@@ -5,7 +5,7 @@
  * Creation Date:   July 30, 2010
  * Description:     MAC address table purge handling.
  *
- * Copyright (c) 2010 - 2015, Intel Corporation
+ * Copyright (c) 2010 - 2016, Intel Corporation
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -235,7 +235,7 @@ static fm_status GetPurgeEntry(fm_int                sw,
             FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_EVENT_MAC_MAINT, err);
             
             /* Add the entry to the tail of the purge list. */
-            FM_DLL_INSERT_LAST(purgePtr, listHead, listTail, *entry, next, prev);
+            FM_DLL_INSERT_LAST(purgePtr, listHead, listTail, *entry, nextPtr, prevPtr);
             
             /* Store the port and glort of the entry. */
             (*entry)->port = port;
@@ -369,7 +369,7 @@ static fm_status InsertTreeKey(fm_tree *     tree,
     err = fmCreateBitArray(bitArrayPtr, bitArraySize);
     FM_LOG_ABORT_ON_ASSERT(FM_LOG_CAT_EVENT_MAC_MAINT,
                            err == FM_OK,
-                           err = err,
+                           (void)err,
                            "Unable to create bit array\n");
 
     bitArrayCreated = TRUE;
@@ -379,7 +379,7 @@ static fm_status InsertTreeKey(fm_tree *     tree,
                        bitArrayPtr);
     FM_LOG_ABORT_ON_ASSERT(FM_LOG_CAT_EVENT_MAC_MAINT,
                            err == FM_OK,
-                           err = err,
+                           (void)err,
                            "Unable to insert bit array in tree\n");
 
     *bitArray = bitArrayPtr;
@@ -923,7 +923,7 @@ static fm_status CancelAllPurgeEntries(fm_int sw)
 
         /* This entry may now need to be destroyed. */
         tmp2Entry = tmpEntry;
-        tmpEntry = tmpEntry->next;
+        tmpEntry = tmpEntry->nextPtr;
         
         if ( fmMaybeDestroyMAPurgeListEntry(sw, tmp2Entry) )
         {
@@ -1101,8 +1101,8 @@ fm_status fmAllocateMacTablePurgeList(fm_switch* switchPtr)
     err = AllocatePurgeListEntry(&purgeEntry);
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_EVENT_MAC_MAINT, err);
 
-    purgeEntry->prev       = NULL;
-    purgeEntry->next       = NULL;
+    purgeEntry->prevPtr    = NULL;
+    purgeEntry->nextPtr    = NULL;
     purgeEntry->port       = -1;
     purgeEntry->portExists = FALSE;
     purgeEntry->glort      = 0;
@@ -1251,7 +1251,7 @@ fm_status fmFreeMacTablePurgeList(fm_switch* switchPtr)
 
         /* This entry may now need to be destroyed. */
         tmp2Entry = tmpEntry;
-        tmpEntry = tmpEntry->next;
+        tmpEntry = tmpEntry->nextPtr;
         
         fmFree(tmp2Entry);
     }
@@ -1261,7 +1261,7 @@ fm_status fmFreeMacTablePurgeList(fm_switch* switchPtr)
     while (purgePtr->callbackList)
     {
         callback = purgePtr->callbackList;
-        purgePtr->callbackList = callback->next;
+        purgePtr->callbackList = callback->nextPtr;
         fmFree(callback);
     }
 
@@ -1568,6 +1568,8 @@ fm_status fmEnqueueMAPurge(fm_int              sw,
      * for the flush port, it will be created. */
     status = GetPurgeEntry(sw, allPorts, data.port, &purgeEntry);
     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_EVENT_MAC_MAINT, status);
+
+    purgeEntry->statics = data.statics;
 
     /* Set the bit for the VLAN in the maPurgeListEntry object, checking for
      * duplicate (or less-specific) requests, and cancelling more-specific
@@ -1898,7 +1900,7 @@ fm_status fmEnqueueMAPurge(fm_int              sw,
     
                         /* This entry may now need to be destroyed. */
                         tmp2Entry = tmpEntry;
-                        tmpEntry = tmpEntry->next;
+                        tmpEntry = tmpEntry->nextPtr;
                         
                         if ( fmMaybeDestroyMAPurgeListEntry(sw, tmp2Entry) )
                         {
@@ -2087,7 +2089,7 @@ fm_status fmEnqueueMAPurge(fm_int              sw,
     
                         /* This entry may now need to be destroyed. */
                         tmp2Entry = tmpEntry;
-                        tmpEntry = tmpEntry->next;
+                        tmpEntry = tmpEntry->nextPtr;
                         
                         if ( fmMaybeDestroyMAPurgeListEntry(sw, tmp2Entry) )
                         {
@@ -2297,7 +2299,7 @@ fm_status fmEnqueueMAPurge(fm_int              sw,
 
                         /* This entry may now need to be destroyed. */
                         tmp2Entry = tmpEntry;
-                        tmpEntry = tmpEntry->next;
+                        tmpEntry = tmpEntry->nextPtr;
 
                         if ( fmMaybeDestroyMAPurgeListEntry(sw, tmp2Entry) )
                         {
@@ -2520,7 +2522,7 @@ fm_status fmEnqueueMAPurge(fm_int              sw,
     
                         /* This entry may now need to be destroyed. */
                         tmp2Entry = tmpEntry;
-                        tmpEntry = tmpEntry->next;
+                        tmpEntry = tmpEntry->nextPtr;
                         
                         if ( fmMaybeDestroyMAPurgeListEntry(sw, tmp2Entry) )
                         {
@@ -2710,7 +2712,7 @@ fm_status fmEnqueueMAPurge(fm_int              sw,
     
                         /* This entry may now need to be destroyed. */
                         tmp2Entry = tmpEntry;
-                        tmpEntry = tmpEntry->next;
+                        tmpEntry = tmpEntry->nextPtr;
                         
                         if ( fmMaybeDestroyMAPurgeListEntry(sw, tmp2Entry) )
                         {
@@ -2754,7 +2756,7 @@ fm_status fmEnqueueMAPurge(fm_int              sw,
             }
             
             callbackListTail = callbackEntry;
-            callbackEntry = callbackEntry->next;
+            callbackEntry = callbackEntry->nextPtr;
             
         }   /* end while (callbackEntry) */
         
@@ -2779,7 +2781,7 @@ fm_status fmEnqueueMAPurge(fm_int              sw,
             if (callbackListTail)
             {
                 /* List not empty - chain to end of list. */
-                callbackListTail->next = callbackEntry;
+                callbackListTail->nextPtr = callbackEntry;
             }
             else
             {
@@ -2872,19 +2874,19 @@ fm_bool fmMaybeDestroyMAPurgeListEntry(fm_int sw,
              **************************************************/
             
             FM_LOG_ABORT_ON_ASSERT(FM_LOG_CAT_EVENT_MAC_MAINT,
-                                   purgeEntry->prev != NULL,
+                                   purgeEntry->prevPtr != NULL,
                                    FM_NOT_USED(switchPtr),
                                    "Purge list corrupted!\n");
 
             /* Remove from the forward link. */
-            purgeEntry->prev->next = purgeEntry->next;
+            purgeEntry->prevPtr->nextPtr = purgeEntry->nextPtr;
 
             /* Remove from the backward link differently depending on
              * if this was the last entry or not. */
-            if (purgeEntry->next)
+            if (purgeEntry->nextPtr)
             {
                 /* It was not the last entry. */
-                purgeEntry->next->prev = purgeEntry->prev;
+                purgeEntry->nextPtr->prevPtr = purgeEntry->prevPtr;
             }
             else
             {
@@ -2893,7 +2895,7 @@ fm_bool fmMaybeDestroyMAPurgeListEntry(fm_int sw,
                                        purgePtr->listTail == purgeEntry,
                                        FM_NOT_USED(switchPtr),
                                        "Purge list corrupted!\n");
-                purgePtr->listTail = purgeEntry->prev;
+                purgePtr->listTail = purgeEntry->prevPtr;
             }
 
             /* Reset the scan position to be the head of the list. */
@@ -3161,7 +3163,7 @@ fm_status fmGetNextPurgeRequest(fm_int sw)
                 startEntryScanned = TRUE;
             }
 
-            purgePtr->scanEntry = purgePtr->scanEntry->next;
+            purgePtr->scanEntry = purgePtr->scanEntry->nextPtr;
             
             if (!purgePtr->scanEntry)
             {
@@ -3195,6 +3197,7 @@ fm_status fmGetNextPurgeRequest(fm_int sw)
         purgePtr->request.deleting = FALSE;
         purgePtr->request.seq      = purgePtr->nextSeq++;
         purgePtr->request.expired  = FALSE;
+        purgePtr->request.statics  = purgeEntry->statics;
 
         if ( fmMaybeDestroyMAPurgeListEntry(sw, purgeEntry) )
         {
@@ -3256,7 +3259,7 @@ fm_bool fmIsAnotherPurgePending(fm_int sw)
     
     for (purgeEntry = purgePtr->listHead ; 
          purgeEntry != NULL ; 
-         purgeEntry = purgeEntry->next) 
+         purgeEntry = purgeEntry->nextPtr) 
     {
         if ( purgeEntry->allVlansPending || 
              (purgeEntry->pendingVlans.nonZeroBitCount != 0) ||
@@ -3311,8 +3314,6 @@ fm_status fmCancelMacTableFlushRequests(fm_int sw)
 
     FM_TAKE_MA_PURGE_LOCK(sw);
 
-    removeVid2OnlyFlush = FALSE;
-    removeRemIdOnlyFlush = FALSE;
     purgePtr->purgeState = FM_PURGE_STATE_IDLE;
     tmpEntry = purgePtr->listHead;
 
@@ -3403,7 +3404,7 @@ fm_status fmCancelMacTableFlushRequests(fm_int sw)
 
         /* This entry may now need to be destroyed. */
         tmp2Entry = tmpEntry;
-        tmpEntry = tmpEntry->next;
+        tmpEntry = tmpEntry->nextPtr;
         
         if ( fmMaybeDestroyMAPurgeListEntry(sw, tmp2Entry) )
         {
@@ -3420,7 +3421,7 @@ fm_status fmCancelMacTableFlushRequests(fm_int sw)
     while (purgePtr->callbackList)
     {
         callback = purgePtr->callbackList;
-        purgePtr->callbackList = callback->next;
+        purgePtr->callbackList = callback->nextPtr;
         fmFree(callback);
     }
 
@@ -3480,7 +3481,7 @@ void fmProcessPurgeCallbacks(fm_int sw)
                     callbackEntry->handler(sw, callbackEntry->context);
                     
                     /* Unchain and free the callback record. */
-                    *callbackListPrev = callbackEntry->next;
+                    *callbackListPrev = callbackEntry->nextPtr;
                     fmFree(callbackEntry);
                     callbackEntry = *callbackListPrev;
                     continue;
@@ -3491,8 +3492,8 @@ void fmProcessPurgeCallbacks(fm_int sw)
         }   /* end if (purgePtr->request.seq >= callbackEntry->seq) */
         
         /* Chain to next callback record. */
-        callbackListPrev = &callbackEntry->next;
-        callbackEntry = callbackEntry->next;
+        callbackListPrev = &callbackEntry->nextPtr;
+        callbackEntry = callbackEntry->nextPtr;
         
     }   /* end while (callbackEntry) */
     

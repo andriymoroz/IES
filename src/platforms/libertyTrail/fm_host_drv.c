@@ -684,7 +684,7 @@ ABORT:
  *
  * \param[in]       netDevName is the device name on which to operate.
  * 
- * \param[in]       info points to uio driver info structure.
+ * \param[out]      info points to uio driver info structure.
  *
  * \return          FM_OK if successful.
  * \return          Other ''Status Codes'' as appropriate in case of
@@ -1309,6 +1309,177 @@ ABORT:
 
 
 /*****************************************************************************/
+/* FindNetDev
+ * \ingroup intPlatform
+ *
+ * \desc            Find the net device on MGMT pep number. If
+ *                  it cannot be found, try other BAR4 enabled PEPs in the
+ *                  system.
+ * 
+ * \param[in]       sw is the switch on which to operate.
+ * 
+ * \param[in]       mgmtPep is the PEP number on which to connect.
+ * 
+ * \param[out]      netDevName points to caller-provided storage into which the
+ *                  the net device name read is stored.
+ * 
+ * \param[in]       netDevNameLength is the length in bytes of the netDevName
+ *                  argument.
+ *
+ * \return          FM_OK if successful.
+ * \return          Other ''Status Codes'' as appropriate in case of
+ *                  failure.
+ *
+ *****************************************************************************/
+static fm_status FindNetDev(fm_int  sw,
+                            fm_int  mgmtPep, 
+                            fm_text netDevName, 
+                            fm_int  netDevNameLength)
+{
+    fm_status             err = FM_OK;
+    fm_uioDriverInfo      uioInfo;
+    fm_char               strErrBuf[FM_STRERROR_BUF_SIZE];
+    errno_t               strErrNum;
+    fm_int                i;
+    fm_platformCfgSwitch *swCfg;
+    fm_int                mgmtLogPort;
+    fm_int                mgmtPortIdx;
+    fm_platformCfgPort    tmpCfgPort;
+    
+    FM_LOG_ENTRY(FM_LOG_CAT_PLATFORM, 
+                 "sw = %d mgmtPep = %d\n", 
+                 sw,
+                 mgmtPep);
+
+    swCfg = FM_PLAT_GET_SWITCH_CFG(sw);
+
+    /* Try to find the proper net device based on the management PEP
+     * entered in the config file */
+    err = FindNetDevFromPep(sw,
+                            mgmtPep,
+                            netDevName,
+                            netDevNameLength);
+    if (err == FM_OK)
+    {
+        /* The netdev device has been found */
+        FM_LOG_PRINT("Found netdev %s(derived from mgmt pep %d sw %d) \n", 
+                     netDevName,
+                     mgmtPep,
+                     sw);
+    }
+    else
+    {
+        strErrNum = FM_STRERROR_S(strErrBuf, FM_STRERROR_BUF_SIZE, errno);
+
+        if (strErrNum)
+        {
+            FM_SNPRINTF_S(strErrBuf, FM_STRERROR_BUF_SIZE, "%d", errno);
+        }
+
+        FM_LOG_WARNING(FM_LOG_CAT_PLATFORM,
+                       "netdev not found for mgmt pep %d ('%s')\n",
+                       mgmtPep,
+                       strErrBuf);
+
+        /* Check if we can attach to another PEP defined in the
+         * system */
+        mgmtLogPort = -1;
+        mgmtPortIdx = -1;
+
+        for (i = 0; i < swCfg->numPorts; i++)
+        {
+            if (swCfg->ports[i].pep == swCfg->mgmtPep)
+            {
+                mgmtLogPort = swCfg->ports[i].port;
+                mgmtPortIdx = i;
+                break;
+            }
+        }
+
+        if ( (mgmtLogPort == -1) || (mgmtPortIdx == -1 ) )
+        {
+            err = FM_FAIL;
+            FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PLATFORM, err);
+        }
+
+        for (i = 0; i < swCfg->numPorts; i++)
+        {
+            if (swCfg->ports[i].pep != FM_PLAT_UNDEFINED &&
+                swCfg->ports[i].pep != swCfg->mgmtPep)
+            {
+                FM_LOG_WARNING(FM_LOG_CAT_PLATFORM,
+                       "Trying to find netdev for pep %d\n",
+                       swCfg->ports[i].pep);
+
+                err = FindNetDevFromPep(sw,
+                                        swCfg->ports[i].pep,
+                                        netDevName,
+                                        netDevNameLength);
+                if (err != FM_OK)
+                {
+                    continue;
+                }
+                else
+                {
+                    /* Make sure this PEP is BAR4 enabled (has UIO) */
+                    err = FindUioDeviceFromNetDev(netDevName, &uioInfo); 
+                    if (err != FM_OK)
+                    {
+                        continue;
+                    }
+                }
+
+                /* The netdev device has been found */
+                FM_LOG_WARNING(FM_LOG_CAT_PLATFORM,
+                               "Found netdev %s (derived from pep %d sw %d) \n", 
+                               netDevName,
+                               swCfg->ports[i].pep,
+                               sw);
+                FM_LOG_WARNING(FM_LOG_CAT_PLATFORM,
+                               "Swapping Logical Port %d (pep %d) with Logical Port %d (pep %d) \n", 
+                               mgmtLogPort,
+                               mgmtPep,
+                               swCfg->ports[i].port,
+                               swCfg->ports[i].pep);
+
+                swCfg->mgmtPep = swCfg->ports[i].pep;
+
+                /* Swap the entries */
+                tmpCfgPort = swCfg->ports[mgmtPortIdx];
+                swCfg->ports[mgmtPortIdx] = swCfg->ports[i];
+                swCfg->ports[i] = tmpCfgPort;
+
+                /* The old MGMT port takes the port numbers from new MGMT port */
+                swCfg->ports[i].portIdx  = swCfg->ports[mgmtPortIdx].portIdx;
+                swCfg->ports[i].port     = swCfg->ports[mgmtPortIdx].port;
+                swCfg->ports[i].physPort = swCfg->ports[mgmtPortIdx].physPort;
+
+                /* The new MGMT port takes the port numbers from old MGMT port */
+                swCfg->ports[mgmtPortIdx].portIdx  = tmpCfgPort.portIdx;
+                swCfg->ports[mgmtPortIdx].port     = tmpCfgPort.port;
+                swCfg->ports[mgmtPortIdx].physPort = tmpCfgPort.physPort;
+                break;
+            }
+        }
+        
+        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_PLATFORM, err); 
+    }
+
+    /* Update the netdev field with the device found */
+    FM_STRNCPY_S(swCfg->netDevName,
+                 sizeof(swCfg->netDevName),
+                 netDevName,
+                 sizeof(swCfg->netDevName));
+
+ABORT:
+    FM_LOG_EXIT(FM_LOG_CAT_PLATFORM, err);
+
+} /* end FindNetDev */
+
+
+
+
+/*****************************************************************************/
 /* SetUioInterrupt
  * \ingroup platform
  *
@@ -1550,6 +1721,10 @@ fm_status fmPlatformHostDrvOpen(fm_int  sw,
     errno_t                  strErrNum;
     fm_platformCfgSwitch *   swCfg;
     fm_char *                startUioName;
+    fm_text                  pktIface;
+    fm_int                   netDevSw;
+    fm_int                   netDevPep;
+    fm_int                   portIdx;
 
     FM_LOG_ENTRY(FM_LOG_CAT_PLATFORM, 
                  "sw = %d mgmtPep = %d netDevName = %s uioDevName = %s memmapAddr = %p\n", 
@@ -1560,6 +1735,7 @@ fm_status fmPlatformHostDrvOpen(fm_int  sw,
                  (void *)desiredMemmapAddr);
 
     pp = GET_PLAT_PROC_STATE(sw);
+    swCfg = FM_PLAT_GET_SWITCH_CFG(sw);
 
     if (pp->fd >= 0)
     {
@@ -1608,7 +1784,10 @@ fm_status fmPlatformHostDrvOpen(fm_int  sw,
         FM_LOG_PRINT("Connect to host driver using %s\n", uioDevName);
         err = FM_OK;
 
-        if (netDevName == NULL)
+        pktIface = fmGetTextApiProperty(FM_AAK_API_PLATFORM_PKT_INTERFACE, 
+                                        FM_AAD_API_PLATFORM_PKT_INTERFACE);
+
+        if ( (netDevName == NULL) && (strcmp(pktIface, "pti") != 0) )
         {
             err = GetNetDevFromUio(info->uioNum,
                                    localNetDevName,
@@ -1622,7 +1801,6 @@ fm_status fmPlatformHostDrvOpen(fm_int  sw,
             }
             
             /* Update the netdev field with the device found */
-            swCfg = FM_PLAT_GET_SWITCH_CFG(sw);
             FM_STRNCPY_S(swCfg->netDevName,
                          sizeof(swCfg->netDevName),
                          localNetDevName,
@@ -1637,47 +1815,46 @@ fm_status fmPlatformHostDrvOpen(fm_int  sw,
     {
         if (netDevName == NULL)
         {
-            /* Try to find the proper net device based on the management PEP
-             * entered in the config file */
-            err = FindNetDevFromPep(sw,
-                                    mgmtPep,
-                                    localNetDevName,
-                                    FM_NETDEV_MAX_NAME_SIZE);
-            if (err == FM_OK)
-            {
-                /* The netdev device has been found */
-                FM_LOG_PRINT("Found netdev %s(derived from mgmt pep %d sw %d) \n", 
-                             localNetDevName,
-                             mgmtPep,
-                             sw);
-            }
-            else
-            {
-                strErrNum = FM_STRERROR_S(strErrBuf, FM_STRERROR_BUF_SIZE, errno);
-
-                if (strErrNum)
-                {
-                    FM_SNPRINTF_S(strErrBuf, FM_STRERROR_BUF_SIZE, "%d", errno);
-                }
-
-                FM_LOG_ERROR(FM_LOG_CAT_EVENT_INTR,
-                             "netdev not found for mgmt pep %d ('%s')\n",
-                             mgmtPep,
-                             strErrBuf);
-                FM_LOG_EXIT(FM_LOG_CAT_PLATFORM, err);
-            }
-
-            /* Update the netdev field with the device found */
-            swCfg = FM_PLAT_GET_SWITCH_CFG(sw);
-            FM_STRNCPY_S(swCfg->netDevName,
-                         sizeof(swCfg->netDevName),
-                         localNetDevName,
-                         sizeof(swCfg->netDevName));
+            err = FindNetDev(sw, 
+                             mgmtPep, 
+                             localNetDevName, 
+                             FM_NETDEV_MAX_NAME_SIZE);
         }
         else
         {
             FM_STRCPY_S(localNetDevName, sizeof(localNetDevName), netDevName);
+            err = GetNetDevSwitchPep(netDevName, &netDevSw, &netDevPep);
+            if (!err && netDevPep != mgmtPep)
+            {
+                FM_LOG_WARNING(FM_LOG_CAT_PLATFORM,
+                               "%s is pep%d but mgmt pep is set to %d\n",
+                               netDevName, netDevPep, mgmtPep);
+
+                if (swCfg->cpuPort == 0)
+                {
+                    for (portIdx = 0; portIdx < swCfg->numPorts; portIdx++)
+                    {
+                        if (swCfg->ports[portIdx].pep == netDevPep)
+                        {
+                            swCfg->ports[portIdx].pep = mgmtPep;
+                            FM_LOG_PRINT("Swapping mgmt pep to use pep%d "
+                                         "instead of pep%d\n",
+                                          netDevPep, mgmtPep);
+                            break;
+                        }
+                    }
+                    if (portIdx >= swCfg->numPorts)
+                    {
+                        FM_LOG_PRINT("Set mgmt pep to use pep%d\n",
+                                      netDevPep);
+                    }
+                    swCfg->ports[0].pep = netDevPep;
+                    swCfg->mgmtPep = netDevPep;
+                }
+
+            }
         }
+
         /* Derive the UIO number from the network device name */
         FM_LOG_DEBUG(FM_LOG_CAT_PLATFORM, 
                      "Derive UIO number from netDev %s\n", 

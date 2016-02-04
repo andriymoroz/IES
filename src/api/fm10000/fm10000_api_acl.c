@@ -50,7 +50,7 @@
 
 #define FM_COUNT_SET_BITS(value, bits)                                         \
     {                                                                          \
-        fm_int modifValue = value;                                             \
+        fm_uint64 modifValue = value;                                          \
         for ((bits) = 0; modifValue; (bits)++)                                 \
         {                                                                      \
             modifValue &= modifValue - 1;                                      \
@@ -993,11 +993,6 @@ fm_status fmConvertAbstractToConcreteKey(fm_tree *      abstractKeyTree,
                                          fm_byte *      muxSelect,
                                          fm_uint16 *    muxUsed);
 
-fm_status fmCountActionSlicesNeeded(fm_int               sw,
-                                    fm_aclErrorReporter *errReport,
-                                    fm_aclRule *         rule,
-                                    fm_int *             actionSlices);
-
 void fmTranslateAclScenario(fm_int      sw,
                             fm_uint32   aclScenario,
                             fm_uint32  *validScenarios,
@@ -1190,7 +1185,7 @@ static void * CloneEcmpGroup(void *value, void *funcArg)
             return NULL;
         }
 
-        node = FM_DLL_GET_NEXT(node, next);
+        node = FM_DLL_GET_NEXT(node, nextPtr);
     }
 
     return ecmpListClone;
@@ -1378,7 +1373,7 @@ static void * ClonePolicersEntries(void *value, void *funcArg)
             return NULL;
         }
 
-        node = FM_DLL_GET_NEXT(node, next);
+        node = FM_DLL_GET_NEXT(node, nextPtr);
     }
 
     return compiledPolEntryClone;
@@ -4141,159 +4136,6 @@ ABORT:
 
 
 /*****************************************************************************/
-/** fmCountActionSlicesNeeded
- * \ingroup intAcl
- *
- * \desc            Count the number of action slice needed for a particular
- *                  acl rule.
- * 
- * \param[in]       sw is the switch on which to operate.
- * 
- * \param[in,out]   errReport is the object used to report compilation errors.
- *
- * \param[in]       rule point to the entered acl rule.
- *
- * \param[in]       actionSlices points to caller-allocated storage where this
- *                  function should store the number of action slices needed
- *                  for this particular acl rule.
- *
- * \return          FM_OK if successful.
- *
- *****************************************************************************/
-fm_status fmCountActionSlicesNeeded(fm_int               sw,
-                                    fm_aclErrorReporter *errReport,
-                                    fm_aclRule *         rule,
-                                    fm_int *             actionSlices)
-{
-    fm_int dataChannel = 0;
-    fm_int tagChannel = 0;
-    fm_status err;
-    fm_tunnelGlortUser glortUser;
-
-    /* FLAGS */
-    if ( (rule->action & FM_ACL_ACTIONEXT_PERMIT) ||
-         (rule->action & FM_ACL_ACTIONEXT_DENY) ||
-         (rule->action & FM_ACL_ACTIONEXT_TRAP) ||
-         (rule->action & FM_ACL_ACTIONEXT_LOG) ||
-         (rule->action & FM_ACL_ACTIONEXT_NOROUTE) ||
-         (rule->action & FM_ACL_ACTIONEXT_CAPTURE_EGRESS_TIMESTAMP) )
-    {
-        dataChannel++;
-    }
-
-    /* TRIG */
-    if ( (rule->action & FM_ACL_ACTIONEXT_TRAP_ALWAYS) ||
-         (rule->action & FM_ACL_ACTIONEXT_MIRROR_GRP) ||
-         (rule->action & FM_ACL_ACTIONEXT_SET_TRIG_ID) )
-    {
-        dataChannel++;
-    }
-
-    /* USER */
-    if ( (rule->action & FM_ACL_ACTIONEXT_SET_USER) )
-    {
-        dataChannel++;
-    }
-
-    /* ROUTE_ARP or ROUTE_GLORT */
-    if ( (rule->action & FM_ACL_ACTIONEXT_REDIRECT) ||
-         (rule->action & FM_ACL_ACTIONEXT_ROUTE) ||
-         (rule->action & FM_ACL_ACTIONEXT_SET_FLOOD_DEST) ||
-         (rule->action & FM_ACL_ACTIONEXT_LOAD_BALANCE) ||
-         (rule->action & FM_ACL_ACTIONEXT_REDIRECT_TUNNEL) )
-    {
-        if (rule->action & FM_ACL_ACTIONEXT_REDIRECT_TUNNEL)
-        {
-            /* Redirecting to a tunnel group can either uses both GLORT and
-             * USER or GLORT only. */
-            err = fm10000GetTunnelAttribute(sw,
-                                            rule->param.tunnelGroup,
-                                            rule->param.tunnelRule,
-                                            FM_TUNNEL_GLORT_USER,
-                                            &glortUser);
-            if (err != FM_OK)
-            {
-                return err;
-            }
-
-            /* If this tunnel group is set to uses both user and glort, the
-             * rule can't define individual set user action. */
-            if (glortUser.userMask != 0)
-            {
-                if (rule->action & FM_ACL_ACTIONEXT_SET_USER)
-                {
-                    return FM_ERR_INVALID_ACL_RULE;
-                }
-                dataChannel++;
-            }
-        }
-
-        dataChannel++;
-    }
-
-    /* SET_VLAN or SET_PRI */
-    if ( (rule->action & FM_ACL_ACTIONEXT_SET_VLAN) ||
-         (rule->action & FM_ACL_ACTIONEXT_PUSH_VLAN) ||
-         (rule->action & FM_ACL_ACTIONEXT_POP_VLAN) ||
-         (rule->action & FM_ACL_ACTIONEXT_SET_VLAN_PRIORITY) ||
-         (rule->action & FM_ACL_ACTIONEXT_SET_SWITCH_PRIORITY) ||
-         (rule->action & FM_ACL_ACTIONEXT_SET_DSCP) )
-    {
-        if ( ((rule->action & FM_ACL_ACTIONEXT_SET_VLAN) ||
-              (rule->action & FM_ACL_ACTIONEXT_PUSH_VLAN) ||
-              (rule->action & FM_ACL_ACTIONEXT_POP_VLAN)) &&
-             (rule->action & FM_ACL_ACTIONEXT_SET_DSCP) )
-        {
-            dataChannel += 2;
-        }
-        else
-        {
-            /* Two FFU Actions are needed if both VlanPri and SwitchPri must
-             * be set to different value */
-            if ( (rule->action & FM_ACL_ACTIONEXT_SET_VLAN_PRIORITY) &&
-                 (rule->action & FM_ACL_ACTIONEXT_SET_SWITCH_PRIORITY) &&
-                 (rule->param.vlanPriority != rule->param.switchPriority) )
-            {
-                dataChannel++;
-            }
-            dataChannel++;
-        }
-    }
-
-    if ( (rule->action & FM_ACL_ACTIONEXT_COUNT) )
-    {
-        tagChannel++;
-    }
-
-    if ( (rule->action & FM_ACL_ACTIONEXT_POLICE) )
-    {
-        tagChannel++;
-    }
-
-    if ( (dataChannel == 0) && (tagChannel == 0) )
-    {
-        /* Acl rule with no action defined. This can be useful to prevent hit
-         * on lower precedence rule. */
-        *actionSlices = 1;
-        return FM_OK;
-    }
-    else if (dataChannel > tagChannel)
-    {
-        *actionSlices = dataChannel;
-        return FM_OK;
-    }
-    else
-    {
-        *actionSlices = tagChannel;
-        return FM_OK;
-    }
-
-}   /* end fmCountActionSlicesNeeded */
-
-
-
-
-/*****************************************************************************/
 /** fmTranslateAclScenario
  * \ingroup intAcl
  *
@@ -4732,6 +4574,7 @@ fm_status fmConfigureActionData(fm_int                      sw,
     fm_bool tunnelWithUser = FALSE;
     fm_int  lbgLogicalPort;
     fm_LBGMode lbgMode;
+    fm_int glortNatUndefFlow;
 
     switchPtr = GET_SWITCH_PTR(sw);
     switchExt = (fm10000_switch *) switchPtr->extension;
@@ -4824,28 +4667,33 @@ fm_status fmConfigureActionData(fm_int                      sw,
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_ACL, err);
     }
 
-    FM_COUNT_SET_BITS((rule->action & FM_ACL_ACTIONEXT_SET_VLAN) |
-                      (rule->action & FM_ACL_ACTIONEXT_PUSH_VLAN),
+    FM_COUNT_SET_BITS((rule->action & FM_ACL_ACTIONEXT_SET_VLAN)  |
+                      (rule->action & FM_ACL_ACTIONEXT_PUSH_VLAN) |
+                      (rule->action & FM_ACL_ACTIONEXT_UPD_OR_ADD_VLAN),
                       ortoActions  );
+
     if (ortoActions > 1)
     {
         fm10000FormatAclStatus(errReport,
                                TRUE,
                                "acl rule can't define action "
-                               "FM_ACL_ACTIONEXT_SET_VLAN and "
-                               "FM_ACL_ACTIONEXT_PUSH_VLAN together\n");
+                               "FM_ACL_ACTIONEXT_SET_VLAN or "
+                               "FM_ACL_ACTIONEXT_PUSH_VLAN or "
+                               "FM_ACL_ACTIONEXT_UPD_OR_ADD_VLAN together\n");
         err = FM_ERR_INVALID_ACL_RULE;
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_ACL, err);
     }
 
     if ( (rule->action & FM_ACL_ACTIONEXT_POP_VLAN) &&
-        ((rule->action & FM_ACL_ACTIONEXT_SET_VLAN) == 0) )
+        ((rule->action & FM_ACL_ACTIONEXT_SET_VLAN) == 0 &&
+         (rule->action & FM_ACL_ACTIONEXT_UPD_OR_ADD_VLAN) == 0) )
     {
         fm10000FormatAclStatus(errReport,
                                TRUE,
                                "acl rule action FM_ACL_ACTIONEXT_POP_VLAN "
                                "must always be paired with "
-                               "FM_ACL_ACTIONEXT_SET_VLAN\n");
+                               "FM_ACL_ACTIONEXT_SET_VLAN or "
+                               "FM_ACL_ACITONEXT_UPD_OR_ADD_VLAN\n");
         err = FM_ERR_INVALID_ACL_RULE;
         FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_ACL, err);
     }
@@ -5056,6 +4904,28 @@ fm_status fmConfigureActionData(fm_int                      sw,
                                              compiledAclRule->ruleNumber);
                     FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_ACL, err);
                 }
+                else if ( (rule->param.logicalPort == FM_PORT_NAT_UNDEF_FLOW) ||
+                          (rule->param.logicalPort == FM_PORT_DENAT_UNDEF_FLOW) )
+                {
+                    currentActionType = FM_FFU_ACTION_ROUTE_GLORT;
+
+                    err = fm10000GetGlortForSpecialPort(sw, 
+                                                        rule->param.logicalPort,
+                                                        &glortNatUndefFlow);
+                    if (err != FM_OK)
+                    {
+                        fm10000FormatAclStatus(errReport,
+                                               TRUE,
+                                               "acl rule action "
+                                               "FM_ACL_ACTIONEXT_REDIRECT or "
+                                               "FM_ACL_ACTIONEXT_SET_FLOOD_DEST "
+                                               "with invalid special logical port\n");
+                        err = FM_ERR_INVALID_ACL_PARAM;
+                        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_ACL, err);
+                    }
+
+                    currentActionData.glort = glortNatUndefFlow;
+                }
                 /* L2 Switch to this GLORT without any VLAN replication */
                 else
                 {
@@ -5247,7 +5117,8 @@ fm_status fmConfigureActionData(fm_int                      sw,
         {
             if ( (rule->action & FM_ACL_ACTIONEXT_SET_VLAN) ||
                  (rule->action & FM_ACL_ACTIONEXT_PUSH_VLAN) ||
-                 (rule->action & FM_ACL_ACTIONEXT_POP_VLAN) )
+                 (rule->action & FM_ACL_ACTIONEXT_POP_VLAN) ||
+                 (rule->action & FM_ACL_ACTIONEXT_UPD_OR_ADD_VLAN) )
             {
                 currentActionType = FM_FFU_ACTION_SET_FIELDS;
 
@@ -5301,6 +5172,22 @@ fm_status fmConfigureActionData(fm_int                      sw,
                     currentActionData.fields.fieldValue = rule->param.vlan;
                     currentActionData.fields.txTag = FM_FFU_TXTAG_NORMAL;
                 }
+                else if (rule->action & FM_ACL_ACTIONEXT_UPD_OR_ADD_VLAN)
+                {
+                    if (rule->param.vlan >= FM_MAX_VLAN)
+                    {
+                        fm10000FormatAclStatus(errReport,
+                                               TRUE,
+                                               "acl rule action "
+                                               "FM_ACL_ACTIONEXT_REPLACE_VLAN "
+                                               "with invalid vlan\n");
+                        err = FM_ERR_INVALID_ACL_PARAM;
+                        FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_ACL, err);
+                    }
+
+                    currentActionData.fields.fieldValue = rule->param.vlan;
+                    currentActionData.fields.txTag = FM_FFU_TXTAG_UPD_OR_ADD_TAG;
+                }
                 /* Should never go there */
                 else
                 {
@@ -5310,7 +5197,8 @@ fm_status fmConfigureActionData(fm_int                      sw,
 
                 actionToSet &= ~(FM_ACL_ACTIONEXT_SET_VLAN |
                                  FM_ACL_ACTIONEXT_PUSH_VLAN |
-                                 FM_ACL_ACTIONEXT_POP_VLAN);
+                                 FM_ACL_ACTIONEXT_POP_VLAN |
+                                 FM_ACL_ACTIONEXT_UPD_OR_ADD_VLAN);
             }
             else if (actionToSet & FM_ACL_ACTIONEXT_SET_DSCP)
             {
@@ -6764,10 +6652,10 @@ fm_status fm10000ACLCompile(fm_int    sw,
                                                compiledAcl->portSetId);
             FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_ACL, err);
 
-            err = fmCountActionSlicesNeeded(sw,
-                                            &errReport,
-                                            rule,
-                                            &actionSlices);
+            err = fm10000CountActionSlicesNeeded(sw,
+                                                 &errReport,
+                                                 rule,
+                                                 &actionSlices);
             FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_ACL, err);
 
             compiledAclRule->numActions = actionSlices;
@@ -8673,7 +8561,7 @@ fm_status fm10000NotifyAclEcmpChange(fm_int    sw,
                     }
                 }
 
-                node = FM_DLL_GET_NEXT(node, next);
+                node = FM_DLL_GET_NEXT(node, nextPtr);
             }
         }
         else if (err == FM_ERR_NOT_FOUND)
@@ -8745,7 +8633,7 @@ fm_status fm10000NotifyAclEcmpChange(fm_int    sw,
                     }
                 }
 
-                node = FM_DLL_GET_NEXT(node, next);
+                node = FM_DLL_GET_NEXT(node, nextPtr);
             }
         }
         else if (err == FM_ERR_NOT_FOUND)
@@ -9848,3 +9736,158 @@ ABORT:
     FM_LOG_EXIT(FM_LOG_CAT_ACL, err);
 
 }   /* end fm10000GetAclFfuRuleUsage */
+
+
+
+
+/*****************************************************************************/
+/** fm10000CountActionSlicesNeeded
+ * \ingroup intAcl
+ *
+ * \desc            Count the number of action slice needed for a particular
+ *                  acl rule.
+ * 
+ * \param[in]       sw is the switch on which to operate.
+ * 
+ * \param[in,out]   errReport is the object used to report compilation errors.
+ *
+ * \param[in]       rule point to the entered acl rule.
+ *
+ * \param[in]       actionSlices points to caller-allocated storage where this
+ *                  function should store the number of action slices needed
+ *                  for this particular acl rule.
+ *
+ * \return          FM_OK if successful.
+ *
+ *****************************************************************************/
+fm_status fm10000CountActionSlicesNeeded(fm_int               sw,
+                                         fm_aclErrorReporter *errReport,
+                                         fm_aclRule *         rule,
+                                         fm_int *             actionSlices)
+{
+    fm_int dataChannel = 0;
+    fm_int tagChannel = 0;
+    fm_status err;
+    fm_tunnelGlortUser glortUser;
+
+    /* FLAGS */
+    if ( (rule->action & FM_ACL_ACTIONEXT_PERMIT) ||
+         (rule->action & FM_ACL_ACTIONEXT_DENY) ||
+         (rule->action & FM_ACL_ACTIONEXT_TRAP) ||
+         (rule->action & FM_ACL_ACTIONEXT_LOG) ||
+         (rule->action & FM_ACL_ACTIONEXT_NOROUTE) ||
+         (rule->action & FM_ACL_ACTIONEXT_CAPTURE_EGRESS_TIMESTAMP) )
+    {
+        dataChannel++;
+    }
+
+    /* TRIG */
+    if ( (rule->action & FM_ACL_ACTIONEXT_TRAP_ALWAYS) ||
+         (rule->action & FM_ACL_ACTIONEXT_MIRROR_GRP) ||
+         (rule->action & FM_ACL_ACTIONEXT_SET_TRIG_ID) )
+    {
+        dataChannel++;
+    }
+
+    /* USER */
+    if ( (rule->action & FM_ACL_ACTIONEXT_SET_USER) )
+    {
+        dataChannel++;
+    }
+
+    /* ROUTE_ARP or ROUTE_GLORT */
+    if ( (rule->action & FM_ACL_ACTIONEXT_REDIRECT) ||
+         (rule->action & FM_ACL_ACTIONEXT_ROUTE) ||
+         (rule->action & FM_ACL_ACTIONEXT_SET_FLOOD_DEST) ||
+         (rule->action & FM_ACL_ACTIONEXT_LOAD_BALANCE) ||
+         (rule->action & FM_ACL_ACTIONEXT_REDIRECT_TUNNEL) )
+    {
+        if (rule->action & FM_ACL_ACTIONEXT_REDIRECT_TUNNEL)
+        {
+            /* Redirecting to a tunnel group can either uses both GLORT and
+             * USER or GLORT only. */
+            err = fm10000GetTunnelAttribute(sw,
+                                            rule->param.tunnelGroup,
+                                            rule->param.tunnelRule,
+                                            FM_TUNNEL_GLORT_USER,
+                                            &glortUser);
+            if (err != FM_OK)
+            {
+                return err;
+            }
+
+            /* If this tunnel group is set to uses both user and glort, the
+             * rule can't define individual set user action. */
+            if (glortUser.userMask != 0)
+            {
+                if (rule->action & FM_ACL_ACTIONEXT_SET_USER)
+                {
+                    return FM_ERR_INVALID_ACL_RULE;
+                }
+                dataChannel++;
+            }
+        }
+
+        dataChannel++;
+    }
+
+    /* SET_VLAN or SET_PRI */
+    if ( (rule->action & FM_ACL_ACTIONEXT_SET_VLAN) ||
+         (rule->action & FM_ACL_ACTIONEXT_PUSH_VLAN) ||
+         (rule->action & FM_ACL_ACTIONEXT_POP_VLAN) ||
+         (rule->action & FM_ACL_ACTIONEXT_UPD_OR_ADD_VLAN) ||
+         (rule->action & FM_ACL_ACTIONEXT_SET_VLAN_PRIORITY) ||
+         (rule->action & FM_ACL_ACTIONEXT_SET_SWITCH_PRIORITY) ||
+         (rule->action & FM_ACL_ACTIONEXT_SET_DSCP) )
+    {
+        if ( ((rule->action & FM_ACL_ACTIONEXT_SET_VLAN) ||
+              (rule->action & FM_ACL_ACTIONEXT_PUSH_VLAN) ||
+              (rule->action & FM_ACL_ACTIONEXT_POP_VLAN) ||
+              (rule->action & FM_ACL_ACTIONEXT_UPD_OR_ADD_VLAN)) &&
+             (rule->action & FM_ACL_ACTIONEXT_SET_DSCP) )
+        {
+            dataChannel += 2;
+        }
+        else
+        {
+            /* Two FFU Actions are needed if both VlanPri and SwitchPri must
+             * be set to different value */
+            if ( (rule->action & FM_ACL_ACTIONEXT_SET_VLAN_PRIORITY) &&
+                 (rule->action & FM_ACL_ACTIONEXT_SET_SWITCH_PRIORITY) &&
+                 (rule->param.vlanPriority != rule->param.switchPriority) )
+            {
+                dataChannel++;
+            }
+            dataChannel++;
+        }
+    }
+
+    if ( (rule->action & FM_ACL_ACTIONEXT_COUNT) )
+    {
+        tagChannel++;
+    }
+
+    if ( (rule->action & FM_ACL_ACTIONEXT_POLICE) )
+    {
+        tagChannel++;
+    }
+
+    if ( (dataChannel == 0) && (tagChannel == 0) )
+    {
+        /* Acl rule with no action defined. This can be useful to prevent hit
+         * on lower precedence rule. */
+        *actionSlices = 1;
+        return FM_OK;
+    }
+    else if (dataChannel > tagChannel)
+    {
+        *actionSlices = dataChannel;
+        return FM_OK;
+    }
+    else
+    {
+        *actionSlices = tagChannel;
+        return FM_OK;
+    }
+
+}   /* end fm10000CountActionSlicesNeeded */

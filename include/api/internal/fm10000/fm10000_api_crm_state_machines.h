@@ -42,7 +42,6 @@
 #ifndef __FM_FM10000_API_CRM_STATE_MACHINES_H
 #define __FM_FM10000_API_CRM_STATE_MACHINES_H
 
-
 /* declaration of the CRM state machine types */
 #define FM10000_BASIC_CRM_STATE_MACHINE 500
 

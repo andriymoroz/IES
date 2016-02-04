@@ -6,7 +6,7 @@
  * Description:     Generic PTI (Packet Test Interface) send and receive for 
  *                  the FM10000 series
  *
- * Copyright (c) 2014, Intel Corporation
+ * Copyright (c) 2014 - 2015, Intel Corporation
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -30,9 +30,8 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
+ *****************************************************************************/
 
-#include <fm_sdk_int.h>
 #include <fm_sdk_fm10000_int.h>
 #include <platforms/common/packet/generic-pti/fm10000/fm10000_generic_pti.h>
 #include <common/fm_crc32.h>
@@ -63,6 +62,7 @@
 /******************************************************************************
  * Local function prototypes
  *****************************************************************************/
+
 static fm_uint32 ReverseBytes(fm_uint32 word);
 static fm_status DumpPacket(fm_uint64 cat, fm_byte *data, fm_int length);
 static fm_status AppendCRC32(fm_byte* data, fm_int pktSize, fm_bool f56Tagged);
@@ -108,6 +108,7 @@ static fm_uint32 ReverseBytes(fm_uint32 word)
     }
 
     return reversed;
+
 }   /* end ReverseBytes */
 
 
@@ -159,7 +160,8 @@ static fm_status DumpPacket(fm_uint64 cat, fm_byte *data, fm_int length)
     }
 
     return FM_OK;
-}   /* DumpPacket */
+
+}   /* end DumpPacket */
 
 
 
@@ -215,6 +217,7 @@ static fm_status AppendCRC32(fm_byte* data, fm_int pktSize, fm_bool f56Tagged)
     }
 
     return FM_OK;
+
 }   /* end AppendCRC32 */
 
 
@@ -421,7 +424,8 @@ ABORT:
     UNPROTECT_SWITCH(sw);
 
     FM_LOG_EXIT(FM_LOG_CAT_PLATFORM, err);
-}   /* fm10000PTIInitialize */
+
+}   /* end fm10000PTIInitialize */
 
 
 
@@ -606,6 +610,7 @@ ABORT:
     }
     
     FM_LOG_EXIT(FM_LOG_CAT_EVENT_PKT_TX, err);
+
 }   /* end fm10000PTISendPackets */
 
 
@@ -872,7 +877,11 @@ void * fm10000PTIReceivePackets(void *args)
                  "ERROR: Receive thread terminated inadvertently!\n");
 
     return NULL;
+
 }   /* end fm10000PTIReceivePackets */
+
+
+
 
 /*****************************************************************************/
 /** fm10000PTISend
@@ -985,6 +994,7 @@ fm_status fm10000PTISend(fm_int         sw,
 ABORT:
 
     FM_LOG_EXIT(FM_LOG_CAT_EVENT_PKT_TX, err);
+
 }   /* end fm10000PTISend */
 
 
@@ -1254,5 +1264,6 @@ ABORT:
     UNPROTECT_SWITCH(sw);
 
     FM_LOG_EXIT(FM_LOG_CAT_EVENT_PKT_RX, err);
+
 }   /* end fm10000PTIReceive */
 

@@ -6,7 +6,7 @@
  * Description:     Contains constants and functions used to support scheduler
  *                  configuration.
  *
- * Copyright (c) 2013 - 2014, Intel Corporation
+ * Copyright (c) 2013 - 2015, Intel Corporation
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -30,7 +30,7 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
+ *****************************************************************************/
 
 #ifndef __FM_FM10000_API_SCHED_INT_H
 #define __FM_FM10000_API_SCHED_INT_H
@@ -135,7 +135,7 @@ typedef struct fm10000_schedAttr
     /* The scheduler's operation mode */
     fm_int                mode;
 
-    /* Keep track of wheter the scheduler should be updated (or not) on link
+    /* Keep track of whether the scheduler should be updated (or not) on link
      * change (up/down) */
     fm_bool               updateLnkChange;
 
@@ -150,11 +150,11 @@ typedef struct fm10000_schedStat
     /* The speed of the stat instance */
     fm10000_schedSpeed speed;
 
-    /* The index of the first element in this stat group*/
-    fm_int             first;
+    /* The index of the first element in this stat group */
+    fm_int             firstIdx;
 
-    /* The index of the last element in this stat group*/
-    fm_int             last;
+    /* The index of the last element in this stat group */
+    fm_int             lastIdx;
 
     /* The minimum spacing between elements */
     fm_int             minDiff;
@@ -251,7 +251,10 @@ typedef struct _fm10000_schedInfoInt
     /* Speed of the port for each scheduler entry, note that index 0
      * should be the implicit idle */
     fm10000_schedSpeed    speedList[FM10000_MAX_SCHEDULE_LENGTH];
-    
+
+    /* Spare 25G slots used to handle 25G ports being present in only one QPC */
+    fm_int                spare25GSlots;
+
 } fm10000_schedInfoInt;
 
 

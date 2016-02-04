@@ -1,4 +1,3 @@
-
 /* vim:ts=4:sw=4:expandtab
  * (No tabs, indent level is 4 spaces)  */
 /*****************************************************************************
@@ -6,7 +5,7 @@
  * Creation Date:  September 9, 2013
  * Description:    ACL code related to the policer management for FM10000.
  *
- * Copyright (c) 2013, Intel Corporation
+ * Copyright (c) 2013 - 2015, Intel Corporation
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -30,7 +29,7 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
+ *****************************************************************************/
 
 #include <fm_sdk_fm10000_int.h>
 #include <common/fm_version.h>
@@ -1439,7 +1438,7 @@ fm_status fm10000NonDisruptCleanPolicerRules(fm_int                     sw,
                     break;
                 }
 
-                node = FM_DLL_GET_NEXT(node, next);
+                node = FM_DLL_GET_NEXT(node, nextPtr);
             }
 
             /* This entry should be removed if all the nodes are removed */
@@ -1661,7 +1660,7 @@ fm_status fm10000NonDisruptCleanPolicerRules(fm_int                     sw,
                                 }
                             }
 
-                            node = FM_DLL_GET_NEXT(node, next);
+                            node = FM_DLL_GET_NEXT(node, nextPtr);
                         }
                         /* Update policer structure for the right mapping */
                         err = fmTreeRemoveCertain(&cacls->policers[i].policerEntry,
@@ -1857,7 +1856,7 @@ fm_status fm10000NonDisruptCleanPolicers(fm_int                  sw,
                     continue;
                 }
 
-                node = FM_DLL_GET_NEXT(node, next);
+                node = FM_DLL_GET_NEXT(node, nextPtr);
             }
 
             /* This entry should be removed if all the nodes are removed */
@@ -2110,7 +2109,7 @@ fm_status fm10000NonDisruptCleanPolicers(fm_int                  sw,
                                 }
                             }
 
-                            node = FM_DLL_GET_NEXT(node, next);
+                            node = FM_DLL_GET_NEXT(node, nextPtr);
                         }
                         /* Update policer structure for the right mapping */
                         err = fmTreeRemoveCertain(&cacls->policers[i].policerEntry,

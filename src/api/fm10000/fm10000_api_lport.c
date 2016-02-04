@@ -375,8 +375,12 @@ fm_status fm10000CreateLogicalPort(fm_int sw, fm_int port)
 #if 0
     portPtr->NotifyLinkEvent   = fm10000NotifyLinkEvent,
 #endif
-    portPtr->SetPortQOS        = fm10000SetPortQOS;
-    portPtr->GetPortQOS        = fm10000GetPortQOS;
+    portPtr->SetPortQOS             = fm10000SetPortQOS;
+    portPtr->GetPortQOS             = fm10000GetPortQOS;
+    portPtr->AddQueueQOS            = fm10000AddQueueQOS;
+    portPtr->DeleteQueueQOS         = fm10000DeleteQueueQOS;
+    portPtr->SetAttributeQueueQOS   = fm10000SetAttributeQueueQOS;
+    portPtr->GetAttributeQueueQOS   = fm10000GetAttributeQueueQOS;
 #if 0
     portPtr->NotifyXcvrState   = NULL;
 #endif
@@ -392,6 +396,7 @@ fm_status fm10000CreateLogicalPort(fm_int sw, fm_int port)
     portPtr->GetVlanTag        = fm10000GetVlanTag;
     portPtr->IsPciePort        = fm10000IsPciePort;
     portPtr->IsSpecialPort     = fm10000IsSpecialPort;
+    portPtr->IsEplPort         = fm10000IsEplPort;
 
 #if 0
     for (hogWm = 0 ; hogWm < 4 ; hogWm++)
@@ -824,6 +829,14 @@ fm_status fm10000GetGlortForSpecialPort(fm_int sw, fm_int port, fm_int *glort)
 
         case FM_PORT_RPF_FAILURE:
             *glort = FM10000_GLORT_RPF_FAILURE;
+            break;
+
+        case FM_PORT_NAT_UNDEF_FLOW:
+            *glort = FM10000_GLORT_NAT_UNDEF_FLOW;
+            break;
+
+        case FM_PORT_DENAT_UNDEF_FLOW:
+            *glort = FM10000_GLORT_DENAT_UNDEF_FLOW;
             break;
 
         default:
@@ -1372,10 +1385,7 @@ fm_status fm10000FreeLaneResources( fm_int sw )
     fm_int           lane;
 
     /* validate the switch ID */
-    if ( sw < 0 || sw >= FM_MAX_NUM_SWITCHES )
-    {
-        return FM_ERR_INVALID_SWITCH;
-    }
+    VALIDATE_SWITCH(sw);
 
     switchPtr = GET_SWITCH_PTR( sw );
 
@@ -1391,6 +1401,7 @@ fm_status fm10000FreeLaneResources( fm_int sw )
                 laneDfePtr->pLaneExt = laneExt;
                 fmDeleteStateMachine( laneExt->smHandle );
                 fmDeleteTimer( laneExt->timerHandle );
+                fmDeleteTimer( laneExt->timerHandleErrorValidation );
                 fmDeleteStateMachine( laneDfePtr->smHandle );
                 fmDeleteTimer( laneDfePtr->timerHandle );
 
@@ -1908,7 +1919,7 @@ fm_status fm10000GetLogicalPortPcie(fm_int sw,
         lastGlort = info->glortBase +
                      ( (i + 1) * info->glortsPerPep);
 
-        if ( (virtualGlort >= firstGlort) && (virtualGlort <= lastGlort) )
+        if ( (virtualGlort >= firstGlort) && (virtualGlort < lastGlort) )
         {
             break;
         }

@@ -4059,8 +4059,8 @@ void fm10000DbgTakeChipSnapshot(fm_int                sw,
                          indexA++)
                     {
                         err = fm10000DbgDumpChipRegister(sw,
-                                                         indexB,
                                                          indexA,
+                                                         indexB,
                                                          0,
                                                          0,
                                                          regId,
@@ -4103,7 +4103,7 @@ void fm10000DbgTakeChipSnapshot(fm_int                sw,
             case MWTPLIDX:
 
                 for (indexC = pRegister->indexMin2 ;
-                     indexB <= pRegister->indexMax2 ;
+                     indexC <= pRegister->indexMax2 ;
                      indexC++)
                 {
                     for (indexB = pRegister->indexMin1 ;
@@ -4115,9 +4115,9 @@ void fm10000DbgTakeChipSnapshot(fm_int                sw,
                              indexA++)
                         {
                             err = fm10000DbgDumpChipRegister(sw,
-                                                             indexC,
-                                                             indexB,
                                                              indexA,
+                                                             indexB,
+                                                             indexC,
                                                              0,
                                                              regId,
                                                              FALSE,

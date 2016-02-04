@@ -1379,13 +1379,13 @@ static void TreeIterInit(fm_internalTreeIterator *it, fm_internalTree *tree)
     it->serial = tree->serial;
     it->dir    = 1;
 
-    it->next = tree->root;
+    it->nextPtr = tree->root;
 
-    if (it->next != NULL)
+    if (it->nextPtr != NULL)
     {
-        while ( !(it->next->threaded[0]) )
+        while ( !(it->nextPtr->threaded[0]) )
         {
-            it->next = it->next->link[0];
+            it->nextPtr = it->nextPtr->link[0];
         }
     }
 
@@ -1401,13 +1401,13 @@ static void TreeIterInitBackwards(fm_internalTreeIterator *it,
     it->serial = tree->serial;
     it->dir    = 0;
 
-    it->next = tree->root;
+    it->nextPtr = tree->root;
 
-    if (it->next != NULL)
+    if (it->nextPtr != NULL)
     {
-        while ( !(it->next->threaded[1]) )
+        while ( !(it->nextPtr->threaded[1]) )
         {
-            it->next = it->next->link[1];
+            it->nextPtr = it->nextPtr->link[1];
         }
     }
 
@@ -1431,7 +1431,7 @@ static fm_status TreeIterInitFromKey(fm_internalTreeIterator *it,
     {
         if ( FM_KEY_EQUAL(cmp, node->key, key) )
         {
-            it->next = node;
+            it->nextPtr = node;
             return FM_OK;
         }
         else
@@ -1463,7 +1463,7 @@ static fm_status TreeIterInitFromKeyBackwards(fm_internalTreeIterator *it,
     {
         if ( FM_KEY_EQUAL(cmp, node->key, key) )
         {
-            it->next = node;
+            it->nextPtr = node;
             return FM_OK;
         }
         else
@@ -1495,8 +1495,8 @@ static fm_status TreeIterInitFromSuccessor(fm_internalTreeIterator *it,
     {
         if ( FM_KEY_EQUAL(cmp, node->key, key) )
         {
-            node     = Next(node, 1);
-            it->next = node;
+            node = Next(node, 1);
+            it->nextPtr = node;
             return FM_OK;
         }
         else
@@ -1517,7 +1517,7 @@ static fm_status TreeIterNext(fm_internalTreeIterator *it,
                               fm_uint64 *              nextKey,
                               void **                  nextValue)
 {
-    if (it->next == NULL)
+    if (it->nextPtr == NULL)
     {
         return FM_ERR_NO_MORE;
     }
@@ -1527,9 +1527,9 @@ static fm_status TreeIterNext(fm_internalTreeIterator *it,
     }
     else
     {
-        *nextKey   = it->next->key;
-        *nextValue = it->next->value;
-        it->next   = Next(it->next, it->dir);
+        *nextKey   = it->nextPtr->key;
+        *nextValue = it->nextPtr->value;
+        it->nextPtr = Next(it->nextPtr, it->dir);
         return FM_OK;
     }
 

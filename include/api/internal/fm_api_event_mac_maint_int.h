@@ -133,8 +133,12 @@ typedef struct _fm_maPurgeListEntry
     /* False when the port for which the purge request is pending is removed. */
     fm_bool                     portExists;
 
+    /* Flags indicating whether or not to purge the Static MAC addresses
+     * along with the Dynamic ones (via fmFlushAddresses). */
+    fm_bool                     statics;
+
     /* Doubly linked list link pointers. */
-    FM_DLL_DEFINE_NODE(_fm_maPurgeListEntry, next, prev);
+    FM_DLL_DEFINE_NODE(_fm_maPurgeListEntry, nextPtr, prevPtr);
 
 } fm_maPurgeListEntry;
 
@@ -281,7 +285,7 @@ typedef struct _fm_maPurgeCallBack
     fm_uint64            seq;
 
     /* Chain link. */
-    struct _fm_maPurgeCallBack *next;
+    struct _fm_maPurgeCallBack *nextPtr;
     
 } fm_maPurgeCallBack;
 
@@ -488,6 +492,10 @@ typedef struct _fm_maWorkTypeData
     /* The remoteID to be flushed.
      * Used with FM_UPD_FLUSH_ADDRESSES. (FM6000 only) */
     fm_int  remoteId;
+
+    /* Flush Statics MAC along with the Dynamic MACs.
+     * Used with FM_UPD_FLUSH_ADDRESSES. (FM10000 only) */
+    fm_bool statics;
 
 } fm_maWorkTypeData;
 

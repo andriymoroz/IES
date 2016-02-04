@@ -29,7 +29,7 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
+ *****************************************************************************/
 
 #include <fm_sdk_int.h>
 
@@ -119,7 +119,7 @@ static fm_status GetBitPosition(fm_bitArray *bitArray,
  *                  this function when the ''fm_bitArray'' object is no
  *                  longer needed.
  *
- * \param[in,out]   bitArray points to a caller-allocated structure of
+ * \param[in,out]   bitArray points to a caller-supplied structure of
  *                  type ''fm_bitArray'' to be initialized by this function.
  *
  * \param[in]       bitcount is the number of bits to be held by the array.
@@ -199,7 +199,7 @@ fm_status fmResizeBitArray(fm_bitArray *bitArray, fm_int newbitcount)
  * \ingroup diagBitArray
  *
  * \desc            Destroys a ''fm_bitArray'' object, including deallocating
-*                   the memory for holding the actual bit array data.
+ *                  the memory for holding the actual bit array data.
  *
  * \note            All ''fm_bitArray'' objects successfully initialized by
  *                  ''fmCreateBitArray'' must be destroyed by this function
@@ -367,12 +367,12 @@ fm_status fmSetBitArrayBlock(fm_bitArray *bitArray,
  * \note            The bit array must have been previously initialized with 
  *                  a call to ''fmCreateBitArray''.
  *
- * \param[in]      bitArray points to the ''fm_bitArray'' object.
+ * \param[in]       bitArray points to the ''fm_bitArray'' object.
  *
  * \param[in]       bitNumber is the zero-based bit number of the bit whose
  *                  value is to be retrieved.
  *
- * \param[out]      bitValue points to caller-allocated storage where this
+ * \param[out]      bitValue points to caller-supplied storage where this
  *                  function is to place the value of the specified bit.
  *
  * \return          FM_OK if successful.
@@ -409,14 +409,20 @@ fm_status fmGetBitArrayBit(fm_bitArray *bitArray,
 
 
 
-/*****************************************************************************
- * fmClearBitArray
+/*****************************************************************************/
+/** fmClearBitArray
+ * \ingroup diagBitArray
  *
- * Description: Clears all bits in a bit array
+ * \desc            Clears all bits in a bit array.
  *
- * Arguments:   bitArray                pointer to the bit array
+ * \note            The bit array must have been previously initialized with 
+ *                  a call to ''fmCreateBitArray''.
  *
- * Returns:     Fulcrum API status code
+ * \param[in,out]   bitArray points to the ''fm_bitArray'' object.
+ *
+ * \return          FM_OK if successful.
+ * \return          FM_ERR_INVALID_ARGUMENT if bitArray points to NULL or
+ *                  the structure is invalid.
  *
  *****************************************************************************/
 fm_status fmClearBitArray(fm_bitArray *bitArray)
@@ -1224,3 +1230,42 @@ fm_status fmCopyBitArray(fm_bitArray* dest, const fm_bitArray* src)
     return FM_OK;
 
 }   /* end fmCopyBitArray */
+
+
+
+
+/*****************************************************************************/
+/** fmGetBitArrayBitCount
+ * \ingroup intBitArray
+ *
+ * \desc            Gets the value of a bit count from a bit array.
+ *
+ * \note            The bit array must have been previously initialized with
+ *                  a call to ''fmCreateBitArray''.
+ *
+ * \param[in]       bitArray points to the ''fm_bitArray'' object.
+ *
+ * \param[out]      bitCount points to caller-allocated storage where this
+ *                  function is to place the bit count value.
+ *
+ * \return          FM_OK if successful.
+ * \return          FM_ERR_INVALID_ARGUMENT if bitArray points to NULL.
+ *
+ *****************************************************************************/
+fm_status fmGetBitArrayBitCount(fm_bitArray *bitArray,
+                                fm_int      *bitCount)
+{
+    fm_status status;
+
+    status = FM_OK;
+
+    if (bitArray == NULL)
+    {
+        return FM_ERR_INVALID_ARGUMENT;
+    }
+
+    *bitCount = bitArray->bitCount;
+
+    return status;
+
+}   /* end fmGetBitArrayBitCount */

@@ -48,6 +48,25 @@
 
 #define TLV_ETHMODE_AUTODETECT 15
 
+#define PROP_TXT_SIZE               255
+
+/* Port config load flags */
+#define PLFS_HW_ID                  (1 << 0)
+#define PLFS_ETHMODE                (1 << 1)
+#define PLFS_TXEQ_PRE_CU            (1 << 2)
+#define PLFS_TXEQ_CUR_CU            (1 << 3)
+#define PLFS_TXEQ_POST_CU           (1 << 4)
+#define PLFS_TXEQ_PRE_OPT           (1 << 5)
+#define PLFS_TXEQ_CUR_OPT           (1 << 6)
+#define PLFS_TXEQ_POST_OPT          (1 << 7)
+#define PLFS_PORT_MAP               (1 << 8)
+#define PLFS_POLARITY_ALL_LANE      (1 << 9)
+#define PLFS_POLARITY_LANE          (1 << 10)
+#define PLFS_POLARITY               (PLFS_POLARITY_ALL_LANE | PLFS_POLARITY_LANE)
+#define PLFS_RX_TERM_ALL_LANE       (1 << 11)
+#define PLFS_RX_TERM_LANE           (1 << 12)
+#define PLFS_RX_TERM                (PLFS_RX_TERM_ALL_LANE | PLFS_RX_TERM_LANE)
+
 /* Pair of switch number and port configuration on the switch */
 typedef struct
 {
@@ -79,10 +98,236 @@ typedef struct
  * Local Functions
  *****************************************************************************/
 
-
-/*****************************************************************************
- * Public Functions
+/*****************************************************************************/
+/* SwIdxErrorMsg
+ * \ingroup intPlatform
+ *
+ * \desc            Log an error message when swIdx exceeds num switches.
+ *
+ * \param[in]       swIdx is the switch index
+ *
+ * \param[in]       numSw is the number of switches in system.
+ *
+ * \param[in]       tlv is an array of encoded TLV bytes.
+ *
+ * \return          NONE. 
+ *
  *****************************************************************************/
+static void SwIdxErrorMsg(fm_int swIdx, fm_int numSw, fm_byte *tlv)
+{
+    fm_char propTxt[PROP_TXT_SIZE];
+
+    fmUtilConfigPropertyDecodeTlv(tlv, propTxt, sizeof(propTxt));
+
+    if (numSw <= 0)
+    {
+        FM_LOG_ERROR(FM_LOG_CAT_PLATFORM,
+                    "\'%s\' must be after numSwitches configuration.\n",
+                    propTxt);
+    }
+    else
+    {
+        FM_LOG_ERROR(FM_LOG_CAT_PLATFORM,
+                    "\'%s\' is out of range of numSwitches %d.\n",
+                    propTxt, numSw);
+        
+    }
+
+}   /* end SwIdxErrorMsg */
+
+
+
+/*****************************************************************************/
+/* PortIdxErrorMsg
+ * \ingroup intPlatform
+ *
+ * \desc            Log an error message when portIdx exceeds num ports.
+ *
+ * \param[in]       swIdx is the switch index
+ *
+ * \param[in]       portIdx is the port index
+ *
+ * \param[in]       numPorts is the number of ports for given swIdx.
+ *
+ * \param[in]       tlv is an array of encoded TLV bytes.
+ *
+ * \return          NONE. 
+ *
+ *****************************************************************************/
+static void PortIdxErrorMsg(fm_int swIdx, fm_int portIdx, fm_int numPorts, fm_byte *tlv)
+{
+    fm_char propTxt[PROP_TXT_SIZE];
+
+    fmUtilConfigPropertyDecodeTlv(tlv, propTxt, sizeof(propTxt));
+
+    if (numPorts <= 0)
+    {
+        FM_LOG_ERROR(FM_LOG_CAT_PLATFORM,
+                    "\'%s\' must be after numPorts configuration for switch %d.\n",
+                    propTxt, swIdx);
+    }
+    else
+    {
+        FM_LOG_ERROR(FM_LOG_CAT_PLATFORM,
+                    "\'%s\' is out of range of numPorts %d for switch %d.\n",
+                    propTxt, numPorts, swIdx);
+        
+    }
+
+}   /* end PortIdxErrorMsg */
+
+
+
+/*****************************************************************************/
+/* PhyIdxErrorMsg
+ * \ingroup intPlatform
+ *
+ * \desc            Log an error message when phyIdx exceeds num PHYs.
+ *
+ * \param[in]       swIdx is the switch index
+ *
+ * \param[in]       phyIdx is the phy index
+ *
+ * \param[in]       numPhys is the number of phys for given swIdx.
+ *
+ * \param[in]       tlv is an array of encoded TLV bytes.
+ *
+ * \return          NONE. 
+ *
+ *****************************************************************************/
+static void PhyIdxErrorMsg(fm_int swIdx, fm_int phyIdx, fm_int numPhys, fm_byte *tlv)
+{
+    fm_char propTxt[PROP_TXT_SIZE];
+
+    fmUtilConfigPropertyDecodeTlv(tlv, propTxt, sizeof(propTxt));
+
+    if (numPhys <= 0)
+    {
+        FM_LOG_ERROR(FM_LOG_CAT_PLATFORM,
+                    "\'%s\' must be after numPhys configuration for switch %d.\n",
+                    propTxt, swIdx);
+    }
+    else
+    {
+        FM_LOG_ERROR(FM_LOG_CAT_PLATFORM,
+                    "\'%s\' is out of range of numPhys %d for switch %d.\n",
+                    propTxt, numPhys, swIdx);
+        
+    }
+
+}   /* end PhyIdxErrorMsg */
+
+
+
+
+/*****************************************************************************/
+/* PortCfgOrderErrorMsg
+ * \ingroup intPlatform
+ *
+ * \desc            Log an error message with decoded configuration.
+ *
+ * \param[in]       tlv is an array of encoded TLV bytes.
+ *
+ * \param[in]       format is the text string format 
+ *                  to append after the decoded config.
+ *
+ * \return          NONE. 
+ *
+ *****************************************************************************/
+static void PortCfgOrderErrorMsg(fm_byte *tlv, fm_int portIdx, fm_text format)
+{
+    fm_char propTxt[PROP_TXT_SIZE];
+    fm_char apStr[256];
+
+    fmUtilConfigPropertyDecodeTlv(tlv, propTxt, sizeof(propTxt));
+    FM_SNPRINTF_S(apStr, sizeof(apStr), format, portIdx);
+
+    FM_LOG_ERROR(FM_LOG_CAT_PLATFORM, "\'%s\' %s.\n", propTxt, apStr);
+
+}   /* end PortCfgOrderErrorMsg */
+
+
+
+/*****************************************************************************/
+/* CheckIntfTypeOrder
+ * \ingroup intPlatform
+ *
+ * \desc            Verify interface type configuration order.
+ *
+ * \param[in]       tlv is an array of encoded TLV bytes.
+ *
+ * \param[in]       swIdx is the switch index.
+ *
+ * \param[in]       portCfg is a pointer to fm_platformCfgPort.
+ *
+ * \param[in]       intfType is the interface type value.
+ *
+ * \return          FM_OK if successful.
+ *
+ *****************************************************************************/
+static fm_status CheckIntfTypeOrder(fm_byte *tlv, fm_int swIdx,
+                                    fm_platformCfgPort *portCfg, fm_int intfType)
+{
+
+    if (portCfg->loadFlags & PLFS_POLARITY)
+    {
+        PortCfgOrderErrorMsg(tlv, portCfg->portIdx,
+            "must be before port %d lane polarity config");
+        return FM_ERR_INVALID_ARGUMENT;
+    }
+    if (portCfg->loadFlags & PLFS_RX_TERM)
+    {
+        PortCfgOrderErrorMsg(tlv, portCfg->portIdx,
+            "must be before port %d rx termination config");
+        return FM_ERR_INVALID_ARGUMENT;
+    }
+
+    if (portCfg->loadFlags & PLFS_TXEQ_PRE_CU)
+    {
+        PortCfgOrderErrorMsg(tlv, portCfg->portIdx,
+            "must be before port %d pre-cursor configuration");
+        return FM_ERR_INVALID_ARGUMENT;
+    }
+
+    if (portCfg->loadFlags & PLFS_TXEQ_CUR_CU)
+    {
+        PortCfgOrderErrorMsg(tlv, portCfg->portIdx,
+            "must be before port %d cursor configuration");
+        return FM_ERR_INVALID_ARGUMENT;
+    }
+
+    if (portCfg->loadFlags & PLFS_TXEQ_POST_CU)
+    {
+        PortCfgOrderErrorMsg(tlv, portCfg->portIdx,
+            "must be before port %d post-cursor configuration");
+        return FM_ERR_INVALID_ARGUMENT;
+    }
+
+    if (portCfg->loadFlags & PLFS_TXEQ_PRE_OPT)
+    {
+        PortCfgOrderErrorMsg(tlv, portCfg->portIdx,
+            "must be before port %d pre-cursor configuration");
+        return FM_ERR_INVALID_ARGUMENT;
+    }
+
+    if (portCfg->loadFlags & PLFS_TXEQ_CUR_OPT)
+    {
+        PortCfgOrderErrorMsg(tlv, portCfg->portIdx,
+            "must be before port %d cursor configuration");
+        return FM_ERR_INVALID_ARGUMENT;
+    }
+
+    if (portCfg->loadFlags & PLFS_TXEQ_POST_OPT)
+    {
+        PortCfgOrderErrorMsg(tlv, portCfg->portIdx,
+            "must be before port %d post-cursor configuration");
+        return FM_ERR_INVALID_ARGUMENT;
+    }
+
+    return FM_OK;
+
+}   /* end CheckIntfTypeOrder */
+
 
 
 /*****************************************************************************/
@@ -99,7 +344,7 @@ typedef struct
  *
  * \param[in]       srcSize is the size of the TLV buffer.
  *
- * \return          Integer equivalent of the TLV bytes. 
+ * \return          NONE. 
  *
  *****************************************************************************/
 static void CopyTlvStr(fm_text dest, fm_int destSize, fm_byte *src, fm_int srcSize)
@@ -217,9 +462,6 @@ static fm_bool GetTlvBool(fm_byte *tlv)
 
 
 
-
-
-
 /*****************************************************************************/
 /* CheckHwResourceId
  * \ingroup intPlatform
@@ -234,8 +476,7 @@ static fm_bool GetTlvBool(fm_byte *tlv)
  *
  * \param[in,out]   hwResourceIdList points to an array of ''fm_platformCfgPort''
  *                  structures. The array must be large enough to hold the
- *                  maximum number of possible HW Resource ID entries
- *                  (''FM_NUM_HW_RES_ID'').
+ *                  maximum number of possible HW Resource ID entries.
  *
  * \param[in]       defaultId is the default hwResourceId value.
  *
@@ -267,11 +508,6 @@ static fm_status CheckHwResourceId(fm_int              sw,
      * to the array and check if it is unique */
     if (portCfg->hwResourceId != defaultId)
     {
-        if (hwIdx >= FM_NUM_HW_RES_ID)
-        {
-            return FM_ERR_INVALID_ARGUMENT;
-        }
-
         if (hwResourceIdList[hwIdx].portCfg == NULL)
         {
             hwResourceIdList[hwIdx].swIdx = sw;
@@ -379,6 +615,300 @@ static fm_ethMode GetTlvEthMode(fm_byte tlv)
 }   /* end GetTlvEthMode */
 
 
+/*****************************************************************************/
+/* GetSpeedFromEthMode
+ * \ingroup intPlatform
+ *
+ * \desc            Get speed from ethernet mode.
+ *
+ * \param[in]       ethMode is the ethernet mode.
+ *
+ * \return          The equivalent speed in Mbps. 
+ *
+ *****************************************************************************/
+static fm_int GetSpeedFromEthMode(fm_ethMode ethMode)
+{
+
+    switch (ethMode)
+    {
+        default:
+        case FM_ETH_MODE_DISABLED:
+            return 0;
+        case FM_ETH_MODE_SGMII:
+        case FM_ETH_MODE_1000BASE_KX:
+        case FM_ETH_MODE_1000BASE_X:
+            return 1000;
+        case FM_ETH_MODE_2500BASE_X:
+            return 2500;
+        case FM_ETH_MODE_6GBASE_CR:
+            return 6000;
+        case FM_ETH_MODE_10GBASE_KX4:
+        case FM_ETH_MODE_10GBASE_CX4:
+        case FM_ETH_MODE_10GBASE_CR:
+        case FM_ETH_MODE_10GBASE_SR:
+            return 10000;
+        case FM_ETH_MODE_24GBASE_CR4:
+            return 24000;
+        case FM_ETH_MODE_25GBASE_SR:
+            return 25000;
+        case FM_ETH_MODE_40GBASE_SR4:
+            return 40000;
+        case FM_ETH_MODE_100GBASE_SR4:
+            return 100000;
+    }
+
+}   /* end GetSpeedFromEthMode */
+
+
+
+
+/*****************************************************************************/
+/* GetPortNumLanesFromIntfType
+ * \ingroup intPlatform
+ *
+ * \desc            Get num lanes from port interface type.
+ *
+ * \param[in]       portCfg is a pointer to fm_platformCfgPort.
+ *
+ * \return          FM_OK if successful.
+ *
+ *****************************************************************************/
+static fm_status GetPortNumLanesFromIntfType(fm_platformCfgPort *portCfg,
+                                             fm_int *numLanes)
+{
+
+    switch (portCfg->intfType)
+    {
+        case FM_PLAT_INTF_TYPE_QSFP_LANE0:
+        case FM_PLAT_INTF_TYPE_QSFP_LANE1:
+        case FM_PLAT_INTF_TYPE_QSFP_LANE2:
+        case FM_PLAT_INTF_TYPE_QSFP_LANE3:
+            *numLanes = 4;
+            break;
+        default:
+            *numLanes = 1;
+            break;
+    }
+
+    return FM_OK;
+
+}   /* end GetPortNumLanesFromIntfType */
+
+
+
+/*****************************************************************************/
+/* VerifyPortCapability
+ * \ingroup intPlatform
+ *
+ * \desc            Validate port capability and an73 basepage.
+ *
+ * \param[in]       sw is the switch index on which to operate.
+ *
+ * \param[in]       portCfg is the pointer to the port config.
+ *
+ * \return          FM_OK if successful.
+ *
+ *****************************************************************************/
+static fm_status VerifyPortCapability(fm_int              sw,
+                                      fm_platformCfgPort *portCfg)
+{
+    fm_status             status;
+    fm_platformCfgSwitch *swCfg;
+
+    status = FM_OK;
+    swCfg  = FM_PLAT_GET_SWITCH_CFG(sw);
+
+    if (portCfg->portType != FM_PLAT_PORT_TYPE_EPL)
+    {
+        portCfg->an73AbilityCfg = 0;
+        return FM_OK;
+    }
+
+    if (portCfg->cap == (fm_uint)FM_PLAT_UNDEFINED)
+    {
+#ifdef FM_SUPPORT_SWAG
+        if (swCfg->switchRole == FM_SWITCH_ROLE_SWAG)
+        {
+            return FM_OK;
+        }
+#endif
+        FM_LOG_ERROR(FM_LOG_CAT_PLATFORM,
+                       "Sw#%d Port %d capability must be defined.\n",
+                        sw, portCfg->port);
+        return FM_ERR_INVALID_ARGUMENT;
+    }
+
+    portCfg->an73Ability = portCfg->an73AbilityCfg;
+    if (portCfg->an73Ability == (fm_uint)FM_PLAT_UNDEFINED)
+    {
+        portCfg->an73Ability = 0;
+        if (portCfg->cap & FM_PLAT_PORT_CAP_SPEED_1G)
+        {
+            portCfg->an73Ability |= FM_PLAT_AN73_ABILITY_1000BASE_KX;
+        }
+        if (portCfg->cap & FM_PLAT_PORT_CAP_SPEED_10G)
+        {
+            portCfg->an73Ability |= FM_PLAT_AN73_ABILITY_10GBASE_KR;
+        }
+        if (portCfg->cap & FM_PLAT_PORT_CAP_SPEED_25G)
+        {
+            portCfg->an73Ability |= FM_PLAT_AN73_ABILITY_25GGBASE_CR_KR;
+        }
+        if (portCfg->cap & FM_PLAT_PORT_CAP_SPEED_40G)
+        {
+            portCfg->an73Ability |= FM_PLAT_AN73_ABILITY_40GBASE_KR4;
+            portCfg->an73Ability |= FM_PLAT_AN73_ABILITY_40GBASE_CR4;
+        }
+        if (portCfg->cap & FM_PLAT_PORT_CAP_SPEED_100G)
+        {
+            portCfg->an73Ability |= FM_PLAT_AN73_ABILITY_100GBASE_KR4;
+            portCfg->an73Ability |= FM_PLAT_AN73_ABILITY_100GBASE_CR4;
+        }
+    }
+
+    switch (GetSpeedFromEthMode(portCfg->ethMode))
+    {
+        case 1000:
+            if (!(portCfg->cap & FM_PLAT_PORT_CAP_SPEED_1G))
+            {
+                FM_LOG_ERROR(FM_LOG_CAT_PLATFORM,
+                             "Port %d ethernet mode %s requires 1G capability set.\n",
+                              portCfg->port,
+                              fmPlatformGetEthModeStr(portCfg->ethMode));
+                status = FM_ERR_INVALID_ARGUMENT;
+            }
+            break;
+        case 2500:
+            if (!(portCfg->cap & FM_PLAT_PORT_CAP_SPEED_2PT5G))
+            {
+                FM_LOG_ERROR(FM_LOG_CAT_PLATFORM,
+                             "Port %d ethernet mode %s requires 2.5G capability set.\n",
+                              portCfg->port,
+                              fmPlatformGetEthModeStr(portCfg->ethMode));
+                status = FM_ERR_INVALID_ARGUMENT;
+            }
+            break;
+         case 10000:
+            if (!(portCfg->cap & FM_PLAT_PORT_CAP_SPEED_10G))
+            {
+                FM_LOG_ERROR(FM_LOG_CAT_PLATFORM,
+                             "Port %d ethernet mode %s requires 10G capability set.\n",
+                              portCfg->port,
+                              fmPlatformGetEthModeStr(portCfg->ethMode));
+                status = FM_ERR_INVALID_ARGUMENT;
+            }
+            break;
+       case 25000:
+            if (!(portCfg->cap & FM_PLAT_PORT_CAP_SPEED_25G))
+            {
+                FM_LOG_ERROR(FM_LOG_CAT_PLATFORM,
+                             "Port %d ethernet mode %s requires 25G capability set.\n",
+                              portCfg->port,
+                              fmPlatformGetEthModeStr(portCfg->ethMode));
+                status = FM_ERR_INVALID_ARGUMENT;
+            }
+            break;
+       case 40000:
+            if (!(portCfg->cap & FM_PLAT_PORT_CAP_SPEED_40G))
+            {
+                FM_LOG_ERROR(FM_LOG_CAT_PLATFORM,
+                             "Port %d ethernet mode %s requires 40G capability set.\n",
+                              portCfg->port,
+                              fmPlatformGetEthModeStr(portCfg->ethMode));
+                status = FM_ERR_INVALID_ARGUMENT;
+            }
+            break;
+       case 100000:
+            if (!(portCfg->cap & FM_PLAT_PORT_CAP_SPEED_100G))
+            {
+                FM_LOG_ERROR(FM_LOG_CAT_PLATFORM,
+                             "Port %d ethernet mode %s requires 100G capability set.\n",
+                              portCfg->port,
+                              fmPlatformGetEthModeStr(portCfg->ethMode));
+                status = FM_ERR_INVALID_ARGUMENT;
+            }
+            break;
+        case 0:
+            break;
+        default:
+            FM_LOG_ERROR(FM_LOG_CAT_PLATFORM,
+                         "Port %d ethernet mode %s is not supported.\n",
+                          portCfg->port,
+                          fmPlatformGetEthModeStr(portCfg->ethMode));
+                status = FM_ERR_INVALID_ARGUMENT;
+            break;
+    }
+
+
+    /* Make sure capability and basepage is consistent */
+    if ((portCfg->an73Ability & FM_PLAT_AN73_ABILITY_1000BASE_KX) &&
+        !(portCfg->cap & FM_PLAT_PORT_CAP_SPEED_1G))
+    {
+        FM_LOG_ERROR(FM_LOG_CAT_PLATFORM,
+                     "Port %d advertises 1G-KX but 1G capability is not set.\n",
+                      portCfg->port);
+        portCfg->an73Ability &= ~FM_PLAT_AN73_ABILITY_1000BASE_KX;
+        status = FM_ERR_INVALID_ARGUMENT;
+    }
+    if ((portCfg->an73Ability & FM_PLAT_AN73_ABILITY_10GBASE_KR) &&
+        !(portCfg->cap & FM_PLAT_PORT_CAP_SPEED_10G))
+    {
+        FM_LOG_ERROR(FM_LOG_CAT_PLATFORM,
+                     "Port %d advertises 10G-KR but 10G capability is not set.\n",
+                      portCfg->port);
+        portCfg->an73Ability &= ~FM_PLAT_AN73_ABILITY_10GBASE_KR;
+        status = FM_ERR_INVALID_ARGUMENT;
+    }
+    if ((portCfg->an73Ability & FM_PLAT_AN73_ABILITY_25GGBASE_CR_KR) &&
+        !(portCfg->cap & FM_PLAT_PORT_CAP_SPEED_25G))
+    {
+        FM_LOG_ERROR(FM_LOG_CAT_PLATFORM,
+                     "Port %d advertises 25G-CR/KR but 25G capability is not set.\n",
+                      portCfg->port);
+        portCfg->an73Ability &= ~FM_PLAT_AN73_ABILITY_25GGBASE_CR_KR;
+    }
+    if ((portCfg->an73Ability & FM_PLAT_AN73_ABILITY_40GBASE_KR4) &&
+        !(portCfg->cap & FM_PLAT_PORT_CAP_SPEED_40G))
+    {
+        FM_LOG_ERROR(FM_LOG_CAT_PLATFORM,
+                      "Port %d advertises 40G-KR4 but 40G capability is not set.\n",
+                       portCfg->port);
+        portCfg->an73Ability &= ~FM_PLAT_AN73_ABILITY_40GBASE_KR4;
+        status = FM_ERR_INVALID_ARGUMENT;
+    }
+    if ((portCfg->an73Ability & FM_PLAT_AN73_ABILITY_40GBASE_CR4) &&
+        !(portCfg->cap & FM_PLAT_PORT_CAP_SPEED_40G))
+    {
+        FM_LOG_ERROR(FM_LOG_CAT_PLATFORM,
+                     "Port %d advertises 40G-CR4 but 40G capability is not set.\n",
+                      portCfg->port);
+        portCfg->an73Ability &= ~FM_PLAT_AN73_ABILITY_40GBASE_CR4;
+        status = FM_ERR_INVALID_ARGUMENT;
+    }
+    if ((portCfg->an73Ability & FM_PLAT_AN73_ABILITY_100GBASE_KR4) &&
+        !(portCfg->cap & FM_PLAT_PORT_CAP_SPEED_100G))
+    {
+        FM_LOG_ERROR(FM_LOG_CAT_PLATFORM,
+                     "Port %d advertises 100G-KR4 but 100G capability is not set.\n",
+                      portCfg->port);
+        portCfg->an73Ability &= ~FM_PLAT_AN73_ABILITY_100GBASE_KR4;
+        status = FM_ERR_INVALID_ARGUMENT;
+    }
+    if ((portCfg->an73Ability & FM_PLAT_AN73_ABILITY_100GBASE_CR4) &&
+        !(portCfg->cap & FM_PLAT_PORT_CAP_SPEED_100G))
+    {
+        FM_LOG_ERROR(FM_LOG_CAT_PLATFORM,
+                     "Port %d advertises 100G-CR4 but 100G capability is not set.\n",
+                      portCfg->port);
+        portCfg->an73Ability &= ~FM_PLAT_AN73_ABILITY_100GBASE_CR4;
+        status = FM_ERR_INVALID_ARGUMENT;
+    }
+
+    return status;
+
+} /* end VerifyPortCapability */
+
+
 
 
 /*****************************************************************************/
@@ -393,17 +923,18 @@ static fm_ethMode GetTlvEthMode(fm_byte tlv)
  *
  * \param[in]       value is the TX equalization value to set.
  *
+ * \param[in]       tlv is an array of encoded TLV bytes used for error output.
+ *
  * \return          NONE 
  *
  *****************************************************************************/
-
-void SetPortDefTxEq(fm_int swIdx,
-                    fm_uint tlvType,
-                    fm_byte value)
+static fm_status SetPortDefTxEq(fm_int swIdx, fm_uint tlvType, fm_byte value,
+                                fm_byte *tlv)
 {
     fm_int                portIdx;
     fm_platformCfgSwitch *swCfg;
-    fm_platformCfgLane *  laneCfg;
+    fm_platformCfgPort   *portCfg;
+    fm_platformCfgLane   *laneCfg;
     fm_platSerdesBitRate  bps;
     fm_int                epl;
     fm_int                eplLane;
@@ -412,6 +943,7 @@ void SetPortDefTxEq(fm_int swIdx,
     swCfg = FM_PLAT_GET_SWITCH_CFG(swIdx);
     for (portIdx = 0 ; portIdx < swCfg->numPorts ; portIdx++)
     {
+        portCfg = FM_PLAT_GET_PORT_CFG(swIdx, portIdx);
         for (epl = 0 ; epl < FM_PLAT_NUM_EPL ; epl++)
         {
             for (eplLane = 0 ; eplLane < FM_PLAT_LANES_PER_EPL ; eplLane++)
@@ -425,27 +957,65 @@ void SetPortDefTxEq(fm_int swIdx,
                     {
                         case FM_TLV_PLAT_SW_PORT_DEF_TXEQ_PRE_CU:
                             laneCfg->copper[bps].preCursor = value;
+                            if (tlv && portCfg->loadFlags & PLFS_TXEQ_PRE_CU)
+                            {
+                                PortCfgOrderErrorMsg(tlv, portIdx,
+                                    "must be before port %d pre-cursor configuration");
+                                return FM_ERR_INVALID_ARGUMENT;
+                            }
                             break;
                         case FM_TLV_PLAT_SW_PORT_DEF_TXEQ_CUR_CU:
                             laneCfg->copper[bps].cursor = value;
+                            if (tlv && portCfg->loadFlags & PLFS_TXEQ_CUR_CU)
+                            {
+                                PortCfgOrderErrorMsg(tlv, portIdx,
+                                    "must be before port %d cursor configuration");
+                                return FM_ERR_INVALID_ARGUMENT;
+                            }
                             break;
                         case FM_TLV_PLAT_SW_PORT_DEF_TXEQ_POST_CU:
                             laneCfg->copper[bps].postCursor = value;
+                            if (tlv && portCfg->loadFlags & PLFS_TXEQ_POST_CU)
+                            {
+                                PortCfgOrderErrorMsg(tlv, portIdx,
+                                    "must be before port %d post-cursor configuration");
+                                return FM_ERR_INVALID_ARGUMENT;
+                            }
                             break;
                         case FM_TLV_PLAT_SW_PORT_DEF_TXEQ_PRE_OPT:
                             laneCfg->optical[bps].preCursor = value;
+                            if (tlv && portCfg->loadFlags & PLFS_TXEQ_PRE_OPT)
+                            {
+                                PortCfgOrderErrorMsg(tlv, portIdx,
+                                    "must be before port %d pre-cursor configuration");
+                                return FM_ERR_INVALID_ARGUMENT;
+                            }
                             break;
                         case FM_TLV_PLAT_SW_PORT_DEF_TXEQ_CUR_OPT:
                             laneCfg->optical[bps].cursor = value;
+                            if (tlv && portCfg->loadFlags & PLFS_TXEQ_CUR_OPT)
+                            {
+                                PortCfgOrderErrorMsg(tlv, portIdx,
+                                    "must be before port %d cursor configuration");
+                                return FM_ERR_INVALID_ARGUMENT;
+                            }
                             break;
                         case FM_TLV_PLAT_SW_PORT_DEF_TXEQ_POST_OPT:
                             laneCfg->optical[bps].postCursor = value;
+                            if (tlv && portCfg->loadFlags & PLFS_TXEQ_POST_OPT)
+                            {
+                                PortCfgOrderErrorMsg(tlv, portIdx,
+                                    "must be before port %d post-cursor configuration");
+                                return FM_ERR_INVALID_ARGUMENT;
+                            }
                             break;
                     }
                 }
             }
         }
     }
+
+    return FM_OK;
 
 }   /* end SetPortDefTxEq */
 
@@ -471,12 +1041,13 @@ void SetPortDefTxEq(fm_int swIdx,
  * \return          NONE 
  *
  *****************************************************************************/
-void SetPortTxEq(fm_int swIdx,
-                 fm_int portIdx,
-                 fm_int lane,
-                 fm_uint eqType,
-                 fm_byte value)
+static void SetPortTxEq(fm_int swIdx,
+                        fm_int portIdx,
+                        fm_int lane,
+                        fm_uint eqType,
+                        fm_char value)
 {
+    fm_status             status;
     fm_platformCfgSwitch *swCfg;
     fm_platformCfgPort *  portCfg;
     fm_platformCfgLane *  laneCfg;
@@ -496,7 +1067,7 @@ void SetPortTxEq(fm_int swIdx,
     }
 
     epl = portCfg->epl;
-    if (epl >= FM_PLAT_NUM_EPL)
+    if (epl < 0 || epl >= FM_PLAT_NUM_EPL)
     {
         FM_LOG_ERROR(FM_LOG_CAT_PLATFORM,
             "epl %d is out of range\n",
@@ -507,7 +1078,11 @@ void SetPortTxEq(fm_int swIdx,
     if (lane == LANE_ALL)
     {
         startLane = 0;
-        endLane = (portCfg->intfType == FM_PLAT_INTF_TYPE_QSFP_LANE0) ? 4 : 1;
+        status = GetPortNumLanesFromIntfType(portCfg, &endLane);
+        if (status)
+        {
+            return;
+        }
     }
     else
     {
@@ -524,76 +1099,94 @@ void SetPortTxEq(fm_int swIdx,
             case FM_TLV_PLAT_SW_PORTIDX_TXEQ_PRE_CU_1G:
             case FM_TLV_PLAT_SW_PORTIDX_LANE_TXEQ_PRE_CU_1G:
                 laneCfg->copper[BPS_1G].preCursor = value;
+                portCfg->loadFlags |= PLFS_TXEQ_PRE_CU;
                 break;
             case FM_TLV_PLAT_SW_PORTIDX_TXEQ_PRE_CU_10G:
             case FM_TLV_PLAT_SW_PORTIDX_LANE_TXEQ_PRE_CU_10G:
                 laneCfg->copper[BPS_10G].preCursor = value;
+                portCfg->loadFlags |= PLFS_TXEQ_PRE_CU;
                 break;
             case FM_TLV_PLAT_SW_PORTIDX_TXEQ_PRE_CU_25G:
             case FM_TLV_PLAT_SW_PORTIDX_LANE_TXEQ_PRE_CU_25G:
                 laneCfg->copper[BPS_25G].preCursor = value;
+                portCfg->loadFlags |= PLFS_TXEQ_PRE_CU;
                 break;
             case FM_TLV_PLAT_SW_PORTIDX_TXEQ_PRE_OPT_1G:
             case FM_TLV_PLAT_SW_PORTIDX_LANE_TXEQ_PRE_OPT_1G:
                 laneCfg->optical[BPS_1G].preCursor = value;
+                portCfg->loadFlags |= PLFS_TXEQ_PRE_OPT;
                 break;
             case FM_TLV_PLAT_SW_PORTIDX_TXEQ_PRE_OPT_10G:
             case FM_TLV_PLAT_SW_PORTIDX_LANE_TXEQ_PRE_OPT_10G:
                 laneCfg->optical[BPS_10G].preCursor = value;
+                portCfg->loadFlags |= PLFS_TXEQ_PRE_OPT;
                 break;
             case FM_TLV_PLAT_SW_PORTIDX_TXEQ_PRE_OPT_25G:
             case FM_TLV_PLAT_SW_PORTIDX_LANE_TXEQ_PRE_OPT_25G:
                 laneCfg->optical[BPS_25G].preCursor = value;
+                portCfg->loadFlags |= PLFS_TXEQ_PRE_OPT;
                 break;
 
             case FM_TLV_PLAT_SW_PORTIDX_TXEQ_CUR_CU_1G:
             case FM_TLV_PLAT_SW_PORTIDX_LANE_TXEQ_CUR_CU_1G:
-                laneCfg->copper[BPS_1G].preCursor = value;
-                break;
+                laneCfg->copper[BPS_1G].cursor = value;
+                portCfg->loadFlags |= PLFS_TXEQ_CUR_CU;
+               break;
             case FM_TLV_PLAT_SW_PORTIDX_TXEQ_CUR_CU_10G:
             case FM_TLV_PLAT_SW_PORTIDX_LANE_TXEQ_CUR_CU_10G:
-                laneCfg->copper[BPS_10G].preCursor = value;
+                laneCfg->copper[BPS_10G].cursor = value;
+                portCfg->loadFlags |= PLFS_TXEQ_CUR_CU;
                 break;
             case FM_TLV_PLAT_SW_PORTIDX_TXEQ_CUR_CU_25G:
             case FM_TLV_PLAT_SW_PORTIDX_LANE_TXEQ_CUR_CU_25G:
-                laneCfg->copper[BPS_25G].preCursor = value;
+                laneCfg->copper[BPS_25G].cursor = value;
+                portCfg->loadFlags |= PLFS_TXEQ_CUR_CU;
                 break;
             case FM_TLV_PLAT_SW_PORTIDX_TXEQ_CUR_OPT_1G:
             case FM_TLV_PLAT_SW_PORTIDX_LANE_TXEQ_CUR_OPT_1G:
-                laneCfg->optical[BPS_1G].preCursor = value;
+                laneCfg->optical[BPS_1G].cursor = value;
+                portCfg->loadFlags |= PLFS_TXEQ_CUR_OPT;
                 break;
             case FM_TLV_PLAT_SW_PORTIDX_TXEQ_CUR_OPT_10G:
             case FM_TLV_PLAT_SW_PORTIDX_LANE_TXEQ_CUR_OPT_10G:
-                laneCfg->optical[BPS_10G].preCursor = value;
+                laneCfg->optical[BPS_10G].cursor = value;
+                portCfg->loadFlags |= PLFS_TXEQ_CUR_OPT;
                 break;
             case FM_TLV_PLAT_SW_PORTIDX_TXEQ_CUR_OPT_25G:
             case FM_TLV_PLAT_SW_PORTIDX_LANE_TXEQ_CUR_OPT_25G:
-                laneCfg->optical[BPS_25G].preCursor = value;
+                portCfg->loadFlags |= PLFS_TXEQ_CUR_OPT;
+                laneCfg->optical[BPS_25G].cursor = value;
                 break;
 
             case FM_TLV_PLAT_SW_PORTIDX_TXEQ_POST_CU_1G:
             case FM_TLV_PLAT_SW_PORTIDX_LANE_TXEQ_POST_CU_1G:
-                laneCfg->copper[BPS_1G].preCursor = value;
+                laneCfg->copper[BPS_1G].postCursor = value;
+                portCfg->loadFlags |= PLFS_TXEQ_POST_CU;
                 break;
             case FM_TLV_PLAT_SW_PORTIDX_TXEQ_POST_CU_10G:
             case FM_TLV_PLAT_SW_PORTIDX_LANE_TXEQ_POST_CU_10G:
-                laneCfg->copper[BPS_10G].preCursor = value;
+                laneCfg->copper[BPS_10G].postCursor = value;
+                portCfg->loadFlags |= PLFS_TXEQ_POST_CU;
                 break;
             case FM_TLV_PLAT_SW_PORTIDX_TXEQ_POST_CU_25G:
             case FM_TLV_PLAT_SW_PORTIDX_LANE_TXEQ_POST_CU_25G:
-                laneCfg->copper[BPS_25G].preCursor = value;
+                laneCfg->copper[BPS_25G].postCursor = value;
+                portCfg->loadFlags |= PLFS_TXEQ_POST_CU;
                 break;
             case FM_TLV_PLAT_SW_PORTIDX_TXEQ_POST_OPT_1G:
             case FM_TLV_PLAT_SW_PORTIDX_LANE_TXEQ_POST_OPT_1G:
-                laneCfg->optical[BPS_1G].preCursor = value;
+                laneCfg->optical[BPS_1G].postCursor = value;
+                portCfg->loadFlags |= PLFS_TXEQ_POST_OPT;
                 break;
             case FM_TLV_PLAT_SW_PORTIDX_TXEQ_POST_OPT_10G:
             case FM_TLV_PLAT_SW_PORTIDX_LANE_TXEQ_POST_OPT_10G:
-                laneCfg->optical[BPS_10G].preCursor = value;
+                laneCfg->optical[BPS_10G].postCursor = value;
+                portCfg->loadFlags |= PLFS_TXEQ_POST_OPT;
                 break;
             case FM_TLV_PLAT_SW_PORTIDX_TXEQ_POST_OPT_25G:
             case FM_TLV_PLAT_SW_PORTIDX_LANE_TXEQ_POST_OPT_25G:
-                laneCfg->optical[BPS_25G].preCursor = value;
+                laneCfg->optical[BPS_25G].postCursor = value;
+                portCfg->loadFlags |= PLFS_TXEQ_POST_OPT;
                 break;
             default:
                 FM_LOG_ERROR(FM_LOG_CAT_PLATFORM,
@@ -606,6 +1199,12 @@ void SetPortTxEq(fm_int swIdx,
 }   /* end SetPortTxEq */
 
 
+
+
+
+/*****************************************************************************
+ * Public Functions
+ *****************************************************************************/
 
 
 /*****************************************************************************/
@@ -636,6 +1235,7 @@ fm_status fmPlatformLoadLTCfgTlv(fm_byte *tlv)
     fm_int                epl;
     fm_int                eplLane;
     fm_int                lane;
+    fm_int                numLanes;
     fm_int                phyIdx;
     fm_uint64             categoryMask;
     fm_uint64             valU64;
@@ -689,6 +1289,14 @@ fm_status fmPlatformLoadLTCfgTlv(fm_byte *tlv)
             break;
 
         case FM_TLV_PLAT_NUM_SW:
+            if (platCfg->numSwitches > 0)
+            {
+                FM_LOG_ERROR(FM_LOG_CAT_PLATFORM,
+                    "numSwitches %d has already been set to %d.\n",
+                    GetTlvInt(tlv + 3, 1), platCfg->numSwitches);
+                return FM_ERR_INVALID_ARGUMENT;
+            }
+
             platCfg->numSwitches = GetTlvInt(tlv + 3, 1);
             /* Allocate the switch configuration structures */
             fmRootPlatform->cfg.switches =
@@ -715,7 +1323,7 @@ fm_status fmPlatformLoadLTCfgTlv(fm_byte *tlv)
                 swCfg->xcvrPollPeriodMsec = FM_AAD_API_PLATFORM_XCVR_POLL_MSEC;
                 swCfg->msiEnabled         = FM_AAD_API_PLATFORM_MSI_ENABLED;
                 swCfg->fhClock            = FM_AAD_API_PLATFORM_FH_CLOCK;
-                swCfg->i2cClkDivider      = FM_AAD_API_LIB_I2C_CLKDIVIDER;
+                swCfg->i2cClkDivider      = FM_AAD_API_PLATFORM_I2C_CLKDIVIDER;
                 FM_STRNCPY_S(swCfg->devMemOffset,
                      FM_PLAT_MAX_CFG_STR_LEN,
                      FM_AAD_API_PLATFORM_DEVMEM_OFFSET,
@@ -748,6 +1356,7 @@ fm_status fmPlatformLoadLTCfgTlv(fm_byte *tlv)
             swIdx = GetTlvInt(tlv + 3, 1);
             if (swIdx >= platCfg->numSwitches)
             {
+                SwIdxErrorMsg(swIdx, platCfg->numSwitches, tlv);
                 return FM_ERR_INVALID_SWITCH;
             }
             swCfg = FM_PLAT_GET_SWITCH_CFG(swIdx);
@@ -757,9 +1366,19 @@ fm_status fmPlatformLoadLTCfgTlv(fm_byte *tlv)
             swIdx = GetTlvInt(tlv + 3, 1);
             if (swIdx >= platCfg->numSwitches)
             {
+                SwIdxErrorMsg(swIdx, platCfg->numSwitches, tlv);
                 return FM_ERR_INVALID_SWITCH;
             }
             swCfg = FM_PLAT_GET_SWITCH_CFG(swIdx);
+
+            if (swCfg->numPorts > 0)
+            {
+                FM_LOG_ERROR(FM_LOG_CAT_PLATFORM,
+                    "numPorts %d has already been set to %d for switch %d.\n",
+                    GetTlvInt(tlv + 4, 1), swCfg->numPorts, swIdx);
+                return FM_ERR_INVALID_ARGUMENT;
+            }
+
             swCfg->numPorts = GetTlvInt(tlv + 4, 1);
 
 
@@ -776,6 +1395,9 @@ fm_status fmPlatformLoadLTCfgTlv(fm_byte *tlv)
             {
                 portCfg = FM_PLAT_GET_PORT_CFG(swIdx, portIdx);
 
+                /* The physical port is the same as portIndex */
+                portCfg->physPort = portIdx;
+
                 portCfg->portIdx = portIdx;
                 portCfg->portType = FM_PLAT_PORT_TYPE_NONE;
                 portCfg->epl = FM_PLAT_UNDEFINED;
@@ -785,9 +1407,12 @@ fm_status fmPlatformLoadLTCfgTlv(fm_byte *tlv)
                 portCfg->phyNum = FM_PLAT_UNDEFINED;
                 portCfg->phyPort = FM_PLAT_UNDEFINED;
                 portCfg->hwResourceId = FM_DEFAULT_HW_RES_ID;
+                portCfg->ethMode = FM_ETH_MODE_DISABLED;
 
-                /* The physical port is the same as portIndex */
-                portCfg->physPort = portIdx;
+                portCfg->intfType = FM_PLAT_INTF_TYPE_NONE;
+                portCfg->dfeMode = FM_DFE_MODE_ONE_SHOT;
+                portCfg->an73AbilityCfg = FM_PLAT_UNDEFINED; 
+                portCfg->cap = FM_PLAT_UNDEFINED;
 
                 for (lane = 0 ; lane < FM_PLAT_LANES_PER_EPL ; lane++)
                 {
@@ -802,19 +1427,41 @@ fm_status fmPlatformLoadLTCfgTlv(fm_byte *tlv)
                     {
                         laneCfg = &swCfg->epls[epl].lane[eplLane];
                         laneCfg->rxTermination = FM_PLAT_UNDEFINED;
+                        laneCfg->lanePolarity = FM_POLARITY_INVERT_NONE;
                     }
                 }
 
-                portCfg->intfType = FM_PLAT_INTF_TYPE_NONE;
-                portCfg->dfeMode = FM_DFE_MODE_ONE_SHOT;
-                portCfg->an73Ability = FM_PLAT_AN73_DEFAULT_ABILITIES; 
+                SetPortDefTxEq(swIdx,
+                               FM_TLV_PLAT_SW_PORT_DEF_TXEQ_PRE_CU,
+                               FM_AAD_API_PLATFORM_PORT_PRECURSOR_COPPER_DEFAULT,
+                               NULL);
+                SetPortDefTxEq(swIdx,
+                               FM_TLV_PLAT_SW_PORT_DEF_TXEQ_CUR_CU,
+                               FM_AAD_API_PLATFORM_PORT_CURSOR_COPPER_DEFAULT,
+                               NULL);
+                SetPortDefTxEq(swIdx,
+                               FM_TLV_PLAT_SW_PORT_DEF_TXEQ_POST_CU,
+                               FM_AAD_API_PLATFORM_PORT_POSTCURSOR_COPPER_DEFAULT,
+                               NULL);
+                SetPortDefTxEq(swIdx,
+                               FM_TLV_PLAT_SW_PORT_DEF_TXEQ_PRE_OPT,
+                               FM_AAD_API_PLATFORM_PORT_PRECURSOR_OPTICAL_DEFAULT,
+                               NULL);
+                SetPortDefTxEq(swIdx,
+                               FM_TLV_PLAT_SW_PORT_DEF_TXEQ_CUR_OPT,
+                               FM_AAD_API_PLATFORM_PORT_CURSOR_OPTICAL_DEFAULT,
+                               NULL);
+                SetPortDefTxEq(swIdx,
+                               FM_TLV_PLAT_SW_PORT_DEF_TXEQ_POST_OPT,
+                               FM_AAD_API_PLATFORM_PORT_POSTCURSOR_OPTICAL_DEFAULT,
+                               NULL);
             }
-
             break;
         case FM_TLV_PLAT_SW_LED_POLL_PER:
             swIdx = GetTlvInt(tlv + 3, 1);
             if (swIdx >= platCfg->numSwitches)
             {
+                SwIdxErrorMsg(swIdx, platCfg->numSwitches, tlv);
                 return FM_ERR_INVALID_SWITCH;
             }
             swCfg = FM_PLAT_GET_SWITCH_CFG(swIdx);
@@ -824,6 +1471,7 @@ fm_status fmPlatformLoadLTCfgTlv(fm_byte *tlv)
             swIdx = GetTlvInt(tlv + 3, 1);
             if (swIdx >= platCfg->numSwitches)
             {
+                SwIdxErrorMsg(swIdx, platCfg->numSwitches, tlv);
                 return FM_ERR_INVALID_SWITCH;
             }
             swCfg = FM_PLAT_GET_SWITCH_CFG(swIdx);
@@ -833,6 +1481,7 @@ fm_status fmPlatformLoadLTCfgTlv(fm_byte *tlv)
             swIdx = GetTlvInt(tlv + 3, 1);
             if (swIdx >= platCfg->numSwitches)
             {
+                SwIdxErrorMsg(swIdx, platCfg->numSwitches, tlv);
                 return FM_ERR_INVALID_SWITCH;
             }
             swCfg = FM_PLAT_GET_SWITCH_CFG(swIdx);
@@ -842,6 +1491,7 @@ fm_status fmPlatformLoadLTCfgTlv(fm_byte *tlv)
             swIdx = GetTlvInt(tlv + 3, 1);
             if (swIdx >= platCfg->numSwitches)
             {
+                SwIdxErrorMsg(swIdx, platCfg->numSwitches, tlv);
                 return FM_ERR_INVALID_SWITCH;
             }
             swCfg = FM_PLAT_GET_SWITCH_CFG(swIdx);
@@ -852,12 +1502,14 @@ fm_status fmPlatformLoadLTCfgTlv(fm_byte *tlv)
             swIdx = GetTlvInt(tlv + 3, 1);
             if (swIdx >= platCfg->numSwitches)
             {
+                SwIdxErrorMsg(swIdx, platCfg->numSwitches, tlv);
                 return FM_ERR_INVALID_SWITCH;
             }
             swCfg = FM_PLAT_GET_SWITCH_CFG(swIdx);
             portIdx = GetTlvInt(tlv + 4, 1);
             if (portIdx >= FM_PLAT_NUM_PORT(swIdx))
             {
+                PortIdxErrorMsg(swIdx, portIdx, FM_PLAT_NUM_PORT(swIdx), tlv);
                 return FM_ERR_INVALID_PORT;
             }
             portCfg = FM_PLAT_GET_PORT_CFG(swIdx, portIdx);
@@ -936,7 +1588,7 @@ fm_status fmPlatformLoadLTCfgTlv(fm_byte *tlv)
                 break;
                 default:
                     FM_LOG_ERROR(FM_LOG_CAT_PLATFORM,
-                        "Unknown TLV portType %d\n",
+                        "Port mapping unknown TLV portType %d\n",
                         tlv[5 + off] & 0xF);
                 break;
             }
@@ -969,6 +1621,7 @@ fm_status fmPlatformLoadLTCfgTlv(fm_byte *tlv)
                 default:
                     portCfg->speed = 0;
             }
+            portCfg->loadFlags |= PLFS_PORT_MAP;
 
             break;
 #ifdef FM_SUPPORT_SWAG
@@ -976,18 +1629,21 @@ fm_status fmPlatformLoadLTCfgTlv(fm_byte *tlv)
             swIdx = GetTlvInt(tlv + 3, 1);
             if (swIdx >= platCfg->numSwitches)
             {
+                SwIdxErrorMsg(swIdx, platCfg->numSwitches, tlv);
                 return FM_ERR_INVALID_SWITCH;
             }
             /* Not used field */
             portIdx = GetTlvInt(tlv + 4, 1);
             if (portIdx >= FM_PLAT_NUM_PORT(swIdx))
             {
+                PortIdxErrorMsg(swIdx, portIdx, FM_PLAT_NUM_PORT(swIdx), tlv);
                 return FM_ERR_INVALID_PORT;
             }
 
             portIdx = GetTlvInt(tlv + 5, 2);
             if (portIdx >= FM_PLAT_NUM_PORT(swIdx))
             {
+                PortIdxErrorMsg(swIdx, portIdx, FM_PLAT_NUM_PORT(swIdx), tlv);
                 return FM_ERR_INVALID_PORT;
             }
             portCfg = FM_PLAT_GET_PORT_CFG(swIdx, portIdx);
@@ -995,6 +1651,7 @@ fm_status fmPlatformLoadLTCfgTlv(fm_byte *tlv)
             portIdx2 = GetTlvInt(tlv + 7, 2);
             if (portIdx2 >= FM_PLAT_NUM_PORT(swIdx))
             {
+                PortIdxErrorMsg(swIdx, portIdx2, FM_PLAT_NUM_PORT(swIdx), tlv);
                 return FM_ERR_INVALID_PORT;
             }
             portCfg2 = FM_PLAT_GET_PORT_CFG(swIdx, portIdx2);
@@ -1016,6 +1673,7 @@ fm_status fmPlatformLoadLTCfgTlv(fm_byte *tlv)
             swIdx = GetTlvInt(tlv + 3, 1);
             if (swIdx >= platCfg->numSwitches)
             {
+                SwIdxErrorMsg(swIdx, platCfg->numSwitches, tlv);
                 return FM_ERR_INVALID_SWITCH;
             }
             swCfg = FM_PLAT_GET_SWITCH_CFG(swIdx);
@@ -1026,14 +1684,22 @@ fm_status fmPlatformLoadLTCfgTlv(fm_byte *tlv)
             swIdx = GetTlvInt(tlv + 3, 1);
             if (swIdx >= platCfg->numSwitches)
             {
+                SwIdxErrorMsg(swIdx, platCfg->numSwitches, tlv);
                 return FM_ERR_INVALID_SWITCH;
             }
             portIdx = GetTlvInt(tlv + 4, 1);
             if (portIdx >= FM_PLAT_NUM_PORT(swIdx))
             {
+                PortIdxErrorMsg(swIdx, portIdx, FM_PLAT_NUM_PORT(swIdx), tlv);
                 return FM_ERR_INVALID_PORT;
             }
             portCfg = FM_PLAT_GET_PORT_CFG(swIdx, portIdx);
+            if (!(portCfg->loadFlags & PLFS_PORT_MAP))
+            {
+                PortCfgOrderErrorMsg(tlv, portIdx,
+                    "must be after port %d portmapping config");
+                return FM_ERR_INVALID_ARGUMENT;
+            }
             portCfg->speed = GetTlvInt(tlv + 5, 4);
             break;
 
@@ -1041,11 +1707,18 @@ fm_status fmPlatformLoadLTCfgTlv(fm_byte *tlv)
             swIdx = GetTlvInt(tlv + 3, 1);
             if (swIdx >= platCfg->numSwitches)
             {
+                SwIdxErrorMsg(swIdx, platCfg->numSwitches, tlv);
                 return FM_ERR_INVALID_SWITCH;
             }
             for (portIdx = 0 ; portIdx < FM_PLAT_NUM_PORT(swIdx) ; portIdx++)
             {
                 portCfg = FM_PLAT_GET_PORT_CFG(swIdx, portIdx);
+                if (portCfg->loadFlags & PLFS_HW_ID)
+                {
+                    PortCfgOrderErrorMsg(tlv, portIdx,
+                        "must be before port %d hwResourceId config");
+                    return FM_ERR_INVALID_ARGUMENT;
+                }
                 portCfg->hwResourceId = GetTlvInt(tlv + 4, 4);
             }
             break;
@@ -1053,25 +1726,35 @@ fm_status fmPlatformLoadLTCfgTlv(fm_byte *tlv)
             swIdx = GetTlvInt(tlv + 3, 1);
             if (swIdx >= platCfg->numSwitches)
             {
+                SwIdxErrorMsg(swIdx, platCfg->numSwitches, tlv);
                 return FM_ERR_INVALID_SWITCH;
             }
             portIdx = GetTlvInt(tlv + 4, 1);
             if (portIdx >= FM_PLAT_NUM_PORT(swIdx))
             {
+                PortIdxErrorMsg(swIdx, portIdx, FM_PLAT_NUM_PORT(swIdx), tlv);
                 return FM_ERR_INVALID_PORT;
             }
             portCfg = FM_PLAT_GET_PORT_CFG(swIdx, portIdx);
             portCfg->hwResourceId = GetTlvInt(tlv + 5, 4);
+            portCfg->loadFlags |= PLFS_HW_ID;
             break;
         case FM_TLV_PLAT_SW_PORT_DEF_ETHMODE:
             swIdx = GetTlvInt(tlv + 3, 1);
             if (swIdx >= platCfg->numSwitches)
             {
+                SwIdxErrorMsg(swIdx, platCfg->numSwitches, tlv);
                 return FM_ERR_INVALID_SWITCH;
             }
             for (portIdx = 0 ; portIdx < FM_PLAT_NUM_PORT(swIdx) ; portIdx++)
             {
                 portCfg = FM_PLAT_GET_PORT_CFG(swIdx, portIdx);
+                if (portCfg->loadFlags & PLFS_ETHMODE)
+                {
+                    PortCfgOrderErrorMsg(tlv, portIdx,
+                        "must be before port %d ethernet mode config");
+                    return FM_ERR_INVALID_ARGUMENT;
+                }
                 portCfg->ethMode = GetTlvEthMode(tlv[4]);
                 portCfg->autodetect = (tlv[4] == TLV_ETHMODE_AUTODETECT);
             }
@@ -1080,21 +1763,25 @@ fm_status fmPlatformLoadLTCfgTlv(fm_byte *tlv)
             swIdx = GetTlvInt(tlv + 3, 1);
             if (swIdx >= platCfg->numSwitches)
             {
+                SwIdxErrorMsg(swIdx, platCfg->numSwitches, tlv);
                 return FM_ERR_INVALID_SWITCH;
             }
             portIdx = GetTlvInt(tlv + 4, 1);
             if (portIdx >= FM_PLAT_NUM_PORT(swIdx))
             {
+                PortIdxErrorMsg(swIdx, portIdx, FM_PLAT_NUM_PORT(swIdx), tlv);
                 return FM_ERR_INVALID_PORT;
             }
             portCfg = FM_PLAT_GET_PORT_CFG(swIdx, portIdx);
             portCfg->ethMode = GetTlvEthMode(tlv[5]);
             portCfg->autodetect = (tlv[5] == TLV_ETHMODE_AUTODETECT);
+            portCfg->loadFlags |= PLFS_ETHMODE;            
             break;
         case FM_TLV_PLAT_SW_PORT_DEF_LANE_POL:
             swIdx = GetTlvInt(tlv + 3, 1);
             if (swIdx >= platCfg->numSwitches)
             {
+                SwIdxErrorMsg(swIdx, platCfg->numSwitches, tlv);
                 return FM_ERR_INVALID_SWITCH;
             }
             swCfg = FM_PLAT_GET_SWITCH_CFG(swIdx);
@@ -1108,14 +1795,20 @@ fm_status fmPlatformLoadLTCfgTlv(fm_byte *tlv)
                 for (eplLane = 0 ; eplLane < FM_PLAT_LANES_PER_EPL; eplLane++)
                 {
                     epl = portCfg->epl;
-                    if (epl >= FM_PLAT_NUM_EPL)
+                    if (epl < 0 || epl >= FM_PLAT_NUM_EPL)
                     {
                         FM_LOG_ERROR(FM_LOG_CAT_PLATFORM,
-                            "epl %d is out of range\n",
-                            epl);
+                            "Lane polarity for port %d has epl %d is out of range\n",
+                            portIdx, epl);
                         return FM_ERR_INVALID_PORT;
                     }
                     laneCfg = &swCfg->epls[epl].lane[eplLane];
+                    if (portCfg->loadFlags & PLFS_POLARITY)
+                    {
+                        PortCfgOrderErrorMsg(tlv, portIdx,
+                            "must be before port %d lane polarity configuration");
+                        return FM_ERR_INVALID_ARGUMENT;
+                    }
                     laneCfg->lanePolarity = GetTlvInt(tlv + 4, 1);
                 }
             }
@@ -1124,141 +1817,193 @@ fm_status fmPlatformLoadLTCfgTlv(fm_byte *tlv)
             swIdx = GetTlvInt(tlv + 3, 1);
             if (swIdx >= platCfg->numSwitches)
             {
+                SwIdxErrorMsg(swIdx, platCfg->numSwitches, tlv);
                 return FM_ERR_INVALID_SWITCH;
             }
             swCfg = FM_PLAT_GET_SWITCH_CFG(swIdx);
             portIdx = GetTlvInt(tlv + 4, 1);
             if (portIdx >= FM_PLAT_NUM_PORT(swIdx))
             {
+                PortIdxErrorMsg(swIdx, portIdx, FM_PLAT_NUM_PORT(swIdx), tlv);
                 return FM_ERR_INVALID_PORT;
             }
             portCfg = FM_PLAT_GET_PORT_CFG(swIdx, portIdx);
             if (portCfg->portType != FM_PLAT_PORT_TYPE_EPL)
             {
+                FM_LOG_ERROR(FM_LOG_CAT_PLATFORM,
+                    "Lane polarity config for port %d is not EPL port.\n",
+                    portIdx);
                 return FM_ERR_INVALID_PORT;
             }
-            for (eplLane = 0 ; eplLane < FM_PLAT_LANES_PER_EPL; eplLane++)
+
+            portCfg = FM_PLAT_GET_PORT_CFG(swIdx, portIdx);
+            if (portCfg->loadFlags & PLFS_POLARITY_LANE)
             {
-                portCfg = FM_PLAT_GET_PORT_CFG(swIdx, portIdx);
+                PortCfgOrderErrorMsg(tlv, portIdx,
+                    "must be before port %d lane polarity config");
+                return FM_ERR_INVALID_ARGUMENT;
+            }
+
+            status = GetPortNumLanesFromIntfType(portCfg, &numLanes);
+            if (status)
+            {
+                return status;
+            }
+
+            for (lane = 0 ; lane < numLanes; lane++)
+            {
                 epl = portCfg->epl;
-                if (epl >= FM_PLAT_NUM_EPL)
+                if (epl < 0 || epl >= FM_PLAT_NUM_EPL)
                 {
                     FM_LOG_ERROR(FM_LOG_CAT_PLATFORM,
-                        "epl %d is out of range\n",
-                        epl);
+                        "Lane polarity config for port %d has epl %d is out of range\n",
+                        portIdx, epl);
                     return FM_ERR_INVALID_PORT;
                 }
+                eplLane = portCfg->lane[lane];
                 laneCfg = &swCfg->epls[epl].lane[eplLane];
                 laneCfg->lanePolarity = GetTlvInt(tlv + 5, 1);
             }
+            portCfg->loadFlags |= PLFS_POLARITY_ALL_LANE;
             break;
         case FM_TLV_PLAT_SW_PORTIDX_LANE_POL:
             swIdx = GetTlvInt(tlv + 3, 1);
             if (swIdx >= platCfg->numSwitches)
             {
+                SwIdxErrorMsg(swIdx, platCfg->numSwitches, tlv);
                 return FM_ERR_INVALID_SWITCH;
             }
             swCfg = FM_PLAT_GET_SWITCH_CFG(swIdx);
             portIdx = GetTlvInt(tlv + 4, 1);
             if (portIdx >= FM_PLAT_NUM_PORT(swIdx))
             {
+                PortIdxErrorMsg(swIdx, portIdx, FM_PLAT_NUM_PORT(swIdx), tlv);
                 return FM_ERR_INVALID_PORT;
             }
             portCfg = FM_PLAT_GET_PORT_CFG(swIdx, portIdx);
+
             if (portCfg->portType != FM_PLAT_PORT_TYPE_EPL)
             {
                 FM_LOG_ERROR(FM_LOG_CAT_PLATFORM,
-                    "Port %d is not EPL type. PortIdx %d\n", portCfg->port, portIdx);
+                    "Lane polarity config for port %d is not EPL type\n",
+                    portIdx);
                 return FM_ERR_INVALID_PORT;
             }
             epl = portCfg->epl;
-            if (epl >= FM_PLAT_NUM_EPL)
+            if (epl < 0 || epl >= FM_PLAT_NUM_EPL)
             {
                 FM_LOG_ERROR(FM_LOG_CAT_PLATFORM,
-                    "epl %d is out of range\n",
-                    epl);
+                    "Port %d lane polarity config has epl %d is out of range\n",
+                    portIdx, epl);
                 return FM_ERR_INVALID_PORT;
             }
             lane = GetTlvInt(tlv + 5, 1);
             if (lane >= FM_PLAT_LANES_PER_EPL)
             {
                  FM_LOG_ERROR(FM_LOG_CAT_PLATFORM,
-                    "Lane %d is out of range\n", lane);
+                    "Port %d lane %d polarity config is out of range\n",
+                    portIdx, lane);
                 return FM_ERR_INVALID_PORT;
             }
             eplLane = portCfg->lane[lane];
             laneCfg = &swCfg->epls[epl].lane[eplLane];
             laneCfg->lanePolarity = GetTlvInt(tlv + 6, 1);
+            portCfg->loadFlags |= PLFS_POLARITY_LANE;
             break;
         case FM_TLV_PLAT_SW_PORTIDX_LANE_ALL_RX_TERM:
             swIdx = GetTlvInt(tlv + 3, 1);
             if (swIdx >= platCfg->numSwitches)
             {
+                SwIdxErrorMsg(swIdx, platCfg->numSwitches, tlv);
                 return FM_ERR_INVALID_SWITCH;
             }
             swCfg = FM_PLAT_GET_SWITCH_CFG(swIdx);
             portIdx = GetTlvInt(tlv + 4, 1);
             if (portIdx >= FM_PLAT_NUM_PORT(swIdx))
             {
+                PortIdxErrorMsg(swIdx, portIdx, FM_PLAT_NUM_PORT(swIdx), tlv);
                 return FM_ERR_INVALID_PORT;
             }
             portCfg = FM_PLAT_GET_PORT_CFG(swIdx, portIdx);
             if (portCfg->portType != FM_PLAT_PORT_TYPE_EPL)
             {
+                FM_LOG_ERROR(FM_LOG_CAT_PLATFORM,
+                    "Rx termination config for port %d is not EPL type\n",
+                    portIdx);
                 return FM_ERR_INVALID_PORT;
             }
-            for (eplLane = 0 ; eplLane < FM_PLAT_LANES_PER_EPL; eplLane++)
+
+            if (portCfg->loadFlags & PLFS_RX_TERM_LANE)
             {
-                portCfg = FM_PLAT_GET_PORT_CFG(swIdx, portIdx);
+                PortCfgOrderErrorMsg(tlv, portIdx,
+                    "must be before port %d lane rx termination config");
+                return FM_ERR_INVALID_ARGUMENT;
+            }
+
+            status = GetPortNumLanesFromIntfType(portCfg, &numLanes);
+            if (status)
+            {
+                return status;
+            }
+
+            for (lane = 0 ; lane < numLanes; lane++)
+            {
                 epl = portCfg->epl;
-                if (epl >= FM_PLAT_NUM_EPL)
+                if (epl < 0 || epl >= FM_PLAT_NUM_EPL)
                 {
                     FM_LOG_ERROR(FM_LOG_CAT_PLATFORM,
-                        "epl %d is out of range\n",
-                        epl);
+                        "Rx termination config for port %d has epl %d is out of range\n",
+                        portIdx, epl);
                     return FM_ERR_INVALID_PORT;
                 }
+                eplLane = portCfg->lane[lane];
                 laneCfg = &swCfg->epls[epl].lane[eplLane];
                 laneCfg->rxTermination = GetTlvInt(tlv + 5, 1);
             }
+            portCfg->loadFlags |= PLFS_RX_TERM_ALL_LANE;
             break;
         case FM_TLV_PLAT_SW_PORTIDX_LANE_RX_TERM:
             swIdx = GetTlvInt(tlv + 3, 1);
             if (swIdx >= platCfg->numSwitches)
             {
+                SwIdxErrorMsg(swIdx, platCfg->numSwitches, tlv);
                 return FM_ERR_INVALID_SWITCH;
             }
             swCfg = FM_PLAT_GET_SWITCH_CFG(swIdx);
             portIdx = GetTlvInt(tlv + 4, 1);
             if (portIdx >= FM_PLAT_NUM_PORT(swIdx))
             {
+                PortIdxErrorMsg(swIdx, portIdx, FM_PLAT_NUM_PORT(swIdx), tlv);
                 return FM_ERR_INVALID_PORT;
             }
             portCfg = FM_PLAT_GET_PORT_CFG(swIdx, portIdx);
             if (portCfg->portType != FM_PLAT_PORT_TYPE_EPL)
             {
                 FM_LOG_ERROR(FM_LOG_CAT_PLATFORM,
-                    "Port %d is not EPL type. PortIdx %d\n", portCfg->port, portIdx);
+                    "Rx termination config for port %d is not EPL type\n",
+                    portIdx);
                 return FM_ERR_INVALID_PORT;
             }
             epl = portCfg->epl;
-            if (epl >= FM_PLAT_NUM_EPL)
+            if (epl < 0 || epl >= FM_PLAT_NUM_EPL)
             {
                 FM_LOG_ERROR(FM_LOG_CAT_PLATFORM,
-                    "epl %d is out of range\n",
-                    epl);
+                    "Port %d lane rx termination config has epl %d is out of range\n",
+                    portIdx, epl);
                 return FM_ERR_INVALID_PORT;
             }
             lane = GetTlvInt(tlv + 5, 1);
             if (lane >= FM_PLAT_LANES_PER_EPL)
             {
                  FM_LOG_ERROR(FM_LOG_CAT_PLATFORM,
-                    "Lane %d is out of range\n", lane);
+                    "Port %d lane %d rx termination config is out of range\n",
+                    portIdx, lane);
                 return FM_ERR_INVALID_PORT;
             }
             eplLane = portCfg->lane[lane];
             laneCfg = &swCfg->epls[epl].lane[eplLane];
             laneCfg->rxTermination = GetTlvInt(tlv + 6, 1);
+            portCfg->loadFlags |= PLFS_RX_TERM_LANE;
             break;
         case FM_TLV_PLAT_SW_PORT_DEF_TXEQ_PRE_CU:
         case FM_TLV_PLAT_SW_PORT_DEF_TXEQ_CUR_CU:
@@ -1269,9 +2014,10 @@ fm_status fmPlatformLoadLTCfgTlv(fm_byte *tlv)
             swIdx = GetTlvInt(tlv + 3, 1);
             if (swIdx >= platCfg->numSwitches)
             {
+                SwIdxErrorMsg(swIdx, platCfg->numSwitches, tlv);
                 return FM_ERR_INVALID_SWITCH;
             }
-            SetPortDefTxEq(swIdx, tlvType, GetTlvInt(tlv + 4, 1));
+            status = SetPortDefTxEq(swIdx, tlvType, GetTlvInt(tlv + 4, 1), tlv);
             break;
         case FM_TLV_PLAT_SW_PORTIDX_TXEQ_PRE_CU_1G:
         case FM_TLV_PLAT_SW_PORTIDX_TXEQ_PRE_CU_10G:
@@ -1294,11 +2040,13 @@ fm_status fmPlatformLoadLTCfgTlv(fm_byte *tlv)
             swIdx = GetTlvInt(tlv + 3, 1);
             if (swIdx >= platCfg->numSwitches)
             {
+                SwIdxErrorMsg(swIdx, platCfg->numSwitches, tlv);
                 return FM_ERR_INVALID_SWITCH;
             }
             portIdx = GetTlvInt(tlv + 4, 1);
             if (portIdx >= FM_PLAT_NUM_PORT(swIdx))
             {
+                PortIdxErrorMsg(swIdx, portIdx, FM_PLAT_NUM_PORT(swIdx), tlv);
                 return FM_ERR_INVALID_PORT;
             }
             SetPortTxEq(swIdx, portIdx, LANE_ALL,
@@ -1325,18 +2073,21 @@ fm_status fmPlatformLoadLTCfgTlv(fm_byte *tlv)
             swIdx = GetTlvInt(tlv + 3, 1);
             if (swIdx >= platCfg->numSwitches)
             {
+                SwIdxErrorMsg(swIdx, platCfg->numSwitches, tlv);
                 return FM_ERR_INVALID_SWITCH;
             }
             portIdx = GetTlvInt(tlv + 4, 1);
             if (portIdx >= FM_PLAT_NUM_PORT(swIdx))
             {
+                PortIdxErrorMsg(swIdx, portIdx, FM_PLAT_NUM_PORT(swIdx), tlv);
                 return FM_ERR_INVALID_PORT;
             }
             lane = GetTlvInt(tlv + 5, 1);
             if (lane >= FM_PLAT_LANES_PER_EPL)
             {
                  FM_LOG_ERROR(FM_LOG_CAT_PLATFORM,
-                    "Lane %d is out of range\n", lane);
+                    "Port %d tx equalization lane %d is out of range\n",
+                    portIdx, lane);
                 return FM_ERR_INVALID_PORT;
             }
             SetPortTxEq(swIdx, portIdx, lane,
@@ -1346,11 +2097,25 @@ fm_status fmPlatformLoadLTCfgTlv(fm_byte *tlv)
             swIdx = GetTlvInt(tlv + 3, 1);
             if (swIdx >= platCfg->numSwitches)
             {
+                SwIdxErrorMsg(swIdx, platCfg->numSwitches, tlv);
                 return FM_ERR_INVALID_SWITCH;
             }
             for (portIdx = 0 ; portIdx < FM_PLAT_NUM_PORT(swIdx) ; portIdx++)
             {
                 portCfg = FM_PLAT_GET_PORT_CFG(swIdx, portIdx);
+                if (portCfg->intfType != FM_PLAT_INTF_TYPE_NONE)
+                {
+                        PortCfgOrderErrorMsg(tlv, portIdx,
+                        "must be before port %d interface type configuration");
+                    return FM_ERR_INVALID_ARGUMENT;
+                }
+                status = CheckIntfTypeOrder(tlv, swIdx, portCfg,
+                                            GetTlvInt(tlv + 4, 1));
+                if (status)
+                {
+                    return status;
+                }
+
                 portCfg->intfType = GetTlvInt(tlv + 4, 1);
             }
             break;
@@ -1358,14 +2123,23 @@ fm_status fmPlatformLoadLTCfgTlv(fm_byte *tlv)
             swIdx = GetTlvInt(tlv + 3, 1);
             if (swIdx >= platCfg->numSwitches)
             {
+                SwIdxErrorMsg(swIdx, platCfg->numSwitches, tlv);
                 return FM_ERR_INVALID_SWITCH;
             }
             portIdx = GetTlvInt(tlv + 4, 1);
             if (portIdx >= FM_PLAT_NUM_PORT(swIdx))
             {
+                PortIdxErrorMsg(swIdx, portIdx, FM_PLAT_NUM_PORT(swIdx), tlv);
                 return FM_ERR_INVALID_PORT;
             }
             portCfg = FM_PLAT_GET_PORT_CFG(swIdx, portIdx);
+            status = CheckIntfTypeOrder(tlv, swIdx, portCfg,
+                                        GetTlvInt(tlv + 5, 1));
+            if (status)
+            {
+                return status;
+            }
+
             portCfg->intfType = GetTlvInt(tlv + 5, 1);
             switch (portCfg->intfType)
             {
@@ -1386,11 +2160,18 @@ fm_status fmPlatformLoadLTCfgTlv(fm_byte *tlv)
             swIdx = GetTlvInt(tlv + 3, 1);
             if (swIdx >= platCfg->numSwitches)
             {
+                SwIdxErrorMsg(swIdx, platCfg->numSwitches, tlv);
                 return FM_ERR_INVALID_SWITCH;
             }
             for (portIdx = 0 ; portIdx < FM_PLAT_NUM_PORT(swIdx) ; portIdx++)
             {
                 portCfg = FM_PLAT_GET_PORT_CFG(swIdx, portIdx);
+                if (portCfg->cap != (fm_uint)FM_PLAT_UNDEFINED)
+                {
+                    PortCfgOrderErrorMsg(tlv, portIdx,
+                        "must be before port %d capability configuration");
+                    return FM_ERR_INVALID_ARGUMENT;
+                }
                 portCfg->cap = GetTlvInt(tlv + 4, 8);
             }
             break;
@@ -1398,25 +2179,34 @@ fm_status fmPlatformLoadLTCfgTlv(fm_byte *tlv)
             swIdx = GetTlvInt(tlv + 3, 1);
             if (swIdx >= platCfg->numSwitches)
             {
+                SwIdxErrorMsg(swIdx, platCfg->numSwitches, tlv);
                 return FM_ERR_INVALID_SWITCH;
             }
             portIdx = GetTlvInt(tlv + 4, 1);
             if (portIdx >= FM_PLAT_NUM_PORT(swIdx))
             {
+                PortIdxErrorMsg(swIdx, portIdx, FM_PLAT_NUM_PORT(swIdx), tlv);
                 return FM_ERR_INVALID_PORT;
             }
             portCfg = FM_PLAT_GET_PORT_CFG(swIdx, portIdx);
             portCfg->cap = GetTlvInt(tlv + 5, 8);
-            break;
+            break; 
         case FM_TLV_PLAT_SW_PORT_DEF_DFE_MODE:
             swIdx = GetTlvInt(tlv + 3, 1);
             if (swIdx >= platCfg->numSwitches)
             {
+                SwIdxErrorMsg(swIdx, platCfg->numSwitches, tlv);
                 return FM_ERR_INVALID_SWITCH;
             }
             for (portIdx = 0 ; portIdx < FM_PLAT_NUM_PORT(swIdx) ; portIdx++)
             {
                 portCfg = FM_PLAT_GET_PORT_CFG(swIdx, portIdx);
+                if (portCfg->dfeMode != FM_DFE_MODE_ONE_SHOT)
+                {
+                    PortCfgOrderErrorMsg(tlv, portIdx,
+                        "must be before port %d DFE mode configuration");
+                    return FM_ERR_INVALID_ARGUMENT;
+                }
                 portCfg->dfeMode = GetTlvInt(tlv + 4, 1);
             }
             break;
@@ -1424,11 +2214,13 @@ fm_status fmPlatformLoadLTCfgTlv(fm_byte *tlv)
             swIdx = GetTlvInt(tlv + 3, 1);
             if (swIdx >= platCfg->numSwitches)
             {
+                SwIdxErrorMsg(swIdx, platCfg->numSwitches, tlv);
                 return FM_ERR_INVALID_SWITCH;
             }
             portIdx = GetTlvInt(tlv + 4, 1);
             if (portIdx >= FM_PLAT_NUM_PORT(swIdx))
             {
+                PortIdxErrorMsg(swIdx, portIdx, FM_PLAT_NUM_PORT(swIdx), tlv);
                 return FM_ERR_INVALID_PORT;
             }
             portCfg = FM_PLAT_GET_PORT_CFG(swIdx, portIdx);
@@ -1438,20 +2230,23 @@ fm_status fmPlatformLoadLTCfgTlv(fm_byte *tlv)
             swIdx = GetTlvInt(tlv + 3, 1);
             if (swIdx >= platCfg->numSwitches)
             {
+                SwIdxErrorMsg(swIdx, platCfg->numSwitches, tlv);
                 return FM_ERR_INVALID_SWITCH;
             }
             portIdx = GetTlvInt(tlv + 4, 1);
             if (portIdx >= FM_PLAT_NUM_PORT(swIdx))
             {
+                PortIdxErrorMsg(swIdx, portIdx, FM_PLAT_NUM_PORT(swIdx), tlv);
                 return FM_ERR_INVALID_PORT;
             }
             portCfg = FM_PLAT_GET_PORT_CFG(swIdx, portIdx);
-            portCfg->an73Ability = GetTlvInt(tlv + 5, 4);
+            portCfg->an73AbilityCfg = GetTlvInt(tlv + 5, 4);
             break;
         case FM_TLV_PLAT_SW_SHARED_LIB_NAME:
             swIdx = GetTlvInt(tlv + 3, 1);
             if (swIdx >= platCfg->numSwitches)
             {
+                SwIdxErrorMsg(swIdx, platCfg->numSwitches, tlv);
                 return FM_ERR_INVALID_SWITCH;
             }
             libCfg = FM_PLAT_GET_LIBS_CFG(swIdx);
@@ -1461,6 +2256,7 @@ fm_status fmPlatformLoadLTCfgTlv(fm_byte *tlv)
             swIdx = GetTlvInt(tlv + 3, 1);
             if (swIdx >= platCfg->numSwitches)
             {
+                SwIdxErrorMsg(swIdx, platCfg->numSwitches, tlv);
                 return FM_ERR_INVALID_SWITCH;
             }
             libCfg = FM_PLAT_GET_LIBS_CFG(swIdx);
@@ -1470,6 +2266,7 @@ fm_status fmPlatformLoadLTCfgTlv(fm_byte *tlv)
             swIdx = GetTlvInt(tlv + 3, 1);
             if (swIdx >= platCfg->numSwitches)
             {
+                SwIdxErrorMsg(swIdx, platCfg->numSwitches, tlv);
                 return FM_ERR_INVALID_SWITCH;
             }
             swCfg = FM_PLAT_GET_SWITCH_CFG(swIdx);
@@ -1479,6 +2276,7 @@ fm_status fmPlatformLoadLTCfgTlv(fm_byte *tlv)
             swIdx = GetTlvInt(tlv + 3, 1);
             if (swIdx >= platCfg->numSwitches)
             {
+                SwIdxErrorMsg(swIdx, platCfg->numSwitches, tlv);
                 return FM_ERR_INVALID_SWITCH;
             }
             swCfg = FM_PLAT_GET_SWITCH_CFG(swIdx);
@@ -1488,6 +2286,7 @@ fm_status fmPlatformLoadLTCfgTlv(fm_byte *tlv)
             swIdx = GetTlvInt(tlv + 3, 1);
             if (swIdx >= platCfg->numSwitches)
             {
+                SwIdxErrorMsg(swIdx, platCfg->numSwitches, tlv);
                 return FM_ERR_INVALID_SWITCH;
             }
             swCfg = FM_PLAT_GET_SWITCH_CFG(swIdx);
@@ -1497,6 +2296,7 @@ fm_status fmPlatformLoadLTCfgTlv(fm_byte *tlv)
             swIdx = GetTlvInt(tlv + 3, 1);
             if (swIdx >= platCfg->numSwitches)
             {
+                SwIdxErrorMsg(swIdx, platCfg->numSwitches, tlv);
                 return FM_ERR_INVALID_SWITCH;
             }
             swCfg = FM_PLAT_GET_SWITCH_CFG(swIdx);
@@ -1506,9 +2306,18 @@ fm_status fmPlatformLoadLTCfgTlv(fm_byte *tlv)
             swIdx = GetTlvInt(tlv + 3, 1);
             if (swIdx >= platCfg->numSwitches)
             {
+                SwIdxErrorMsg(swIdx, platCfg->numSwitches, tlv);
                 return FM_ERR_INVALID_SWITCH;
             }
             swCfg = FM_PLAT_GET_SWITCH_CFG(swIdx);
+            if (swCfg->numPhys)
+            {
+                FM_LOG_ERROR(FM_LOG_CAT_PLATFORM,
+                    "numPhys %d has already been set to %d for switch %d.\n",
+                    GetTlvInt(tlv + 4, 1), swCfg->numPhys, swIdx);
+                return FM_ERR_INVALID_ARGUMENT;
+            }
+
             swCfg->numPhys = GetTlvInt(tlv + 4, 1);
             /* Allocate the PHY configuration structures */
             swCfg->phys = fmAlloc( swCfg->numPhys * sizeof(fm_platformCfgPhy) );
@@ -1522,6 +2331,7 @@ fm_status fmPlatformLoadLTCfgTlv(fm_byte *tlv)
             swIdx = GetTlvInt(tlv + 3, 1);
             if (swIdx >= platCfg->numSwitches)
             {
+                SwIdxErrorMsg(swIdx, platCfg->numSwitches, tlv);
                 return FM_ERR_INVALID_SWITCH;
             }
             phyIdx = GetTlvInt(tlv + 4, 1);
@@ -1544,11 +2354,19 @@ fm_status fmPlatformLoadLTCfgTlv(fm_byte *tlv)
                     phyLaneCfg->rxPort = crossConnect[lane];
                 }
             }
+            else
+            {
+                FM_LOG_ERROR(FM_LOG_CAT_PLATFORM,
+                    "Unknown PHY model %d switch %d\n",
+                     phyCfg->model, swIdx);
+                
+            }
             break;
         case FM_TLV_PLAT_SW_PHY_ADDR:
             swIdx = GetTlvInt(tlv + 3, 1);
             if (swIdx >= platCfg->numSwitches)
             {
+                SwIdxErrorMsg(swIdx, platCfg->numSwitches, tlv);
                 return FM_ERR_INVALID_SWITCH;
             }
             phyIdx = GetTlvInt(tlv + 4, 1);
@@ -1563,6 +2381,7 @@ fm_status fmPlatformLoadLTCfgTlv(fm_byte *tlv)
             swIdx = GetTlvInt(tlv + 3, 1);
             if (swIdx >= platCfg->numSwitches)
             {
+                SwIdxErrorMsg(swIdx, platCfg->numSwitches, tlv);
                 return FM_ERR_INVALID_SWITCH;
             }
             phyIdx = GetTlvInt(tlv + 4, 1);
@@ -1577,6 +2396,7 @@ fm_status fmPlatformLoadLTCfgTlv(fm_byte *tlv)
             swIdx = GetTlvInt(tlv + 3, 1);
             if (swIdx >= platCfg->numSwitches)
             {
+                SwIdxErrorMsg(swIdx, platCfg->numSwitches, tlv);
                 return FM_ERR_INVALID_SWITCH;
             }
             phyIdx = GetTlvInt(tlv + 4, 1);
@@ -1598,7 +2418,8 @@ fm_status fmPlatformLoadLTCfgTlv(fm_byte *tlv)
             else
             {
                 FM_LOG_ERROR(FM_LOG_CAT_PLATFORM,
-                    "Unknown PHY model %d\n", phyCfg->model);
+                    "PHY TX Eq: Unknown PHY model %d for phy %d\n",
+                    phyCfg->model, phyIdx);
                 return FM_ERR_INVALID_ARGUMENT;
             }
             break;
@@ -1606,11 +2427,13 @@ fm_status fmPlatformLoadLTCfgTlv(fm_byte *tlv)
             swIdx = GetTlvInt(tlv + 3, 1);
             if (swIdx >= platCfg->numSwitches)
             {
+                SwIdxErrorMsg(swIdx, platCfg->numSwitches, tlv);
                 return FM_ERR_INVALID_SWITCH;
             }
             phyIdx = GetTlvInt(tlv + 4, 1);
             if (phyIdx >= FM_PLAT_NUM_PHY(swIdx))
             {
+                PhyIdxErrorMsg(swIdx, phyIdx, FM_PLAT_NUM_PHY(swIdx), tlv);
                 return FM_ERR_INVALID_ARGUMENT;
             }
             phyCfg = FM_PLAT_GET_PHY_CFG(swIdx, phyIdx);
@@ -1624,7 +2447,8 @@ fm_status fmPlatformLoadLTCfgTlv(fm_byte *tlv)
             else
             {
                 FM_LOG_ERROR(FM_LOG_CAT_PLATFORM,
-                    "Unknown PHY model %d\n", phyCfg->model);
+                    "PHY APP mode: Unknown PHY model %d for phy %d\n",
+                    phyCfg->model, phyIdx);
                 return FM_ERR_INVALID_ARGUMENT;
             }
             break;
@@ -1632,6 +2456,7 @@ fm_status fmPlatformLoadLTCfgTlv(fm_byte *tlv)
             swIdx = GetTlvInt(tlv + 3, 1);
             if (swIdx >= platCfg->numSwitches)
             {
+                SwIdxErrorMsg(swIdx, platCfg->numSwitches, tlv);
                 return FM_ERR_INVALID_SWITCH;
             }
             swCfg = FM_PLAT_GET_SWITCH_CFG(swIdx);
@@ -1641,6 +2466,7 @@ fm_status fmPlatformLoadLTCfgTlv(fm_byte *tlv)
             swIdx = GetTlvInt(tlv + 3, 1);
             if (swIdx >= platCfg->numSwitches)
             {
+                SwIdxErrorMsg(swIdx, platCfg->numSwitches, tlv);
                 return FM_ERR_INVALID_SWITCH;
             }
             swCfg = FM_PLAT_GET_SWITCH_CFG(swIdx);
@@ -1650,6 +2476,7 @@ fm_status fmPlatformLoadLTCfgTlv(fm_byte *tlv)
             swIdx = GetTlvInt(tlv + 3, 1);
             if (swIdx >= platCfg->numSwitches)
             {
+                SwIdxErrorMsg(swIdx, platCfg->numSwitches, tlv);
                 return FM_ERR_INVALID_SWITCH;
             }
             swCfg = FM_PLAT_GET_SWITCH_CFG(swIdx);
@@ -1663,6 +2490,7 @@ fm_status fmPlatformLoadLTCfgTlv(fm_byte *tlv)
             swIdx = GetTlvInt(tlv + 3, 1);
             if (swIdx >= platCfg->numSwitches)
             {
+                SwIdxErrorMsg(swIdx, platCfg->numSwitches, tlv);
                 return FM_ERR_INVALID_SWITCH;
             }
             swCfg = FM_PLAT_GET_SWITCH_CFG(swIdx);
@@ -1675,6 +2503,7 @@ fm_status fmPlatformLoadLTCfgTlv(fm_byte *tlv)
             swIdx = GetTlvInt(tlv + 3, 1);
             if (swIdx >= platCfg->numSwitches)
             {
+                SwIdxErrorMsg(swIdx, platCfg->numSwitches, tlv);
                 return FM_ERR_INVALID_SWITCH;
             }
             swCfg = FM_PLAT_GET_SWITCH_CFG(swIdx);
@@ -1687,6 +2516,7 @@ fm_status fmPlatformLoadLTCfgTlv(fm_byte *tlv)
             swIdx = GetTlvInt(tlv + 3, 1);
             if (swIdx >= platCfg->numSwitches)
             {
+                SwIdxErrorMsg(swIdx, platCfg->numSwitches, tlv);
                 return FM_ERR_INVALID_SWITCH;
             }
             swCfg = FM_PLAT_GET_SWITCH_CFG(swIdx);
@@ -1695,6 +2525,7 @@ fm_status fmPlatformLoadLTCfgTlv(fm_byte *tlv)
             swIdx = GetTlvInt(tlv + 3, 1);
             if (swIdx >= platCfg->numSwitches)
             {
+                SwIdxErrorMsg(swIdx, platCfg->numSwitches, tlv);
                 return FM_ERR_INVALID_SWITCH;
             }
             swCfg = FM_PLAT_GET_SWITCH_CFG(swIdx);
@@ -1704,6 +2535,7 @@ fm_status fmPlatformLoadLTCfgTlv(fm_byte *tlv)
             swIdx = GetTlvInt(tlv + 3, 1);
             if (swIdx >= platCfg->numSwitches)
             {
+                SwIdxErrorMsg(swIdx, platCfg->numSwitches, tlv);
                 return FM_ERR_INVALID_SWITCH;
             }
             swCfg = FM_PLAT_GET_SWITCH_CFG(swIdx);
@@ -1713,6 +2545,7 @@ fm_status fmPlatformLoadLTCfgTlv(fm_byte *tlv)
             swIdx = GetTlvInt(tlv + 3, 1);
             if (swIdx >= platCfg->numSwitches)
             {
+                SwIdxErrorMsg(swIdx, platCfg->numSwitches, tlv);
                 return FM_ERR_INVALID_SWITCH;
             }
             swCfg = FM_PLAT_GET_SWITCH_CFG(swIdx);
@@ -1722,6 +2555,7 @@ fm_status fmPlatformLoadLTCfgTlv(fm_byte *tlv)
             swIdx = GetTlvInt(tlv + 3, 1);
             if (swIdx >= platCfg->numSwitches)
             {
+                SwIdxErrorMsg(swIdx, platCfg->numSwitches, tlv);
                 return FM_ERR_INVALID_SWITCH;
             }
             swCfg = FM_PLAT_GET_SWITCH_CFG(swIdx);
@@ -1731,6 +2565,7 @@ fm_status fmPlatformLoadLTCfgTlv(fm_byte *tlv)
             swIdx = GetTlvInt(tlv + 3, 1);
             if (swIdx >= platCfg->numSwitches)
             {
+                SwIdxErrorMsg(swIdx, platCfg->numSwitches, tlv);
                 return FM_ERR_INVALID_SWITCH;
             }
             swCfg = FM_PLAT_GET_SWITCH_CFG(swIdx);
@@ -1740,6 +2575,7 @@ fm_status fmPlatformLoadLTCfgTlv(fm_byte *tlv)
             swIdx = GetTlvInt(tlv + 3, 1);
             if (swIdx >= platCfg->numSwitches)
             {
+                SwIdxErrorMsg(swIdx, platCfg->numSwitches, tlv);
                 return FM_ERR_INVALID_SWITCH;
             }
             swCfg = FM_PLAT_GET_SWITCH_CFG(swIdx);
@@ -1749,6 +2585,7 @@ fm_status fmPlatformLoadLTCfgTlv(fm_byte *tlv)
             swIdx = GetTlvInt(tlv + 3, 1);
             if (swIdx >= platCfg->numSwitches)
             {
+                SwIdxErrorMsg(swIdx, platCfg->numSwitches, tlv);
                 return FM_ERR_INVALID_SWITCH;
             }
             swCfg = FM_PLAT_GET_SWITCH_CFG(swIdx);
@@ -1758,6 +2595,7 @@ fm_status fmPlatformLoadLTCfgTlv(fm_byte *tlv)
             swIdx = GetTlvInt(tlv + 3, 1);
             if (swIdx >= platCfg->numSwitches)
             {
+                SwIdxErrorMsg(swIdx, platCfg->numSwitches, tlv);
                 return FM_ERR_INVALID_SWITCH;
             }
             swCfg = FM_PLAT_GET_SWITCH_CFG(swIdx);
@@ -1767,6 +2605,7 @@ fm_status fmPlatformLoadLTCfgTlv(fm_byte *tlv)
             swIdx = GetTlvInt(tlv + 3, 1);
             if (swIdx >= platCfg->numSwitches)
             {
+                SwIdxErrorMsg(swIdx, platCfg->numSwitches, tlv);
                 return FM_ERR_INVALID_SWITCH;
             }
             swCfg = FM_PLAT_GET_SWITCH_CFG(swIdx);
@@ -1776,6 +2615,7 @@ fm_status fmPlatformLoadLTCfgTlv(fm_byte *tlv)
             swIdx = GetTlvInt(tlv + 3, 1);
             if (swIdx >= platCfg->numSwitches)
             {
+                SwIdxErrorMsg(swIdx, platCfg->numSwitches, tlv);
                 return FM_ERR_INVALID_SWITCH;
             }
             swCfg = FM_PLAT_GET_SWITCH_CFG(swIdx);
@@ -1932,13 +2772,12 @@ fm_status fmPlatformCfgVerifyAndUpdate(void)
     fm_platformCfgSwitch *swCfg;
     fm_platformCfgPort *  portCfg;
     fm_int                portIdx;
-    fm_portCfgSwitch      tempHwResourceIdList[FM_NUM_HW_RES_ID];
-
+    fm_portCfgSwitch      tempHwResourceIdList[256];
 
     FM_MEMSET_S(tempHwResourceIdList,
-                FM_NUM_HW_RES_ID * sizeof(fm_portCfgSwitch),
+                sizeof(tempHwResourceIdList),
                 0,
-                FM_NUM_HW_RES_ID * sizeof(fm_portCfgSwitch));
+                sizeof(tempHwResourceIdList));
 
     for (swIdx = 0; swIdx < FM_PLAT_GET_CFG->numSwitches; swIdx++)
     {
@@ -1947,6 +2786,9 @@ fm_status fmPlatformCfgVerifyAndUpdate(void)
         for (portIdx = 0 ; portIdx < swCfg->numPorts ; portIdx++)
         { 
             portCfg = FM_PLAT_GET_PORT_CFG(swIdx, portIdx);
+
+
+            VerifyPortCapability(swIdx, portCfg);
 
             /**************************************************
              * Make sure that HW Resource ID is unique.

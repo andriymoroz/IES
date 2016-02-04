@@ -6,7 +6,7 @@
  * Description:     Contains driver level functions related to table update
  *                  handling as well as the table maintenance thread
  *
- * Copyright (c) 2005 - 2015, Intel Corporation
+ * Copyright (c) 2005 - 2016, Intel Corporation
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -561,7 +561,7 @@ AGAIN:
 
             /* Drop the physical switch lock */
             UNPROTECT_SWITCH(sw);
-            swIsProtected = FALSE;
+            /*swIsProtected = FALSE;*/
 
             /* Take the lock on the switch aggregate */
             PROTECT_SWITCH(aggSw);
@@ -576,7 +576,7 @@ AGAIN:
 
             /* Take the lock on the physical switch again */
             PROTECT_SWITCH(sw);
-            swIsProtected = TRUE;
+            /*swIsProtected = TRUE;*/
 
             switchPtr = GET_SWITCH_PTR(sw);
 
@@ -1801,6 +1801,7 @@ fm_status fmFlushMATable(fm_int              sw,
     fmDbgDiagCountIncr(sw, diagCounter, 1);
 
     data.flushMode = mode;
+    data.statics = params.statics;
 
     err = fmUpdateMATable(sw, FM_UPD_FLUSH_ADDRESSES, data, handler, context);
 

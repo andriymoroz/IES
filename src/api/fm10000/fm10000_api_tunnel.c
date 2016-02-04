@@ -5,7 +5,7 @@
  * Creation Date:   January 15, 2014
  * Description:     FM10000 Tunnel API.
  *
- * Copyright (c) 2014 - 2015, Intel Corporation
+ * Copyright (c) 2014 - 2016, Intel Corporation
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -354,7 +354,9 @@ static fm_status EncapFlowToTeData(fm_tunnelEncapFlow       field,
                                    fm_tunnelEncapFlowParam *param,
                                    fm_fm10000TeData *       teData)
 {
-    fm_status err = FM_OK;
+    fm_status err;
+
+    err = FM_OK;
 
     teData->blockType = FM_FM10000_TE_DATA_BLOCK_TUNNEL_DATA;
 
@@ -2386,17 +2388,19 @@ fm_status fm10000TunnelInit(fm_int sw)
 
         if ((switchExt->tunnelCfg->tunnelPort[0] != -1))
         {
-            err = fmSetBitArrayBit(&portMask,
-                                   switchExt->tunnelCfg->tunnelPort[0],
-                                   FALSE);
+            err = fmSetPortInBitArray(sw,
+                                      &portMask,
+                                      switchExt->tunnelCfg->tunnelPort[0],
+                                      FALSE);
             FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_TE, err);
         }
 
         if ((switchExt->tunnelCfg->tunnelPort[1] != -1))
         {
-            err = fmSetBitArrayBit(&portMask,
-                                   switchExt->tunnelCfg->tunnelPort[1],
-                                   FALSE);
+            err = fmSetPortInBitArray(sw,
+                                      &portMask,
+                                      switchExt->tunnelCfg->tunnelPort[1],
+                                      FALSE);
             FM_LOG_ABORT_ON_ERR(FM_LOG_CAT_TE, err);
         }
 
@@ -2670,34 +2674,45 @@ fm_status fm10000CreateTunnel(fm_int          sw,
                               fm_int *        group,
                               fm_tunnelParam *tunnelParam)
 {
-    fm_int index;
-    fm_uint16 baseLookup[FM10000_TE_DGLORT_MAP_ENTRIES_0];
-    fm_uint16 sizeLookup[FM10000_TE_DGLORT_MAP_ENTRIES_0];
-    fm_uint16 glortValue[FM10000_TE_DGLORT_MAP_ENTRIES_0];
-    fm_uint16 glortMask[FM10000_TE_DGLORT_MAP_ENTRIES_0];
-    fm_int entry;
-    fm_int i;
-    fm_int j;
-    fm_int binSize;
-    fm_uint16 tmpValue;
-    fm_uint16 prevBaseLookup;
-    fm_uint16 prevSizeLookup;
-    fm_uint16 glortSize;
-    fm_uint16 glortSizeMask;
-    fm_uint16 prevGlortValue;
-    fm_uint16 prevBaseGlortValue;
-    fm_uint16 prevGlortMask;
-    fm_uint16 prevGlortSize;
-    fm_uint16 maxGlortSize;
-    fm_int    holeSize;
-    fm_int    currentHoleSize;
+    fm_int               index;
+    fm_uint16            baseLookup[FM10000_TE_DGLORT_MAP_ENTRIES_0];
+    fm_uint16            sizeLookup[FM10000_TE_DGLORT_MAP_ENTRIES_0];
+    fm_uint16            glortValue[FM10000_TE_DGLORT_MAP_ENTRIES_0];
+    fm_uint16            glortMask[FM10000_TE_DGLORT_MAP_ENTRIES_0];
+    fm_int               entry;
+    fm_int               i;
+    fm_int               j;
+    fm_int               binSize;
+    fm_uint16            tmpValue;
+    fm_uint16            prevBaseLookup;
+    fm_uint16            prevSizeLookup;
+    fm_uint16            glortSize;
+    fm_uint16            glortSizeMask;
+    fm_uint16            prevGlortValue;
+    fm_uint16            prevBaseGlortValue;
+    fm_uint16            prevGlortMask;
+    fm_uint16            prevGlortSize;
+    fm_uint16            maxGlortSize;
+    fm_int               holeSize;
+    fm_int               currentHoleSize;
     fm_fm10000TunnelGrp *insertedGrp;
-    fm_switch *     switchPtr = GET_SWITCH_PTR(sw);
-    fm10000_switch * switchExt = (fm10000_switch *) switchPtr->extension;
-    fm_status err = FM_OK;
-    fm_bool tunnelLockTaken = FALSE;
+    fm_switch *          switchPtr;
+    fm10000_switch *     switchExt;
+    fm_status            err;
+    fm_bool              tunnelLockTaken;
 
     FM_LOG_ENTRY(FM_LOG_CAT_TE, "sw = %d\n", sw);
+
+    switchPtr          = GET_SWITCH_PTR(sw);
+    switchExt          = (fm10000_switch *) switchPtr->extension;
+    err                = FM_OK;
+    tunnelLockTaken    = FALSE;
+
+    FM_CLEAR(baseLookup);
+    FM_CLEAR(sizeLookup);
+    FM_CLEAR(glortValue);
+    FM_CLEAR(glortMask);
+
 
     /* Validating the input argument */
     if ( (group == NULL) || (tunnelParam == NULL) )
@@ -3420,22 +3435,30 @@ fm_status fm10000AddTunnelEncapFlow(fm_int                   sw,
                                     fm_tunnelEncapFlow       field,
                                     fm_tunnelEncapFlowParam *param)
 {
-    fm_fm10000TunnelGrp *tunnelGrp;
-    fm_switch *     switchPtr = GET_SWITCH_PTR(sw);
-    fm10000_switch * switchExt = (fm10000_switch *) switchPtr->extension;
-    fm_status err = FM_OK;
-    fm_bool tunnelLockTaken = FALSE;
-    void *value;
-    fm_int blockLength;
-    fm_fm10000TeData teData;
-    fm_uint16 baseIndex;
-    fm_fm10000EncapFlow *encapFlowEntry;
-    fm_int i;
+    fm_fm10000TunnelGrp *            tunnelGrp;
+    fm_switch *                      switchPtr;
+    fm10000_switch *                 switchExt;
+    fm_status                        err;
+    fm_bool                          tunnelLockTaken;
+    void *                           value;
+    fm_int                           blockLength;
+    fm_fm10000TeData                 teData;
+    fm_uint16                        baseIndex;
+    fm_fm10000EncapFlow *            encapFlowEntry;
+    fm_int                           i;
     fm_fm10000TunnelTeDataBlockCtrl *teDataBlkCtrl;
 
     FM_LOG_ENTRY(FM_LOG_CAT_TE,
                  "sw = %d, group = %d, encapFlow = %d, field = 0x%x\n",
                  sw, group, encapFlow, field);
+
+    tunnelGrp       = NULL;
+    switchPtr       = GET_SWITCH_PTR(sw);
+    switchExt       = (fm10000_switch *) switchPtr->extension;
+    err             = FM_OK;
+    tunnelLockTaken = FALSE;
+
+    FM_CLEAR(teData);
 
     /* Validate input argument */
     if ( (group >= FM10000_TE_DGLORT_MAP_ENTRIES_0 *

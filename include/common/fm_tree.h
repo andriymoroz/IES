@@ -131,7 +131,7 @@ typedef fm_byte    fm_dir;
 typedef struct _fm_internalTreeIterator
 {
     fm_internalTree *tree;
-    fm_treeNode *    next;
+    fm_treeNode *    nextPtr;
     fm_uint          serial;
     fm_dir           dir;
 

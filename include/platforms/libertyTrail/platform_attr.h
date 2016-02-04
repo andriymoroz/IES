@@ -973,12 +973,9 @@
  *                                                  \lb
  * 40GBase-KR4
  *                                                  \lb
- * 40GBase-CR4
+ * 40GBase-CR4 
  *                                                  \lb
- * 100GBase-KR4
- *                                                  \lb
- * 100GBase-CR4
- *                                                  \lb\lb
+ *                                               \lb\lb
  * Default abilities advertised are: 
  *                                                  \lb
  * 1GBase-KX,10GBase-KR,40GBase-KR4,40GBase-CR4 
@@ -1655,9 +1652,9 @@
  * Control.
  * By default (10) the bus speed is set to 400kHz
  */
-#define FM_AAK_API_LIB_I2C_CLKDIVIDER                  "api.platform.lib.config.switch.%d.i2cClkDivider"
-#define FM_AAT_API_LIB_I2C_CLKDIVIDER                  FM_API_ATTR_INT
-#define FM_AAD_API_LIB_I2C_CLKDIVIDER                  0x10
+#define FM_AAK_API_PLATFORM_I2C_CLKDIVIDER             "api.platform.config.switch.%d.i2cClkDivider"
+#define FM_AAT_API_PLATFORM_I2C_CLKDIVIDER             FM_API_ATTR_INT
+#define FM_AAD_API_PLATFORM_I2C_CLKDIVIDER             10
 
 
 #ifdef FM_LT_WHITE_MODEL_SUPPORT

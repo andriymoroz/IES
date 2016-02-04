@@ -6,7 +6,7 @@
  * Description:     Structures and functions for manipulating doubly-linked
  *                  lists
  *
- * Copyright (c) 2006 - 2011, Intel Corporation
+ * Copyright (c) 2006 - 2015, Intel Corporation
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -30,7 +30,7 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
+ *****************************************************************************/
 
 #ifndef __FM_FM_DLIST_H
 #define __FM_FM_DLIST_H
@@ -189,7 +189,7 @@
 
 #define FM_DLL_GET_LAST(list, tail)      (list)->tail
 
-#define FM_DLL_GET_NEXT(node, next)      (node)->next
+#define FM_DLL_GET_NEXT(node, nextPtr)   (node)->nextPtr
 
 #define FM_DLL_GET_PREVIOUS(node, prev)  (node)->prev
 
@@ -199,7 +199,7 @@ typedef struct _fm_dlist_node
 {
     void *data;
 
-    FM_DLL_DEFINE_NODE(_fm_dlist_node, next, prev);
+    FM_DLL_DEFINE_NODE(_fm_dlist_node, nextPtr, prev);
 
 } fm_dlist_node;
 

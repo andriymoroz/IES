@@ -71,7 +71,10 @@ enum _fm_sFlowAttr
 {
     /** Type fm_uint16: A VLAN ID to indicate the VLAN with which the sampled 
      *  traffic is associated. Set to FM_SFLOW_VLAN_ANY (default) to
-     *  sample non-VLAN specific traffic. 
+     *  sample non-VLAN specific traffic.
+     *  
+     *  On FM10000 devices, this attribute may only be set for egress
+     *  SFlows.
      *
      *  \chips  FM3000, FM4000, FM6000, FM10000 */
     FM_SFLOW_VLAN = 0,

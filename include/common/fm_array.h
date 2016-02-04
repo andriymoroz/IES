@@ -6,7 +6,7 @@
  * Description:     File containing declarations for miscellaneous utility
  *                  macros and functions
  *
- * Copyright (c) 2007 - 2012, Intel Corporation
+ * Copyright (c) 2007 - 2015, Intel Corporation
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -30,7 +30,7 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*****************************************************************************/
+ *****************************************************************************/
 
 #ifndef __FM_FM_ARRAY_H
 #define __FM_FM_ARRAY_H
@@ -49,7 +49,7 @@
 typedef struct _fm_cleanupListEntry
 {
     void *memory;               /* to be freed with free() */
-    struct _fm_cleanupListEntry *next;
+    struct _fm_cleanupListEntry *nextPtr;
 
 } fm_cleanupListEntry;
 
@@ -86,7 +86,7 @@ typedef struct _fm_cleanupListEntry
             goto ABORT;                                         \
         }                                                       \
         cleanupEntry->memory = (lvalue);                        \
-        cleanupEntry->next = cleanupList;                       \
+        cleanupEntry->nextPtr = cleanupList;                    \
         cleanupList = cleanupEntry;                             \
     }                                                           \
     memset( (lvalue), 0, (num) * sizeof(type) )
@@ -104,7 +104,7 @@ typedef struct _fm_cleanupListEntry
         while (cleanupList != NULL)          \
         {                                    \
             tmp = cleanupList;               \
-            cleanupList = tmp->next;         \
+            cleanupList = tmp->nextPtr;      \
             free(tmp->memory);               \
             free(tmp);                       \
         }                                    \

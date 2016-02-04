@@ -6,7 +6,7 @@
  * Description:     Functions to encode/decode API/platform
  *                  properties to TLVs.
  *
- * Copyright (c) 2015, Intel Corporation
+ * Copyright (c) 2015 - 2016, Intel Corporation
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -63,6 +63,15 @@
 #define PLAT_LIB_CFG_PCAIO_PREFIX "api.platform.lib.config.pcaIo."
 #define PLAT_LIB_CFG_HWRESID_PREFIX "api.platform.lib.config.hwResourceId."
 
+
+#define PRECURSOR_MIN              -7
+#define PRECURSOR_MAX               15
+#define CURSOR_MIN                  0
+#define CURSOR_MAX                  31
+#define POSTCURSOR_MIN             -31
+#define POSTCURSOR_MAX              31
+
+
 typedef enum
 {
     PROP_TEXT,
@@ -87,6 +96,13 @@ typedef fm_status (*fm_enDecodeValueFunc)(fm_utilEnDecode encode,
                                           fm_char        *propTxt,
                                           fm_int          propTxtSize,
                                           fm_int         *len);
+
+
+typedef struct
+{
+    fm_text desc;
+
+} fm_utilStrList;
 
 
 typedef struct
@@ -117,11 +133,13 @@ typedef struct
     /* Encode/Decode function pointer if used */
     fm_enDecodeValueFunc enDecFunc;
 
-    /* String mapping structure if used */
-    fm_utilStrMap *strMap;
+    /* String mapping structure fm_utilStrMap if used
+     * Mininum value if range checking is used */
+    fm_intptr arg1;
 
-    /* Size of string mapping structure if used */
-    fm_int strMapSize;
+    /* Size of string mapping structure fm_utilStrMap if used
+     * Maximun value if range checking is used */
+    fm_int arg2;
 
 } fm_utilPropMap;
 
@@ -168,6 +186,13 @@ static fm_status EnDecodeByMap(fm_utilEnDecode endec,
                                fm_char        *propTxt,
                                fm_int          propTxtSize,
                                fm_int         *len);
+static fm_status EnDecValidateByList(fm_utilEnDecode endec,
+                                     void           *propMapV,
+                                     fm_byte        *tlvVal,
+                                     fm_int          tlvValSize,
+                                     fm_char        *propVal,
+                                     fm_int          propValSize,
+                                     fm_int         *len);
 
 /*****************************************************************************
  * Global Variables
@@ -178,10 +203,24 @@ static fm_status EnDecodeByMap(fm_utilEnDecode endec,
  * Local Variables
  *****************************************************************************/
 
-static fm_utilStrMap schedModeMap[] =
+static fm_utilStrList platPktIntfList[] =
 {
-    { "static",  0},
-    { "dynamic", 1},
+    { "raw"},
+    { "pti"},
+};
+
+static fm_utilStrList schedModeList[] =
+{
+    { "static"},
+    { "dynamic"},
+};
+
+static fm_utilStrList wmSelectList[] =
+{
+    { "disabled"},
+    { "lossy"},
+    { "lossy_lossless"},
+    { "lossless"},
 };
 
 
@@ -278,7 +317,9 @@ static fm_utilStrMap an73AbilityMap[] =
     { "40GBase-KR4",  (1 << 24)},
     { "40GBase-CR4",  (1 << 25)},
     { "100GBase-KR4", (1 << 28)},
-    { "100GBase-CR4", (1 << 29) },
+    { "100GBase-CR4", (1 << 29)},
+    { "25GBase-CR",   (1 << 31)},
+    { "25GBase-KR",   (1 << 31)}, /* Same bit for both 25G CR or KR */
 };
 
 static fm_utilStrMap dfeModeMap[] =
@@ -442,707 +483,774 @@ static fm_utilStrMap phyModelMap[] =
 {
     { "PHY_UNKNOWN", 0 },
     { "GN2412",      1  },
-
 };
 
 
 /* API properties */
 static fm_utilPropMap apiProp[] = {
     {"api.system.ebi.clock",
-        PROP_INT, FM_TLV_API_EBI_CLOCK, 4, NULL, NULL, 0},
+        PROP_INT, FM_TLV_API_EBI_CLOCK, 4, NULL, 0, 0},
     {"api.system.fhRef.clock",
-        PROP_INT, FM_TLV_API_FH_REF_CLK, 4, NULL, NULL, 0},
+        PROP_INT, FM_TLV_API_FH_REF_CLK, 4, NULL, 0, 0},
     {"api.stp.defaultState.vlanMember",
-        PROP_INT, FM_TLV_API_STP_DEF_VLAN_MEMBER, 1, NULL, NULL, 0},
+        PROP_INT, FM_TLV_API_STP_DEF_VLAN_MEMBER, 1, NULL, 0, 0},
     {"api.allowDirectSendToCpu",
-        PROP_BOOL, FM_TLV_API_DIR_SEND_TO_CPU, 1, NULL, NULL, 0},
+        PROP_BOOL, FM_TLV_API_DIR_SEND_TO_CPU, 1, NULL, 0, 0},
     {"api.stp.defaultState.vlanNonMember",
-        PROP_INT, FM_TLV_API_STP_DEF_VLAN_NON_MEMBER, 1, NULL, NULL, 0},
+        PROP_INT, FM_TLV_API_STP_DEF_VLAN_NON_MEMBER, 1, NULL, 0, 0},
     {"debug.boot.identifySwitch",
-        PROP_BOOL, FM_TLV_API_IDENTIFY_SWITCH, 1, NULL, NULL, 0},
+        PROP_BOOL, FM_TLV_API_IDENTIFY_SWITCH, 1, NULL, 0, 0},
     {"debug.boot.reset",
-        PROP_BOOL, FM_TLV_API_BOOT_RESET, 1, NULL, NULL, 0},
+        PROP_BOOL, FM_TLV_API_BOOT_RESET, 1, NULL, 0, 0},
     {"debug.boot.autoInsertSwitches",
-        PROP_BOOL, FM_TLV_API_AUTO_INSERT_SW, 1, NULL, NULL, 0},
+        PROP_BOOL, FM_TLV_API_AUTO_INSERT_SW, 1, NULL, 0, 0},
     {"api.boot.deviceResetTime",
-        PROP_INT, FM_TLV_API_DEV_RESET_TIME, 4, NULL, NULL, 0},
+        PROP_INT, FM_TLV_API_DEV_RESET_TIME, 4, NULL, 0, 0},
     {"api.swag.autoEnableLinks",
-        PROP_BOOL, FM_TLV_API_SWAG_EN_LINK, 1, NULL, NULL, 0},
+        PROP_BOOL, FM_TLV_API_SWAG_EN_LINK, 1, NULL, 0, 0},
     {"api.event.blockThreshold",
-        PROP_INT, FM_TLV_API_EVENT_BLK_THRESHOLD, 2, NULL, NULL, 0},
+        PROP_INT, FM_TLV_API_EVENT_BLK_THRESHOLD, 2, NULL, 0, 0},
     {"api.event.unblockThreshold",
-        PROP_INT, FM_TLV_API_EVENT_UNBLK_THRESHOLD, 2, NULL, NULL, 0},
+        PROP_INT, FM_TLV_API_EVENT_UNBLK_THRESHOLD, 2, NULL, 0, 0},
     {"api.event.semaphoreTimeout",
-        PROP_INT, FM_TLV_API_EVENT_SEM_TIMEOUT, 2, NULL, NULL, 0},
+        PROP_INT, FM_TLV_API_EVENT_SEM_TIMEOUT, 2, NULL, 0, 0},
     {"api.packet.rxDirectEnqueueing",
-        PROP_BOOL, FM_TLV_API_RX_DIRECTED_ENQ, 1, NULL, NULL, 0},
+        PROP_BOOL, FM_TLV_API_RX_DIRECTED_ENQ, 1, NULL, 0, 0},
     {"api.packet.rxDriverDestinations",
-        PROP_INT, FM_TLV_API_RX_DRV_DEST, 1, NULL, NULL, 0},
+        PROP_INT, FM_TLV_API_RX_DRV_DEST, 1, NULL, 0, 0},
 #if 0
     {"api.boot.portOutOfResetMask",
-        PROP_INT_H, FM_TLV_API_BOOT_PORT_RESET_MASK, 1, NULL, NULL, 0},
+        PROP_INT_H, FM_TLV_API_BOOT_PORT_RESET_MASK, 1, NULL, 0, 0},
 #endif
     {"api.lag.asyncDeletion",
-        PROP_BOOL, FM_TLV_API_LAG_ASYNC_DEL, 1, NULL, NULL, 0},
+        PROP_BOOL, FM_TLV_API_LAG_ASYNC_DEL, 1, NULL, 0, 0},
     {"api.ma.eventOnStaticAddr",
-        PROP_BOOL, FM_TLV_API_EVENT_ON_STATIC_ADDR, 1, NULL, NULL, 0},
+        PROP_BOOL, FM_TLV_API_EVENT_ON_STATIC_ADDR, 1, NULL, 0, 0},
     {"api.ma.eventOnDynamicAddr",
-        PROP_BOOL, FM_TLV_API_EVENT_ON_DYN_ADDR, 1, NULL, NULL, 0},
+        PROP_BOOL, FM_TLV_API_EVENT_ON_DYN_ADDR, 1, NULL, 0, 0},
     {"api.ma.flushOnPortDown",
-        PROP_BOOL, FM_TLV_API_FLUSH_ON_PORT_DOWN, 1, NULL, NULL, 0},
+        PROP_BOOL, FM_TLV_API_FLUSH_ON_PORT_DOWN, 1, NULL, 0, 0},
     {"api.ma.flushOnVlanChange",
-        PROP_BOOL, FM_TLV_API_FLUSH_ON_VLAN_CHG, 1, NULL, NULL, 0},
+        PROP_BOOL, FM_TLV_API_FLUSH_ON_VLAN_CHG, 1, NULL, 0, 0},
     {"api.ma.flushOnLagChange",
-        PROP_BOOL, FM_TLV_API_FLUSH_ON_LAG_CHG, 1, NULL, NULL, 0},
+        PROP_BOOL, FM_TLV_API_FLUSH_ON_LAG_CHG, 1, NULL, 0, 0},
     {"api.ma.tcnFifoBurstSize",
-        PROP_INT, FM_TLV_API_TCN_FIFO_BURST_SIZE, 2, NULL, NULL, 0},
+        PROP_INT, FM_TLV_API_TCN_FIFO_BURST_SIZE, 2, NULL, 0, 0},
     {"api.swag.internalPort.vlanStats",
-        PROP_BOOL, FM_TLV_API_SWAG_INT_VLAN_STATS, 1, NULL, NULL, 0},
+        PROP_BOOL, FM_TLV_API_SWAG_INT_VLAN_STATS, 1, NULL, 0, 0},
     {"api.perLagManagement",
-        PROP_BOOL, FM_TLV_API_PER_LAG_MGMT, 1, NULL, NULL, 0},
+        PROP_BOOL, FM_TLV_API_PER_LAG_MGMT, 1, NULL, 0, 0},
     {"api.parityRepair.enable",
-        PROP_BOOL, FM_TLV_API_PARITY_REPAIR_EN, 1, NULL, NULL, 0},
+        PROP_BOOL, FM_TLV_API_PARITY_REPAIR_EN, 1, NULL, 0, 0},
     {"api.SWAG.maxACLPortSets",
-        PROP_INT, FM_TLV_API_SWAG_MAX_ACL_PORT_SET, 2, NULL, NULL, 0},
+        PROP_INT, FM_TLV_API_SWAG_MAX_ACL_PORT_SET, 2, NULL, 0, 0},
     {"api.portSets.maxPortSets",
-        PROP_INT, FM_TLV_API_MAX_PORT_SETS, 2, NULL, NULL, 0},
+        PROP_INT, FM_TLV_API_MAX_PORT_SETS, 2, NULL, 0, 0},
     {"api.packetReceive.enable",
-        PROP_BOOL, FM_TLV_API_PKT_RX_EN, 1, NULL, NULL, 0},
+        PROP_BOOL, FM_TLV_API_PKT_RX_EN, 1, NULL, 0, 0},
     {"api.multicast.singleAddress",
-        PROP_BOOL, FM_TLV_API_MC_SINGLE_ADDR, 1, NULL, NULL, 0},
+        PROP_BOOL, FM_TLV_API_MC_SINGLE_ADDR, 1, NULL, 0, 0},
     {"api.platform.model.position",
-        PROP_INT, FM_TLV_API_PLAT_MODEL_POS, 1, NULL, NULL, 0},
+        PROP_INT, FM_TLV_API_PLAT_MODEL_POS, 1, NULL, 0, 0},
     {"api.vn.numNextHops",
-        PROP_INT, FM_TLV_API_VN_NUM_NH, 2, NULL, NULL, 0},
+        PROP_INT, FM_TLV_API_VN_NUM_NH, 2, NULL, 0, 0},
     {"api.vn.encapProtocol",
-        PROP_INT_H, FM_TLV_API_VN_ENCAP_PROTOCOL, 2, NULL, NULL, 0},
+        PROP_INT_H, FM_TLV_API_VN_ENCAP_PROTOCOL, 2, NULL, 0, 0},
     {"api.vn.encapVersion",
-        PROP_INT, FM_TLV_API_VN_ENCAP_VER, 1, NULL, NULL, 0},
+        PROP_INT, FM_TLV_API_VN_ENCAP_VER, 1, NULL, 0, 0},
     {"api.routing.supportRouteLookups",
-        PROP_BOOL, FM_TLV_API_SUP_ROUTE_LOOKUP, 1, NULL, NULL, 0},
+        PROP_BOOL, FM_TLV_API_SUP_ROUTE_LOOKUP, 1, NULL, 0, 0},
     {"api.routing.maintenance.enable",
-        PROP_BOOL, FM_TLV_API_RT_MAINT_EN, 1, NULL, NULL, 0},
+        PROP_BOOL, FM_TLV_API_RT_MAINT_EN, 1, NULL, 0, 0},
     {"api.vlan.autoVlan2Tagging",
-        PROP_BOOL, FM_TLV_API_AUTO_VLAN2_TAG, 1, NULL, NULL, 0},
+        PROP_BOOL, FM_TLV_API_AUTO_VLAN2_TAG, 1, NULL, 0, 0},
     {"api.ma.eventOnAddrChange",
-        PROP_BOOL, FM_TLV_API_EVENT_ON_ADDR_CHG, 1, NULL, NULL, 0},
+        PROP_BOOL, FM_TLV_API_EVENT_ON_ADDR_CHG, 1, NULL, 0, 0},
+    {"api.port.cpuPortXCastMode",
+        PROP_BOOL, FM_TLV_API_CPU_PORT_XCAST_MODE, 1, NULL, 0, 0},
+    {"api.hni.glortsPerPep",
+        PROP_INT, FM_TLV_API_HNI_GLORTS_PER_PEP, 2, NULL, 0, 0},
+
 
     /* Start of undocumented properties */
     {"debug.boot.interruptHandler.disable",
-        PROP_BOOL, FM_TLV_API_INTR_HANDLER_DIS, 1, NULL, NULL, 0},
+        PROP_BOOL, FM_TLV_API_INTR_HANDLER_DIS, 1, NULL, 0, 0},
     {"api.maTableMaintenance.enable",
-        PROP_BOOL, FM_TLV_API_MA_TABLE_MAINT_EN, 1, NULL, NULL, 0},
+        PROP_BOOL, FM_TLV_API_MA_TABLE_MAINT_EN, 1, NULL, 0, 0},
     {"api.fastMaintenance.enable",
-        PROP_BOOL, FM_TLV_API_FAST_MAINT_EN, 1, NULL, NULL, 0},
+        PROP_BOOL, FM_TLV_API_FAST_MAINT_EN, 1, NULL, 0, 0},
     {"api.fastMaintenance.period",
-        PROP_INT, FM_TLV_API_FAST_MAINT_PER, 4, NULL, NULL, 0},
+        PROP_INT, FM_TLV_API_FAST_MAINT_PER, 4, NULL, 0, 0},
 #if 0
     {"api.vegas.uplinkPortsFirst",
-        PROP_BOOL, FM_TLV_API_VEGAS_UPLNK_FIRST, 1, NULL, NULL, 0},
+        PROP_BOOL, FM_TLV_API_VEGAS_UPLNK_FIRST, 1, NULL, 0, 0},
 #endif
     {"api.strict.glortPhysical",
-        PROP_BOOL, FM_TLV_API_STRICT_GLORT, 1, NULL, NULL, 0},
+        PROP_BOOL, FM_TLV_API_STRICT_GLORT, 1, NULL, 0, 0},
     {"api.autoPauseOff.resetWatermark",
-        PROP_BOOL, FM_TLV_API_AUTO_RESET_WM, 1, NULL, NULL, 0},
+        PROP_BOOL, FM_TLV_API_AUTO_RESET_WM, 1, NULL, 0, 0},
     {"api.swag.autoSubSwitches",
-        PROP_BOOL, FM_TLV_API_AUTO_SUB_SW, 1, NULL, NULL, 0},
+        PROP_BOOL, FM_TLV_API_AUTO_SUB_SW, 1, NULL, 0, 0},
     {"api.swag.autoInternalPorts",
-        PROP_BOOL, FM_TLV_API_SWAG_AUTO_INT_PORT, 1, NULL, NULL, 0},
+        PROP_BOOL, FM_TLV_API_SWAG_AUTO_INT_PORT, 1, NULL, 0, 0},
     {"api.swag.autoVNVsi",
-        PROP_BOOL, FM_TLV_API_SWAG_AUTO_NVVSI, 1, NULL, NULL, 0},
+        PROP_BOOL, FM_TLV_API_SWAG_AUTO_NVVSI, 1, NULL, 0, 0},
     {"api.FM4000.FIBM.testRig",
-        PROP_INT, FM_TLV_API_FIBM_TEST_RIG, 2, NULL, NULL, 0},
+        PROP_INT, FM_TLV_API_FIBM_TEST_RIG, 2, NULL, 0, 0},
     {"api.FM4000.FIBM.testPort",
-        PROP_INT, FM_TLV_API_FIBM_TEST_PORT, 2, NULL, NULL, 0},
+        PROP_INT, FM_TLV_API_FIBM_TEST_PORT, 2, NULL, 0, 0},
     {"api.portRemapTable",
-        PROP_TEXT, FM_TLV_API_PORT_REMAP_TABLE, 0, NULL, NULL, 0},
+        PROP_TEXT, FM_TLV_API_PORT_REMAP_TABLE, 0, NULL, 0, 0},
     {"api.platform.bypassEnable",
-        PROP_BOOL, FM_TLV_API_PLAT_BYPASS_EN, 1, NULL, NULL, 0},
+        PROP_BOOL, FM_TLV_API_PLAT_BYPASS_EN, 1, NULL, 0, 0},
     {"api.lag.delSemaphore.timeout",
-        PROP_INT, FM_TLV_API_LAG_DEL_SEM_TIMEOUT, 2, NULL, NULL, 0},
+        PROP_INT, FM_TLV_API_LAG_DEL_SEM_TIMEOUT, 2, NULL, 0, 0},
     {"api.stp.enableInternalPortControl",
-        PROP_BOOL, FM_TLV_API_STP_EN_INT_PORT_CTRL, 1, NULL, NULL, 0},
+        PROP_BOOL, FM_TLV_API_STP_EN_INT_PORT_CTRL, 1, NULL, 0, 0},
     {"api.generateEepromMode",
-        PROP_INT, FM_TLV_API_GEN_EEPROM_MODE, 1, NULL, NULL, 0},
+        PROP_INT, FM_TLV_API_GEN_EEPROM_MODE, 1, NULL, 0, 0},
     {"api.platform.model.portMapType",
-        PROP_INT, FM_TLV_API_MODEL_PORT_MAP_TYPE, 1, NULL, NULL, 0},
+        PROP_INT, FM_TLV_API_MODEL_PORT_MAP_TYPE, 1, NULL, 0, 0},
     {"api.platform.model.switchType",
-        PROP_TEXT, FM_TLV_API_MODEL_SW_TYPE, 0, NULL, NULL, 0},
+        PROP_TEXT, FM_TLV_API_MODEL_SW_TYPE, 0, NULL, 0, 0},
     {"api.platform.model.sendEOT",
-        PROP_BOOL, FM_TLV_API_MODEL_TX_EOT, 1, NULL, NULL, 0},
+        PROP_BOOL, FM_TLV_API_MODEL_TX_EOT, 1, NULL, 0, 0},
     {"api.platform.model.logEgressInfo",
-        PROP_BOOL, FM_TLV_API_MODEL_LOG_EGR_INFO, 1, NULL, NULL, 0},
+        PROP_BOOL, FM_TLV_API_MODEL_LOG_EGR_INFO, 1, NULL, 0, 0},
     {"api.platform.enableRefClock",
-        PROP_BOOL, FM_TLV_API_PLAT_EN_REF_CLK, 1, NULL, NULL, 0},
+        PROP_BOOL, FM_TLV_API_PLAT_EN_REF_CLK, 1, NULL, 0, 0},
     {"api.platform.setRefClock",
-        PROP_BOOL, FM_TLV_API_PLAT_SET_REF_CLK, 1, NULL, NULL, 0},
+        PROP_BOOL, FM_TLV_API_PLAT_SET_REF_CLK, 1, NULL, 0, 0},
     {"api.platform.i2cDevName",
-        PROP_TEXT, FM_TLV_API_PLAT_I2C_DEVNAME, 0, NULL, NULL, 0},
+        PROP_TEXT, FM_TLV_API_PLAT_I2C_DEVNAME, 0, NULL, 0, 0},
     {"api.platform.priorityBufferQueues",
-        PROP_INT, FM_TLV_API_PLAT_PRI_BUF_Q, 1, NULL, NULL, 0},
+        PROP_INT, FM_TLV_API_PLAT_PRI_BUF_Q, 1, NULL, 0, 0},
     {"api.platform.pktSchedType",
-        PROP_INT, FM_TLV_API_PLAT_PKT_SCHED_TYPE, 1, NULL, NULL, 0},
+        PROP_INT, FM_TLV_API_PLAT_PKT_SCHED_TYPE, 1, NULL, 0, 0},
     {"api.platform.separateBufferPoolEnable",
-        PROP_BOOL, FM_TLV_API_PLAT_SEP_BUF_POOL, 1, NULL, NULL, 0},
+        PROP_BOOL, FM_TLV_API_PLAT_SEP_BUF_POOL, 1, NULL, 0, 0},
     {"api.platform.numBuffersRx",
-        PROP_INT, FM_TLV_API_PLAT_NUM_BUF_RX, 4, NULL, NULL, 0},
+        PROP_INT, FM_TLV_API_PLAT_NUM_BUF_RX, 4, NULL, 0, 0},
     {"api.platform.numBuffersTx",
-        PROP_INT, FM_TLV_API_PLAT_NUM_BUF_TX, 4, NULL, NULL, 0},
+        PROP_INT, FM_TLV_API_PLAT_NUM_BUF_TX, 4, NULL, 0, 0},
     {"api.platform.model.pktInterface",
-        PROP_TEXT, FM_TLV_API_PLAT_MODEL_PKT_INTF, 0, NULL, NULL, 0},
+        PROP_TEXT, FM_TLV_API_PLAT_MODEL_PKT_INTF, 0, NULL, 0, 0},
     {"api.platform.pktInterface",
-        PROP_TEXT, FM_TLV_API_PLAT_PKT_INTF, 0, NULL, NULL, 0},
+        PROP_TEXT, FM_TLV_API_PLAT_PKT_INTF, 0,
+        EnDecValidateByList, (fm_intptr)platPktIntfList, FM_NENTRIES(platPktIntfList)},
     {"api.platform.model.topology.name",
-        PROP_TEXT, FM_TLV_API_PLAT_MODEL_TOPO, 0, NULL, NULL, 0},
+        PROP_TEXT, FM_TLV_API_PLAT_MODEL_TOPO, 0, NULL, 0, 0},
     {"api.platform.model.topology.file.useModelPath",
-        PROP_BOOL, FM_TLV_API_PLAT_MODEL_USE_PATH, 1, NULL, NULL, 0},
+        PROP_BOOL, FM_TLV_API_PLAT_MODEL_USE_PATH, 1, NULL, 0, 0},
     {"api.platform.model.devBoardIp",
-        PROP_TEXT, FM_TLV_API_PLAT_DEV_BOARD_IP, 0, NULL, NULL, 0},
+        PROP_TEXT, FM_TLV_API_PLAT_DEV_BOARD_IP, 0, NULL, 0, 0},
     {"api.platform.model.devBoardPort",
-        PROP_INT, FM_TLV_API_PLAT_DEV_BOARD_PORT, 2, NULL, NULL, 0},
+        PROP_INT, FM_TLV_API_PLAT_DEV_BOARD_PORT, 2, NULL, 0, 0},
     {"api.platform.model.deviceCfg",
-        PROP_INT_H, FM_TLV_API_PLAT_MODEL_DEVICE_CFG, 4, NULL, NULL, 0},
+        PROP_INT_H, FM_TLV_API_PLAT_MODEL_DEVICE_CFG, 4, NULL, 0, 0},
     {"api.platform.model.chipVersion",
-        PROP_INT_H, FM_TLV_API_PLAT_MODEL_CHIP_VERSION, 4, NULL, NULL, 0},
+        PROP_INT_H, FM_TLV_API_PLAT_MODEL_CHIP_VERSION, 4, NULL, 0, 0},
     {"api.platform.sbusServer.tcpPort",
-        PROP_INT, FM_TLV_API_PLAT_SBUS_SERVER_PORT, 2, NULL, NULL, 0},
+        PROP_INT, FM_TLV_API_PLAT_SBUS_SERVER_PORT, 2, NULL, 0, 0},
     {"api.platform.isWhiteModel",
-        PROP_BOOL, FM_TLV_API_PLAT_IS_WHITE_MODEL, 1, NULL, NULL, 0},
+        PROP_BOOL, FM_TLV_API_PLAT_IS_WHITE_MODEL, 1, NULL, 0, 0},
     {"api.platform.TswitchOffset",
-        PROP_INT, FM_TLV_API_PLAT_TSW_OFF, 1, NULL, NULL, 0},
+        PROP_INT, FM_TLV_API_PLAT_TSW_OFF, 1, NULL, 0, 0},
     {"api.platform.portLedBlinkEnable",
-        PROP_BOOL, FM_TLV_API_PLAT_LED_BLINK_EN, 1, NULL, NULL, 0},
+        PROP_BOOL, FM_TLV_API_PLAT_LED_BLINK_EN, 1, NULL, 0, 0},
     {"api.debug.initLoggingCategories",
-        PROP_TEXT, FM_TLV_API_DBG_INT_LOG_CAT, 0, NULL, NULL, 0},
+        PROP_TEXT, FM_TLV_API_DBG_INT_LOG_CAT, 0, NULL, 0, 0},
     {"api.port.addPepsToFlooding",
-        PROP_BOOL, FM_TLV_API_ADD_PEP_FLOOD, 1, NULL, NULL, 0},
+        PROP_BOOL, FM_TLV_API_ADD_PEP_FLOOD, 1, NULL, 0, 0},
     {"api.port.allowFtagVlanTagging",
-        PROP_BOOL, FM_TLV_API_ADD_ALLOW_FTAG_VLAN_TAG, 1, NULL, NULL, 0},
+        PROP_BOOL, FM_TLV_API_ADD_ALLOW_FTAG_VLAN_TAG, 1, NULL, 0, 0},
     {"api.scheduler.ignoreBwViolationNoWarning",
-        PROP_BOOL, FM_TLV_API_IGNORE_BW_VIOLATION_NW, 1, NULL, NULL, 0},
+        PROP_BOOL, FM_TLV_API_IGNORE_BW_VIOLATION_NW, 1, NULL, 0, 0},
     {"api.scheduler.ignoreBwViolation",
-        PROP_BOOL, FM_TLV_API_IGNORE_BW_VIOLATION, 1, NULL, NULL, 0},
+        PROP_BOOL, FM_TLV_API_IGNORE_BW_VIOLATION, 1, NULL, 0, 0},
     {"api.dfe.allowEarlyLinkUp",
-        PROP_BOOL, FM_TLV_API_DFE_EARLY_LNK_UP, 1, NULL, NULL, 0},
+        PROP_BOOL, FM_TLV_API_DFE_EARLY_LNK_UP, 1, NULL, 0, 0},
     {"api.dfe.allowKrPcal",
-        PROP_BOOL, FM_TLV_API_DFE_ALLOW_KR_PCAL, 1, NULL, NULL, 0},
+        PROP_BOOL, FM_TLV_API_DFE_ALLOW_KR_PCAL, 1, NULL, 0, 0},
     {"api.gsme.timestampMode",
-        PROP_INT, FM_TLV_API_GSME_TS_MODE, 1, NULL, NULL, 0},
+        PROP_INT, FM_TLV_API_GSME_TS_MODE, 1, NULL, 0, 0},
     {"api.multicast.hni.flooding",
-        PROP_BOOL, FM_TLV_API_MC_HNI_FLOODING, 1, NULL, NULL, 0},
+        PROP_BOOL, FM_TLV_API_MC_HNI_FLOODING, 1, NULL, 0, 0},
     {"api.hni.macEntriesPerPep",
-        PROP_INT, FM_TLV_API_HNI_MAC_ENTRIES_PER_PEP, 2, NULL, NULL, 0},
+        PROP_INT, FM_TLV_API_HNI_MAC_ENTRIES_PER_PEP, 2, NULL, 0, 0},
     {"api.hni.macEntriesPerPort",
-        PROP_INT, FM_TLV_API_HNI_MAC_ENTRIES_PER_PORT, 2, NULL, NULL, 0},
+        PROP_INT, FM_TLV_API_HNI_MAC_ENTRIES_PER_PORT, 2, NULL, 0, 0},
     {"api.hni.innOutEntriesPerPep",
-        PROP_INT, FM_TLV_API_HNI_INN_OUT_ENTRIES_PER_PEP, 2, NULL, NULL, 0},
+        PROP_INT, FM_TLV_API_HNI_INN_OUT_ENTRIES_PER_PEP, 2, NULL, 0, 0},
     {"api.hni.innOutEntriesPerPort",
-        PROP_INT, FM_TLV_API_HNI_INN_OUT_ENTRIES_PER_PORT, 2, NULL, NULL, 0},
+        PROP_INT, FM_TLV_API_HNI_INN_OUT_ENTRIES_PER_PORT, 2, NULL, 0, 0},
     {"api.port.enableStatusPolling",
-        PROP_BOOL, FM_TLV_API_PORT_ENABLE_STATUS_POLLING, 1, NULL, NULL, 0},
+        PROP_BOOL, FM_TLV_API_PORT_ENABLE_STATUS_POLLING, 1, NULL, 0, 0},
     {"api.dfe.enableSigOkDebounce",
-        PROP_BOOL, FM_TLV_API_DFE_ENABLE_SIGNALOK_DEBOUNCING, 1, NULL, NULL, 0},
+        PROP_BOOL, FM_TLV_API_DFE_ENABLE_SIGNALOK_DEBOUNCING, 1, NULL, 0, 0},
     {"api.an.timerAllowOutSpec",
-        PROP_BOOL, FM_TLV_API_AN_TIMER_ALLOW_OUT_SPEC, 1, NULL, NULL, 0},
+        PROP_BOOL, FM_TLV_API_AN_TIMER_ALLOW_OUT_SPEC, 1, NULL, 0, 0},
+    {"api.serdes.validateTimer",
+        PROP_INT, FM_TVL_API_SERDES_VALIDATE_TIMER, 4, NULL, 0, 0},
+    {"api.serdes.validate", 
+        PROP_BOOL, FM_TLV_API_SERDES_VALIDATE, 1, NULL, 0, 0},
+    {"api.sbmaster.validate",
+        PROP_BOOL, FM_TLV_API_SBMASTER_VALIDATE, 1, NULL, 0, 0},
+    {"api.serdes.actionUpState",
+        PROP_BOOL, FM_TVL_API_SERDES_ACTION_UP_ALLOWED, 1, NULL, 0, 0},
 
 };
 
 /* FM10K properties starting with api.FM10000. */
 static fm_utilPropMap fm10kProp[] = {
     {"wmSelect", PROP_TEXT, FM_TLV_FM10K_WMSELECT, 0,
-        NULL, NULL, 0},
+        EnDecValidateByList, (fm_intptr)wmSelectList, FM_NENTRIES(wmSelectList)},
     {"cmRxSmpPrivateBytes", PROP_INT, FM_TLV_FM10K_CM_RX_SMP_PRIVATE_BYTES, 4,
-        NULL, NULL, 0},
+        NULL, 0, 0},
     {"cmTxTcHogBytes", PROP_INT, FM_TLV_FM10K_CM_TX_TC_HOG_BYTES, 4,
-        NULL, NULL, 0},
+        NULL, 0, 0},
     {"cmSmpSdVsHogPercent", PROP_INT, FM_TLV_FM10K_CM_SMP_SD_VS_HOG_PERCENT, 1,
-        NULL, NULL, 0},
+        NULL, 0, 0},
     {"cmSmpSdJitterBits", PROP_INT, FM_TLV_FM10K_CM_SMP_SD_JITTER_BITS, 1,
-        NULL, NULL, 0},
+        NULL, 0, 0},
     {"cmTxSdOnPrivate", PROP_BOOL, FM_TLV_FM10K_CM_TX_SD_ON_PRIVATE, 1,
-        NULL, NULL, 0},
+        NULL, 0, 0},
     {"cmTxSdOnSmpFree", PROP_BOOL, FM_TLV_FM10K_CM_TX_SD_ON_SMP_FREE, 1,
-        NULL, NULL, 0},
+        NULL, 0, 0},
     {"cmPauseBufferBytes", PROP_INT, FM_TLV_FM10K_CM_PAUSE_BUFFER_BYTES, 4,
-        NULL, NULL, 0},
+        NULL, 0, 0},
     {"mcastMaxEntriesPerCam", PROP_INT, FM_TLV_FM10K_MCAST_MAX_ENTRIES_PER_CAM, 2,
-        NULL, NULL, 0},
+        NULL, 0, 0},
     {"ffu.unicastSliceRangeFirst", PROP_INT, FM_TLV_FM10K_FFU_UNICAST_SLICE_1ST, 1,
-        NULL, NULL, 0},
+        NULL, 0, 0},
     {"ffu.unicastSliceRangeLast", PROP_INT, FM_TLV_FM10K_FFU_UNICAST_SLICE_LAST, 1,
-        NULL, NULL, 0},
+        NULL, 0, 0},
     {"ffu.multicastSliceRangeFirst", PROP_INT, FM_TLV_FM10K_FFU_MULTICAST_SLICE_1ST, 1,
-        NULL, NULL, 0},
+        NULL, 0, 0},
     {"ffu.multicastSliceRangeLast", PROP_INT, FM_TLV_FM10K_FFU_MULTICAST_SLICE_LAST, 1,
-        NULL, NULL, 0},
+        NULL, 0, 0},
     {"ffu.aclSliceRangeFirst", PROP_INT, FM_TLV_FM10K_FFU_ACL_SLICE_1ST, 1,
-        NULL, NULL, 0},
+        NULL, 0, 0},
     {"ffu.aclSliceRangeLast", PROP_INT, FM_TLV_FM10K_FFU_ACL_SLICE_LAST, 1,
-        NULL, NULL, 0},
+        NULL, 0, 0},
     {"ffu.mapMAC.reservedForRouting", PROP_INT, FM_TLV_FM10K_FFU_MAPMAC_ROUTING, 1,
-        NULL, NULL, 0},
+        NULL, 0, 0},
     {"ffu.unicastPrecedenceMin", PROP_INT, FM_TLV_FM10K_FFU_UNICAST_PRECEDENCE_MIN, 1,
-        NULL, NULL, 0},
+        NULL, 0, 0},
     {"ffu.unicastPrecedenceMax", PROP_INT, FM_TLV_FM10K_FFU_UNICAST_PRECEDENCE_MAX, 1,
-        NULL, NULL, 0},
-     {"ffu.multicastPrecedenceMin", PROP_INT, FM_TLV_FM10K_FFU_MULTICAST_PRECEDENCE_MIN, 1,
-        NULL, NULL, 0},
+        NULL, 0, 0},
+    {"ffu.multicastPrecedenceMin", PROP_INT, FM_TLV_FM10K_FFU_MULTICAST_PRECEDENCE_MIN, 1,
+        NULL, 0, 0},
     {"ffu.multicastPrecedenceMax", PROP_INT, FM_TLV_FM10K_FFU_MULTICAST_PRECEDENCE_MAX, 1,
-        NULL, NULL, 0},
+        NULL, 0, 0},
     {"ffu.aclPrecedenceMin", PROP_INT, FM_TLV_FM10K_FFU_ACL_PRECEDENCE_MIN, 1,
-        NULL, NULL, 0},
+        NULL, 0, 0},
     {"ffu.aclPrecedenceMax", PROP_INT, FM_TLV_FM10K_FFU_ACL_PRECEDENCE_MAX, 1,
-        NULL, NULL, 0},
+        NULL, 0, 0},
     {"ffu.ACLStrictCountPolice", PROP_BOOL, FM_TLV_FM10K_FFU_ACL_STRICT_COUNT_POLICE, 1,
-        NULL, NULL, 0},
+        NULL, 0, 0},
     {"initUcastFloodingTriggers", PROP_BOOL, FM_TLV_FM10K_INIT_UCAST_FLOODING_TRIGGERS, 1,
-        NULL, NULL, 0},
+        NULL, 0, 0},
     {"initMcastFloodingTriggers", PROP_BOOL, FM_TLV_FM10K_INIT_MCAST_FLOODING_TRIGGERS, 1,
-        NULL, NULL, 0},
+        NULL, 0, 0},
     {"initBcastFloodingTriggers", PROP_BOOL, FM_TLV_FM10K_INIT_BCAST_FLOODING_TRIGGERS, 1,
-        NULL, NULL, 0},
+        NULL, 0, 0},
     {"initReservedMacTriggers", PROP_BOOL, FM_TLV_FM10K_INIT_RESERVED_MAC_TRIGGERS, 1,
-        NULL, NULL, 0},
+        NULL, 0, 0},
     {"floodingTrapPriority", PROP_INT, FM_TLV_FM10K_FLOODING_TRAP_PRIORITY, 1,
-        NULL, NULL, 0},
+        NULL, 0, 0},
     {"autoNeg.generateEvents", PROP_BOOL, FM_TLV_FM10K_AUTONEG_GENERATE_EVENTS, 1,
-        NULL, NULL, 0},
+        NULL, 0, 0},
     {"linkDependsOnDfe", PROP_BOOL, FM_TLV_FM10K_LINK_DEPENDS_ON_DFE, 1,
-        NULL, NULL, 0},
+        NULL, 0, 0},
     {"vn.useSharedEncapFlows", PROP_BOOL, FM_TLV_FM10K_VN_USE_SHARED_ENCAP_FLOWS, 1,
-        NULL, NULL, 0},
+        NULL, 0, 0},
     {"vn.maxRemoteAddresses", PROP_INT, FM_TLV_FM10K_VN_MAX_TUNNEL_RULES, 4,
-        NULL, NULL, 0},
+        NULL, 0, 0},
     {"vn.tunnelGroupHashSize", PROP_INT, FM_TLV_FM10K_VN_TUNNEL_GROUP_HASH_SIZE, 4,
-        NULL, NULL, 0},
+        NULL, 0, 0},
     {"vn.teVID", PROP_INT, FM_TLV_FM10K_VN_TE_VID, 2,
-        NULL, NULL, 0},
+        NULL, 0, 0},
     {"vn.encapAclNumber", PROP_INT, FM_TLV_FM10K_VN_ENCAP_ACL_NUM, 4,
-        NULL, NULL, 0},
+        NULL, 0, 0},
     {"vn.decapAclNumber", PROP_INT, FM_TLV_FM10K_VN_DECAP_ACL_NUM, 4,
-        NULL, NULL, 0},
+        NULL, 0, 0},
     {"mcast.numStackGroups", PROP_INT, FM_TLV_FM10K_MCAST_NUM_STACK_GROUPS, 2,
-        NULL, NULL, 0},
+        NULL, 0, 0},
     {"vn.TunnelOnlyOnIngress", PROP_BOOL, FM_TLV_FM10K_VN_TUNNEL_ONLY_IN_INGRESS, 1,
-        NULL, NULL, 0},
+        NULL, 0, 0},
     {"mtable.cleanupWatermark", PROP_INT, FM_TLV_FM10K_MTABLE_CLEANUP_WATERMARK, 1,
-        NULL, NULL, 0},
-    {"schedMode", PROP_TEXT, FM_TLV_FM10K_SCHED_MODE, 0, NULL, NULL, 0},
+        NULL, 0, 0},
+    {"schedMode", PROP_TEXT, FM_TLV_FM10K_SCHED_MODE, 0,
+        EnDecValidateByList, (fm_intptr)schedModeList, FM_NENTRIES(schedModeList)},
     {"updateSchedOnLinkChange", PROP_BOOL, FM_TLV_FM10K_UPD_SCHED_ON_LNK_CHANGE, 1,
-        NULL, NULL, 0},
+        NULL, 0, 0},
     {"parity.crmTimeout", PROP_INT, FM_TLV_FM10K_PARITY_CRM_TIMEOUT, 1,
-        NULL, NULL, 0},
+        NULL, 0, 0},
+
 
     {"createRemoteLogicalPorts", PROP_BOOL, FM_TLV_FM10K_CREATE_REMOTE_LOGICAL_PORTS, 1,
-        NULL, NULL, 0},
+        NULL, 0, 0},
     {"autoNeg.clause37.timeout", PROP_INT, FM_TLV_FM10K_AUTONEG_CLAUSE_37_TIMEOUT, 2,
-        NULL, NULL, 0},
+        NULL, 0, 0},
     {"autoNeg.SGMII.timeout", PROP_INT, FM_TLV_FM10K_AUTONEG_SGMII_TIMEOUT, 1,
-        NULL, NULL, 0},
+        NULL, 0, 0},
     {"useHniServicesLoopback", PROP_BOOL, FM_TLV_FM10K_HNI_SERVICES_LOOPBACK, 1,
-        NULL, NULL, 0},
+        NULL, 0, 0},
     {"antiBubbleWm", PROP_INT, FM_TLV_FM10K_ANTI_BUBBLE_WM, 1,
-        NULL, NULL, 0},
+        NULL, 0, 0},
     {"serdesOpMode", PROP_INT, FM_TLV_FM10K_SERDES_OP_MODE, 1,
-        NULL, NULL, 0},
+        NULL, 0, 0},
     {"serdesDbgLevel", PROP_INT, FM_TLV_FM10K_SERDES_DBG_LVL, 1,
-        NULL, NULL, 0},
+        NULL, 0, 0},
     {"parity.enableInterrupts", PROP_BOOL, FM_TLV_FM10K_PARITY_INTERRUPTS, 1,
-        NULL, NULL, 0},
+        NULL, 0, 0},
     {"parity.startTcamMonitors", PROP_BOOL, FM_TLV_FM10K_PARITY_TCAM_MONITOR, 1,
-        NULL, NULL, 0},
+        NULL, 0, 0},
     {"schedOverspeed", PROP_INT, FM_TLV_FM10K_SCHED_OVERSPEED, 4,
-        NULL, NULL, 0},
+        NULL, 0, 0},
     {"intr.linkIgnoreMask", PROP_INT_H, FM_TLV_FM10K_INTR_LINK_IGNORE_MASK, 4,
-        NULL, NULL, 0},
+        NULL, 0, 0},
     {"intr.autoNegIgnoreMask", PROP_INT_H, FM_TLV_FM10K_INTR_AUTONEG_IGNORE_MASK, 4,
-        NULL, NULL, 0},
+        NULL, 0, 0},
     {"intr.serdesIgnoreMask", PROP_INT_H, FM_TLV_FM10K_INTR_SERDES_IGNORE_MASK, 4,
-        NULL, NULL, 0},
+        NULL, 0, 0},
     {"intr.pcieIgnoreMask", PROP_INT_H, FM_TLV_FM10K_INTR_PCIE_IGNORE_MASK, 4,
-        NULL, NULL, 0},
+        NULL, 0, 0},
     {"intr.maTcnIgnoreMask", PROP_INT_H, FM_TLV_FM10K_INTR_MATCN_IGNORE_MASK, 4,
-        NULL, NULL, 0},
+        NULL, 0, 0},
     {"intr.fhTailIgnoreMask", PROP_INT_H, FM_TLV_FM10K_INTR_FHTAIL_IGNORE_MASK, 4,
-        NULL, NULL, 0},
+        NULL, 0, 0},
     {"intr.swIgnoreMask", PROP_INT_H, FM_TLV_FM10K_INTR_SW_IGNORE_MASK, 4,
-        NULL, NULL, 0},
+        NULL, 0, 0},
     {"intr.teIgnoreMask", PROP_INT_H, FM_TLV_FM10K_INTR_TE_IGNORE_MASK, 4,
-        NULL, NULL, 0},
+        NULL, 0, 0},
     {"enable.eeeSpicoIntr", PROP_BOOL, FM_TLV_FM10K_EEE_SPICO_INTR, 1,
-        NULL, NULL, 0},
+        NULL, 0, 0},
     {"useAlternateSpicoFw", PROP_BOOL, FM_TLV_FM10K_USE_ALTERNATE_SPICO_FW, 1,
-        NULL, NULL, 0},
+        NULL, 0, 0},
     {"allowKrPcalOnEee", PROP_BOOL, FM_TLV_FM10K_ALLOW_KRPCAL_ON_EEE, 1,
-        NULL, NULL, 0},
+        NULL, 0, 0},
 };
 
 
 /* Property starting with api.platform.config. */
 static fm_utilPropMap platConfig[] = {
-    {"numSwitches", PROP_UINT, FM_TLV_PLAT_NUM_SW, 1, NULL, NULL, 0},
-    {"platformName", PROP_TEXT, FM_TLV_PLAT_NAME, 0, NULL, NULL, 0},
-    {"fileLockName", PROP_TEXT, FM_TLV_PLAT_FILE_LOCK_NAME, 0, NULL, NULL, 0},
+    {"numSwitches", PROP_UINT, FM_TLV_PLAT_NUM_SW, 1, NULL, 1, 256},
+    {"platformName", PROP_TEXT, FM_TLV_PLAT_NAME, 0, NULL, 0, 0},
+    {"fileLockName", PROP_TEXT, FM_TLV_PLAT_FILE_LOCK_NAME, 0, NULL, 0, 0},
     {"switch.topology", PROP_TEXT, FM_TLV_PLAT_SW_TOPOLOGY, 1,
-        EnDecodeByMap, topologyMap, FM_NENTRIES(topologyMap)},
-    {"ebiDevName", PROP_TEXT, FM_TLV_PLAT_EBI_DEVNAME, 0, NULL, NULL, 0},
+        EnDecodeByMap, (fm_intptr)topologyMap, FM_NENTRIES(topologyMap)},
+    {"ebiDevName", PROP_TEXT, FM_TLV_PLAT_EBI_DEVNAME, 0, NULL, 0, 0},
     {"debug", PROP_TEXT, FM_TLV_PLAT_DEBUG, 4,
-        EnDecodeByBitMap, debugMap, FM_NENTRIES(debugMap)},
+        EnDecodeByBitMap, (fm_intptr)debugMap, FM_NENTRIES(debugMap)},
 
 };
 
 /* Property starting with api.platform.config.switch.%d */
 static fm_utilPropMap platConfigSw[] = {
-    {"switchNumber", PROP_UINT, FM_TLV_PLAT_SW_NUMBER, 1, NULL, NULL, 0},
-    {"numPorts", PROP_UINT, FM_TLV_PLAT_SW_NUM_PORTS, 1, NULL, NULL, 0},
+    {"switchNumber", PROP_UINT, FM_TLV_PLAT_SW_NUMBER, 1, NULL, 0, 256},
+    {"numPorts", PROP_UINT, FM_TLV_PLAT_SW_NUM_PORTS, 1, NULL, 0, 0},
     {"ledPollPeriodMsec",
-        PROP_UINT, FM_TLV_PLAT_SW_LED_POLL_PER, 2, NULL, NULL, 0},
+        PROP_UINT, FM_TLV_PLAT_SW_LED_POLL_PER, 2, NULL, 0, 0},
     {"ledBlinkMode",
         PROP_TEXT, FM_TLV_PLAT_SW_LED_BLINK_MODE, 1,
-        EnDecodeByMap, ledBlkModeMap, FM_NENTRIES(ledBlkModeMap)},
+        EnDecodeByMap, (fm_intptr)ledBlkModeMap, FM_NENTRIES(ledBlkModeMap)},
     {"xcvrPollPeriodMsec",
-        PROP_UINT, FM_TLV_PLAT_SW_XCVR_POLL_PER, 2, NULL, NULL, 0},
+        PROP_UINT, FM_TLV_PLAT_SW_XCVR_POLL_PER, 2, NULL, 0, 0},
     {"port.default.hwResourceId",
-        PROP_INT_H, FM_TLV_PLAT_SW_PORT_DEF_HW_ID, 4, NULL, NULL, 0},
+        PROP_INT_H, FM_TLV_PLAT_SW_PORT_DEF_HW_ID, 4, NULL, 0, 0},
     {"role", PROP_TEXT, FM_TLV_PLAT_SW_ROLE, 1,
-        EnDecodeByMap, swRoleMap, FM_NENTRIES(swRoleMap)},
+        EnDecodeByMap, (fm_intptr)swRoleMap, FM_NENTRIES(swRoleMap)},
     {"port.default.ethernetMode",
         PROP_TEXT, FM_TLV_PLAT_SW_PORT_DEF_ETHMODE, 1,
-        EnDecodeByMap, ethModeMap, FM_NENTRIES(ethModeMap)},
+        EnDecodeByMap, (fm_intptr)ethModeMap, FM_NENTRIES(ethModeMap)},
     {"port.default.lanePolarity",
         PROP_TEXT, FM_TLV_PLAT_SW_PORT_DEF_LANE_POL, 1,
-        EnDecodeByMap, polarityMap, FM_NENTRIES(polarityMap)},
+        EnDecodeByMap, (fm_intptr)polarityMap, FM_NENTRIES(polarityMap)},
     {"port.default.preCursorCopper", 
-        PROP_UINT, FM_TLV_PLAT_SW_PORT_DEF_TXEQ_PRE_CU, 1, NULL, NULL, 0},
+        PROP_INT, FM_TLV_PLAT_SW_PORT_DEF_TXEQ_PRE_CU, 1,
+        NULL, PRECURSOR_MIN, PRECURSOR_MAX},
     {"port.default.preCursorOptical",
-        PROP_UINT, FM_TLV_PLAT_SW_PORT_DEF_TXEQ_PRE_OPT, 1, NULL, NULL, 0},
+        PROP_INT, FM_TLV_PLAT_SW_PORT_DEF_TXEQ_PRE_OPT, 1,
+        NULL, PRECURSOR_MIN, PRECURSOR_MAX},
     {"port.default.cursorCopper",
-        PROP_UINT, FM_TLV_PLAT_SW_PORT_DEF_TXEQ_CUR_CU, 1, NULL, NULL, 0},
+        PROP_UINT, FM_TLV_PLAT_SW_PORT_DEF_TXEQ_CUR_CU, 1,
+        NULL, CURSOR_MIN, CURSOR_MAX},
     {"port.default.cursorOptical",
-        PROP_UINT, FM_TLV_PLAT_SW_PORT_DEF_TXEQ_CUR_OPT, 1, NULL, NULL, 0},
+        PROP_UINT, FM_TLV_PLAT_SW_PORT_DEF_TXEQ_CUR_OPT, 1,
+        NULL, CURSOR_MIN, CURSOR_MAX},
     {"port.default.postCursorCopper",
-        PROP_UINT, FM_TLV_PLAT_SW_PORT_DEF_TXEQ_POST_CU, 1, NULL, NULL, 0},
+        PROP_INT, FM_TLV_PLAT_SW_PORT_DEF_TXEQ_POST_CU, 1,
+        NULL, POSTCURSOR_MIN, POSTCURSOR_MAX},
     {"port.default.postCursorOptical",
-        PROP_UINT, FM_TLV_PLAT_SW_PORT_DEF_TXEQ_POST_OPT, 1, NULL, NULL, 0},
+        PROP_INT, FM_TLV_PLAT_SW_PORT_DEF_TXEQ_POST_OPT, 1,
+        NULL, POSTCURSOR_MIN, POSTCURSOR_MAX},
     {"port.default.interfaceType",
         PROP_TEXT, FM_TLV_PLAT_SW_PORT_DEF_INTF_TYPE, 1,
-        EnDecodeByMap, intfTypeMap, FM_NENTRIES(intfTypeMap)},
+        EnDecodeByMap, (fm_intptr)intfTypeMap, FM_NENTRIES(intfTypeMap)},
     {"port.default.capability",
         PROP_TEXT, FM_TLV_PLAT_SW_PORT_DEF_CAP, 4,
-        EnDecodeByBitMap, portCapMap, FM_NENTRIES(portCapMap)},
+        EnDecodeByBitMap, (fm_intptr)portCapMap, FM_NENTRIES(portCapMap)},
     {"port.default.dfeMode",
         PROP_TEXT, FM_TLV_PLAT_SW_PORT_DEF_DFE_MODE, 1,
-        EnDecodeByMap, dfeModeMap, FM_NENTRIES(dfeModeMap)},
+        EnDecodeByMap, (fm_intptr)dfeModeMap, FM_NENTRIES(dfeModeMap)},
     {"sharedLibraryName",
-        PROP_TEXT, FM_TLV_PLAT_SW_SHARED_LIB_NAME, 0, NULL, NULL, 0},
+        PROP_TEXT, FM_TLV_PLAT_SW_SHARED_LIB_NAME, 0, NULL, 0, 0},
     {"sharedLibrary.disable",
         PROP_TEXT, FM_TLV_PLAT_SW_SHARED_LIB_DISABLE, 4, 
-        EnDecodeByBitMap, disableFuncIntfMap, FM_NENTRIES(disableFuncIntfMap)},
+        EnDecodeByBitMap, (fm_intptr)disableFuncIntfMap, FM_NENTRIES(disableFuncIntfMap)},
     {"portIntrGpio",
-        PROP_UINT, FM_TLV_PLAT_SW_PORT_INTR_GPIO, 1, NULL, NULL, 0},
+        PROP_UINT, FM_TLV_PLAT_SW_PORT_INTR_GPIO, 1, NULL, 0, 0},
     {"i2cResetGpio",
-        PROP_UINT, FM_TLV_PLAT_SW_I2C_RESET_GPIO, 1, NULL, NULL, 0},
+        PROP_UINT, FM_TLV_PLAT_SW_I2C_RESET_GPIO, 1, NULL, 0, 0},
     {"flashWriteProtectGpio",
-        PROP_UINT, FM_TLV_PLAT_SW_FLASH_WP_GPIO, 1, NULL, NULL, 0},
+        PROP_UINT, FM_TLV_PLAT_SW_FLASH_WP_GPIO, 1, NULL, 0, 0},
     {"keepSerdesCfg",
-        PROP_BOOL, FM_TLV_PLAT_SW_KEEP_SERDES_CFG, 1, NULL, NULL, 0},
-    {"numPhys", PROP_UINT, FM_TLV_PLAT_SW_NUM_PHYS, 1, NULL, NULL, 0},
+        PROP_BOOL, FM_TLV_PLAT_SW_KEEP_SERDES_CFG, 1, NULL, 0, 0},
+    {"numPhys", PROP_UINT, FM_TLV_PLAT_SW_NUM_PHYS, 1, NULL, 0, 0},
 
     {"devMemOffset",
-        PROP_TEXT, FM_TLV_PLAT_DEV_MEM_OFF, 8, EnDecodeDevMemOff, NULL, 0},
-    {"netDevName", PROP_TEXT, FM_TLV_PLAT_NET_DEVNAME, 0, NULL, NULL, 0},
-    {"uioDevName", PROP_TEXT, FM_TLV_PLAT_UIO_DEVNAME, 0, NULL, NULL, 0},
-    {"intrTimeoutCnt", PROP_UINT, FM_TLV_PLAT_INTR_TIMEOUT_CNT, 2, NULL, NULL, 0},
+        PROP_TEXT, FM_TLV_PLAT_DEV_MEM_OFF, 8, EnDecodeDevMemOff, 0, 0},
+    {"netDevName", PROP_TEXT, FM_TLV_PLAT_NET_DEVNAME, 0, NULL, 0, 0},
+    {"uioDevName", PROP_TEXT, FM_TLV_PLAT_UIO_DEVNAME, 0, NULL, 0, 0},
+    {"intrTimeoutCnt", PROP_UINT, FM_TLV_PLAT_INTR_TIMEOUT_CNT, 2, NULL, 0, 0},
     {"bootMode", PROP_TEXT, FM_TLV_PLAT_BOOT_MODE, 1, 
-        EnDecodeByMap, bootModeMap, FM_NENTRIES(bootModeMap)},
+        EnDecodeByMap, (fm_intptr)bootModeMap, FM_NENTRIES(bootModeMap)},
     {"regAccess", PROP_TEXT, FM_TLV_PLAT_REG_ACCESS, 1,
-        EnDecodeByMap, regModeMap, FM_NENTRIES(regModeMap)},
+        EnDecodeByMap, (fm_intptr)regModeMap, FM_NENTRIES(regModeMap)},
     {"pcieIsr", PROP_TEXT, FM_TLV_PLAT_PCIE_ISR, 1,
-        EnDecodeByMap, isrModeMap, FM_NENTRIES(isrModeMap)},
-    {"cpuPort", PROP_UINT, FM_TLV_PLAT_CPU_PORT, 2, NULL, NULL, 0},
-    {"intPollMsec", PROP_UINT, FM_TLV_PLAT_INTR_POLL_PER, 2, NULL, NULL, 0},
+        EnDecodeByMap, (fm_intptr)isrModeMap, FM_NENTRIES(isrModeMap)},
+    {"cpuPort", PROP_UINT, FM_TLV_PLAT_CPU_PORT, 2, NULL, 0, 0},
+    {"intPollMsec", PROP_UINT, FM_TLV_PLAT_INTR_POLL_PER, 2, NULL, 0, 0},
     {"phyEnableDeemphasis",
-        PROP_BOOL, FM_TLV_PLAT_PHY_EN_DEEMPHASIS, 1, NULL, NULL, 0},
-    {"msiEnabled", PROP_BOOL, FM_TLV_PLAT_SW_MSI_ENABLE, 1, NULL, NULL, 0},
-    {"fhClock", PROP_INT, FM_TLV_PLAT_SW_FH_CLOCK, 4, NULL, NULL, 0},
-    {"useDefVoltageScaling", PROP_INT, FM_TLV_PLAT_SW_VRM_USE_DEF_VOLTAGE, 4, NULL, NULL, 0},
-    {"VDDS.hwResourceId", PROP_INT_H, FM_TLV_PLAT_SW_VDDS_USE_HW_RESOURCE_ID, 4, NULL, NULL, 0},
-    {"VDDF.hwResourceId", PROP_INT_H, FM_TLV_PLAT_SW_VDDF_USE_HW_RESOURCE_ID, 4, NULL, NULL, 0},
-    {"AVDD.hwResourceId", PROP_INT_H, FM_TLV_PLAT_SW_AVDD_USE_HW_RESOURCE_ID, 4, NULL, NULL, 0},
-    {"i2cClkDivider", PROP_UINT, FM_TLV_PLAT_SW_I2C_CLKDIVIDER, 1, NULL, NULL, 0},
+        PROP_INT, FM_TLV_PLAT_PHY_EN_DEEMPHASIS, 1, NULL, 0, 0},
+    {"msiEnabled", PROP_BOOL, FM_TLV_PLAT_SW_MSI_ENABLE, 1, NULL, 0, 0},
+    {"fhClock", PROP_INT, FM_TLV_PLAT_SW_FH_CLOCK, 4, NULL, 0, 0},
+    {"useDefVoltageScaling", PROP_INT, FM_TLV_PLAT_SW_VRM_USE_DEF_VOLTAGE, 4, NULL, 0, 0},
+    {"VDDS.hwResourceId", PROP_INT_H, FM_TLV_PLAT_SW_VDDS_USE_HW_RESOURCE_ID, 4, NULL, 0, 0},
+    {"VDDF.hwResourceId", PROP_INT_H, FM_TLV_PLAT_SW_VDDF_USE_HW_RESOURCE_ID, 4, NULL, 0, 0},
+    {"AVDD.hwResourceId", PROP_INT_H, FM_TLV_PLAT_SW_AVDD_USE_HW_RESOURCE_ID, 4, NULL, 0, 0},
+    {"i2cClkDivider", PROP_UINT, FM_TLV_PLAT_SW_I2C_CLKDIVIDER, 1, NULL, 0, 0},
 };
 
 /* Property starting with api.platform.config.switch.%d.internalPortIndex.%d */
 static fm_utilPropMap platConfigSwIntPortIdx[] = {
     {"portMapping", PROP_TEXT, FM_TLV_PLAT_SW_INT_PORT_MAPPING, 6,
-        EnDecodeIntPortMapping, NULL, 0},
+        EnDecodeIntPortMapping, 0, 0},
 };
 
 /* Property starting with api.platform.config.switch.%d.portIndex.%d */
 static fm_utilPropMap platConfigSwPortIdx[] = {
-    {"speed", PROP_INT, FM_TLV_PLAT_SW_PORTIDX_SPEED, 4, NULL, NULL, 0},
+    {"speed", PROP_INT, FM_TLV_PLAT_SW_PORTIDX_SPEED, 4, NULL, 0, 0},
     {"portMapping",
-        PROP_TEXT, FM_TLV_PLAT_SW_PORT_MAPPING, 6, EnDecodePortMapping, NULL, 0},
+        PROP_TEXT, FM_TLV_PLAT_SW_PORT_MAPPING, 6, EnDecodePortMapping, 0, 0},
     {"hwResourceId",
-        PROP_INT_H, FM_TLV_PLAT_SW_PORTIDX_HW_ID, 4, NULL, NULL, 0},
+        PROP_INT_H, FM_TLV_PLAT_SW_PORTIDX_HW_ID, 4, NULL, 0, 0},
     {"ethernetMode",
         PROP_TEXT, FM_TLV_PLAT_SW_PORTIDX_ETHMODE, 1,
-        EnDecodeByMap, ethModeMap, FM_NENTRIES(ethModeMap)},
+        EnDecodeByMap, (fm_intptr)ethModeMap, FM_NENTRIES(ethModeMap)},
     {"lanePolarity",
         PROP_TEXT, FM_TLV_PLAT_SW_PORTIDX_LANE_ALL_POL, 1,
-        EnDecodeByMap, polarityMap, FM_NENTRIES(polarityMap)},
+        EnDecodeByMap, (fm_intptr)polarityMap, FM_NENTRIES(polarityMap)},
     {"rxTermination",
         PROP_TEXT, FM_TLV_PLAT_SW_PORTIDX_LANE_ALL_RX_TERM, 1,
-        EnDecodeByMap, rxTermMap, FM_NENTRIES(rxTermMap)},
+        EnDecodeByMap, (fm_intptr)rxTermMap, FM_NENTRIES(rxTermMap)},
     {"preCursor1GCopper",
-        PROP_UINT, FM_TLV_PLAT_SW_PORTIDX_TXEQ_PRE_CU_1G, 1, NULL, NULL, 0},
+        PROP_INT, FM_TLV_PLAT_SW_PORTIDX_TXEQ_PRE_CU_1G, 1,
+        NULL, PRECURSOR_MIN, PRECURSOR_MAX},
     {"preCursor10GCopper",
-        PROP_UINT, FM_TLV_PLAT_SW_PORTIDX_TXEQ_PRE_CU_10G, 1, NULL, NULL, 0},
+        PROP_INT, FM_TLV_PLAT_SW_PORTIDX_TXEQ_PRE_CU_10G, 1,
+        NULL, PRECURSOR_MIN, PRECURSOR_MAX},
     {"preCursor25GCopper",
-        PROP_UINT, FM_TLV_PLAT_SW_PORTIDX_TXEQ_PRE_CU_25G, 1, NULL, NULL, 0},
+        PROP_INT, FM_TLV_PLAT_SW_PORTIDX_TXEQ_PRE_CU_25G, 1,
+        NULL, PRECURSOR_MIN, PRECURSOR_MAX},
     {"preCursor1GOptical",
-        PROP_UINT, FM_TLV_PLAT_SW_PORTIDX_TXEQ_PRE_OPT_1G, 1, NULL, NULL, 0},
+        PROP_INT, FM_TLV_PLAT_SW_PORTIDX_TXEQ_PRE_OPT_1G, 1,
+        NULL, PRECURSOR_MIN, PRECURSOR_MAX},
     {"preCursor10GOptical",
-        PROP_UINT, FM_TLV_PLAT_SW_PORTIDX_TXEQ_PRE_OPT_10G, 1, NULL, NULL, 0},
+        PROP_INT, FM_TLV_PLAT_SW_PORTIDX_TXEQ_PRE_OPT_10G, 1,
+        NULL, PRECURSOR_MIN, PRECURSOR_MAX},
     {"preCursor25GOptical",
-        PROP_UINT, FM_TLV_PLAT_SW_PORTIDX_TXEQ_PRE_OPT_25G, 1, NULL, NULL, 0},
+        PROP_INT, FM_TLV_PLAT_SW_PORTIDX_TXEQ_PRE_OPT_25G, 1,
+        NULL, PRECURSOR_MIN, PRECURSOR_MAX},
     {"cursor1GCopper",
-        PROP_UINT, FM_TLV_PLAT_SW_PORTIDX_TXEQ_CUR_CU_1G, 1, NULL, NULL, 0},
+        PROP_UINT, FM_TLV_PLAT_SW_PORTIDX_TXEQ_CUR_CU_1G, 1,
+        NULL, CURSOR_MIN, CURSOR_MAX},
     {"cursor10GCopper",
-        PROP_UINT, FM_TLV_PLAT_SW_PORTIDX_TXEQ_CUR_CU_10G, 1, NULL, NULL, 0},
+        PROP_UINT, FM_TLV_PLAT_SW_PORTIDX_TXEQ_CUR_CU_10G, 1,
+        NULL, CURSOR_MIN, CURSOR_MAX},
     {"cursor25GCopper",
-        PROP_UINT, FM_TLV_PLAT_SW_PORTIDX_TXEQ_CUR_CU_25G, 1, NULL, NULL, 0},
+        PROP_UINT, FM_TLV_PLAT_SW_PORTIDX_TXEQ_CUR_CU_25G, 1,
+        NULL, CURSOR_MIN, CURSOR_MAX},
     {"cursor1GOptical",
-        PROP_UINT, FM_TLV_PLAT_SW_PORTIDX_TXEQ_CUR_OPT_1G, 1, NULL, NULL, 0},
+        PROP_UINT, FM_TLV_PLAT_SW_PORTIDX_TXEQ_CUR_OPT_1G, 1,
+        NULL, CURSOR_MIN, CURSOR_MAX},
     {"cursor10GOptical",
-        PROP_UINT, FM_TLV_PLAT_SW_PORTIDX_TXEQ_CUR_OPT_10G, 1, NULL, NULL, 0},
+        PROP_UINT, FM_TLV_PLAT_SW_PORTIDX_TXEQ_CUR_OPT_10G, 1,
+        NULL, CURSOR_MIN, CURSOR_MAX},
     {"cursor25GOptical",
-        PROP_UINT, FM_TLV_PLAT_SW_PORTIDX_TXEQ_CUR_OPT_25G, 1, NULL, NULL, 0},
+        PROP_UINT, FM_TLV_PLAT_SW_PORTIDX_TXEQ_CUR_OPT_25G, 1,
+        NULL, CURSOR_MIN, CURSOR_MAX},
     {"postCursor1GCopper",
-        PROP_UINT, FM_TLV_PLAT_SW_PORTIDX_TXEQ_POST_CU_1G, 1, NULL, NULL, 0},
+        PROP_INT, FM_TLV_PLAT_SW_PORTIDX_TXEQ_POST_CU_1G, 1,
+        NULL, POSTCURSOR_MIN, POSTCURSOR_MAX},
     {"postCursor10GCopper",
-        PROP_UINT, FM_TLV_PLAT_SW_PORTIDX_TXEQ_POST_CU_10G, 1, NULL, NULL, 0},
+        PROP_INT, FM_TLV_PLAT_SW_PORTIDX_TXEQ_POST_CU_10G, 1,
+        NULL, POSTCURSOR_MIN, POSTCURSOR_MAX},
     {"postCursor25GCopper",
-        PROP_UINT, FM_TLV_PLAT_SW_PORTIDX_TXEQ_POST_CU_25G, 1, NULL, NULL, 0},
+        PROP_INT, FM_TLV_PLAT_SW_PORTIDX_TXEQ_POST_CU_25G, 1,
+        NULL, POSTCURSOR_MIN, POSTCURSOR_MAX},
     {"postCursor1GOptical",
-        PROP_UINT, FM_TLV_PLAT_SW_PORTIDX_TXEQ_POST_OPT_1G, 1, NULL, NULL, 0},
+        PROP_INT, FM_TLV_PLAT_SW_PORTIDX_TXEQ_POST_OPT_1G, 1,
+        NULL, POSTCURSOR_MIN, POSTCURSOR_MAX},
     {"postCursor10GOptical",
-        PROP_UINT, FM_TLV_PLAT_SW_PORTIDX_TXEQ_POST_OPT_10G, 1, NULL, NULL, 0},
+        PROP_INT, FM_TLV_PLAT_SW_PORTIDX_TXEQ_POST_OPT_10G, 1,
+        NULL, POSTCURSOR_MIN, POSTCURSOR_MAX},
     {"postCursor25GOptical",
-        PROP_UINT, FM_TLV_PLAT_SW_PORTIDX_TXEQ_POST_OPT_25G, 1, NULL, NULL, 0},
+        PROP_INT, FM_TLV_PLAT_SW_PORTIDX_TXEQ_POST_OPT_25G, 1,
+        NULL, POSTCURSOR_MIN, POSTCURSOR_MAX},
     {"interfaceType",
         PROP_TEXT, FM_TLV_PLAT_SW_PORTIDX_INTF_TYPE, 1,
-        EnDecodeByMap, intfTypeMap, FM_NENTRIES(intfTypeMap)},
+        EnDecodeByMap, (fm_intptr)intfTypeMap, FM_NENTRIES(intfTypeMap)},
     {"capability",
         PROP_TEXT, FM_TLV_PLAT_SW_PORTIDX_CAP, 4,
-        EnDecodeByBitMap, portCapMap, FM_NENTRIES(portCapMap)},
+        EnDecodeByBitMap, (fm_intptr)portCapMap, FM_NENTRIES(portCapMap)},
     {"dfeMode",
         PROP_TEXT, FM_TLV_PLAT_SW_PORTIDX_DFE_MODE, 1,
-        EnDecodeByMap, dfeModeMap, FM_NENTRIES(dfeModeMap)},
+        EnDecodeByMap, (fm_intptr)dfeModeMap, FM_NENTRIES(dfeModeMap)},
     {"an73Ability",
         PROP_TEXT, FM_TLV_PLAT_SW_PORTIDX_AN73_ABILITY, 4,
-        EnDecodeByBitMap, an73AbilityMap, FM_NENTRIES(an73AbilityMap)},
+        EnDecodeByBitMap, (fm_intptr)an73AbilityMap, FM_NENTRIES(an73AbilityMap)},
 };
 
 /* Property starting with api.platform.config.switch.%d.portIndex.%d.lane.%d */
 static fm_utilPropMap platConfigSwPortIdxLane[] = {
     {"lanePolarity",
         PROP_TEXT, FM_TLV_PLAT_SW_PORTIDX_LANE_POL, 1,
-        EnDecodeByMap, polarityMap, FM_NENTRIES(polarityMap)},
+        EnDecodeByMap, (fm_intptr)polarityMap, FM_NENTRIES(polarityMap)},
     {"rxTermination",
         PROP_TEXT, FM_TLV_PLAT_SW_PORTIDX_LANE_RX_TERM, 1,
-        EnDecodeByMap, rxTermMap, FM_NENTRIES(rxTermMap)},
+        EnDecodeByMap, (fm_intptr)rxTermMap, FM_NENTRIES(rxTermMap)},
     {"portMapping",
-        PROP_TEXT, FM_TLV_PLAT_SW_PORT_LANE_MAPPING, 6, EnDecodePortMapping, NULL, 0},
+        PROP_TEXT, FM_TLV_PLAT_SW_PORT_LANE_MAPPING, 6, EnDecodePortMapping, 0, 0},
     {"preCursor1GCopper",
-        PROP_UINT, FM_TLV_PLAT_SW_PORTIDX_LANE_TXEQ_PRE_CU_1G, 1, NULL, NULL, 0},
+        PROP_INT, FM_TLV_PLAT_SW_PORTIDX_LANE_TXEQ_PRE_CU_1G, 1,
+        NULL, PRECURSOR_MIN, PRECURSOR_MAX},
     {"preCursor10GCopper",
-        PROP_UINT, FM_TLV_PLAT_SW_PORTIDX_LANE_TXEQ_PRE_CU_10G, 1, NULL, NULL, 0},
+        PROP_INT, FM_TLV_PLAT_SW_PORTIDX_LANE_TXEQ_PRE_CU_10G, 1,
+        NULL, PRECURSOR_MIN, PRECURSOR_MAX},
     {"preCursor25GCopper",
-        PROP_UINT, FM_TLV_PLAT_SW_PORTIDX_LANE_TXEQ_PRE_CU_25G, 1, NULL, NULL, 0},
+        PROP_INT, FM_TLV_PLAT_SW_PORTIDX_LANE_TXEQ_PRE_CU_25G, 1,
+        NULL, PRECURSOR_MIN, PRECURSOR_MAX},
     {"preCursor1GOptical",
-        PROP_UINT, FM_TLV_PLAT_SW_PORTIDX_LANE_TXEQ_PRE_OPT_1G, 1, NULL, NULL, 0},
+        PROP_INT, FM_TLV_PLAT_SW_PORTIDX_LANE_TXEQ_PRE_OPT_1G, 1,
+        NULL, PRECURSOR_MIN, PRECURSOR_MAX},
     {"preCursor10GOptical",
-        PROP_UINT, FM_TLV_PLAT_SW_PORTIDX_LANE_TXEQ_PRE_OPT_10G, 1, NULL, NULL, 0},
+        PROP_INT, FM_TLV_PLAT_SW_PORTIDX_LANE_TXEQ_PRE_OPT_10G, 1,
+        NULL, PRECURSOR_MIN, PRECURSOR_MAX},
     {"preCursor25GOptical",
-        PROP_UINT, FM_TLV_PLAT_SW_PORTIDX_LANE_TXEQ_PRE_OPT_25G, 1, NULL, NULL, 0},
+        PROP_INT, FM_TLV_PLAT_SW_PORTIDX_LANE_TXEQ_PRE_OPT_25G, 1,
+        NULL, PRECURSOR_MIN, PRECURSOR_MAX},
     {"cursor1GCopper",
-        PROP_UINT, FM_TLV_PLAT_SW_PORTIDX_LANE_TXEQ_CUR_CU_1G, 1, NULL, NULL, 0},
+        PROP_UINT, FM_TLV_PLAT_SW_PORTIDX_LANE_TXEQ_CUR_CU_1G, 1,
+        NULL, CURSOR_MIN, CURSOR_MAX},
     {"cursor10GCopper",
-        PROP_UINT, FM_TLV_PLAT_SW_PORTIDX_LANE_TXEQ_CUR_CU_10G, 1, NULL, NULL, 0},
+        PROP_UINT, FM_TLV_PLAT_SW_PORTIDX_LANE_TXEQ_CUR_CU_10G, 1,
+        NULL, CURSOR_MIN, CURSOR_MAX},
     {"cursor25GCopper",
-        PROP_UINT, FM_TLV_PLAT_SW_PORTIDX_LANE_TXEQ_CUR_CU_25G, 1, NULL, NULL, 0},
+        PROP_UINT, FM_TLV_PLAT_SW_PORTIDX_LANE_TXEQ_CUR_CU_25G, 1,
+        NULL, CURSOR_MIN, CURSOR_MAX},
     {"cursor1GOptical",
-        PROP_UINT, FM_TLV_PLAT_SW_PORTIDX_LANE_TXEQ_CUR_OPT_1G, 1, NULL, NULL, 0},
+        PROP_UINT, FM_TLV_PLAT_SW_PORTIDX_LANE_TXEQ_CUR_OPT_1G, 1,
+        NULL, CURSOR_MIN, CURSOR_MAX},
     {"cursor10GOptical",
-        PROP_UINT, FM_TLV_PLAT_SW_PORTIDX_LANE_TXEQ_CUR_OPT_10G, 1, NULL, NULL, 0},
+        PROP_UINT, FM_TLV_PLAT_SW_PORTIDX_LANE_TXEQ_CUR_OPT_10G, 1,
+        NULL, CURSOR_MIN, CURSOR_MAX},
     {"cursor25GOptical",
-        PROP_UINT, FM_TLV_PLAT_SW_PORTIDX_LANE_TXEQ_CUR_OPT_25G, 1, NULL, NULL, 0},
+        PROP_UINT, FM_TLV_PLAT_SW_PORTIDX_LANE_TXEQ_CUR_OPT_25G, 1,
+        NULL, CURSOR_MIN, CURSOR_MAX},
     {"postCursor1GCopper",
-        PROP_UINT, FM_TLV_PLAT_SW_PORTIDX_LANE_TXEQ_POST_CU_1G, 1, NULL, NULL, 0},
+        PROP_INT, FM_TLV_PLAT_SW_PORTIDX_LANE_TXEQ_POST_CU_1G, 1,
+        NULL, POSTCURSOR_MIN, POSTCURSOR_MAX},
     {"postCursor10GCopper",
-        PROP_UINT, FM_TLV_PLAT_SW_PORTIDX_LANE_TXEQ_POST_CU_10G, 1, NULL, NULL, 0},
+        PROP_INT, FM_TLV_PLAT_SW_PORTIDX_LANE_TXEQ_POST_CU_10G, 1,
+        NULL, POSTCURSOR_MIN, POSTCURSOR_MAX},
     {"postCursor25GCopper",
-        PROP_UINT, FM_TLV_PLAT_SW_PORTIDX_LANE_TXEQ_POST_CU_25G, 1, NULL, NULL, 0},
+        PROP_INT, FM_TLV_PLAT_SW_PORTIDX_LANE_TXEQ_POST_CU_25G, 1,
+        NULL, POSTCURSOR_MIN, POSTCURSOR_MAX},
     {"postCursor1GOptical",
-        PROP_UINT, FM_TLV_PLAT_SW_PORTIDX_LANE_TXEQ_POST_OPT_1G, 1, NULL, NULL, 0},
+        PROP_INT, FM_TLV_PLAT_SW_PORTIDX_LANE_TXEQ_POST_OPT_1G, 1,
+        NULL, POSTCURSOR_MIN, POSTCURSOR_MAX},
     {"postCursor10GOptical",
-        PROP_UINT, FM_TLV_PLAT_SW_PORTIDX_LANE_TXEQ_POST_OPT_10G, 1, NULL, NULL, 0},
+        PROP_INT, FM_TLV_PLAT_SW_PORTIDX_LANE_TXEQ_POST_OPT_10G, 1,
+        NULL, POSTCURSOR_MIN, POSTCURSOR_MAX},
     {"postCursor25GOptical",
-        PROP_UINT, FM_TLV_PLAT_SW_PORTIDX_LANE_TXEQ_POST_OPT_25G, 1, NULL, NULL, 0},
+        PROP_INT, FM_TLV_PLAT_SW_PORTIDX_LANE_TXEQ_POST_OPT_25G, 1,
+        NULL, POSTCURSOR_MIN, POSTCURSOR_MAX},
 };
 
 /* Property starting with api.platform.config.switch.%d.phy.%d */
 static fm_utilPropMap platConfigSwPhy[] = {
     {"model", PROP_TEXT, FM_TLV_PLAT_SW_PHY_MODEL, 1,
-        EnDecodeByMap, phyModelMap, FM_NENTRIES(phyModelMap)},
-    {"addr", PROP_INT_H, FM_TLV_PLAT_SW_PHY_ADDR, 2, NULL, NULL, 0},
-    {"hwResourceId", PROP_INT_H, FM_TLV_PLAT_SW_PHY_HW_ID, 4, NULL, NULL, 0},
+        EnDecodeByMap, (fm_intptr)phyModelMap, FM_NENTRIES(phyModelMap)},
+    {"addr", PROP_INT_H, FM_TLV_PLAT_SW_PHY_ADDR, 2, NULL, 0, 0},
+    {"hwResourceId", PROP_INT_H, FM_TLV_PLAT_SW_PHY_HW_ID, 4, NULL, 0, 0},
 };
 
 
 /* Property starting with api.platform.config.switch.%d.phy.%d.lane.%d */
 static fm_utilPropMap platConfigSwPhyLane[] = {
     {"txEqualizer", PROP_TEXT, FM_TLV_PLAT_SW_PHY_LANE_TXEQ, 7,
-        EnDecodePhyTxEqualizer, NULL, 0},
-    {"appMode", PROP_UINT, FM_TLV_PLAT_SW_PHY_APP_MODE, 1, NULL, NULL, 0},
+        EnDecodePhyTxEqualizer, 0, 0},
+    {"appMode", PROP_UINT, FM_TLV_PLAT_SW_PHY_APP_MODE, 1, NULL, 0, 0},
 };
 
 
 
 /* Property starting with api.platform.lib.config. */
 static fm_utilPropMap platLibConfig[] = {
-    {"pcaIo.count", PROP_UINT, FM_TLV_PLAT_LIB_IO_COUNT, 1, NULL, NULL, 0},
-    {"pcaMux.count", PROP_UINT, FM_TLV_PLAT_LIB_MUX_COUNT, 1, NULL, NULL, 0},
+    {"pcaIo.count", PROP_UINT, FM_TLV_PLAT_LIB_IO_COUNT, 1, NULL, 0, 0},
+    {"pcaMux.count", PROP_UINT, FM_TLV_PLAT_LIB_MUX_COUNT, 1, NULL, 0, 0},
     {"xcvrState.default.modAbs.pin",
-        PROP_UINT, FM_TLV_PLAT_LIB_XCVR_DEF_MODABS_PIN, 1, NULL, NULL, 0},
+        PROP_UINT, FM_TLV_PLAT_LIB_XCVR_DEF_MODABS_PIN, 1, NULL, 0, 0},
     {"xcvrState.default.rxLos.pin",
-        PROP_UINT, FM_TLV_PLAT_LIB_XCVR_DEF_RXLOS_PIN, 1, NULL, NULL, 0},
+        PROP_UINT, FM_TLV_PLAT_LIB_XCVR_DEF_RXLOS_PIN, 1, NULL, 0, 0},
     {"xcvrState.default.txDisable.pin",
-        PROP_UINT, FM_TLV_PLAT_LIB_XCVR_DEF_TXDISABLE_PIN, 1, NULL, NULL, 0},
+        PROP_UINT, FM_TLV_PLAT_LIB_XCVR_DEF_TXDISABLE_PIN, 1, NULL, 0, 0},
     {"xcvrState.default.txFault.pin",
-        PROP_UINT, FM_TLV_PLAT_LIB_XCVR_DEF_TXFAULT_PIN, 1, NULL, NULL, 0},
+        PROP_UINT, FM_TLV_PLAT_LIB_XCVR_DEF_TXFAULT_PIN, 1, NULL, 0, 0},
     {"xcvrState.default.modPrsL.pin",
-        PROP_UINT, FM_TLV_PLAT_LIB_XCVR_DEF_MODPRESL_PIN, 1, NULL, NULL, 0},
+        PROP_UINT, FM_TLV_PLAT_LIB_XCVR_DEF_MODPRESL_PIN, 1, NULL, 0, 0},
     {"xcvrState.default.intL.pin",
-        PROP_UINT, FM_TLV_PLAT_LIB_XCVR_DEF_INTL_PIN, 1, NULL, NULL, 0},
+        PROP_UINT, FM_TLV_PLAT_LIB_XCVR_DEF_INTL_PIN, 1, NULL, 0, 0},
     {"xcvrState.default.lpMode.pin",
-        PROP_UINT, FM_TLV_PLAT_LIB_XCVR_DEF_LPMODE_PIN, 1, NULL, NULL, 0},
+        PROP_UINT, FM_TLV_PLAT_LIB_XCVR_DEF_LPMODE_PIN, 1, NULL, 0, 0},
     {"xcvrState.default.resetL.pin",
-        PROP_UINT, FM_TLV_PLAT_LIB_XCVR_DEF_RESETL_PIN, 1, NULL, NULL, 0},
+        PROP_UINT, FM_TLV_PLAT_LIB_XCVR_DEF_RESETL_PIN, 1, NULL, 0, 0},
     {"hwResourceId.count",
-        PROP_UINT, FM_TLV_PLAT_LIB_HWRESID_COUNT, 1, NULL, NULL, 0},
+        PROP_UINT, FM_TLV_PLAT_LIB_HWRESID_COUNT, 1, NULL, 0, 0},
     {"xcvrI2C.default.busSelType",
-        PROP_TEXT, FM_TLV_PLAT_LIB_XCVR_I2C_DEF_BUSSELTYPE, 1, NULL, NULL, 0},
+        PROP_TEXT, FM_TLV_PLAT_LIB_XCVR_I2C_DEF_BUSSELTYPE, 1, NULL, 0, 0},
     {"debug", PROP_TEXT, FM_TLV_PLAT_LIB_DEBUG, 4,
-        EnDecodeByBitMap, libDebugMap, FM_NENTRIES(libDebugMap)},
+        EnDecodeByBitMap, (fm_intptr)libDebugMap, FM_NENTRIES(libDebugMap)},
 };
 
 /* Property starting with api.platform.lib.config.pcaMux.%d */
 static fm_utilPropMap platLibConfigPcaMux[] = {
     {"model", PROP_TEXT, FM_TLV_PLAT_LIB_MUX_MODEL, 1,
-        EnDecodeByMap, pcaMuxModelMap, FM_NENTRIES(pcaMuxModelMap)},
-    {"bus", PROP_UINT, FM_TLV_PLAT_LIB_MUX_BUS, 1, NULL, NULL, 0},
-    {"addr", PROP_UINT_H, FM_TLV_PLAT_LIB_MUX_ADDR, 2, NULL, NULL, 0},
-    {"parent.index", PROP_UINT, FM_TLV_PLAT_LIB_MUX_PARENT_IDX, 1, NULL, NULL, 0},
-    {"parent.value", PROP_INT_H, FM_TLV_PLAT_LIB_MUX_PARENT_VAL, 4, NULL, NULL, 0},
+        EnDecodeByMap, (fm_intptr)pcaMuxModelMap, FM_NENTRIES(pcaMuxModelMap)},
+    {"bus", PROP_UINT, FM_TLV_PLAT_LIB_MUX_BUS, 1, NULL, 0, 0},
+    {"addr", PROP_UINT_H, FM_TLV_PLAT_LIB_MUX_ADDR, 2, NULL, 0, 0},
+    {"parent.index", PROP_UINT, FM_TLV_PLAT_LIB_MUX_PARENT_IDX, 1, NULL, 0, 0},
+    {"parent.value", PROP_INT_H, FM_TLV_PLAT_LIB_MUX_PARENT_VAL, 4, NULL, 0, 0},
 };
 
 /* Property starting with api.platform.lib.config.pcaIo.%d */
 static fm_utilPropMap platLibConfigPcaIo[] = {
     {"model", PROP_TEXT, FM_TLV_PLAT_LIB_IO_MODEL, 1,
-        EnDecodeByMap, pcaIoModelMap, FM_NENTRIES(pcaIoModelMap)},
-    {"bus", PROP_UINT, FM_TLV_PLAT_LIB_IO_BUS, 1, NULL, NULL, 0},
-    {"addr", PROP_UINT_H, FM_TLV_PLAT_LIB_IO_ADDR, 2, NULL, NULL, 0},
-    {"parent.index", PROP_UINT, FM_TLV_PLAT_LIB_IO_PARENT_IDX, 1, NULL, NULL, 0},
-    {"parent.value", PROP_INT_H, FM_TLV_PLAT_LIB_IO_PARENT_VAL, 4, NULL, NULL, 0},
-    {"ledBlinkPeriod", PROP_UINT, FM_TLV_PLAT_LIB_IO_LED_BLINK_PER, 2, NULL, NULL, 0},
-    {"ledBrightness", PROP_UINT, FM_TLV_PLAT_LIB_IO_LED_BRIGHTNESS, 1, NULL, NULL, 0},
+        EnDecodeByMap, (fm_intptr)pcaIoModelMap, FM_NENTRIES(pcaIoModelMap)},
+    {"bus", PROP_UINT, FM_TLV_PLAT_LIB_IO_BUS, 1, NULL, 0, 0},
+    {"addr", PROP_UINT_H, FM_TLV_PLAT_LIB_IO_ADDR, 2, NULL, 0, 0},
+    {"parent.index", PROP_UINT, FM_TLV_PLAT_LIB_IO_PARENT_IDX, 1, NULL, 0, 0},
+    {"parent.value", PROP_INT_H, FM_TLV_PLAT_LIB_IO_PARENT_VAL, 4, NULL, 0, 0},
+    {"ledBlinkPeriod", PROP_UINT, FM_TLV_PLAT_LIB_IO_LED_BLINK_PER, 2, NULL, 0, 0},
+    {"ledBrightness", PROP_UINT, FM_TLV_PLAT_LIB_IO_LED_BRIGHTNESS, 1, NULL, 0, 0},
 };
 
 
 /* Property starting with api.platform.lib.config.hwResourceId.%d */
 static fm_utilPropMap platLibConfigHwResId[] = {
     {"interfaceType", PROP_TEXT, FM_TLV_PLAT_LIB_HWRESID_INTF_TYPE, 1,
-        EnDecodeByMap, libIntfTypeMap, FM_NENTRIES(libIntfTypeMap)},
+        EnDecodeByMap, (fm_intptr)libIntfTypeMap, FM_NENTRIES(libIntfTypeMap)},
     {"xcvrState.pcaIo.index",
-        PROP_UINT, FM_TLV_PLAT_LIB_XCVR_IDX, 1, NULL, NULL, 0},
+        PROP_UINT, FM_TLV_PLAT_LIB_XCVR_IDX, 1, NULL, 0, 0},
     {"xcvrState.pcaIo.basePin",
-        PROP_UINT, FM_TLV_PLAT_LIB_XCVR_BASE_PIN, 1, NULL, NULL, 0},
+        PROP_UINT, FM_TLV_PLAT_LIB_XCVR_BASE_PIN, 1, NULL, 0, 0},
     {"xcvrState.pcaIo.modAbs.pin", 
-        PROP_UINT, FM_TLV_PLAT_LIB_XCVR_MODABS_PIN, 1, NULL, NULL, 0},
+        PROP_UINT, FM_TLV_PLAT_LIB_XCVR_MODABS_PIN, 1, NULL, 0, 0},
     {"xcvrState.pcaIo.rxLos.pin", 
-        PROP_UINT, FM_TLV_PLAT_LIB_XCVR_RXLOS_PIN, 1, NULL, NULL, 0},
+        PROP_UINT, FM_TLV_PLAT_LIB_XCVR_RXLOS_PIN, 1, NULL, 0, 0},
     {"xcvrState.pcaIo.txDisable.pin", 
-        PROP_UINT, FM_TLV_PLAT_LIB_XCVR_TXDISABLE_PIN, 1, NULL, NULL, 0},
+        PROP_UINT, FM_TLV_PLAT_LIB_XCVR_TXDISABLE_PIN, 1, NULL, 0, 0},
     {"xcvrState.pcaIo.txFault.pin", 
-        PROP_UINT, FM_TLV_PLAT_LIB_XCVR_TXFAULT_PIN, 1, NULL, NULL, 0},
-    {"xcvrState.pcaIo.modPresL.pin", 
-        PROP_UINT, FM_TLV_PLAT_LIB_XCVR_MODPRESL_PIN, 1, NULL, NULL, 0},
+        PROP_UINT, FM_TLV_PLAT_LIB_XCVR_TXFAULT_PIN, 1, NULL, 0, 0},
+    {"xcvrState.pcaIo.modPrsL.pin", 
+        PROP_UINT, FM_TLV_PLAT_LIB_XCVR_MODPRESL_PIN, 1, NULL, 0, 0},
     {"xcvrState.pcaIo.intL.pin", 
-        PROP_UINT, FM_TLV_PLAT_LIB_XCVR_INTL_PIN, 1, NULL, NULL, 0},
+        PROP_UINT, FM_TLV_PLAT_LIB_XCVR_INTL_PIN, 1, NULL, 0, 0},
     {"xcvrState.pcaIo.lpMode.pin", 
-        PROP_UINT, FM_TLV_PLAT_LIB_XCVR_LPMODE_PIN, 1, NULL, NULL, 0},
+        PROP_UINT, FM_TLV_PLAT_LIB_XCVR_LPMODE_PIN, 1, NULL, 0, 0},
     {"xcvrState.pcaIo.resetL.pin", 
-        PROP_UINT, FM_TLV_PLAT_LIB_XCVR_RESETL_PIN, 1, NULL, NULL, 0},
+        PROP_UINT, FM_TLV_PLAT_LIB_XCVR_RESETL_PIN, 1, NULL, 0, 0},
     {"xcvrI2C.busSelType", 
-        PROP_TEXT, FM_TLV_PLAT_LIB_XCVR_I2_BUSSELTYPE, 1,
-        EnDecodeByMap, busSelTypeMap, FM_NENTRIES(busSelTypeMap)},
+        PROP_TEXT, FM_TLV_PLAT_LIB_XCVR_I2C_BUSSELTYPE, 1,
+        EnDecodeByMap, (fm_intptr)busSelTypeMap, FM_NENTRIES(busSelTypeMap)},
     {"xcvrI2C.pcaMux.index", 
-        PROP_UINT, FM_TLV_PLAT_LIB_XCVR_MUX_IDX, 1, NULL, NULL, 0},
+        PROP_UINT, FM_TLV_PLAT_LIB_XCVR_I2C_MUX_IDX, 1, NULL, 0, 0},
     {"xcvrI2C.pcaMux.value", 
-        PROP_UINT_H, FM_TLV_PLAT_LIB_XCVR_MUX_VAL, 4, NULL, NULL, 0},
+        PROP_UINT_H, FM_TLV_PLAT_LIB_XCVR_I2C_MUX_VAL, 4, NULL, 0, 0},
+    {"xcvrI2C.pcaIo.index", 
+        PROP_UINT, FM_TLV_PLAT_LIB_XCVR_I2C_IO_IDX, 1, NULL, 0, 0},
+    {"xcvrI2C.pcaIo.pin", 
+        PROP_UINT, FM_TLV_PLAT_LIB_XCVR_I2C_IO_PIN, 1, NULL, 0, 0},
+    {"xcvrI2C.pcaIo.pin.polarity", 
+        PROP_UINT, FM_TLV_PLAT_LIB_XCVR_I2C_IO_PIN_POL, 1, NULL, 0, 0},
     {"type", 
         PROP_TEXT, FM_TLV_PLAT_LIB_HWRESID_TYPE, 1,
-        EnDecodeByMap, hwResTypeMap, FM_NENTRIES(hwResTypeMap)},
+        EnDecodeByMap, (fm_intptr)hwResTypeMap, FM_NENTRIES(hwResTypeMap)},
     {"phy.busSelType", 
         PROP_TEXT, FM_TLV_PLAT_LIB_PHY_BUSSELTYPE, 1,
-        EnDecodeByMap, busSelTypeMap, FM_NENTRIES(busSelTypeMap)},
+        EnDecodeByMap, (fm_intptr)busSelTypeMap, FM_NENTRIES(busSelTypeMap)},
     {"phy.pcaMux.index", 
-        PROP_UINT, FM_TLV_PLAT_LIB_PHY_MUX_IDX, 1, NULL, NULL, 0},
+        PROP_UINT, FM_TLV_PLAT_LIB_PHY_MUX_IDX, 1, NULL, 0, 0},
     {"phy.pcaMux.value", 
-        PROP_INT_H, FM_TLV_PLAT_LIB_PHY_MUX_VAL, 4, NULL, NULL, 0},
+        PROP_INT_H, FM_TLV_PLAT_LIB_PHY_MUX_VAL, 4, NULL, 0, 0},
     {"phy.bus", 
-        PROP_UINT, FM_TLV_PLAT_LIB_PHY_BUS, 1, NULL, NULL, 0},
+        PROP_UINT, FM_TLV_PLAT_LIB_PHY_BUS, 1, NULL, 0, 0},
     {"vrm.busSelType",
         PROP_TEXT, FM_TLV_PLAT_LIB_VRM_BUSSELTYPE, 1,
-        EnDecodeByMap, busSelTypeMap, FM_NENTRIES(busSelTypeMap)},
+        EnDecodeByMap, (fm_intptr)busSelTypeMap, FM_NENTRIES(busSelTypeMap)},
     {"vrm.model",
         PROP_TEXT, FM_TLV_PLAT_LIB_VRM_MODEL, 1,
-         EnDecodeByMap, vrmModelMap, FM_NENTRIES(vrmModelMap)},
+         EnDecodeByMap, (fm_intptr)vrmModelMap, FM_NENTRIES(vrmModelMap)},
     {"vrm.pcaMux.index",
-        PROP_UINT, FM_TLV_PLAT_LIB_VRM_MUX_IDX, 1, NULL, NULL, 0},
+        PROP_UINT, FM_TLV_PLAT_LIB_VRM_MUX_IDX, 1, NULL, 0, 0},
     {"vrm.pcaMux.value",
-        PROP_UINT_H, FM_TLV_PLAT_LIB_VRM_MUX_VAL, 4, NULL, NULL, 0},
+        PROP_UINT_H, FM_TLV_PLAT_LIB_VRM_MUX_VAL, 4, NULL, 0, 0},
     {"vrm.addr",
-        PROP_UINT_H, FM_TLV_PLAT_LIB_VRM_MUX_ADDR, 2, NULL, NULL, 0},
+        PROP_UINT_H, FM_TLV_PLAT_LIB_VRM_MUX_ADDR, 2, NULL, 0, 0},
     {"vrm.bus",
-        PROP_UINT, FM_TLV_PLAT_LIB_VRM_MUX_BUS, 1, NULL, NULL, 0},
+        PROP_UINT, FM_TLV_PLAT_LIB_VRM_MUX_BUS, 1, NULL, 0, 0},
 };
 
 
 /* Property starting with api.platform.lib.config.hwResourceId.%d.portLed.%d */
 static fm_utilPropMap platLibConfigHwResIdPortLed[] = {
     {"type", PROP_TEXT, FM_TLV_PLAT_LIB_PORTLED_TYPE, 1,
-        EnDecodeByMap, portLedTypeMap, FM_NENTRIES(portLedTypeMap)},
-    {"pcaIo.index", PROP_UINT, FM_TLV_PLAT_LIB_PORTLED_IO_IDX, 1, NULL, NULL, 0},
-    {"pcaIo.pin", PROP_UINT, FM_TLV_PLAT_LIB_PORTLED_IO_PIN, 1, NULL, NULL, 0},
+        EnDecodeByMap, (fm_intptr)portLedTypeMap, FM_NENTRIES(portLedTypeMap)},
+    {"pcaIo.index", PROP_UINT, FM_TLV_PLAT_LIB_PORTLED_IO_IDX, 1, NULL, 0, 0},
+    {"pcaIo.pin", PROP_UINT, FM_TLV_PLAT_LIB_PORTLED_IO_PIN, 1, NULL, 0, 0},
     {"pcaIo.usage", PROP_TEXT, FM_TLV_PLAT_LIB_PORTLED_IO_USAGE, 4,
-        EnDecodeByBitMap, portLedUsageMap, FM_NENTRIES(portLedUsageMap)},
+        EnDecodeByBitMap, (fm_intptr)portLedUsageMap, FM_NENTRIES(portLedUsageMap)},
+    {"pcaIo.ledBrightness", PROP_UINT, FM_TLV_PLAT_LIB_PORTLED_IO_BRIGHTNESS,
+         1, NULL, 0, 0},
 };
 
 /* Property starting with api.platform.lib.config.hwResourceId.%d.portLed.%d.%d */
 static fm_utilPropMap platLibConfigHwResIdPortLedLane[] = {
-    {"pcaIo.pin", PROP_UINT, FM_TLV_PLAT_LIB_PORTLED_IO_LANE_PIN, 1, NULL, NULL, 0},
+    {"pcaIo.pin", PROP_UINT, FM_TLV_PLAT_LIB_PORTLED_IO_LANE_PIN, 1, NULL, 0, 0},
     {"pcaIo.usage", PROP_TEXT, FM_TLV_PLAT_LIB_PORTLED_IO_LANE_USAGE, 4,
-        EnDecodeByBitMap, portLedUsageMap, FM_NENTRIES(portLedUsageMap)},
+        EnDecodeByBitMap, (fm_intptr)portLedUsageMap, FM_NENTRIES(portLedUsageMap)},
+    {"pcaIo.ledBrightness", PROP_UINT, FM_TLV_PLAT_LIB_PORTLED_IO_LANE_BRIGHTNESS,
+        1, NULL, 0, 0},
 };
 
 
 /* Property starting with api.platform.lib.config.bus%d */
 static fm_utilPropMap platLibConfigBus[] = {
-    {"i2cWrRdEn", PROP_UINT, FM_TLV_PLAT_LIB_BUS_I2C_EN_WR_RD, 1, NULL, NULL, 0},
-    {"i2cDevName", PROP_TEXT, FM_TLV_PLAT_LIB_I2C_DEVNAME, 0, NULL, NULL, 0},
+    {"i2cWrRdEn", PROP_UINT, FM_TLV_PLAT_LIB_BUS_I2C_EN_WR_RD, 1, NULL, 0, 0},
+    {"i2cDevName", PROP_TEXT, FM_TLV_PLAT_LIB_I2C_DEVNAME, 0, NULL, 0, 0},
 };
 
 
@@ -1155,6 +1263,74 @@ static fm_utilPropMap platLibConfigBus[] = {
 /*****************************************************************************
  * Local Functions
  *****************************************************************************/
+
+
+/*****************************************************************************/
+/* IsValueInList 
+ * \ingroup intPlatform
+ *
+ * \desc            Returns if the string value is in the given list.
+ *
+ * \param[in]       name is the name to find in the string list.
+ *
+ * \param[in]       strList points to an array of fm_utilStrList.
+ *
+ * \param[in]       size is the size of the strList array.
+ *
+ * \return          FM_TRUE if name is found in list.
+ *
+ *****************************************************************************/
+static fm_bool IsValueInList(fm_text         name,
+                             fm_utilStrList *strList,
+                             fm_int          size)
+{
+    fm_int  cnt;
+    fm_int  lenName;
+    fm_int  lenDesc;
+    fm_char tempStr[64];
+
+
+    lenName = strlen(name);
+    if (lenName >= (fm_int)sizeof(tempStr))
+    {
+        FM_LOG_ERROR(FM_LOG_CAT_PLATFORM,
+                     "Name '%s' is too long\n",
+                     name);
+        FM_LOG_EXIT(FM_LOG_CAT_PLATFORM, FALSE);
+    }
+
+    /* Remove trailing spaces or quotation*/
+    for (cnt = 0; cnt < lenName; cnt++)
+    {
+        if (isascii(name[cnt]) && 
+            !(isspace(name[cnt]) || name[cnt] == '"'))
+        {
+            tempStr[cnt] = name[cnt];
+        }
+        else
+        {
+            break;
+        }
+    }
+    tempStr[cnt] = '\0';
+    lenName = cnt;
+
+
+    for (cnt = 0 ; cnt < size ; cnt++)
+    {
+        lenDesc = strlen(strList[cnt].desc);
+        if ( (lenName == lenDesc) &&
+             ( (strncasecmp( tempStr, strList[cnt].desc, lenDesc)) == 0 ) )
+        {
+            return TRUE;
+        }
+    }
+
+    return FALSE;
+
+}   /* end IsValueInList */
+
+
 
 /*****************************************************************************/
 /* GetMapStr
@@ -1960,8 +2136,10 @@ static fm_status EncodeGenericConfig(fm_utilPropMap *propMap,
     fm_int      valLen;
     fm_int      valOff;
     fm_int      val;
+    fm_int      minVal;
     fm_int      maxVal;
     fm_uint64   valU64;
+    fm_char     typeStr[8];
 
     for (i = 0; i < propMapLen; i++)
     {
@@ -1975,6 +2153,58 @@ static fm_status EncodeGenericConfig(fm_utilPropMap *propMap,
 
         if (strncmp(propMap[i].key, propNameTok[propArgsSize], keyLen)  == 0)
         {
+            /* The name must be terminated by space or it might be another
+             * longer name config */
+            if (!isspace(propNameTok[propArgsSize][keyLen]))
+            {
+                continue;
+            }
+
+            /* terminate type string, propType is just pointing to the
+             * type in the whole line */
+            typeStr[0] = '\0';
+            for (j = 0 ; j < (fm_int)(sizeof(typeStr) - 1) ; j++)
+            {
+                if (isspace(propType[j]) || !isprint(propType[j]))
+                {
+                    break;
+                }
+                typeStr[j] = propType[j];
+            }
+            typeStr[j] = '\0';
+
+            /* Type string is not used, but gives user a warning */
+            switch (propMap[i].propType)
+            {
+                case PROP_TEXT:
+                    if (strncmp(typeStr, "text", 4)  != 0)
+                    {
+                        FM_LOG_WARNING(FM_LOG_CAT_PLATFORM,
+                                "%s: Expect text type but got \'%s\'.\n",
+                                propMap[i].key, typeStr);
+
+                    }
+                    break;
+                case PROP_BOOL:
+                    if (strncmp(typeStr, "bool", 4)  != 0)
+                    {
+                        FM_LOG_WARNING(FM_LOG_CAT_PLATFORM,
+                                "%s: Expect bool type but got \'%s\'.\n",
+                                propMap[i].key, typeStr);
+
+                    }
+                    break;
+                default:
+                    if (strncmp(typeStr, "int", 3)  != 0)
+                    {
+                        FM_LOG_WARNING(FM_LOG_CAT_PLATFORM,
+                                "%s: Expect int type but got \'%s\'.\n",
+                                propMap[i].key, typeStr);
+
+                    }
+                    break;
+            }
+
             switch (propMap[i].propType)
             {
                 case PROP_TEXT:
@@ -1998,7 +2228,9 @@ static fm_status EncodeGenericConfig(fm_utilPropMap *propMap,
                         /* Remove trailing special characters */
                         for (j = valLen - 1 ; j > 0 ; j--)
                         {
-                            if (isprint(propVal[j]) && !(propVal[j] == '"'))
+                            if (isprint(propVal[j]) &&
+                                !isspace(propVal[j]) &&
+                                !(propVal[j] == '"'))
                             {
                                 break;
                             }
@@ -2032,6 +2264,21 @@ static fm_status EncodeGenericConfig(fm_utilPropMap *propMap,
                         tlv[TLV_VALUE_OFF + valOff + j] = 
                             (val >> ((valLen - j - 1) * 8)) & 0xFF;
                     }
+
+                    /* Range checking if enabled */
+                    if (propMap[i].arg1 != 0 || propMap[i].arg2 != 0)
+                    {
+                        minVal = propMap[i].arg1;
+                        maxVal = propMap[i].arg2;
+                        if (val < minVal || val > maxVal)
+                        {
+                            FM_LOG_ERROR(FM_LOG_CAT_PLATFORM,
+                                "%s: Value %d is out of range (%d,%d).\n",
+                                propMap[i].key, val, minVal, maxVal);
+                            return FM_ERR_INVALID_ARGUMENT;
+                        }
+                    }
+
                     /* Check for value exceed the size of storage */
                     if (valLen < 4)
                     {
@@ -2044,8 +2291,9 @@ static fm_status EncodeGenericConfig(fm_utilPropMap *propMap,
                             {
                                 FM_LOG_ERROR(FM_LOG_CAT_PLATFORM,
                                     "%s: Value %d overflows for unsigned integer "
-                                    "size of %d byte. Valid range (0,%d)\n",
+                                    "size of %d byte. Valid range (0,%d).\n",
                                     propMap[i].key, val, valLen, maxVal);
+                                return FM_ERR_INVALID_ARGUMENT;
                             }
                         }
                         else
@@ -2056,8 +2304,9 @@ static fm_status EncodeGenericConfig(fm_utilPropMap *propMap,
                             {
                                 FM_LOG_ERROR(FM_LOG_CAT_PLATFORM,
                                     "%s: Value %d overflows for integer size of "
-                                    "%d byte. Valid range (-%d,%d)\n",
+                                    "%d byte. Valid range (-%d,%d).\n",
                                     propMap[i].key, val, valLen, maxVal, maxVal);
+                                return FM_ERR_INVALID_ARGUMENT;
                             }
                         }
                     }
@@ -2745,6 +2994,8 @@ static fm_status EnDecodePhyTxEqualizer(fm_utilEnDecode endec,
     fm_int      val2;
     fm_int      val3;
     fm_int      val4;
+    fm_int      minVal;
+    fm_int      maxVal;
 
     if (endec == ENCODE)
     {
@@ -2755,12 +3006,21 @@ static fm_status EnDecodePhyTxEqualizer(fm_utilEnDecode endec,
             {
                 return status;
             }
+            minVal = 0;
+            maxVal = 15;
+            if (val1 < minVal || val1 > maxVal)
+            {
+                FM_LOG_ERROR(FM_LOG_CAT_PLATFORM,
+                    "Pre-tap value %d is out of range (%d,%d).\n",
+                    val1, minVal, maxVal);
+                return FM_ERR_INVALID_ARGUMENT;
+            }
             SetTlvValue(val1, tlvVal + 0, 1);
         }
         else
         {
             FM_LOG_ERROR(FM_LOG_CAT_PLATFORM,
-                "Unable to find PRE= key word in [%s]\n",
+                "Unable to find PRE= key word in [%s].\n",
                 valText);
             return FM_ERR_INVALID_ARGUMENT;
         }
@@ -2772,12 +3032,21 @@ static fm_status EnDecodePhyTxEqualizer(fm_utilEnDecode endec,
             {
                 return status;
             }
+            minVal = 0;
+            maxVal = 15;
+            if (val1 < minVal || val1 > maxVal)
+            {
+                FM_LOG_ERROR(FM_LOG_CAT_PLATFORM,
+                    "Attenuation value %d is out of range (%d,%d).\n",
+                    val1, minVal, maxVal);
+                return FM_ERR_INVALID_ARGUMENT;
+            }
             SetTlvValue(val1, tlvVal + 1, 1);
         }
         else
         {
             FM_LOG_ERROR(FM_LOG_CAT_PLATFORM,
-                "Unable to find ATT= key word in [%s]\n",
+                "Unable to find ATT= key word in [%s].\n",
                 valText);
             return FM_ERR_INVALID_ARGUMENT;
         }
@@ -2789,12 +3058,21 @@ static fm_status EnDecodePhyTxEqualizer(fm_utilEnDecode endec,
             {
                 return status;
             }
+            minVal = 0;
+            maxVal = 31;
+            if (val1 < minVal || val1 > maxVal)
+            {
+                FM_LOG_ERROR(FM_LOG_CAT_PLATFORM,
+                    "Post-tap value %d is out of range (%d,%d).\n",
+                    val1, minVal, maxVal);
+                return FM_ERR_INVALID_ARGUMENT;
+            }
             SetTlvValue(val1, tlvVal + 2, 1);
         }
         else
         {
             FM_LOG_ERROR(FM_LOG_CAT_PLATFORM,
-                "Unable to find POST= key word in [%s]\n",
+                "Unable to find POST= key word in [%s].\n",
                 valText);
             return FM_ERR_INVALID_ARGUMENT;
         }
@@ -2806,12 +3084,21 @@ static fm_status EnDecodePhyTxEqualizer(fm_utilEnDecode endec,
             {
                 return status;
             }
+            minVal = 0;
+            maxVal = 31;
+            if (val1 < minVal || val1 > maxVal)
+            {
+                FM_LOG_ERROR(FM_LOG_CAT_PLATFORM,
+                    "Polarity value %d is out of range (%d,%d).\n",
+                    val1, minVal, maxVal);
+                return FM_ERR_INVALID_ARGUMENT;
+            }
             SetTlvValue(val1, tlvVal + 3, 1);
         }
         else
         {
             FM_LOG_ERROR(FM_LOG_CAT_PLATFORM,
-                "Unable to find POL= key word in [%s]\n",
+                "Unable to find POL= key word in [%s].\n",
                 valText);
             return FM_ERR_INVALID_ARGUMENT;
         }
@@ -2840,6 +3127,122 @@ static fm_status EnDecodePhyTxEqualizer(fm_utilEnDecode endec,
     return FM_OK;
 
 } /* end EnDecodePhyTxEqualizer */
+
+
+
+
+
+
+/*****************************************************************************/
+/** EnDecValidateList
+ * \ingroup intPlatform
+ *
+ * \desc            Validate encode/decode property using mapping structure.
+ *
+ *
+ * \param[in]       endec specifies whether to encode or decode.
+ *
+ * \param[in]       propMap is the pointer to fm_utilPropMap structure
+ *                  describing the property to be encoded/decoded.
+ *
+ * \param[in/out]   tlvVal points to an array of bytes, storing the property value.
+ *
+ * \param[in]       tlvValSize is the size of the tlv array. For decoding, this
+ *                  is also the size of the TLV expected to return.
+ *
+ * \param[in/out]   propVal is the caller allocated buffer storing the property
+ *                  value.
+ *
+ * \param[in]       propValSize is the size of propVal.
+ *
+ * \param[in]       len is the caller allocated memory where the function
+ *                  will place the length of output tlvVal, if encoding, or
+ *                  the length of output propVal, if decoding. len can
+ *                  be NULL if the return value is not required.
+ *
+ * \return          FM_OK if successful.
+ * \return          Other ''Status Codes'' as appropriate in case of failure.
+ *
+ *****************************************************************************/
+static fm_status EnDecValidateByList(fm_utilEnDecode endec,
+                                     void           *propMapV,
+                                     fm_byte        *tlvVal,
+                                     fm_int          tlvValSize,
+                                     fm_char        *propVal,
+                                     fm_int          propValSize,
+                                     fm_int         *len)
+{
+    fm_utilPropMap *propMap = (fm_utilPropMap*)propMapV;
+    fm_utilStrList  *strList;
+    fm_int      strListSize;
+    fm_int      j;
+    fm_int      valLen;
+    fm_char     validValues[256];
+    fm_int      validLen;
+
+    if (propMap->arg1 == 0)
+    {
+        return FM_ERR_INVALID_ARGUMENT;
+    }
+
+    if (endec == ENCODE)
+    {
+        /* Remove trailing special characters */
+        valLen = strlen(propVal);
+        for (j = valLen - 1 ; j > 0 ; j--)
+        {
+            if (isprint(propVal[j]) && !isspace(propVal[j]) &&
+                !(propVal[j] == '"'))
+            {
+                break;
+            }
+        }
+        valLen = j + 1;
+        propVal[valLen] = '\0';
+
+        strList = (fm_utilStrList *)propMap->arg1;
+        strListSize = (fm_int)propMap->arg2;
+
+        /* Only check for input to be among valid values */
+        if (!IsValueInList(propVal, strList, strListSize))
+        {
+            validValues[0] = '\0';
+            for (j = 0 ; j < strListSize ; j++)
+            {
+                validLen = strlen(validValues);
+                FM_SNPRINTF_S(validValues  + validLen, sizeof(validValues) - validLen,
+                        "%s%s", j ? ", " : "", strList[j].desc);
+            }
+
+            FM_LOG_ERROR(FM_LOG_CAT_PLATFORM,
+                "%s: Value \'%s\' is not among valid values (%s).\n",
+                propMap->key, propVal, validValues);
+            return FM_ERR_INVALID_ARGUMENT;
+        }
+
+        if ((valLen <= 0) || (valLen >= TLV_MAX_LEN))
+        {
+            return FM_ERR_INVALID_ARGUMENT;
+        }
+        FM_MEMCPY_S(tlvVal,
+                    tlvValSize,
+                    propVal,
+                    valLen);
+
+        *len = (valLen < tlvValSize) ? valLen : tlvValSize;
+    }
+    else
+    {
+        FM_SNPRINTF_S(propVal, propValSize, " text %s", tlvVal);
+        if (len)
+        {
+            *len = strlen(propVal);
+        }
+    }
+
+    return FM_OK;
+
+} /* end EnDecValidateList */
 
 
 
@@ -2887,7 +3290,7 @@ static fm_status EnDecodeByMap(fm_utilEnDecode endec,
     fm_int      value;
     fm_utilPropMap *propMap = (fm_utilPropMap*)propMapV;
 
-    if (propMap->strMap == NULL)
+    if (propMap->arg1 == 0)
     {
         return FM_ERR_INVALID_ARGUMENT;
     }
@@ -2895,8 +3298,8 @@ static fm_status EnDecodeByMap(fm_utilEnDecode endec,
     if (endec == ENCODE)
     {
         status = GetMapValue(propTxt,
-                             propMap->strMap,
-                             propMap->strMapSize,
+                             (fm_utilStrMap *)propMap->arg1,
+                             (fm_int)propMap->arg2,
                              &value);
         if (status)
         {
@@ -2929,8 +3332,8 @@ static fm_status EnDecodeByMap(fm_utilEnDecode endec,
         GetTlvValue(tlvVal, tlvValSize, &value);
         FM_SNPRINTF_S(propTxt, propTxtSize, " text ", "");
         status = GetMapStr(value,
-                           propMap->strMap,
-                           propMap->strMapSize,
+                           (fm_utilStrMap *)propMap->arg1,
+                           (fm_int)propMap->arg2,
                            propTxt + 6,
                            propTxtSize - 6);
         if (status)
@@ -2992,7 +3395,7 @@ static fm_status EnDecodeByBitMap(fm_utilEnDecode endec,
     fm_int      value;
     fm_utilPropMap *propMap = (fm_utilPropMap*)propMapV;
 
-    if (propMap->strMap == NULL)
+    if (propMap->arg1 == 0)
     {
         return FM_ERR_INVALID_ARGUMENT;
     }
@@ -3000,8 +3403,8 @@ static fm_status EnDecodeByBitMap(fm_utilEnDecode endec,
     if (endec == ENCODE)
     {
         status = GetBitMapValue(propTxt,
-                                propMap->strMap,
-                                propMap->strMapSize,
+                                (fm_utilStrMap *)propMap->arg1,
+                                (fm_int)propMap->arg2,
                                 &value);
         if (status)
         {
@@ -3034,8 +3437,8 @@ static fm_status EnDecodeByBitMap(fm_utilEnDecode endec,
         GetTlvValue(tlvVal, tlvValSize, &value);
         FM_SNPRINTF_S(propTxt, propTxtSize, " text ", "");
         status = GetBitMapStr(value,
-                              propMap->strMap,
-                              propMap->strMapSize,
+                              (fm_utilStrMap *)propMap->arg1,
+                              (fm_int)propMap->arg2,
                               propTxt + 6,
                               propTxtSize - 6);
         if (status)

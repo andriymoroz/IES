@@ -46,6 +46,34 @@
  * Macros, Constants & Types
  *****************************************************************************/
 
+#define ST(s) FM10000_PORT_STATE_ ## s
+#define EV(e) FM10000_PORT_EVENT_ ## e
+#define TG(g) TransitionGroup ## g
+#define FN(n) (genericFunction) n
+
+typedef void (*genericFunction)(void);
+
+/****************************************************************/
+/** \ingroup intPortStateMachine 
+ * Definition of the State Machine Transition Table values.
+ ****************************************************************/
+typedef struct _fm_smTable
+{
+    /* callback for transition or condition */
+    genericFunction         callback;
+    
+    /** current state identifier */
+    fm_int                  current;
+
+    /** event identifier */
+    fm_int                  event;
+
+    /** next state identifier */
+    fm_int                  next;
+
+} fm_smTable;
+
+
 /*****************************************************************************
  * Local function prototypes
  *****************************************************************************/
@@ -99,7 +127,6 @@ static fm_status ConfigureDfe( fm_smEventInfo *eventInfo, void *userInfo );
 static fm_status LinkPortToLanes( fm_smEventInfo *eventInfo, void *userInfo );
 static fm_status UnlinkPortFromLanes( fm_smEventInfo *eventInfo, void *userInfo );
 static fm_status UpdatePcieModeAndSpeed( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status UpdatePcieLanePolarity( fm_smEventInfo *eventInfo, void *userInfo );
 static fm_status UpdatePcieLaneReversal( fm_smEventInfo *eventInfo, void *userInfo );
 static fm_status EnablePcieInterrupts( fm_smEventInfo *eventInfo, void *userInfo );
 static fm_status DisablePcieInterrupts( fm_smEventInfo *eventInfo, void *userInfo );
@@ -144,235 +171,95 @@ static fm_status ExitAdminFaultMode( fm_smEventInfo *eventInfo, void *userInfo, 
 static fm_status ProcessDisableFabricLoopback( fm_smEventInfo *eventInfo, void *userInfo, fm_int *nextState );
 
 
-/* Declarations of transition callbacks for FM10000_AN_PORT_STATE_MACHINE */
-static fm_status AnStateMachineS0E0Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status AnStateMachineS1E0Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status AnStateMachineS2E0Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status AnStateMachineS2E1Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status AnStateMachineS2E4Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status AnStateMachineS2E5Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status AnStateMachineS2E7Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status AnStateMachineS2E8Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status AnStateMachineS2E9Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status AnStateMachineS3E0Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status AnStateMachineS3E1Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status AnStateMachineS3E6Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status AnStateMachineS3E18Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status AnStateMachineS4E0Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status AnStateMachineS4E1Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status AnStateMachineS4E6Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status AnStateMachineS5E0Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status AnStateMachineS5E1Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status AnStateMachineS5E2Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status AnStateMachineS5E3Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status AnStateMachineS5E6Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status AnStateMachineS5E23Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status AnStateMachineS5E24Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status AnStateMachineS6E0Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status AnStateMachineS6E1Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status AnStateMachineS6E5Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status AnStateMachineS6E6Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status AnStateMachineS6E7Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status AnStateMachineS6E8Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status AnStateMachineS6E9Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status AnStateMachineS6E24Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status AnStateMachineS7E0Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status AnStateMachineS7E1Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status AnStateMachineS7E5Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status AnStateMachineS7E6Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status AnStateMachineS7E7Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status AnStateMachineS7E8Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status AnStateMachineS7E9Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status AnStateMachineS7E24Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status AnStateMachineS7E20Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status AnStateMachineS8E0Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status AnStateMachineS8E1Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status AnStateMachineS8E5Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status AnStateMachineS8E6Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status AnStateMachineS8E7Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status AnStateMachineS8E8Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status AnStateMachineS8E9Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status AnStateMachineS8E24Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status AnStateMachineS8E20Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status AnStateMachineS9E0Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status AnStateMachineS9E1Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status AnStateMachineS9E5Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status AnStateMachineS9E6Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status AnStateMachineS9E7Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status AnStateMachineS9E8Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status AnStateMachineS9E9Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status AnStateMachineS9E24Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status AnStateMachineS11E0Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status AnStateMachineS11E1Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status AnStateMachineS11E5Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status AnStateMachineS11E6Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status AnStateMachineS11E7Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status AnStateMachineS11E8Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status AnStateMachineS11E9Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status AnStateMachineS11E24Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status AnStateMachineS11E11Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status AnStateMachineS11E12Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status AnStateMachineS11E29Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status AnStateMachineS11E21Callback( fm_smEventInfo *eventInfo, void *userInfo );
 
-/* Declarations of transition callbacks for FM10000_BASIC_PORT_STATE_MACHINE */
-static fm_status BasicStateMachineS0E0Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status BasicStateMachineS1E0Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status BasicStateMachineS2E0Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status BasicStateMachineS2E1Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status BasicStateMachineS2E4Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status BasicStateMachineS2E5Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status BasicStateMachineS2E7Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status BasicStateMachineS2E8Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status BasicStateMachineS2E9Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status BasicStateMachineS3E0Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status BasicStateMachineS3E1Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status BasicStateMachineS3E2Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status BasicStateMachineS3E3Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status BasicStateMachineS3E4Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status BasicStateMachineS3E5Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status BasicStateMachineS3E6Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status BasicStateMachineS3E7Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status BasicStateMachineS3E8Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status BasicStateMachineS3E9Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status BasicStateMachineS3E10Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status BasicStateMachineS3E18Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status BasicStateMachineS4E0Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status BasicStateMachineS4E1Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status BasicStateMachineS4E2Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status BasicStateMachineS4E3Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status BasicStateMachineS4E4Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status BasicStateMachineS4E5Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status BasicStateMachineS4E6Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status BasicStateMachineS4E7Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status BasicStateMachineS4E8Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status BasicStateMachineS4E9Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status BasicStateMachineS4E10Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status BasicStateMachineS4E18Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status BasicStateMachineS6E0Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status BasicStateMachineS6E1Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status BasicStateMachineS6E5Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status BasicStateMachineS6E6Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status BasicStateMachineS6E7Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status BasicStateMachineS6E8Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status BasicStateMachineS6E9Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status BasicStateMachineS6E10Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status BasicStateMachineS7E0Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status BasicStateMachineS7E1Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status BasicStateMachineS7E2Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status BasicStateMachineS7E3Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status BasicStateMachineS7E27Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status BasicStateMachineS7E5Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status BasicStateMachineS7E6Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status BasicStateMachineS7E7Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status BasicStateMachineS7E8Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status BasicStateMachineS7E9Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status BasicStateMachineS7E10Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status BasicStateMachineS7E11Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status BasicStateMachineS7E20Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status BasicStateMachineS8E0Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status BasicStateMachineS8E1Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status BasicStateMachineS8E2Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status BasicStateMachineS8E3Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status BasicStateMachineS8E27Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status BasicStateMachineS8E5Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status BasicStateMachineS8E6Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status BasicStateMachineS8E7Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status BasicStateMachineS8E8Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status BasicStateMachineS8E9Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status BasicStateMachineS8E10Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status BasicStateMachineS8E12Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status BasicStateMachineS8E20Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status BasicStateMachineS9E0Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status BasicStateMachineS9E1Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status BasicStateMachineS9E2Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status BasicStateMachineS9E3Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status BasicStateMachineS9E5Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status BasicStateMachineS9E6Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status BasicStateMachineS9E7Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status BasicStateMachineS9E8Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status BasicStateMachineS9E9Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status BasicStateMachineS9E10Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status BasicStateMachineS11E0Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status BasicStateMachineS11E1Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status BasicStateMachineS11E2Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status BasicStateMachineS11E3Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status BasicStateMachineS11E27Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status BasicStateMachineS11E5Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status BasicStateMachineS11E6Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status BasicStateMachineS11E7Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status BasicStateMachineS11E8Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status BasicStateMachineS11E9Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status BasicStateMachineS11E10Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status BasicStateMachineS11E11Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status BasicStateMachineS11E12Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status BasicStateMachineS11E29Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status BasicStateMachineS11E21Callback( fm_smEventInfo *eventInfo, void *userInfo );
-
-/* Declarations of transition callbacks for FM10000_PCIE_PORT_STATE_MACHINE */
-static fm_status PcieStateMachineS0E20Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status PcieStateMachineS0E19Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status PcieStateMachineS0E2Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status PcieStateMachineS0E3Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status PcieStateMachineS0E6Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status PcieStateMachineS0E7Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status PcieStateMachineS0E8Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status PcieStateMachineS0E9Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status PcieStateMachineS0E11Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status PcieStateMachineS0E12Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status PcieStateMachineS0E13Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status PcieStateMachineS0E14Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status PcieStateMachineS0E15Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status PcieStateMachineS0E16Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status PcieStateMachineS0E17Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status PcieStateMachineS0E18Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status PcieStateMachineS0E21Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status PcieStateMachineS10E0Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status PcieStateMachineS10E1Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status PcieStateMachineS10E20Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status PcieStateMachineS10E19Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status PcieStateMachineS10E2Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status PcieStateMachineS10E3Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status PcieStateMachineS10E4Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status PcieStateMachineS10E5Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status PcieStateMachineS10E6Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status PcieStateMachineS10E7Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status PcieStateMachineS10E8Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status PcieStateMachineS10E9Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status PcieStateMachineS10E11Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status PcieStateMachineS10E12Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status PcieStateMachineS10E13Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status PcieStateMachineS10E14Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status PcieStateMachineS10E15Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status PcieStateMachineS10E16Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status PcieStateMachineS10E17Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status PcieStateMachineS10E18Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status PcieStateMachineS10E21Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status PcieStateMachineS10E27Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status PcieStateMachineS10E28Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status PcieStateMachineS11E0Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status PcieStateMachineS11E1Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status PcieStateMachineS11E20Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status PcieStateMachineS11E19Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status PcieStateMachineS11E2Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status PcieStateMachineS11E3Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status PcieStateMachineS11E4Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status PcieStateMachineS11E5Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status PcieStateMachineS11E6Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status PcieStateMachineS11E7Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status PcieStateMachineS11E8Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status PcieStateMachineS11E9Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status PcieStateMachineS11E11Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status PcieStateMachineS11E12Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status PcieStateMachineS11E13Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status PcieStateMachineS11E14Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status PcieStateMachineS11E15Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status PcieStateMachineS11E16Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status PcieStateMachineS11E17Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status PcieStateMachineS11E18Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status PcieStateMachineS11E21Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status PcieStateMachineS11E27Callback( fm_smEventInfo *eventInfo, void *userInfo );
-static fm_status PcieStateMachineS11E28Callback( fm_smEventInfo *eventInfo, void *userInfo );
+/* declaration of transition group callbacks */
+static fm_status TG(0)( fm_smEventInfo *eventInfo, void *userInfo );
+static fm_status TG(1)( fm_smEventInfo *eventInfo, void *userInfo );
+static fm_status TG(2)( fm_smEventInfo *eventInfo, void *userInfo );
+static fm_status TG(3)( fm_smEventInfo *eventInfo, void *userInfo );
+static fm_status TG(4)( fm_smEventInfo *eventInfo, void *userInfo );
+static fm_status TG(5)( fm_smEventInfo *eventInfo, void *userInfo );
+static fm_status TG(6)( fm_smEventInfo *eventInfo, void *userInfo );
+static fm_status TG(7)( fm_smEventInfo *eventInfo, void *userInfo );
+static fm_status TG(8)( fm_smEventInfo *eventInfo, void *userInfo );
+static fm_status TG(9)( fm_smEventInfo *eventInfo, void *userInfo );
+static fm_status TG(10)( fm_smEventInfo *eventInfo, void *userInfo );
+static fm_status TG(11)( fm_smEventInfo *eventInfo, void *userInfo );
+static fm_status TG(12)( fm_smEventInfo *eventInfo, void *userInfo );
+static fm_status TG(13)( fm_smEventInfo *eventInfo, void *userInfo );
+static fm_status TG(14)( fm_smEventInfo *eventInfo, void *userInfo );
+static fm_status TG(15)( fm_smEventInfo *eventInfo, void *userInfo );
+static fm_status TG(16)( fm_smEventInfo *eventInfo, void *userInfo );
+static fm_status TG(17)( fm_smEventInfo *eventInfo, void *userInfo );
+static fm_status TG(18)( fm_smEventInfo *eventInfo, void *userInfo );
+static fm_status TG(19)( fm_smEventInfo *eventInfo, void *userInfo );
+static fm_status TG(20)( fm_smEventInfo *eventInfo, void *userInfo );
+static fm_status TG(21)( fm_smEventInfo *eventInfo, void *userInfo );
+static fm_status TG(22)( fm_smEventInfo *eventInfo, void *userInfo );
+static fm_status TG(23)( fm_smEventInfo *eventInfo, void *userInfo );
+static fm_status TG(24)( fm_smEventInfo *eventInfo, void *userInfo );
+static fm_status TG(25)( fm_smEventInfo *eventInfo, void *userInfo );
+static fm_status TG(26)( fm_smEventInfo *eventInfo, void *userInfo );
+static fm_status TG(27)( fm_smEventInfo *eventInfo, void *userInfo );
+static fm_status TG(28)( fm_smEventInfo *eventInfo, void *userInfo );
+static fm_status TG(29)( fm_smEventInfo *eventInfo, void *userInfo );
+static fm_status TG(30)( fm_smEventInfo *eventInfo, void *userInfo );
+static fm_status TG(31)( fm_smEventInfo *eventInfo, void *userInfo );
+static fm_status TG(32)( fm_smEventInfo *eventInfo, void *userInfo );
+static fm_status TG(33)( fm_smEventInfo *eventInfo, void *userInfo );
+static fm_status TG(34)( fm_smEventInfo *eventInfo, void *userInfo );
+static fm_status TG(35)( fm_smEventInfo *eventInfo, void *userInfo );
+static fm_status TG(36)( fm_smEventInfo *eventInfo, void *userInfo );
+static fm_status TG(37)( fm_smEventInfo *eventInfo, void *userInfo );
+static fm_status TG(38)( fm_smEventInfo *eventInfo, void *userInfo );
+static fm_status TG(39)( fm_smEventInfo *eventInfo, void *userInfo );
+static fm_status TG(40)( fm_smEventInfo *eventInfo, void *userInfo );
+static fm_status TG(41)( fm_smEventInfo *eventInfo, void *userInfo );
+static fm_status TG(42)( fm_smEventInfo *eventInfo, void *userInfo );
+static fm_status TG(43)( fm_smEventInfo *eventInfo, void *userInfo );
+static fm_status TG(44)( fm_smEventInfo *eventInfo, void *userInfo );
+static fm_status TG(45)( fm_smEventInfo *eventInfo, void *userInfo );
+static fm_status TG(46)( fm_smEventInfo *eventInfo, void *userInfo );
+static fm_status TG(47)( fm_smEventInfo *eventInfo, void *userInfo );
+static fm_status TG(48)( fm_smEventInfo *eventInfo, void *userInfo );
+static fm_status TG(49)( fm_smEventInfo *eventInfo, void *userInfo );
+static fm_status TG(50)( fm_smEventInfo *eventInfo, void *userInfo );
+static fm_status TG(51)( fm_smEventInfo *eventInfo, void *userInfo );
+static fm_status TG(52)( fm_smEventInfo *eventInfo, void *userInfo );
+static fm_status TG(53)( fm_smEventInfo *eventInfo, void *userInfo );
+static fm_status TG(54)( fm_smEventInfo *eventInfo, void *userInfo );
+static fm_status TG(55)( fm_smEventInfo *eventInfo, void *userInfo );
+static fm_status TG(56)( fm_smEventInfo *eventInfo, void *userInfo );
+static fm_status TG(57)( fm_smEventInfo *eventInfo, void *userInfo );
+static fm_status TG(58)( fm_smEventInfo *eventInfo, void *userInfo );
+static fm_status TG(59)( fm_smEventInfo *eventInfo, void *userInfo );
+static fm_status TG(60)( fm_smEventInfo *eventInfo, void *userInfo );
+static fm_status TG(61)( fm_smEventInfo *eventInfo, void *userInfo );
+static fm_status TG(62)( fm_smEventInfo *eventInfo, void *userInfo );
+static fm_status TG(63)( fm_smEventInfo *eventInfo, void *userInfo );
+static fm_status TG(64)( fm_smEventInfo *eventInfo, void *userInfo );
+static fm_status TG(65)( fm_smEventInfo *eventInfo, void *userInfo );
+static fm_status TG(66)( fm_smEventInfo *eventInfo, void *userInfo );
+static fm_status TG(67)( fm_smEventInfo *eventInfo, void *userInfo );
+static fm_status TG(68)( fm_smEventInfo *eventInfo, void *userInfo );
+static fm_status TG(69)( fm_smEventInfo *eventInfo, void *userInfo );
+static fm_status TG(70)( fm_smEventInfo *eventInfo, void *userInfo );
+static fm_status TG(71)( fm_smEventInfo *eventInfo, void *userInfo );
+static fm_status TG(72)( fm_smEventInfo *eventInfo, void *userInfo );
+static fm_status TG(73)( fm_smEventInfo *eventInfo, void *userInfo );
+static fm_status TG(74)( fm_smEventInfo *eventInfo, void *userInfo );
+static fm_status TG(75)( fm_smEventInfo *eventInfo, void *userInfo );
+static fm_status TG(76)( fm_smEventInfo *eventInfo, void *userInfo );
+static fm_status TG(77)( fm_smEventInfo *eventInfo, void *userInfo );
+static fm_status TG(78)( fm_smEventInfo *eventInfo, void *userInfo );
+static fm_status TG(79)( fm_smEventInfo *eventInfo, void *userInfo );
+static fm_status TG(80)( fm_smEventInfo *eventInfo, void *userInfo );
+static fm_status TG(81)( fm_smEventInfo *eventInfo, void *userInfo );
+static fm_status TG(82)( fm_smEventInfo *eventInfo, void *userInfo );
+static fm_status TG(83)( fm_smEventInfo *eventInfo, void *userInfo );
+static fm_status TG(84)( fm_smEventInfo *eventInfo, void *userInfo );
+static fm_status TG(85)( fm_smEventInfo *eventInfo, void *userInfo );
+static fm_status TG(86)( fm_smEventInfo *eventInfo, void *userInfo );
 
 
 /*****************************************************************************
@@ -438,13 +325,299 @@ fm_text fm10000PortEventsMap[FM10000_PORT_EVENT_MAX] =
  * Local Variables
  *****************************************************************************/
 
+
+static const fm_smTable fm10000AnSmTable[] = {
+    { FN(TG(42))                    , ST(AUTONEG)     , EV(ADMIN_PWRDOWN_REQ) , ST(CONFIGURED)       },
+    { FN(TG(23))                    , ST(UP)          , EV(EEE_SILENT_IND)    , ST(UP)               },
+    { FN(TG(43))                    , ST(POWERING_UP) , EV(CONFIG_REQ)        , ST(POWERING_UP)      },
+    { FN(TG(44))                    , ST(ADMIN_FAULT) , EV(CONFIG_REQ)        , ST(POWERING_UP)      },
+    { FN(TG(45))                    , ST(UP)          , EV(REMOTE_FAULT_IND)  , ST(REMOTE_FAULT)     },
+    { FN(TG(45))                    , ST(UP)          , EV(LOCAL_FAULT_IND)   , ST(LOCAL_FAULT)      },
+    { FN(TG(46))                    , ST(AUTONEG)     , EV(LOOPBACK_ON_REQ)   , ST(AUTONEG)          },
+    { FN(TG(46))                    , ST(AUTONEG)     , EV(LOOPBACK_OFF_REQ)  , ST(AUTONEG)          },
+    { FN(TG(47))                    , ST(LOCAL_FAULT) , EV(ADMIN_PWRDOWN_REQ) , ST(CONFIGURED)       },
+    { FN(TG(47))                    , ST(REMOTE_FAULT), EV(ADMIN_PWRDOWN_REQ) , ST(CONFIGURED)       },
+    { FN(TG(48))                    , ST(AUTONEG)     , EV(AN_CONFIG_REQ)     , ST(AUTONEG)          },
+    { FN(TG(49))                    , ST(UP)          , EV(REMOTE_FAULT_REQ)  , ST(ADMIN_FAULT)      },
+    { FN(TG(49))                    , ST(UP)          , EV(LOCAL_FAULT_REQ)   , ST(ADMIN_FAULT)      },
+    { NULL                          , ST(DISABLED)    , EV(ADMIN_UP_REQ)      , ST(NEED_CONFIG)      },
+    { NULL                          , ST(DISABLED)    , EV(ADMIN_DOWN_REQ)    , ST(NEED_CONFIG)      },
+    { NULL                          , ST(DISABLED)    , EV(REMOTE_FAULT_REQ)  , ST(NEED_CONFIG)      },
+    { NULL                          , ST(DISABLED)    , EV(LOCAL_FAULT_REQ)   , ST(NEED_CONFIG)      },
+    { NULL                          , ST(DISABLED)    , EV(BIST_REQ)          , ST(NEED_CONFIG)      },
+    { NULL                          , ST(NEED_CONFIG) , EV(ADMIN_PWRDOWN_REQ) , ST(DISABLED)         },
+    { FN(CheckLanesReady)           , ST(POWERING_UP) , EV(LANE_READY_IND)    , FM_STATE_UNSPECIFIED },
+    { FN(AnRestart)                 , ST(POWERING_UP) , EV(AN_RESTARTED_IND)  , FM_STATE_UNSPECIFIED },
+    { FN(ProcessDeferralTimerWithAn), ST(DEFERRED_UP) , EV(DEFTIMER_EXP_IND)  , FM_STATE_UNSPECIFIED },
+    { FN(AnRestart)                 , ST(DEFERRED_UP) , EV(AN_RESTARTED_IND)  , FM_STATE_UNSPECIFIED },
+    { FN(AnRestart)                 , ST(AUTONEG)     , EV(DEFTIMER_EXP_IND)  , FM_STATE_UNSPECIFIED },
+    { FN(EnterNegotiatedMode)       , ST(AUTONEG)     , EV(AN_COMPLETE_IND)   , FM_STATE_UNSPECIFIED },
+    { FN(AnRestart)                 , ST(ADMIN_FAULT) , EV(ADMIN_UP_REQ)      , FM_STATE_UNSPECIFIED },
+    { FN(AnRestart)                 , ST(ADMIN_FAULT) , EV(AN_CONFIG_REQ)     , FM_STATE_UNSPECIFIED },
+    { FN(AnRestart)                 , ST(ADMIN_FAULT) , EV(AN_RESTARTED_IND)  , FM_STATE_UNSPECIFIED },
+    { FN(AnRestart)                 , ST(LOCAL_FAULT) , EV(LOOPBACK_ON_REQ)   , FM_STATE_UNSPECIFIED },
+    { FN(AnRestart)                 , ST(LOCAL_FAULT) , EV(LOOPBACK_OFF_REQ)  , FM_STATE_UNSPECIFIED },
+    { FN(AnRestart)                 , ST(LOCAL_FAULT) , EV(AN_CONFIG_REQ)     , FM_STATE_UNSPECIFIED },
+    { NULL                          , ST(LOCAL_FAULT) , EV(REMOTE_FAULT_IND)  , ST(REMOTE_FAULT)     },
+    { FN(AnRestart)                 , ST(LOCAL_FAULT) , EV(AN_RESTARTED_IND)  , FM_STATE_UNSPECIFIED },
+    { FN(AnRestart)                 , ST(REMOTE_FAULT), EV(LOOPBACK_ON_REQ)   , FM_STATE_UNSPECIFIED },
+    { FN(AnRestart)                 , ST(REMOTE_FAULT), EV(LOOPBACK_OFF_REQ)  , FM_STATE_UNSPECIFIED },
+    { FN(AnRestart)                 , ST(REMOTE_FAULT), EV(AN_CONFIG_REQ)     , FM_STATE_UNSPECIFIED },
+    { NULL                          , ST(REMOTE_FAULT), EV(LOCAL_FAULT_IND)   , ST(LOCAL_FAULT)      },
+    { FN(AnRestart)                 , ST(REMOTE_FAULT), EV(AN_RESTARTED_IND)  , FM_STATE_UNSPECIFIED },
+    { FN(AnRestart)                 , ST(BIST)        , EV(LOOPBACK_ON_REQ)   , FM_STATE_UNSPECIFIED },
+    { FN(AnRestart)                 , ST(BIST)        , EV(LOOPBACK_OFF_REQ)  , FM_STATE_UNSPECIFIED },
+    { FN(AnRestart)                 , ST(BIST)        , EV(ADMIN_UP_REQ)      , FM_STATE_UNSPECIFIED },
+    { FN(AnRestart)                 , ST(BIST)        , EV(AN_CONFIG_REQ)     , FM_STATE_UNSPECIFIED },
+    { FN(AnRestart)                 , ST(BIST)        , EV(AN_RESTARTED_IND)  , FM_STATE_UNSPECIFIED },
+    { FN(AnRestart)                 , ST(UP)          , EV(LOOPBACK_ON_REQ)   , FM_STATE_UNSPECIFIED },
+    { FN(AnRestart)                 , ST(UP)          , EV(LOOPBACK_OFF_REQ)  , FM_STATE_UNSPECIFIED },
+    { FN(AnRestart)                 , ST(UP)          , EV(AN_CONFIG_REQ)     , FM_STATE_UNSPECIFIED },
+    { FN(AnRestart)                 , ST(UP)          , EV(AN_RESTARTED_IND)  , FM_STATE_UNSPECIFIED },
+    { FN(AnRestart)                 , ST(UP)          , EV(EEE_CONFIG_REQ)    , FM_STATE_UNSPECIFIED },
+    { FN(TG(50))                    , ST(AUTONEG)     , EV(CONFIG_REQ)        , ST(POWERING_UP)      },
+    { FN(TG(51))                    , ST(DEFERRED_UP) , EV(CONFIG_REQ)        , ST(POWERING_UP)      },
+    { FN(TG(52))                    , ST(ADMIN_FAULT) , EV(BIST_REQ)          , ST(POWERING_UP)      },
+    { FN(TG(8))                     , ST(BIST)        , EV(ADMIN_DOWN_REQ)    , ST(ADMIN_FAULT)      },
+    { FN(TG(8))                     , ST(BIST)        , EV(REMOTE_FAULT_REQ)  , ST(ADMIN_FAULT)      },
+    { FN(TG(8))                     , ST(BIST)        , EV(LOCAL_FAULT_REQ)   , ST(ADMIN_FAULT)      },
+    { FN(TG(53))                    , ST(UP)          , EV(CONFIG_REQ)        , ST(POWERING_UP)      },
+    { FN(TG(54))                    , ST(BIST)        , EV(ADMIN_PWRDOWN_REQ) , ST(CONFIGURED)       },
+    { FN(TG(24))                    , ST(CONFIGURED)  , EV(DISABLE_REQ)       , ST(DISABLED)         },
+    { FN(TG(55))                    , ST(LOCAL_FAULT) , EV(ADMIN_DOWN_REQ)    , ST(ADMIN_FAULT)      },
+    { FN(TG(55))                    , ST(LOCAL_FAULT) , EV(REMOTE_FAULT_REQ)  , ST(ADMIN_FAULT)      },
+    { FN(TG(55))                    , ST(LOCAL_FAULT) , EV(LOCAL_FAULT_REQ)   , ST(ADMIN_FAULT)      },
+    { FN(TG(55))                    , ST(REMOTE_FAULT), EV(ADMIN_DOWN_REQ)    , ST(ADMIN_FAULT)      },
+    { FN(TG(55))                    , ST(REMOTE_FAULT), EV(REMOTE_FAULT_REQ)  , ST(ADMIN_FAULT)      },
+    { FN(TG(55))                    , ST(REMOTE_FAULT), EV(LOCAL_FAULT_REQ)   , ST(ADMIN_FAULT)      },
+    { FN(TG(56))                    , ST(UP)          , EV(ADMIN_DOWN_REQ)    , ST(ADMIN_FAULT)      },
+    { FN(TG(57))                    , ST(ADMIN_FAULT) , EV(DISABLE_REQ)       , ST(NEED_CONFIG)      },
+    { FN(TG(57))                    , ST(LOCAL_FAULT) , EV(DISABLE_REQ)       , ST(NEED_CONFIG)      },
+    { FN(TG(57))                    , ST(REMOTE_FAULT), EV(DISABLE_REQ)       , ST(NEED_CONFIG)      },
+    { FN(TG(58))                    , ST(CONFIGURED)  , EV(ADMIN_UP_REQ)      , ST(POWERING_UP)      },
+    { FN(TG(58))                    , ST(CONFIGURED)  , EV(ADMIN_DOWN_REQ)    , ST(POWERING_UP)      },
+    { FN(TG(58))                    , ST(CONFIGURED)  , EV(REMOTE_FAULT_REQ)  , ST(POWERING_UP)      },
+    { FN(TG(58))                    , ST(CONFIGURED)  , EV(LOCAL_FAULT_REQ)   , ST(POWERING_UP)      },
+    { FN(TG(58))                    , ST(CONFIGURED)  , EV(BIST_REQ)          , ST(POWERING_UP)      },
+    { FN(TG(59))                    , ST(AUTONEG)     , EV(DISABLE_REQ)       , ST(NEED_CONFIG)      },
+    { FN(TG(60))                    , ST(AUTONEG)     , EV(AN_DISABLE_REQ)    , ST(AUTONEG)          },
+    { FN(TG(61))                    , ST(POWERING_UP) , EV(ADMIN_PWRDOWN_REQ) , ST(CONFIGURED)       },
+    { FN(TG(61))                    , ST(ADMIN_FAULT) , EV(ADMIN_PWRDOWN_REQ) , ST(CONFIGURED)       },
+    { FN(TG(62))                    , ST(BIST)        , EV(DISABLE_REQ)       , ST(NEED_CONFIG)      },
+    { FN(TG(63))                    , ST(UP)          , EV(DISABLE_REQ)       , ST(NEED_CONFIG)      },
+    { FN(TG(64))                    , ST(ADMIN_FAULT) , EV(AN_DISABLE_REQ)    , ST(ADMIN_FAULT)      },
+    { FN(TG(64))                    , ST(LOCAL_FAULT) , EV(AN_DISABLE_REQ)    , ST(LOCAL_FAULT)      },
+    { FN(TG(64))                    , ST(REMOTE_FAULT), EV(AN_DISABLE_REQ)    , ST(REMOTE_FAULT)     },
+    { FN(TG(64))                    , ST(BIST)        , EV(AN_DISABLE_REQ)    , ST(BIST)             },
+    { FN(TG(64))                    , ST(UP)          , EV(AN_DISABLE_REQ)    , ST(UP)               },
+    { FN(TG(65))                    , ST(LOCAL_FAULT) , EV(BIST_REQ)          , ST(BIST)             },
+    { FN(TG(65))                    , ST(REMOTE_FAULT), EV(BIST_REQ)          , ST(BIST)             },
+    { FN(TG(66))                    , ST(DEFERRED_UP) , EV(DISABLE_REQ)       , ST(NEED_CONFIG)      },
+    { FN(TG(31))                    , ST(ADMIN_FAULT) , EV(ADMIN_DOWN_REQ)    , ST(ADMIN_FAULT)      },
+    { FN(TG(31))                    , ST(ADMIN_FAULT) , EV(REMOTE_FAULT_REQ)  , ST(ADMIN_FAULT)      },
+    { FN(TG(31))                    , ST(ADMIN_FAULT) , EV(LOCAL_FAULT_REQ)   , ST(ADMIN_FAULT)      },
+    { FN(TG(67))                    , ST(DEFERRED_UP) , EV(ADMIN_PWRDOWN_REQ) , ST(CONFIGURED)       },
+    { FN(TG(68))                    , ST(BIST)        , EV(BIST_REQ)          , ST(BIST)             },
+    { FN(TG(69))                    , ST(LOCAL_FAULT) , EV(CONFIG_REQ)        , ST(POWERING_UP)      },
+    { FN(TG(69))                    , ST(REMOTE_FAULT), EV(CONFIG_REQ)        , ST(POWERING_UP)      },
+    { FN(TG(70))                    , ST(BIST)        , EV(CONFIG_REQ)        , ST(POWERING_UP)      },
+    { FN(TG(34))                    , ST(LOCAL_FAULT) , EV(LINK_UP_IND)       , ST(UP)               },
+    { FN(TG(34))                    , ST(REMOTE_FAULT), EV(LINK_UP_IND)       , ST(UP)               },
+    { FN(TG(41))                    , ST(UP)          , EV(DEFTIMER_EXP_IND)  , ST(UP)               },
+    { FN(TG(71))                    , ST(UP)          , EV(ADMIN_PWRDOWN_REQ) , ST(CONFIGURED)       },
+    { FN(TG(72))                    , ST(NEED_CONFIG) , EV(CONFIG_REQ)        , ST(POWERING_UP)      },
+    { FN(TG(73))                    , ST(POWERING_UP) , EV(DISABLE_REQ)       , ST(NEED_CONFIG)      },
+    { FN(TG(37))                    , ST(POWERING_UP) , EV(LANE_NOT_READY_IND), ST(POWERING_UP)      },
+    { FN(TG(74))                    , ST(DISABLED)    , EV(CONFIG_REQ)        , ST(CONFIGURED)       },
+    { FN(TG(74))                    , ST(CONFIGURED)  , EV(CONFIG_REQ)        , ST(CONFIGURED)       },
+    { FN(TG(75))                    , ST(UP)          , EV(BIST_REQ)          , ST(BIST)             }
+};
+
+static const fm_smTable fm10000BasicSmTable[] = {
+    { FN(TG(0))                        , ST(REMOTE_FAULT), EV(LOCAL_FAULT_IND)        , ST(LOCAL_FAULT)      },
+    { FN(TG(1))                        , ST(POWERING_UP) , EV(CONFIG_REQ)             , ST(POWERING_UP)      },
+    { FN(TG(1))                        , ST(ADMIN_FAULT) , EV(CONFIG_REQ)             , ST(POWERING_UP)      },
+    { FN(TG(2))                        , ST(UP)          , EV(CONFIGURE_DFE_REQ)      , ST(UP)               },
+    { FN(TG(3))                        , ST(POWERING_UP) , EV(LOOPBACK_OFF_REQ)       , ST(POWERING_UP)      },
+    { FN(TG(3))                        , ST(DEFERRED_UP) , EV(LOOPBACK_OFF_REQ)       , ST(DEFERRED_UP)      },
+    { FN(TG(3))                        , ST(LOCAL_FAULT) , EV(LOOPBACK_OFF_REQ)       , ST(LOCAL_FAULT)      },
+    { FN(TG(3))                        , ST(REMOTE_FAULT), EV(LOOPBACK_OFF_REQ)       , ST(REMOTE_FAULT)     },
+    { FN(TG(3))                        , ST(BIST)        , EV(LOOPBACK_OFF_REQ)       , ST(BIST)             },
+    { FN(TG(3))                        , ST(UP)          , EV(LOOPBACK_OFF_REQ)       , ST(UP)               },
+    { FN(TG(4))                        , ST(DEFERRED_UP) , EV(BIST_REQ)               , ST(DEFERRED_UP)      },
+    { NULL                             , ST(DISABLED)    , EV(ADMIN_UP_REQ)           , ST(NEED_CONFIG)      },
+    { NULL                             , ST(DISABLED)    , EV(ADMIN_DOWN_REQ)         , ST(NEED_CONFIG)      },
+    { NULL                             , ST(DISABLED)    , EV(REMOTE_FAULT_REQ)       , ST(NEED_CONFIG)      },
+    { NULL                             , ST(DISABLED)    , EV(LOCAL_FAULT_REQ)        , ST(NEED_CONFIG)      },
+    { NULL                             , ST(DISABLED)    , EV(BIST_REQ)               , ST(NEED_CONFIG)      },
+    { NULL                             , ST(NEED_CONFIG) , EV(ADMIN_PWRDOWN_REQ)      , ST(DISABLED)         },
+    { FN(CheckLanesReady)              , ST(POWERING_UP) , EV(LANE_READY_IND)         , FM_STATE_UNSPECIFIED },
+    { FN(ProcessDeferralTimer)         , ST(DEFERRED_UP) , EV(DEFTIMER_EXP_IND)       , FM_STATE_UNSPECIFIED },
+    { FN(AnRestart)                    , ST(DEFERRED_UP) , EV(AN_RESTARTED_IND)       , FM_STATE_UNSPECIFIED },
+    { FN(ExitAdminFaultMode)           , ST(ADMIN_FAULT) , EV(ADMIN_UP_REQ)           , FM_STATE_UNSPECIFIED },
+    { FN(ProcessPortStatusPollingTimer), ST(LOCAL_FAULT) , EV(POLLING_TIMER_EXP_IND)  , FM_STATE_UNSPECIFIED },
+    { FN(ProcessPortStatusPollingTimer), ST(REMOTE_FAULT), EV(POLLING_TIMER_EXP_IND)  , FM_STATE_UNSPECIFIED },
+    { FN(ExitBistMode)                 , ST(BIST)        , EV(ADMIN_UP_REQ)           , FM_STATE_UNSPECIFIED },
+    { FN(ProcessDisableFabricLoopback) , ST(UP)          , EV(FABRIC_LOOPBACK_OFF_REQ), FM_STATE_UNSPECIFIED },
+    { FN(ProcessPortStatusPollingTimer), ST(UP)          , EV(POLLING_TIMER_EXP_IND)  , FM_STATE_UNSPECIFIED },
+    { FN(TG(5))                        , ST(LOCAL_FAULT) , EV(DISABLE_REQ)            , ST(NEED_CONFIG)      },
+    { FN(TG(5))                        , ST(REMOTE_FAULT), EV(DISABLE_REQ)            , ST(NEED_CONFIG)      },
+    { FN(TG(6))                        , ST(DEFERRED_UP) , EV(CONFIG_REQ)             , ST(POWERING_UP)      },
+    { FN(TG(7))                        , ST(LOCAL_FAULT) , EV(ADMIN_PWRDOWN_REQ)      , ST(CONFIGURED)       },
+    { FN(TG(7))                        , ST(REMOTE_FAULT), EV(ADMIN_PWRDOWN_REQ)      , ST(CONFIGURED)       },
+    { FN(TG(8))                        , ST(BIST)        , EV(ADMIN_DOWN_REQ)         , ST(ADMIN_FAULT)      },
+    { FN(TG(8))                        , ST(BIST)        , EV(REMOTE_FAULT_REQ)       , ST(ADMIN_FAULT)      },
+    { FN(TG(8))                        , ST(BIST)        , EV(LOCAL_FAULT_REQ)        , ST(ADMIN_FAULT)      },
+    { FN(TG(9))                        , ST(POWERING_UP) , EV(CONFIGURE_DFE_REQ)      , ST(POWERING_UP)      },
+    { FN(TG(9))                        , ST(DEFERRED_UP) , EV(CONFIGURE_DFE_REQ)      , ST(DEFERRED_UP)      },
+    { FN(TG(9))                        , ST(ADMIN_FAULT) , EV(CONFIGURE_DFE_REQ)      , ST(ADMIN_FAULT)      },
+    { FN(TG(9))                        , ST(LOCAL_FAULT) , EV(CONFIGURE_DFE_REQ)      , ST(LOCAL_FAULT)      },
+    { FN(TG(9))                        , ST(REMOTE_FAULT), EV(CONFIGURE_DFE_REQ)      , ST(REMOTE_FAULT)     },
+    { FN(TG(9))                        , ST(BIST)        , EV(CONFIGURE_DFE_REQ)      , ST(BIST)             },
+    { FN(TG(10))                       , ST(UP)          , EV(DISABLE_REQ)            , ST(NEED_CONFIG)      },
+    { FN(TG(11))                       , ST(POWERING_UP) , EV(LOOPBACK_ON_REQ)        , ST(POWERING_UP)      },
+    { FN(TG(11))                       , ST(DEFERRED_UP) , EV(LOOPBACK_ON_REQ)        , ST(DEFERRED_UP)      },
+    { FN(TG(11))                       , ST(LOCAL_FAULT) , EV(LOOPBACK_ON_REQ)        , ST(LOCAL_FAULT)      },
+    { FN(TG(11))                       , ST(REMOTE_FAULT), EV(LOOPBACK_ON_REQ)        , ST(REMOTE_FAULT)     },
+    { FN(TG(11))                       , ST(BIST)        , EV(LOOPBACK_ON_REQ)        , ST(BIST)             },
+    { FN(TG(11))                       , ST(UP)          , EV(LOOPBACK_ON_REQ)        , ST(UP)               },
+    { FN(TG(12))                       , ST(UP)          , EV(REMOTE_FAULT_IND)       , ST(REMOTE_FAULT)     },
+    { FN(TG(12))                       , ST(UP)          , EV(LOCAL_FAULT_IND)        , ST(LOCAL_FAULT)      },
+    { FN(TG(13))                       , ST(CONFIGURED)  , EV(REMOTE_FAULT_REQ)       , ST(POWERING_UP)      },
+    { FN(TG(13))                       , ST(CONFIGURED)  , EV(LOCAL_FAULT_REQ)        , ST(POWERING_UP)      },
+    { FN(TG(13))                       , ST(CONFIGURED)  , EV(BIST_REQ)               , ST(POWERING_UP)      },
+    { FN(TG(14))                       , ST(UP)          , EV(ADMIN_PWRDOWN_REQ)      , ST(CONFIGURED)       },
+    { FN(TG(15))                       , ST(LOCAL_FAULT) , EV(REMOTE_FAULT_IND)       , ST(REMOTE_FAULT)     },
+    { FN(TG(16))                       , ST(DEFERRED_UP) , EV(ADMIN_PWRDOWN_REQ)      , ST(CONFIGURED)       },
+    { FN(TG(17))                       , ST(LOCAL_FAULT) , EV(CONFIG_REQ)             , ST(POWERING_UP)      },
+    { FN(TG(17))                       , ST(REMOTE_FAULT), EV(CONFIG_REQ)             , ST(POWERING_UP)      },
+    { FN(TG(18))                       , ST(LOCAL_FAULT) , EV(FABRIC_LOOPBACK_ON_REQ) , ST(UP)               },
+    { FN(TG(18))                       , ST(REMOTE_FAULT), EV(FABRIC_LOOPBACK_ON_REQ) , ST(UP)               },
+    { FN(TG(19))                       , ST(ADMIN_FAULT) , EV(BIST_REQ)               , ST(BIST)             },
+    { FN(TG(20))                       , ST(DISABLED)    , EV(CONFIG_REQ)             , ST(CONFIGURED)       },
+    { FN(TG(20))                       , ST(CONFIGURED)  , EV(CONFIG_REQ)             , ST(CONFIGURED)       },
+    { FN(TG(21))                       , ST(BIST)        , EV(BIST_REQ)               , ST(BIST)             },
+    { FN(TG(22))                       , ST(REMOTE_FAULT), EV(REMOTE_FAULT_REQ)       , ST(ADMIN_FAULT)      },
+    { FN(TG(22))                       , ST(REMOTE_FAULT), EV(LOCAL_FAULT_REQ)        , ST(ADMIN_FAULT)      },
+    { FN(TG(23))                       , ST(UP)          , EV(EEE_SILENT_IND)         , ST(UP)               },
+    { FN(TG(24))                       , ST(CONFIGURED)  , EV(DISABLE_REQ)            , ST(DISABLED)         },
+    { FN(TG(25))                       , ST(POWERING_UP) , EV(ADMIN_PWRDOWN_REQ)      , ST(CONFIGURED)       },
+    { FN(TG(25))                       , ST(ADMIN_FAULT) , EV(ADMIN_PWRDOWN_REQ)      , ST(CONFIGURED)       },
+    { FN(TG(26))                       , ST(DEFERRED_UP) , EV(DISABLE_REQ)            , ST(NEED_CONFIG)      },
+    { FN(TG(27))                       , ST(UP)          , EV(ADMIN_DOWN_REQ)         , ST(ADMIN_FAULT)      },
+    { FN(TG(27))                       , ST(UP)          , EV(REMOTE_FAULT_REQ)       , ST(ADMIN_FAULT)      },
+    { FN(TG(27))                       , ST(UP)          , EV(LOCAL_FAULT_REQ)        , ST(ADMIN_FAULT)      },
+    { FN(TG(28))                       , ST(NEED_CONFIG) , EV(CONFIG_REQ)             , ST(POWERING_UP)      },
+    { FN(TG(29))                       , ST(LOCAL_FAULT) , EV(BIST_REQ)               , ST(BIST)             },
+    { FN(TG(29))                       , ST(REMOTE_FAULT), EV(BIST_REQ)               , ST(BIST)             },
+    { FN(TG(30))                       , ST(UP)          , EV(FABRIC_LOOPBACK_ON_REQ) , ST(UP)               },
+    { FN(TG(31))                       , ST(POWERING_UP) , EV(ADMIN_UP_REQ)           , ST(POWERING_UP)      },
+    { FN(TG(31))                       , ST(POWERING_UP) , EV(ADMIN_DOWN_REQ)         , ST(POWERING_UP)      },
+    { FN(TG(31))                       , ST(POWERING_UP) , EV(REMOTE_FAULT_REQ)       , ST(POWERING_UP)      },
+    { FN(TG(31))                       , ST(POWERING_UP) , EV(LOCAL_FAULT_REQ)        , ST(POWERING_UP)      },
+    { FN(TG(31))                       , ST(POWERING_UP) , EV(BIST_REQ)               , ST(POWERING_UP)      },
+    { FN(TG(31))                       , ST(DEFERRED_UP) , EV(ADMIN_UP_REQ)           , ST(DEFERRED_UP)      },
+    { FN(TG(31))                       , ST(DEFERRED_UP) , EV(ADMIN_DOWN_REQ)         , ST(DEFERRED_UP)      },
+    { FN(TG(31))                       , ST(DEFERRED_UP) , EV(REMOTE_FAULT_REQ)       , ST(DEFERRED_UP)      },
+    { FN(TG(31))                       , ST(DEFERRED_UP) , EV(LOCAL_FAULT_REQ)        , ST(DEFERRED_UP)      },
+    { FN(TG(31))                       , ST(ADMIN_FAULT) , EV(ADMIN_DOWN_REQ)         , ST(ADMIN_FAULT)      },
+    { FN(TG(31))                       , ST(ADMIN_FAULT) , EV(REMOTE_FAULT_REQ)       , ST(ADMIN_FAULT)      },
+    { FN(TG(31))                       , ST(ADMIN_FAULT) , EV(LOCAL_FAULT_REQ)        , ST(ADMIN_FAULT)      },
+    { FN(TG(31))                       , ST(LOCAL_FAULT) , EV(ADMIN_DOWN_REQ)         , ST(ADMIN_FAULT)      },
+    { FN(TG(31))                       , ST(LOCAL_FAULT) , EV(REMOTE_FAULT_REQ)       , ST(ADMIN_FAULT)      },
+    { FN(TG(31))                       , ST(LOCAL_FAULT) , EV(LOCAL_FAULT_REQ)        , ST(ADMIN_FAULT)      },
+    { FN(TG(31))                       , ST(REMOTE_FAULT), EV(ADMIN_DOWN_REQ)         , ST(ADMIN_FAULT)      },
+    { FN(TG(32))                       , ST(UP)          , EV(CONFIG_REQ)             , ST(POWERING_UP)      },
+    { FN(TG(33))                       , ST(BIST)        , EV(DISABLE_REQ)            , ST(NEED_CONFIG)      },
+    { FN(TG(34))                       , ST(LOCAL_FAULT) , EV(LINK_UP_IND)            , ST(UP)               },
+    { FN(TG(34))                       , ST(REMOTE_FAULT), EV(LINK_UP_IND)            , ST(UP)               },
+    { FN(TG(35))                       , ST(BIST)        , EV(ADMIN_PWRDOWN_REQ)      , ST(CONFIGURED)       },
+    { FN(TG(36))                       , ST(UP)          , EV(BIST_REQ)               , ST(BIST)             },
+    { FN(TG(37))                       , ST(POWERING_UP) , EV(LANE_NOT_READY_IND)     , ST(POWERING_UP)      },
+    { FN(TG(37))                       , ST(DEFERRED_UP) , EV(LANE_NOT_READY_IND)     , ST(DEFERRED_UP)      },
+    { FN(TG(38))                       , ST(CONFIGURED)  , EV(ADMIN_UP_REQ)           , ST(POWERING_UP)      },
+    { FN(TG(38))                       , ST(CONFIGURED)  , EV(ADMIN_DOWN_REQ)         , ST(POWERING_UP)      },
+    { FN(TG(39))                       , ST(BIST)        , EV(CONFIG_REQ)             , ST(POWERING_UP)      },
+    { FN(TG(40))                       , ST(POWERING_UP) , EV(DISABLE_REQ)            , ST(NEED_CONFIG)      },
+    { FN(TG(40))                       , ST(ADMIN_FAULT) , EV(DISABLE_REQ)            , ST(NEED_CONFIG)      },
+    { FN(TG(41))                       , ST(UP)          , EV(DEFTIMER_EXP_IND)       , ST(UP)               }
+};
+
+static const fm_smTable fm10000PcieSmTable[] = {
+    { FN(TG(76))                      , ST(DISABLED), EV(LINK_DOWN_IND)          , ST(DISABLED)         },
+    { FN(TG(76))                      , ST(DOWN)    , EV(LINK_DOWN_IND)          , ST(DOWN)             },
+    { FN(TG(77))                      , ST(DOWN)    , EV(FABRIC_LOOPBACK_OFF_REQ), ST(DOWN)             },
+    { FN(TG(77))                      , ST(UP)      , EV(FABRIC_LOOPBACK_OFF_REQ), ST(UP)               },
+    { FN(TG(78))                      , ST(UP)      , EV(LINK_UP_IND)            , ST(UP)               },
+    { FN(TG(79))                      , ST(DOWN)    , EV(FABRIC_LOOPBACK_ON_REQ) , ST(DOWN)             },
+    { FN(TG(80))                      , ST(DOWN)    , EV(DISABLE_REQ)            , ST(DISABLED)         },
+    { FN(TG(80))                      , ST(UP)      , EV(DISABLE_REQ)            , ST(DISABLED)         },
+    { FN(TG(81))                      , ST(DOWN)    , EV(LINK_UP_IND)            , ST(UP)               },
+    { FN(TG(37))                      , ST(DISABLED), EV(LOOPBACK_ON_REQ)        , ST(DISABLED)         },
+    { FN(TG(37))                      , ST(DISABLED), EV(LOOPBACK_OFF_REQ)       , ST(DISABLED)         },
+    { FN(TG(37))                      , ST(DISABLED), EV(ADMIN_PWRDOWN_REQ)      , ST(DISABLED)         },
+    { FN(TG(37))                      , ST(DISABLED), EV(REMOTE_FAULT_REQ)       , ST(DISABLED)         },
+    { FN(TG(37))                      , ST(DISABLED), EV(LOCAL_FAULT_REQ)        , ST(DISABLED)         },
+    { FN(TG(37))                      , ST(DISABLED), EV(BIST_REQ)               , ST(DISABLED)         },
+    { FN(TG(37))                      , ST(DISABLED), EV(REMOTE_FAULT_IND)       , ST(DISABLED)         },
+    { FN(TG(37))                      , ST(DISABLED), EV(LOCAL_FAULT_IND)        , ST(DISABLED)         },
+    { FN(TG(37))                      , ST(DISABLED), EV(LANE_DFE_COMPLETE_IND)  , ST(DISABLED)         },
+    { FN(TG(37))                      , ST(DISABLED), EV(LANE_DFE_FAILED_IND)    , ST(DISABLED)         },
+    { FN(TG(37))                      , ST(DISABLED), EV(LANE_KR_COMPLETE_IND)   , ST(DISABLED)         },
+    { FN(TG(37))                      , ST(DISABLED), EV(LANE_KR_FAILED_IND)     , ST(DISABLED)         },
+    { FN(TG(37))                      , ST(DISABLED), EV(LANE_READY_IND)         , ST(DISABLED)         },
+    { FN(TG(37))                      , ST(DISABLED), EV(LANE_NOT_READY_IND)     , ST(DISABLED)         },
+    { FN(TG(37))                      , ST(DISABLED), EV(DEFTIMER_EXP_IND)       , ST(DISABLED)         },
+    { FN(TG(37))                      , ST(DOWN)    , EV(CONFIG_REQ)             , ST(DOWN)             },
+    { FN(TG(37))                      , ST(DOWN)    , EV(LOOPBACK_ON_REQ)        , ST(DOWN)             },
+    { FN(TG(37))                      , ST(DOWN)    , EV(LOOPBACK_OFF_REQ)       , ST(DOWN)             },
+    { FN(TG(37))                      , ST(DOWN)    , EV(ADMIN_PWRDOWN_REQ)      , ST(DOWN)             },
+    { FN(TG(37))                      , ST(DOWN)    , EV(REMOTE_FAULT_REQ)       , ST(DOWN)             },
+    { FN(TG(37))                      , ST(DOWN)    , EV(LOCAL_FAULT_REQ)        , ST(DOWN)             },
+    { FN(TG(37))                      , ST(DOWN)    , EV(BIST_REQ)               , ST(DOWN)             },
+    { FN(TG(37))                      , ST(DOWN)    , EV(REMOTE_FAULT_IND)       , ST(DOWN)             },
+    { FN(TG(37))                      , ST(DOWN)    , EV(LOCAL_FAULT_IND)        , ST(DOWN)             },
+    { FN(TG(37))                      , ST(DOWN)    , EV(LANE_DFE_COMPLETE_IND)  , ST(DOWN)             },
+    { FN(TG(37))                      , ST(DOWN)    , EV(LANE_DFE_FAILED_IND)    , ST(DOWN)             },
+    { FN(TG(37))                      , ST(DOWN)    , EV(LANE_KR_COMPLETE_IND)   , ST(DOWN)             },
+    { FN(TG(37))                      , ST(DOWN)    , EV(LANE_KR_FAILED_IND)     , ST(DOWN)             },
+    { FN(TG(37))                      , ST(DOWN)    , EV(LANE_READY_IND)         , ST(DOWN)             },
+    { FN(TG(37))                      , ST(DOWN)    , EV(LANE_NOT_READY_IND)     , ST(DOWN)             },
+    { FN(TG(37))                      , ST(DOWN)    , EV(DEFTIMER_EXP_IND)       , ST(DOWN)             },
+    { FN(TG(37))                      , ST(UP)      , EV(CONFIG_REQ)             , ST(UP)               },
+    { FN(TG(37))                      , ST(UP)      , EV(LOOPBACK_ON_REQ)        , ST(UP)               },
+    { FN(TG(37))                      , ST(UP)      , EV(LOOPBACK_OFF_REQ)       , ST(UP)               },
+    { FN(TG(37))                      , ST(UP)      , EV(ADMIN_PWRDOWN_REQ)      , ST(UP)               },
+    { FN(TG(37))                      , ST(UP)      , EV(REMOTE_FAULT_REQ)       , ST(UP)               },
+    { FN(TG(37))                      , ST(UP)      , EV(LOCAL_FAULT_REQ)        , ST(UP)               },
+    { FN(TG(37))                      , ST(UP)      , EV(BIST_REQ)               , ST(UP)               },
+    { FN(TG(37))                      , ST(UP)      , EV(REMOTE_FAULT_IND)       , ST(UP)               },
+    { FN(TG(37))                      , ST(UP)      , EV(LOCAL_FAULT_IND)        , ST(UP)               },
+    { FN(TG(37))                      , ST(UP)      , EV(LANE_DFE_COMPLETE_IND)  , ST(UP)               },
+    { FN(TG(37))                      , ST(UP)      , EV(LANE_DFE_FAILED_IND)    , ST(UP)               },
+    { FN(TG(37))                      , ST(UP)      , EV(LANE_KR_COMPLETE_IND)   , ST(UP)               },
+    { FN(TG(37))                      , ST(UP)      , EV(LANE_KR_FAILED_IND)     , ST(UP)               },
+    { FN(TG(37))                      , ST(UP)      , EV(LANE_READY_IND)         , ST(UP)               },
+    { FN(TG(37))                      , ST(UP)      , EV(LANE_NOT_READY_IND)     , ST(UP)               },
+    { FN(TG(37))                      , ST(UP)      , EV(DEFTIMER_EXP_IND)       , ST(UP)               },
+    { FN(TG(82))                      , ST(UP)      , EV(FABRIC_LOOPBACK_ON_REQ) , ST(UP)               },
+    { FN(TG(83))                      , ST(DISABLED), EV(LINK_UP_IND)            , ST(DISABLED)         },
+    { FN(TG(84))                      , ST(DOWN)    , EV(ADMIN_DOWN_REQ)         , ST(DOWN)             },
+    { FN(TG(84))                      , ST(UP)      , EV(ADMIN_DOWN_REQ)         , ST(UP)               },
+    { FN(ConfigureDeviceAndCheckState), ST(DISABLED), EV(CONFIG_REQ)             , FM_STATE_UNSPECIFIED },
+    { FN(TG(85))                      , ST(DOWN)    , EV(ADMIN_UP_REQ)           , ST(DOWN)             },
+    { FN(TG(85))                      , ST(UP)      , EV(ADMIN_UP_REQ)           , ST(UP)               },
+    { FN(TG(86))                      , ST(UP)      , EV(LINK_DOWN_IND)          , ST(DOWN)             }
+};
+
+
+
 /*****************************************************************************
  * Local Functions
  *****************************************************************************/
 
 /*****************************************************************************/
-/** PowerUpLane
- * \ingroup intPortStateMachine 
+/* PowerUpLane
  *
  * \desc            One of the action callbacks for this state machine
  *                  category.
@@ -477,8 +650,7 @@ static fm_status PowerUpLane( fm_smEventInfo *eventInfo, void *userInfo )
 
 
 /*****************************************************************************/
-/** PowerUpLaneRx
- * \ingroup intPortStateMachine 
+/* PowerUpLaneRx
  *
  * \desc            One of the action callbacks for this state machine
  *                  category.
@@ -511,8 +683,7 @@ static fm_status PowerUpLaneRx( fm_smEventInfo *eventInfo, void *userInfo )
 
 
 /*****************************************************************************/
-/** PowerUpLaneTx
- * \ingroup intPortStateMachine 
+/* PowerUpLaneTx
  *
  * \desc            One of the action callbacks for this state machine
  *                  category.
@@ -545,8 +716,7 @@ static fm_status PowerUpLaneTx( fm_smEventInfo *eventInfo, void *userInfo )
 
 
 /*****************************************************************************/
-/** PowerDownLane
- * \ingroup intPortStateMachine 
+/* PowerDownLane
  *
  * \desc            One of the action callbacks for this state machine
  *                  category.
@@ -579,8 +749,7 @@ static fm_status PowerDownLane( fm_smEventInfo *eventInfo, void *userInfo )
 
 
 /*****************************************************************************/
-/** PowerDownLaneRx
- * \ingroup intPortStateMachine 
+/* PowerDownLaneRx
  *
  * \desc            One of the action callbacks for this state machine
  *                  category.
@@ -613,8 +782,7 @@ static fm_status PowerDownLaneRx( fm_smEventInfo *eventInfo, void *userInfo )
 
 
 /*****************************************************************************/
-/** PowerDownLaneTx
- * \ingroup intPortStateMachine 
+/* PowerDownLaneTx
  *
  * \desc            One of the action callbacks for this state machine
  *                  category.
@@ -647,8 +815,7 @@ static fm_status PowerDownLaneTx( fm_smEventInfo *eventInfo, void *userInfo )
 
 
 /*****************************************************************************/
-/** ReleaseSchedBwAdmDown
- * \ingroup intPortStateMachine 
+/* ReleaseSchedBwAdmDown
  *
  * \desc            One of the action callbacks for this state machine
  *                  category.
@@ -681,8 +848,7 @@ static fm_status ReleaseSchedBwAdmDown( fm_smEventInfo *eventInfo, void *userInf
 
 
 /*****************************************************************************/
-/** RequestSchedBwAdmUp
- * \ingroup intPortStateMachine 
+/* RequestSchedBwAdmUp
  *
  * \desc            One of the action callbacks for this state machine
  *                  category.
@@ -715,8 +881,7 @@ static fm_status RequestSchedBwAdmUp( fm_smEventInfo *eventInfo, void *userInfo 
 
 
 /*****************************************************************************/
-/** ReleaseSchedBwLnkDown
- * \ingroup intPortStateMachine 
+/* ReleaseSchedBwLnkDown
  *
  * \desc            One of the action callbacks for this state machine
  *                  category.
@@ -749,8 +914,7 @@ static fm_status ReleaseSchedBwLnkDown( fm_smEventInfo *eventInfo, void *userInf
 
 
 /*****************************************************************************/
-/** RequestSchedBwLnkUp
- * \ingroup intPortStateMachine 
+/* RequestSchedBwLnkUp
  *
  * \desc            One of the action callbacks for this state machine
  *                  category.
@@ -783,8 +947,7 @@ static fm_status RequestSchedBwLnkUp( fm_smEventInfo *eventInfo, void *userInfo 
 
 
 /*****************************************************************************/
-/** ConfigureLane
- * \ingroup intPortStateMachine 
+/* ConfigureLane
  *
  * \desc            One of the action callbacks for this state machine
  *                  category.
@@ -817,8 +980,7 @@ static fm_status ConfigureLane( fm_smEventInfo *eventInfo, void *userInfo )
 
 
 /*****************************************************************************/
-/** ConfigureLaneForAn73
- * \ingroup intPortStateMachine 
+/* ConfigureLaneForAn73
  *
  * \desc            One of the action callbacks for this state machine
  *                  category.
@@ -851,8 +1013,7 @@ static fm_status ConfigureLaneForAn73( fm_smEventInfo *eventInfo, void *userInfo
 
 
 /*****************************************************************************/
-/** NotifyApiPortUp
- * \ingroup intPortStateMachine 
+/* NotifyApiPortUp
  *
  * \desc            One of the action callbacks for this state machine
  *                  category.
@@ -885,8 +1046,7 @@ static fm_status NotifyApiPortUp( fm_smEventInfo *eventInfo, void *userInfo )
 
 
 /*****************************************************************************/
-/** NotifyApiPortDown
- * \ingroup intPortStateMachine 
+/* NotifyApiPortDown
  *
  * \desc            One of the action callbacks for this state machine
  *                  category.
@@ -919,8 +1079,7 @@ static fm_status NotifyApiPortDown( fm_smEventInfo *eventInfo, void *userInfo )
 
 
 /*****************************************************************************/
-/** ConfigureLoopback
- * \ingroup intPortStateMachine 
+/* ConfigureLoopback
  *
  * \desc            One of the action callbacks for this state machine
  *                  category.
@@ -953,8 +1112,7 @@ static fm_status ConfigureLoopback( fm_smEventInfo *eventInfo, void *userInfo )
 
 
 /*****************************************************************************/
-/** RestoreTxFaultMode
- * \ingroup intPortStateMachine 
+/* RestoreTxFaultMode
  *
  * \desc            One of the action callbacks for this state machine
  *                  category.
@@ -987,8 +1145,7 @@ static fm_status RestoreTxFaultMode( fm_smEventInfo *eventInfo, void *userInfo )
 
 
 /*****************************************************************************/
-/** SetTxFaultMode
- * \ingroup intPortStateMachine 
+/* SetTxFaultMode
  *
  * \desc            One of the action callbacks for this state machine
  *                  category.
@@ -1021,8 +1178,7 @@ static fm_status SetTxFaultMode( fm_smEventInfo *eventInfo, void *userInfo )
 
 
 /*****************************************************************************/
-/** SetTxFaultModeToNormal
- * \ingroup intPortStateMachine 
+/* SetTxFaultModeToNormal
  *
  * \desc            One of the action callbacks for this state machine
  *                  category.
@@ -1055,8 +1211,7 @@ static fm_status SetTxFaultModeToNormal( fm_smEventInfo *eventInfo, void *userIn
 
 
 /*****************************************************************************/
-/** InitPcs
- * \ingroup intPortStateMachine 
+/* InitPcs
  *
  * \desc            One of the action callbacks for this state machine
  *                  category.
@@ -1089,8 +1244,7 @@ static fm_status InitPcs( fm_smEventInfo *eventInfo, void *userInfo )
 
 
 /*****************************************************************************/
-/** Init1000BaseX
- * \ingroup intPortStateMachine 
+/* Init1000BaseX
  *
  * \desc            One of the action callbacks for this state machine
  *                  category.
@@ -1123,8 +1277,7 @@ static fm_status Init1000BaseX( fm_smEventInfo *eventInfo, void *userInfo )
 
 
 /*****************************************************************************/
-/** Init10GBaseR
- * \ingroup intPortStateMachine 
+/* Init10GBaseR
  *
  * \desc            One of the action callbacks for this state machine
  *                  category.
@@ -1157,8 +1310,7 @@ static fm_status Init10GBaseR( fm_smEventInfo *eventInfo, void *userInfo )
 
 
 /*****************************************************************************/
-/** InitMlBaseR
- * \ingroup intPortStateMachine 
+/* InitMlBaseR
  *
  * \desc            One of the action callbacks for this state machine
  *                  category.
@@ -1191,8 +1343,7 @@ static fm_status InitMlBaseR( fm_smEventInfo *eventInfo, void *userInfo )
 
 
 /*****************************************************************************/
-/** InitAn73
- * \ingroup intPortStateMachine 
+/* InitAn73
  *
  * \desc            One of the action callbacks for this state machine
  *                  category.
@@ -1225,8 +1376,7 @@ static fm_status InitAn73( fm_smEventInfo *eventInfo, void *userInfo )
 
 
 /*****************************************************************************/
-/** WriteEplCfgA
- * \ingroup intPortStateMachine 
+/* WriteEplCfgA
  *
  * \desc            One of the action callbacks for this state machine
  *                  category.
@@ -1259,8 +1409,7 @@ static fm_status WriteEplCfgA( fm_smEventInfo *eventInfo, void *userInfo )
 
 
 /*****************************************************************************/
-/** WriteEplCfgB
- * \ingroup intPortStateMachine 
+/* WriteEplCfgB
  *
  * \desc            One of the action callbacks for this state machine
  *                  category.
@@ -1293,8 +1442,7 @@ static fm_status WriteEplCfgB( fm_smEventInfo *eventInfo, void *userInfo )
 
 
 /*****************************************************************************/
-/** WriteMac
- * \ingroup intPortStateMachine 
+/* WriteMac
  *
  * \desc            One of the action callbacks for this state machine
  *                  category.
@@ -1327,8 +1475,7 @@ static fm_status WriteMac( fm_smEventInfo *eventInfo, void *userInfo )
 
 
 /*****************************************************************************/
-/** EnableDrainMode
- * \ingroup intPortStateMachine 
+/* EnableDrainMode
  *
  * \desc            One of the action callbacks for this state machine
  *                  category.
@@ -1361,8 +1508,7 @@ static fm_status EnableDrainMode( fm_smEventInfo *eventInfo, void *userInfo )
 
 
 /*****************************************************************************/
-/** DisableDrainMode
- * \ingroup intPortStateMachine 
+/* DisableDrainMode
  *
  * \desc            One of the action callbacks for this state machine
  *                  category.
@@ -1395,8 +1541,7 @@ static fm_status DisableDrainMode( fm_smEventInfo *eventInfo, void *userInfo )
 
 
 /*****************************************************************************/
-/** EnablePhy
- * \ingroup intPortStateMachine 
+/* EnablePhy
  *
  * \desc            One of the action callbacks for this state machine
  *                  category.
@@ -1429,8 +1574,7 @@ static fm_status EnablePhy( fm_smEventInfo *eventInfo, void *userInfo )
 
 
 /*****************************************************************************/
-/** DisablePhy
- * \ingroup intPortStateMachine 
+/* DisablePhy
  *
  * \desc            One of the action callbacks for this state machine
  *                  category.
@@ -1463,8 +1607,7 @@ static fm_status DisablePhy( fm_smEventInfo *eventInfo, void *userInfo )
 
 
 /*****************************************************************************/
-/** EnableLinkInterrupts
- * \ingroup intPortStateMachine 
+/* EnableLinkInterrupts
  *
  * \desc            One of the action callbacks for this state machine
  *                  category.
@@ -1497,8 +1640,7 @@ static fm_status EnableLinkInterrupts( fm_smEventInfo *eventInfo, void *userInfo
 
 
 /*****************************************************************************/
-/** DisableLinkInterrupts
- * \ingroup intPortStateMachine 
+/* DisableLinkInterrupts
  *
  * \desc            One of the action callbacks for this state machine
  *                  category.
@@ -1531,8 +1673,7 @@ static fm_status DisableLinkInterrupts( fm_smEventInfo *eventInfo, void *userInf
 
 
 /*****************************************************************************/
-/** ResetPortModuleState
- * \ingroup intPortStateMachine 
+/* ResetPortModuleState
  *
  * \desc            One of the action callbacks for this state machine
  *                  category.
@@ -1565,8 +1706,7 @@ static fm_status ResetPortModuleState( fm_smEventInfo *eventInfo, void *userInfo
 
 
 /*****************************************************************************/
-/** EnableLoopback
- * \ingroup intPortStateMachine 
+/* EnableLoopback
  *
  * \desc            One of the action callbacks for this state machine
  *                  category.
@@ -1599,8 +1739,7 @@ static fm_status EnableLoopback( fm_smEventInfo *eventInfo, void *userInfo )
 
 
 /*****************************************************************************/
-/** DisableLoopback
- * \ingroup intPortStateMachine 
+/* DisableLoopback
  *
  * \desc            One of the action callbacks for this state machine
  *                  category.
@@ -1633,8 +1772,7 @@ static fm_status DisableLoopback( fm_smEventInfo *eventInfo, void *userInfo )
 
 
 /*****************************************************************************/
-/** EnableFabricLoopback
- * \ingroup intPortStateMachine 
+/* EnableFabricLoopback
  *
  * \desc            One of the action callbacks for this state machine
  *                  category.
@@ -1667,8 +1805,7 @@ static fm_status EnableFabricLoopback( fm_smEventInfo *eventInfo, void *userInfo
 
 
 /*****************************************************************************/
-/** DisableFabricLoopback
- * \ingroup intPortStateMachine 
+/* DisableFabricLoopback
  *
  * \desc            One of the action callbacks for this state machine
  *                  category.
@@ -1701,8 +1838,7 @@ static fm_status DisableFabricLoopback( fm_smEventInfo *eventInfo, void *userInf
 
 
 /*****************************************************************************/
-/** ClearEplFifo
- * \ingroup intPortStateMachine 
+/* ClearEplFifo
  *
  * \desc            One of the action callbacks for this state machine
  *                  category.
@@ -1735,8 +1871,7 @@ static fm_status ClearEplFifo( fm_smEventInfo *eventInfo, void *userInfo )
 
 
 /*****************************************************************************/
-/** EnableBistMode
- * \ingroup intPortStateMachine 
+/* EnableBistMode
  *
  * \desc            One of the action callbacks for this state machine
  *                  category.
@@ -1769,8 +1904,7 @@ static fm_status EnableBistMode( fm_smEventInfo *eventInfo, void *userInfo )
 
 
 /*****************************************************************************/
-/** DisableBistMode
- * \ingroup intPortStateMachine 
+/* DisableBistMode
  *
  * \desc            One of the action callbacks for this state machine
  *                  category.
@@ -1803,8 +1937,7 @@ static fm_status DisableBistMode( fm_smEventInfo *eventInfo, void *userInfo )
 
 
 /*****************************************************************************/
-/** Restart100gSyncDetection
- * \ingroup intPortStateMachine 
+/* Restart100gSyncDetection
  *
  * \desc            One of the action callbacks for this state machine
  *                  category.
@@ -1837,8 +1970,7 @@ static fm_status Restart100gSyncDetection( fm_smEventInfo *eventInfo, void *user
 
 
 /*****************************************************************************/
-/** StartDeferralTimer
- * \ingroup intPortStateMachine 
+/* StartDeferralTimer
  *
  * \desc            One of the action callbacks for this state machine
  *                  category.
@@ -1871,8 +2003,7 @@ static fm_status StartDeferralTimer( fm_smEventInfo *eventInfo, void *userInfo )
 
 
 /*****************************************************************************/
-/** StopDeferralTimer
- * \ingroup intPortStateMachine 
+/* StopDeferralTimer
  *
  * \desc            One of the action callbacks for this state machine
  *                  category.
@@ -1905,8 +2036,7 @@ static fm_status StopDeferralTimer( fm_smEventInfo *eventInfo, void *userInfo )
 
 
 /*****************************************************************************/
-/** FlagError
- * \ingroup intPortStateMachine 
+/* FlagError
  *
  * \desc            One of the action callbacks for this state machine
  *                  category.
@@ -1939,8 +2069,7 @@ static fm_status FlagError( fm_smEventInfo *eventInfo, void *userInfo )
 
 
 /*****************************************************************************/
-/** ConfigureDfe
- * \ingroup intPortStateMachine 
+/* ConfigureDfe
  *
  * \desc            One of the action callbacks for this state machine
  *                  category.
@@ -1973,8 +2102,7 @@ static fm_status ConfigureDfe( fm_smEventInfo *eventInfo, void *userInfo )
 
 
 /*****************************************************************************/
-/** LinkPortToLanes
- * \ingroup intPortStateMachine 
+/* LinkPortToLanes
  *
  * \desc            One of the action callbacks for this state machine
  *                  category.
@@ -2007,8 +2135,7 @@ static fm_status LinkPortToLanes( fm_smEventInfo *eventInfo, void *userInfo )
 
 
 /*****************************************************************************/
-/** UnlinkPortFromLanes
- * \ingroup intPortStateMachine 
+/* UnlinkPortFromLanes
  *
  * \desc            One of the action callbacks for this state machine
  *                  category.
@@ -2041,8 +2168,7 @@ static fm_status UnlinkPortFromLanes( fm_smEventInfo *eventInfo, void *userInfo 
 
 
 /*****************************************************************************/
-/** UpdatePcieModeAndSpeed
- * \ingroup intPortStateMachine 
+/* UpdatePcieModeAndSpeed
  *
  * \desc            One of the action callbacks for this state machine
  *                  category.
@@ -2075,42 +2201,7 @@ static fm_status UpdatePcieModeAndSpeed( fm_smEventInfo *eventInfo, void *userIn
 
 
 /*****************************************************************************/
-/** UpdatePcieLanePolarity
- * \ingroup intPortStateMachine 
- *
- * \desc            One of the action callbacks for this state machine
- *                  category.
- *
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          Caller-provided return codes.
- * 
- *****************************************************************************/
-static fm_status UpdatePcieLanePolarity( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-
-    FM_LOG_DEBUG_V2( FM_LOG_CAT_PORT,
-                     port,
-                     "Event %s occurred on port %d, executing UpdatePcieLanePolarity\n", 
-                     fm10000PortEventsMap[eventInfo->eventId],
-                     port );
-
-    status = fm10000UpdatePcieLanePolarity( eventInfo, userInfo );
-
-    return status;
-
-}   /* end UpdatePcieLanePolarity */
-
-
-/*****************************************************************************/
-/** UpdatePcieLaneReversal
- * \ingroup intPortStateMachine 
+/* UpdatePcieLaneReversal
  *
  * \desc            One of the action callbacks for this state machine
  *                  category.
@@ -2143,8 +2234,7 @@ static fm_status UpdatePcieLaneReversal( fm_smEventInfo *eventInfo, void *userIn
 
 
 /*****************************************************************************/
-/** EnablePcieInterrupts
- * \ingroup intPortStateMachine 
+/* EnablePcieInterrupts
  *
  * \desc            One of the action callbacks for this state machine
  *                  category.
@@ -2177,8 +2267,7 @@ static fm_status EnablePcieInterrupts( fm_smEventInfo *eventInfo, void *userInfo
 
 
 /*****************************************************************************/
-/** DisablePcieInterrupts
- * \ingroup intPortStateMachine 
+/* DisablePcieInterrupts
  *
  * \desc            One of the action callbacks for this state machine
  *                  category.
@@ -2211,8 +2300,7 @@ static fm_status DisablePcieInterrupts( fm_smEventInfo *eventInfo, void *userInf
 
 
 /*****************************************************************************/
-/** AnStart
- * \ingroup intPortStateMachine 
+/* AnStart
  *
  * \desc            One of the action callbacks for this state machine
  *                  category.
@@ -2245,8 +2333,7 @@ static fm_status AnStart( fm_smEventInfo *eventInfo, void *userInfo )
 
 
 /*****************************************************************************/
-/** AnStop
- * \ingroup intPortStateMachine 
+/* AnStop
  *
  * \desc            One of the action callbacks for this state machine
  *                  category.
@@ -2279,8 +2366,7 @@ static fm_status AnStop( fm_smEventInfo *eventInfo, void *userInfo )
 
 
 /*****************************************************************************/
-/** ReconfigurePortForAn
- * \ingroup intPortStateMachine 
+/* ReconfigurePortForAn
  *
  * \desc            One of the action callbacks for this state machine
  *                  category.
@@ -2313,8 +2399,7 @@ static fm_status ReconfigurePortForAn( fm_smEventInfo *eventInfo, void *userInfo
 
 
 /*****************************************************************************/
-/** RestoreDfe
- * \ingroup intPortStateMachine 
+/* RestoreDfe
  *
  * \desc            One of the action callbacks for this state machine
  *                  category.
@@ -2347,8 +2432,7 @@ static fm_status RestoreDfe( fm_smEventInfo *eventInfo, void *userInfo )
 
 
 /*****************************************************************************/
-/** ReconfigureScheduler
- * \ingroup intPortStateMachine 
+/* ReconfigureScheduler
  *
  * \desc            One of the action callbacks for this state machine
  *                  category.
@@ -2381,8 +2465,7 @@ static fm_status ReconfigureScheduler( fm_smEventInfo *eventInfo, void *userInfo
 
 
 /*****************************************************************************/
-/** ConfigureFarLoopback
- * \ingroup intPortStateMachine 
+/* ConfigureFarLoopback
  *
  * \desc            One of the action callbacks for this state machine
  *                  category.
@@ -2415,8 +2498,7 @@ static fm_status ConfigureFarLoopback( fm_smEventInfo *eventInfo, void *userInfo
 
 
 /*****************************************************************************/
-/** EnableLowPowerIdle
- * \ingroup intPortStateMachine 
+/* EnableLowPowerIdle
  *
  * \desc            One of the action callbacks for this state machine
  *                  category.
@@ -2449,8 +2531,7 @@ static fm_status EnableLowPowerIdle( fm_smEventInfo *eventInfo, void *userInfo )
 
 
 /*****************************************************************************/
-/** InitPepMailbox
- * \ingroup intPortStateMachine 
+/* InitPepMailbox
  *
  * \desc            One of the action callbacks for this state machine
  *                  category.
@@ -2483,8 +2564,7 @@ static fm_status InitPepMailbox( fm_smEventInfo *eventInfo, void *userInfo )
 
 
 /*****************************************************************************/
-/** EnablePepLoopback
- * \ingroup intPortStateMachine 
+/* EnablePepLoopback
  *
  * \desc            One of the action callbacks for this state machine
  *                  category.
@@ -2517,8 +2597,7 @@ static fm_status EnablePepLoopback( fm_smEventInfo *eventInfo, void *userInfo )
 
 
 /*****************************************************************************/
-/** DisablePepLoopback
- * \ingroup intPortStateMachine 
+/* DisablePepLoopback
  *
  * \desc            One of the action callbacks for this state machine
  *                  category.
@@ -2551,8 +2630,7 @@ static fm_status DisablePepLoopback( fm_smEventInfo *eventInfo, void *userInfo )
 
 
 /*****************************************************************************/
-/** NotifyEthModeChange
- * \ingroup intPortStateMachine 
+/* NotifyEthModeChange
  *
  * \desc            One of the action callbacks for this state machine
  *                  category.
@@ -2585,8 +2663,7 @@ static fm_status NotifyEthModeChange( fm_smEventInfo *eventInfo, void *userInfo 
 
 
 /*****************************************************************************/
-/** EnablePhyAutoneg
- * \ingroup intPortStateMachine 
+/* EnablePhyAutoneg
  *
  * \desc            One of the action callbacks for this state machine
  *                  category.
@@ -2619,8 +2696,7 @@ static fm_status EnablePhyAutoneg( fm_smEventInfo *eventInfo, void *userInfo )
 
 
 /*****************************************************************************/
-/** DisablePhyAutoneg
- * \ingroup intPortStateMachine 
+/* DisablePhyAutoneg
  *
  * \desc            One of the action callbacks for this state machine
  *                  category.
@@ -2653,8 +2729,7 @@ static fm_status DisablePhyAutoneg( fm_smEventInfo *eventInfo, void *userInfo )
 
 
 /*****************************************************************************/
-/** StartAnWatchDogTimer
- * \ingroup intPortStateMachine 
+/* StartAnWatchDogTimer
  *
  * \desc            One of the action callbacks for this state machine
  *                  category.
@@ -2687,8 +2762,7 @@ static fm_status StartAnWatchDogTimer( fm_smEventInfo *eventInfo, void *userInfo
 
 
 /*****************************************************************************/
-/** StopAnWatchDogTimer
- * \ingroup intPortStateMachine 
+/* StopAnWatchDogTimer
  *
  * \desc            One of the action callbacks for this state machine
  *                  category.
@@ -2721,8 +2795,7 @@ static fm_status StopAnWatchDogTimer( fm_smEventInfo *eventInfo, void *userInfo 
 
 
 /*****************************************************************************/
-/** StartDeferredLpiTimer
- * \ingroup intPortStateMachine 
+/* StartDeferredLpiTimer
  *
  * \desc            One of the action callbacks for this state machine
  *                  category.
@@ -2755,8 +2828,7 @@ static fm_status StartDeferredLpiTimer( fm_smEventInfo *eventInfo, void *userInf
 
 
 /*****************************************************************************/
-/** StopDeferredLpiTimer
- * \ingroup intPortStateMachine 
+/* StopDeferredLpiTimer
  *
  * \desc            One of the action callbacks for this state machine
  *                  category.
@@ -2789,8 +2861,7 @@ static fm_status StopDeferredLpiTimer( fm_smEventInfo *eventInfo, void *userInfo
 
 
 /*****************************************************************************/
-/** DeferredLpiMode
- * \ingroup intPortStateMachine 
+/* DeferredLpiMode
  *
  * \desc            One of the action callbacks for this state machine
  *                  category.
@@ -2823,8 +2894,7 @@ static fm_status DeferredLpiMode( fm_smEventInfo *eventInfo, void *userInfo )
 
 
 /*****************************************************************************/
-/** StartPortStatusPollingTimer
- * \ingroup intPortStateMachine 
+/* StartPortStatusPollingTimer
  *
  * \desc            One of the action callbacks for this state machine
  *                  category.
@@ -2857,8 +2927,7 @@ static fm_status StartPortStatusPollingTimer( fm_smEventInfo *eventInfo, void *u
 
 
 /*****************************************************************************/
-/** StopPortStatusPollingTimer
- * \ingroup intPortStateMachine 
+/* StopPortStatusPollingTimer
  *
  * \desc            One of the action callbacks for this state machine
  *                  category.
@@ -2891,8 +2960,7 @@ static fm_status StopPortStatusPollingTimer( fm_smEventInfo *eventInfo, void *us
 
 
 /*****************************************************************************/
-/** CheckAndPreReserveSchedBw
- * \ingroup intPortStateMachine 
+/* CheckAndPreReserveSchedBw
  *
  * \desc            One of the action callbacks for this state machine
  *                  category.
@@ -2925,8 +2993,7 @@ static fm_status CheckAndPreReserveSchedBw( fm_smEventInfo *eventInfo, void *use
 
 
 /*****************************************************************************/
-/** RequestSchedBwAdmUpAn
- * \ingroup intPortStateMachine 
+/* RequestSchedBwAdmUpAn
  *
  * \desc            One of the action callbacks for this state machine
  *                  category.
@@ -2959,8 +3026,7 @@ static fm_status RequestSchedBwAdmUpAn( fm_smEventInfo *eventInfo, void *userInf
 
 
 /*****************************************************************************/
-/** CheckLanesReady
- * \ingroup intPortStateMachine 
+/* CheckLanesReady
  *
  * \desc            One of the condition callbacks for this state machine
  *                  category.
@@ -2998,8 +3064,7 @@ static fm_status CheckLanesReady( fm_smEventInfo *eventInfo, void *userInfo, fm_
 
 
 /*****************************************************************************/
-/** ProcessDeferralTimer
- * \ingroup intPortStateMachine 
+/* ProcessDeferralTimer
  *
  * \desc            One of the condition callbacks for this state machine
  *                  category.
@@ -3037,8 +3102,7 @@ static fm_status ProcessDeferralTimer( fm_smEventInfo *eventInfo, void *userInfo
 
 
 /*****************************************************************************/
-/** ProcessDeferralTimerWithAn
- * \ingroup intPortStateMachine 
+/* ProcessDeferralTimerWithAn
  *
  * \desc            One of the condition callbacks for this state machine
  *                  category.
@@ -3076,8 +3140,7 @@ static fm_status ProcessDeferralTimerWithAn( fm_smEventInfo *eventInfo, void *us
 
 
 /*****************************************************************************/
-/** ProcessPortStatusPollingTimer
- * \ingroup intPortStateMachine 
+/* ProcessPortStatusPollingTimer
  *
  * \desc            One of the condition callbacks for this state machine
  *                  category.
@@ -3115,8 +3178,7 @@ static fm_status ProcessPortStatusPollingTimer( fm_smEventInfo *eventInfo, void 
 
 
 /*****************************************************************************/
-/** ProcessPortStatus
- * \ingroup intPortStateMachine 
+/* ProcessPortStatus
  *
  * \desc            One of the condition callbacks for this state machine
  *                  category.
@@ -3154,8 +3216,7 @@ static fm_status ProcessPortStatus( fm_smEventInfo *eventInfo, void *userInfo, f
 
 
 /*****************************************************************************/
-/** ConfigureDeviceAndCheckState
- * \ingroup intPortStateMachine 
+/* ConfigureDeviceAndCheckState
  *
  * \desc            One of the condition callbacks for this state machine
  *                  category.
@@ -3193,8 +3254,7 @@ static fm_status ConfigureDeviceAndCheckState( fm_smEventInfo *eventInfo, void *
 
 
 /*****************************************************************************/
-/** CheckPortStatus
- * \ingroup intPortStateMachine 
+/* CheckPortStatus
  *
  * \desc            One of the condition callbacks for this state machine
  *                  category.
@@ -3232,8 +3292,7 @@ static fm_status CheckPortStatus( fm_smEventInfo *eventInfo, void *userInfo, fm_
 
 
 /*****************************************************************************/
-/** AnRestart
- * \ingroup intPortStateMachine 
+/* AnRestart
  *
  * \desc            One of the condition callbacks for this state machine
  *                  category.
@@ -3271,8 +3330,7 @@ static fm_status AnRestart( fm_smEventInfo *eventInfo, void *userInfo, fm_int *n
 
 
 /*****************************************************************************/
-/** EnterNegotiatedMode
- * \ingroup intPortStateMachine 
+/* EnterNegotiatedMode
  *
  * \desc            One of the condition callbacks for this state machine
  *                  category.
@@ -3310,8 +3368,7 @@ static fm_status EnterNegotiatedMode( fm_smEventInfo *eventInfo, void *userInfo,
 
 
 /*****************************************************************************/
-/** SetupAdminModeUp
- * \ingroup intPortStateMachine 
+/* SetupAdminModeUp
  *
  * \desc            One of the condition callbacks for this state machine
  *                  category.
@@ -3349,8 +3406,7 @@ static fm_status SetupAdminModeUp( fm_smEventInfo *eventInfo, void *userInfo, fm
 
 
 /*****************************************************************************/
-/** ExitBistMode
- * \ingroup intPortStateMachine 
+/* ExitBistMode
  *
  * \desc            One of the condition callbacks for this state machine
  *                  category.
@@ -3388,8 +3444,7 @@ static fm_status ExitBistMode( fm_smEventInfo *eventInfo, void *userInfo, fm_int
 
 
 /*****************************************************************************/
-/** ExitAdminFaultMode
- * \ingroup intPortStateMachine 
+/* ExitAdminFaultMode
  *
  * \desc            One of the condition callbacks for this state machine
  *                  category.
@@ -3427,8 +3482,7 @@ static fm_status ExitAdminFaultMode( fm_smEventInfo *eventInfo, void *userInfo, 
 
 
 /*****************************************************************************/
-/** ProcessDisableFabricLoopback
- * \ingroup intPortStateMachine 
+/* ProcessDisableFabricLoopback
  *
  * \desc            One of the condition callbacks for this state machine
  *                  category.
@@ -3468,17 +3522,14 @@ static fm_status ProcessDisableFabricLoopback( fm_smEventInfo *eventInfo, void *
 
 
 /******************************************************************************
- * Definitions of transition callbacks for FM10000_AN_PORT_STATE_MACHINE
+ * Definitions of transition group callbacks 
  *****************************************************************************/
 
+
 /*****************************************************************************/
-/** AnStateMachineS0E0Callback
- * \ingroup intPortStateMachine
+/* TransitionGroup0
  *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_AN_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_CONFIG_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_DISABLED''.
+ * \desc            Transition callback for port state machine.
  * 
  * \param[in]       eventInfo is a pointer to a caller-allocated area
  *                  containing the generic event descriptor.
@@ -3489,51 +3540,24 @@ static fm_status ProcessDisableFabricLoopback( fm_smEventInfo *eventInfo, void *
  * \return          See return codes from the action callback functions.
  * 
  *****************************************************************************/
-static fm_status AnStateMachineS0E0Callback( fm_smEventInfo *eventInfo, void *userInfo )
+static fm_status TG(0)( fm_smEventInfo *eventInfo, void *userInfo )
 {
     fm_status status = FM_OK;
     fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = ResetPortModuleState( eventInfo, userInfo );
+
+    status = StartPortStatusPollingTimer( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = CheckAndPreReserveSchedBw( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = LinkPortToLanes( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = WriteEplCfgA( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = WriteEplCfgB( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = WriteMac( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = InitPcs( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ConfigureLane( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = NotifyEthModeChange( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
+
 ABORT:
     return status;
 
-}   /* end AnStateMachineS0E0Callback */
+}   /* end TransitionGroup0 */
+
 
 /*****************************************************************************/
-/** AnStateMachineS1E0Callback
- * \ingroup intPortStateMachine
+/* TransitionGroup1
  *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_AN_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_CONFIG_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_NEED_CONFIG''.
+ * \desc            Transition callback for port state machine.
  * 
  * \param[in]       eventInfo is a pointer to a caller-allocated area
  *                  containing the generic event descriptor.
@@ -3544,542 +3568,72 @@ ABORT:
  * \return          See return codes from the action callback functions.
  * 
  *****************************************************************************/
-static fm_status AnStateMachineS1E0Callback( fm_smEventInfo *eventInfo, void *userInfo )
+static fm_status TG(1)( fm_smEventInfo *eventInfo, void *userInfo )
 {
     fm_status status = FM_OK;
     fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
+
+    status = DisablePhy( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = PowerDownLane( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
     status = ResetPortModuleState( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = CheckAndPreReserveSchedBw( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = LinkPortToLanes( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = WriteEplCfgA( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = WriteEplCfgB( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = WriteMac( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = InitPcs( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ConfigureLane( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = NotifyEthModeChange( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = SetTxFaultModeToNormal( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = EnablePhy( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = EnablePhyAutoneg( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = RestoreDfe( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ConfigureLoopback( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = PowerUpLane( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ClearEplFifo( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = EnableLinkInterrupts( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
 
-}   /* end AnStateMachineS1E0Callback */
-
-/*****************************************************************************/
-/** AnStateMachineS2E0Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_AN_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_CONFIG_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_CONFIGURED''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status AnStateMachineS2E0Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = ResetPortModuleState( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = CheckAndPreReserveSchedBw( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = LinkPortToLanes( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = WriteEplCfgA( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = WriteEplCfgB( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = WriteMac( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = InitPcs( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ConfigureLane( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = NotifyEthModeChange( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end AnStateMachineS2E0Callback */
-
-/*****************************************************************************/
-/** AnStateMachineS2E1Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_AN_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_DISABLE_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_CONFIGURED''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status AnStateMachineS2E1Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = ResetPortModuleState( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = WriteEplCfgA( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = WriteEplCfgB( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = WriteMac( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = InitPcs( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ConfigureLane( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = NotifyEthModeChange( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
     status = ReconfigureScheduler( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = UnlinkPortFromLanes( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
 
-}   /* end AnStateMachineS2E1Callback */
-
-/*****************************************************************************/
-/** AnStateMachineS2E4Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_AN_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_ADMIN_UP_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_CONFIGURED''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status AnStateMachineS2E4Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = SetTxFaultModeToNormal( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = EnablePhy( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = EnablePhyAutoneg( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = RestoreDfe( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ConfigureLoopback( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = RequestSchedBwAdmUpAn( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = PowerUpLane( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ClearEplFifo( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = EnableLinkInterrupts( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end AnStateMachineS2E4Callback */
-
-/*****************************************************************************/
-/** AnStateMachineS2E5Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_AN_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_ADMIN_DOWN_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_CONFIGURED''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status AnStateMachineS2E5Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = SetTxFaultModeToNormal( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = EnablePhy( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = EnablePhyAutoneg( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = RestoreDfe( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ConfigureLoopback( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = RequestSchedBwAdmUpAn( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = PowerUpLane( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ClearEplFifo( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = EnableLinkInterrupts( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end AnStateMachineS2E5Callback */
-
-/*****************************************************************************/
-/** AnStateMachineS2E7Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_AN_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_REMOTE_FAULT_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_CONFIGURED''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status AnStateMachineS2E7Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = SetTxFaultModeToNormal( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = EnablePhy( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = EnablePhyAutoneg( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = RestoreDfe( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ConfigureLoopback( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = RequestSchedBwAdmUpAn( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = PowerUpLane( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ClearEplFifo( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = EnableLinkInterrupts( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end AnStateMachineS2E7Callback */
-
-/*****************************************************************************/
-/** AnStateMachineS2E8Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_AN_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_LOCAL_FAULT_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_CONFIGURED''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status AnStateMachineS2E8Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = SetTxFaultModeToNormal( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = EnablePhy( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = EnablePhyAutoneg( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = RestoreDfe( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ConfigureLoopback( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = RequestSchedBwAdmUpAn( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = PowerUpLane( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ClearEplFifo( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = EnableLinkInterrupts( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end AnStateMachineS2E8Callback */
-
-/*****************************************************************************/
-/** AnStateMachineS2E9Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_AN_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_BIST_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_CONFIGURED''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status AnStateMachineS2E9Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = SetTxFaultModeToNormal( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = EnablePhy( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = EnablePhyAutoneg( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = RestoreDfe( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ConfigureLoopback( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = RequestSchedBwAdmUpAn( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = PowerUpLane( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ClearEplFifo( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = EnableLinkInterrupts( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end AnStateMachineS2E9Callback */
-
-/*****************************************************************************/
-/** AnStateMachineS3E0Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_AN_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_CONFIG_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_POWERING_UP''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status AnStateMachineS3E0Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = DisablePhy( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = DisablePhyAutoneg( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = PowerDownLane( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ResetPortModuleState( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = CheckAndPreReserveSchedBw( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
     status = LinkPortToLanes( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
+
     status = WriteEplCfgA( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
+
     status = WriteEplCfgB( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
+
     status = WriteMac( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
+
     status = InitPcs( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
+
     status = ConfigureLane( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
+
     status = NotifyEthModeChange( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
+
     status = EnablePhy( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = EnablePhyAutoneg( eventInfo, userInfo );
+
+    status = ConfigureFarLoopback( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
+
     status = RestoreDfe( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
+
     status = ConfigureLoopback( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
+
     status = PowerUpLane( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
+
     status = ClearEplFifo( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
+
 ABORT:
     return status;
 
-}   /* end AnStateMachineS3E0Callback */
+}   /* end TransitionGroup1 */
+
 
 /*****************************************************************************/
-/** AnStateMachineS3E1Callback
- * \ingroup intPortStateMachine
+/* TransitionGroup2
  *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_AN_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_DISABLE_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_POWERING_UP''.
+ * \desc            Transition callback for port state machine.
  * 
  * \param[in]       eventInfo is a pointer to a caller-allocated area
  *                  containing the generic event descriptor.
@@ -4090,2321 +3644,27 @@ ABORT:
  * \return          See return codes from the action callback functions.
  * 
  *****************************************************************************/
-static fm_status AnStateMachineS3E1Callback( fm_smEventInfo *eventInfo, void *userInfo )
+static fm_status TG(2)( fm_smEventInfo *eventInfo, void *userInfo )
 {
     fm_status status = FM_OK;
     fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = DisablePhy( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = DisablePhyAutoneg( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = PowerDownLane( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ResetPortModuleState( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = WriteEplCfgA( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = WriteEplCfgB( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = WriteMac( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = InitPcs( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ConfigureLane( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = NotifyEthModeChange( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ReconfigureScheduler( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = UnlinkPortFromLanes( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
 
-}   /* end AnStateMachineS3E1Callback */
-
-/*****************************************************************************/
-/** AnStateMachineS3E6Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_AN_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_ADMIN_PWRDOWN_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_POWERING_UP''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status AnStateMachineS3E6Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = DisablePhy( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = DisablePhyAutoneg( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = PowerDownLane( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ReleaseSchedBwAdmDown( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = DisableLinkInterrupts( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ReconfigurePortForAn( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end AnStateMachineS3E6Callback */
-
-/*****************************************************************************/
-/** AnStateMachineS3E18Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_AN_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_LANE_NOT_READY_IND'' occurs in state
- *                  ''FM10000_PORT_STATE_POWERING_UP''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status AnStateMachineS3E18Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = FlagError( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end AnStateMachineS3E18Callback */
-
-/*****************************************************************************/
-/** AnStateMachineS4E0Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_AN_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_CONFIG_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_DEFERRED_UP''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status AnStateMachineS4E0Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = StopDeferralTimer( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = DisablePhy( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = DisablePhyAutoneg( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = PowerDownLane( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ResetPortModuleState( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = CheckAndPreReserveSchedBw( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = LinkPortToLanes( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = WriteEplCfgA( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = WriteEplCfgB( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = WriteMac( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = InitPcs( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ConfigureLane( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = NotifyEthModeChange( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = EnablePhy( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = EnablePhyAutoneg( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = RestoreDfe( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ConfigureLoopback( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = PowerUpLane( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ClearEplFifo( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end AnStateMachineS4E0Callback */
-
-/*****************************************************************************/
-/** AnStateMachineS4E1Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_AN_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_DISABLE_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_DEFERRED_UP''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status AnStateMachineS4E1Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = StopDeferralTimer( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = DisablePhy( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = DisablePhyAutoneg( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = PowerDownLane( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ResetPortModuleState( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = WriteEplCfgA( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = WriteEplCfgB( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = WriteMac( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = InitPcs( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ConfigureLane( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = NotifyEthModeChange( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ReconfigureScheduler( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = UnlinkPortFromLanes( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end AnStateMachineS4E1Callback */
-
-/*****************************************************************************/
-/** AnStateMachineS4E6Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_AN_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_ADMIN_PWRDOWN_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_DEFERRED_UP''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status AnStateMachineS4E6Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = StopDeferralTimer( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = DisablePhy( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = DisablePhyAutoneg( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = PowerDownLane( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ReleaseSchedBwAdmDown( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = DisableLinkInterrupts( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end AnStateMachineS4E6Callback */
-
-/*****************************************************************************/
-/** AnStateMachineS5E0Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_AN_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_CONFIG_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_AUTONEG''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status AnStateMachineS5E0Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = StopAnWatchDogTimer( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = AnStop( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = DisablePhy( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = DisablePhyAutoneg( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = PowerDownLane( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ResetPortModuleState( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = CheckAndPreReserveSchedBw( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = LinkPortToLanes( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = WriteEplCfgA( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = WriteEplCfgB( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = WriteMac( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = InitPcs( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ConfigureLane( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = NotifyEthModeChange( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = EnablePhy( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = EnablePhyAutoneg( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = RestoreDfe( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ConfigureLoopback( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = PowerUpLane( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ClearEplFifo( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end AnStateMachineS5E0Callback */
-
-/*****************************************************************************/
-/** AnStateMachineS5E1Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_AN_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_DISABLE_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_AUTONEG''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status AnStateMachineS5E1Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = StopAnWatchDogTimer( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = AnStop( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = DisablePhy( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = DisablePhyAutoneg( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = PowerDownLane( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ResetPortModuleState( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = WriteEplCfgA( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = WriteEplCfgB( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = WriteMac( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = InitPcs( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ConfigureLane( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = NotifyEthModeChange( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ReconfigureScheduler( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = UnlinkPortFromLanes( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end AnStateMachineS5E1Callback */
-
-/*****************************************************************************/
-/** AnStateMachineS5E2Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_AN_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_LOOPBACK_ON_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_AUTONEG''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status AnStateMachineS5E2Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = AnStop( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = AnStart( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = StartAnWatchDogTimer( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end AnStateMachineS5E2Callback */
-
-/*****************************************************************************/
-/** AnStateMachineS5E3Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_AN_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_LOOPBACK_OFF_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_AUTONEG''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status AnStateMachineS5E3Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = AnStop( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = AnStart( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = StartAnWatchDogTimer( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end AnStateMachineS5E3Callback */
-
-/*****************************************************************************/
-/** AnStateMachineS5E6Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_AN_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_ADMIN_PWRDOWN_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_AUTONEG''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status AnStateMachineS5E6Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = StopAnWatchDogTimer( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = AnStop( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = DisablePhy( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = DisablePhyAutoneg( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = PowerDownLane( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ReleaseSchedBwAdmDown( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = DisableLinkInterrupts( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end AnStateMachineS5E6Callback */
-
-/*****************************************************************************/
-/** AnStateMachineS5E23Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_AN_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_AN_CONFIG_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_AUTONEG''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status AnStateMachineS5E23Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = CheckAndPreReserveSchedBw( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = AnStop( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = AnStart( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = StartAnWatchDogTimer( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end AnStateMachineS5E23Callback */
-
-/*****************************************************************************/
-/** AnStateMachineS5E24Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_AN_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_AN_DISABLE_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_AUTONEG''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status AnStateMachineS5E24Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = StopAnWatchDogTimer( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = AnStop( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end AnStateMachineS5E24Callback */
-
-/*****************************************************************************/
-/** AnStateMachineS6E0Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_AN_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_CONFIG_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_ADMIN_FAULT''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status AnStateMachineS6E0Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = AnStop( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = DisablePhy( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = DisablePhyAutoneg( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = PowerDownLane( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ResetPortModuleState( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = CheckAndPreReserveSchedBw( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = LinkPortToLanes( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = WriteEplCfgA( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = WriteEplCfgB( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = WriteMac( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = InitPcs( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ConfigureLane( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = NotifyEthModeChange( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = SetTxFaultModeToNormal( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = EnablePhy( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = EnablePhyAutoneg( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = RestoreDfe( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ConfigureLoopback( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = PowerUpLane( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ClearEplFifo( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end AnStateMachineS6E0Callback */
-
-/*****************************************************************************/
-/** AnStateMachineS6E1Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_AN_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_DISABLE_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_ADMIN_FAULT''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status AnStateMachineS6E1Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = AnStop( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = DisablePhy( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = DisablePhyAutoneg( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = PowerDownLane( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ResetPortModuleState( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = WriteEplCfgA( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = WriteEplCfgB( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = WriteMac( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = InitPcs( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ConfigureLane( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = NotifyEthModeChange( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ReconfigureScheduler( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = UnlinkPortFromLanes( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end AnStateMachineS6E1Callback */
-
-/*****************************************************************************/
-/** AnStateMachineS6E5Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_AN_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_ADMIN_DOWN_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_ADMIN_FAULT''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status AnStateMachineS6E5Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = SetTxFaultMode( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end AnStateMachineS6E5Callback */
-
-/*****************************************************************************/
-/** AnStateMachineS6E6Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_AN_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_ADMIN_PWRDOWN_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_ADMIN_FAULT''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status AnStateMachineS6E6Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = DisablePhy( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = DisablePhyAutoneg( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = PowerDownLane( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ReleaseSchedBwAdmDown( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = DisableLinkInterrupts( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ReconfigurePortForAn( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end AnStateMachineS6E6Callback */
-
-/*****************************************************************************/
-/** AnStateMachineS6E7Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_AN_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_REMOTE_FAULT_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_ADMIN_FAULT''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status AnStateMachineS6E7Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = SetTxFaultMode( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end AnStateMachineS6E7Callback */
-
-/*****************************************************************************/
-/** AnStateMachineS6E8Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_AN_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_LOCAL_FAULT_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_ADMIN_FAULT''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status AnStateMachineS6E8Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = SetTxFaultMode( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end AnStateMachineS6E8Callback */
-
-/*****************************************************************************/
-/** AnStateMachineS6E9Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_AN_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_BIST_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_ADMIN_FAULT''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status AnStateMachineS6E9Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = SetTxFaultModeToNormal( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = EnableBistMode( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end AnStateMachineS6E9Callback */
-
-/*****************************************************************************/
-/** AnStateMachineS6E24Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_AN_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_AN_DISABLE_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_ADMIN_FAULT''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status AnStateMachineS6E24Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = AnStop( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end AnStateMachineS6E24Callback */
-
-/*****************************************************************************/
-/** AnStateMachineS7E0Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_AN_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_CONFIG_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_LOCAL_FAULT''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status AnStateMachineS7E0Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = AnStop( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = DisablePhy( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = DisablePhyAutoneg( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = PowerDownLane( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ResetPortModuleState( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = CheckAndPreReserveSchedBw( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = LinkPortToLanes( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = WriteEplCfgA( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = WriteEplCfgB( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = WriteMac( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = InitPcs( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ConfigureLane( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = NotifyEthModeChange( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = EnablePhy( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = EnablePhyAutoneg( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = RestoreDfe( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ConfigureLoopback( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = PowerUpLane( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ClearEplFifo( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end AnStateMachineS7E0Callback */
-
-/*****************************************************************************/
-/** AnStateMachineS7E1Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_AN_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_DISABLE_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_LOCAL_FAULT''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status AnStateMachineS7E1Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = AnStop( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = DisablePhy( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = DisablePhyAutoneg( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = PowerDownLane( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ResetPortModuleState( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = WriteEplCfgA( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = WriteEplCfgB( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = WriteMac( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = InitPcs( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ConfigureLane( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = NotifyEthModeChange( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ReconfigureScheduler( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = UnlinkPortFromLanes( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end AnStateMachineS7E1Callback */
-
-/*****************************************************************************/
-/** AnStateMachineS7E5Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_AN_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_ADMIN_DOWN_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_LOCAL_FAULT''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status AnStateMachineS7E5Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = AnStop( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = SetTxFaultMode( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end AnStateMachineS7E5Callback */
-
-/*****************************************************************************/
-/** AnStateMachineS7E6Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_AN_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_ADMIN_PWRDOWN_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_LOCAL_FAULT''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status AnStateMachineS7E6Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = AnStop( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = DisablePhy( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = DisablePhyAutoneg( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = PowerDownLane( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ReleaseSchedBwAdmDown( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = DisableLinkInterrupts( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ReconfigurePortForAn( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end AnStateMachineS7E6Callback */
-
-/*****************************************************************************/
-/** AnStateMachineS7E7Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_AN_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_REMOTE_FAULT_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_LOCAL_FAULT''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status AnStateMachineS7E7Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = AnStop( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = SetTxFaultMode( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end AnStateMachineS7E7Callback */
-
-/*****************************************************************************/
-/** AnStateMachineS7E8Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_AN_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_LOCAL_FAULT_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_LOCAL_FAULT''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status AnStateMachineS7E8Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = AnStop( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = SetTxFaultMode( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end AnStateMachineS7E8Callback */
-
-/*****************************************************************************/
-/** AnStateMachineS7E9Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_AN_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_BIST_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_LOCAL_FAULT''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status AnStateMachineS7E9Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = AnStop( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = EnableBistMode( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end AnStateMachineS7E9Callback */
-
-/*****************************************************************************/
-/** AnStateMachineS7E24Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_AN_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_AN_DISABLE_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_LOCAL_FAULT''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status AnStateMachineS7E24Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = AnStop( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end AnStateMachineS7E24Callback */
-
-/*****************************************************************************/
-/** AnStateMachineS7E20Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_AN_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_LINK_UP_IND'' occurs in state
- *                  ''FM10000_PORT_STATE_LOCAL_FAULT''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status AnStateMachineS7E20Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = RequestSchedBwLnkUp( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = NotifyApiPortUp( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end AnStateMachineS7E20Callback */
-
-/*****************************************************************************/
-/** AnStateMachineS8E0Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_AN_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_CONFIG_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_REMOTE_FAULT''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status AnStateMachineS8E0Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = AnStop( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = DisablePhy( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = DisablePhyAutoneg( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = PowerDownLane( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ResetPortModuleState( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = CheckAndPreReserveSchedBw( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = LinkPortToLanes( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = WriteEplCfgA( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = WriteEplCfgB( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = WriteMac( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = InitPcs( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ConfigureLane( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = NotifyEthModeChange( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = EnablePhy( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = EnablePhyAutoneg( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = RestoreDfe( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ConfigureLoopback( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = PowerUpLane( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ClearEplFifo( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end AnStateMachineS8E0Callback */
-
-/*****************************************************************************/
-/** AnStateMachineS8E1Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_AN_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_DISABLE_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_REMOTE_FAULT''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status AnStateMachineS8E1Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = AnStop( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = DisablePhy( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = DisablePhyAutoneg( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = PowerDownLane( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ResetPortModuleState( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = WriteEplCfgA( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = WriteEplCfgB( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = WriteMac( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = InitPcs( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ConfigureLane( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = NotifyEthModeChange( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ReconfigureScheduler( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = UnlinkPortFromLanes( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end AnStateMachineS8E1Callback */
-
-/*****************************************************************************/
-/** AnStateMachineS8E5Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_AN_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_ADMIN_DOWN_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_REMOTE_FAULT''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status AnStateMachineS8E5Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = AnStop( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = SetTxFaultMode( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end AnStateMachineS8E5Callback */
-
-/*****************************************************************************/
-/** AnStateMachineS8E6Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_AN_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_ADMIN_PWRDOWN_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_REMOTE_FAULT''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status AnStateMachineS8E6Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = AnStop( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = DisablePhy( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = DisablePhyAutoneg( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = PowerDownLane( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ReleaseSchedBwAdmDown( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = DisableLinkInterrupts( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ReconfigurePortForAn( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end AnStateMachineS8E6Callback */
-
-/*****************************************************************************/
-/** AnStateMachineS8E7Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_AN_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_REMOTE_FAULT_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_REMOTE_FAULT''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status AnStateMachineS8E7Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = AnStop( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = SetTxFaultMode( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end AnStateMachineS8E7Callback */
-
-/*****************************************************************************/
-/** AnStateMachineS8E8Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_AN_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_LOCAL_FAULT_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_REMOTE_FAULT''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status AnStateMachineS8E8Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = AnStop( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = SetTxFaultMode( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end AnStateMachineS8E8Callback */
-
-/*****************************************************************************/
-/** AnStateMachineS8E9Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_AN_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_BIST_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_REMOTE_FAULT''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status AnStateMachineS8E9Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = AnStop( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = EnableBistMode( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end AnStateMachineS8E9Callback */
-
-/*****************************************************************************/
-/** AnStateMachineS8E24Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_AN_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_AN_DISABLE_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_REMOTE_FAULT''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status AnStateMachineS8E24Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = AnStop( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end AnStateMachineS8E24Callback */
-
-/*****************************************************************************/
-/** AnStateMachineS8E20Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_AN_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_LINK_UP_IND'' occurs in state
- *                  ''FM10000_PORT_STATE_REMOTE_FAULT''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status AnStateMachineS8E20Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = RequestSchedBwLnkUp( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = NotifyApiPortUp( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end AnStateMachineS8E20Callback */
-
-/*****************************************************************************/
-/** AnStateMachineS9E0Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_AN_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_CONFIG_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_BIST''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status AnStateMachineS9E0Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = DisableBistMode( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = AnStop( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = DisablePhy( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = DisablePhyAutoneg( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = PowerDownLane( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ResetPortModuleState( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = CheckAndPreReserveSchedBw( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = LinkPortToLanes( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = WriteEplCfgA( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = WriteEplCfgB( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = WriteMac( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = InitPcs( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ConfigureLane( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = NotifyEthModeChange( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = EnablePhy( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = EnablePhyAutoneg( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = RestoreDfe( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ConfigureLoopback( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = PowerUpLane( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ClearEplFifo( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end AnStateMachineS9E0Callback */
-
-/*****************************************************************************/
-/** AnStateMachineS9E1Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_AN_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_DISABLE_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_BIST''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status AnStateMachineS9E1Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = DisableBistMode( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = AnStop( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = DisablePhy( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = DisablePhyAutoneg( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = PowerDownLane( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ResetPortModuleState( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = WriteEplCfgA( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = WriteEplCfgB( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = WriteMac( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = InitPcs( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ConfigureLane( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = NotifyEthModeChange( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ReconfigureScheduler( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = UnlinkPortFromLanes( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end AnStateMachineS9E1Callback */
-
-/*****************************************************************************/
-/** AnStateMachineS9E5Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_AN_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_ADMIN_DOWN_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_BIST''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status AnStateMachineS9E5Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = SetTxFaultMode( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = DisableBistMode( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end AnStateMachineS9E5Callback */
-
-/*****************************************************************************/
-/** AnStateMachineS9E6Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_AN_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_ADMIN_PWRDOWN_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_BIST''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status AnStateMachineS9E6Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = DisableBistMode( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = DisablePhy( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = DisablePhyAutoneg( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = PowerDownLane( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ReleaseSchedBwAdmDown( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = DisableLinkInterrupts( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ReconfigurePortForAn( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end AnStateMachineS9E6Callback */
-
-/*****************************************************************************/
-/** AnStateMachineS9E7Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_AN_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_REMOTE_FAULT_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_BIST''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status AnStateMachineS9E7Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = SetTxFaultMode( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = DisableBistMode( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end AnStateMachineS9E7Callback */
-
-/*****************************************************************************/
-/** AnStateMachineS9E8Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_AN_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_LOCAL_FAULT_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_BIST''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status AnStateMachineS9E8Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = SetTxFaultMode( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = DisableBistMode( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end AnStateMachineS9E8Callback */
-
-/*****************************************************************************/
-/** AnStateMachineS9E9Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_AN_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_BIST_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_BIST''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status AnStateMachineS9E9Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = DisableBistMode( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = EnableBistMode( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end AnStateMachineS9E9Callback */
-
-/*****************************************************************************/
-/** AnStateMachineS9E24Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_AN_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_AN_DISABLE_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_BIST''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status AnStateMachineS9E24Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = AnStop( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end AnStateMachineS9E24Callback */
-
-/*****************************************************************************/
-/** AnStateMachineS11E0Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_AN_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_CONFIG_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_UP''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status AnStateMachineS11E0Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
     status = StopDeferredLpiTimer( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = AnStop( eventInfo, userInfo );
+
+    status = ConfigureDfe( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = DisablePhy( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = DisablePhyAutoneg( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = PowerDownLane( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ResetPortModuleState( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = CheckAndPreReserveSchedBw( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = LinkPortToLanes( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = WriteEplCfgA( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = WriteEplCfgB( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = WriteMac( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = InitPcs( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ConfigureLane( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = NotifyEthModeChange( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ReleaseSchedBwLnkDown( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = NotifyApiPortDown( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = EnablePhy( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = EnablePhyAutoneg( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = RestoreDfe( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ConfigureLoopback( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = PowerUpLane( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ClearEplFifo( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
+
 ABORT:
     return status;
 
-}   /* end AnStateMachineS11E0Callback */
+}   /* end TransitionGroup2 */
+
 
 /*****************************************************************************/
-/** AnStateMachineS11E1Callback
- * \ingroup intPortStateMachine
+/* TransitionGroup3
  *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_AN_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_DISABLE_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_UP''.
+ * \desc            Transition callback for port state machine.
  * 
  * \param[in]       eventInfo is a pointer to a caller-allocated area
  *                  containing the generic event descriptor.
@@ -6415,78 +3675,367 @@ ABORT:
  * \return          See return codes from the action callback functions.
  * 
  *****************************************************************************/
-static fm_status AnStateMachineS11E1Callback( fm_smEventInfo *eventInfo, void *userInfo )
+static fm_status TG(3)( fm_smEventInfo *eventInfo, void *userInfo )
 {
     fm_status status = FM_OK;
     fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
+
+    status = DisableLoopback( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+ABORT:
+    return status;
+
+}   /* end TransitionGroup3 */
+
+
+/*****************************************************************************/
+/* TransitionGroup4
+ *
+ * \desc            Transition callback for port state machine.
+ * 
+ * \param[in]       eventInfo is a pointer to a caller-allocated area
+ *                  containing the generic event descriptor.
+ * 
+ * \param[in]       userInfo is a pointer to a caller-allocated area containing
+ *                  purpose-specific event info.
+ * 
+ * \return          See return codes from the action callback functions.
+ * 
+ *****************************************************************************/
+static fm_status TG(4)( fm_smEventInfo *eventInfo, void *userInfo )
+{
+    fm_status status = FM_OK;
+    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
+
+    status = SetTxFaultMode( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = DisableLinkInterrupts( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+ABORT:
+    return status;
+
+}   /* end TransitionGroup4 */
+
+
+/*****************************************************************************/
+/* TransitionGroup5
+ *
+ * \desc            Transition callback for port state machine.
+ * 
+ * \param[in]       eventInfo is a pointer to a caller-allocated area
+ *                  containing the generic event descriptor.
+ * 
+ * \param[in]       userInfo is a pointer to a caller-allocated area containing
+ *                  purpose-specific event info.
+ * 
+ * \return          See return codes from the action callback functions.
+ * 
+ *****************************************************************************/
+static fm_status TG(5)( fm_smEventInfo *eventInfo, void *userInfo )
+{
+    fm_status status = FM_OK;
+    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
+
+    status = StopPortStatusPollingTimer( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = DisablePhy( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = PowerDownLane( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = ResetPortModuleState( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = WriteEplCfgA( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = WriteEplCfgB( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = WriteMac( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = InitPcs( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = ConfigureLane( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = NotifyEthModeChange( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = ReconfigureScheduler( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = UnlinkPortFromLanes( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+ABORT:
+    return status;
+
+}   /* end TransitionGroup5 */
+
+
+/*****************************************************************************/
+/* TransitionGroup6
+ *
+ * \desc            Transition callback for port state machine.
+ * 
+ * \param[in]       eventInfo is a pointer to a caller-allocated area
+ *                  containing the generic event descriptor.
+ * 
+ * \param[in]       userInfo is a pointer to a caller-allocated area containing
+ *                  purpose-specific event info.
+ * 
+ * \return          See return codes from the action callback functions.
+ * 
+ *****************************************************************************/
+static fm_status TG(6)( fm_smEventInfo *eventInfo, void *userInfo )
+{
+    fm_status status = FM_OK;
+    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
+
+    status = StopDeferralTimer( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = DisablePhy( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = PowerDownLane( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = ResetPortModuleState( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = ReconfigureScheduler( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = LinkPortToLanes( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = WriteEplCfgA( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = WriteEplCfgB( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = WriteMac( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = InitPcs( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = ConfigureLane( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = NotifyEthModeChange( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = EnablePhy( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = ConfigureFarLoopback( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = RestoreDfe( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = ConfigureLoopback( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = PowerUpLane( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = ClearEplFifo( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+ABORT:
+    return status;
+
+}   /* end TransitionGroup6 */
+
+
+/*****************************************************************************/
+/* TransitionGroup7
+ *
+ * \desc            Transition callback for port state machine.
+ * 
+ * \param[in]       eventInfo is a pointer to a caller-allocated area
+ *                  containing the generic event descriptor.
+ * 
+ * \param[in]       userInfo is a pointer to a caller-allocated area containing
+ *                  purpose-specific event info.
+ * 
+ * \return          See return codes from the action callback functions.
+ * 
+ *****************************************************************************/
+static fm_status TG(7)( fm_smEventInfo *eventInfo, void *userInfo )
+{
+    fm_status status = FM_OK;
+    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
+
+    status = StopPortStatusPollingTimer( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = DisablePhy( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = PowerDownLane( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = ReleaseSchedBwAdmDown( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = DisableLinkInterrupts( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+ABORT:
+    return status;
+
+}   /* end TransitionGroup7 */
+
+
+/*****************************************************************************/
+/* TransitionGroup8
+ *
+ * \desc            Transition callback for port state machine.
+ * 
+ * \param[in]       eventInfo is a pointer to a caller-allocated area
+ *                  containing the generic event descriptor.
+ * 
+ * \param[in]       userInfo is a pointer to a caller-allocated area containing
+ *                  purpose-specific event info.
+ * 
+ * \return          See return codes from the action callback functions.
+ * 
+ *****************************************************************************/
+static fm_status TG(8)( fm_smEventInfo *eventInfo, void *userInfo )
+{
+    fm_status status = FM_OK;
+    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
+
+    status = SetTxFaultMode( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = DisableBistMode( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+ABORT:
+    return status;
+
+}   /* end TransitionGroup8 */
+
+
+/*****************************************************************************/
+/* TransitionGroup9
+ *
+ * \desc            Transition callback for port state machine.
+ * 
+ * \param[in]       eventInfo is a pointer to a caller-allocated area
+ *                  containing the generic event descriptor.
+ * 
+ * \param[in]       userInfo is a pointer to a caller-allocated area containing
+ *                  purpose-specific event info.
+ * 
+ * \return          See return codes from the action callback functions.
+ * 
+ *****************************************************************************/
+static fm_status TG(9)( fm_smEventInfo *eventInfo, void *userInfo )
+{
+    fm_status status = FM_OK;
+    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
+
+    status = ConfigureDfe( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+ABORT:
+    return status;
+
+}   /* end TransitionGroup9 */
+
+
+/*****************************************************************************/
+/* TransitionGroup10
+ *
+ * \desc            Transition callback for port state machine.
+ * 
+ * \param[in]       eventInfo is a pointer to a caller-allocated area
+ *                  containing the generic event descriptor.
+ * 
+ * \param[in]       userInfo is a pointer to a caller-allocated area containing
+ *                  purpose-specific event info.
+ * 
+ * \return          See return codes from the action callback functions.
+ * 
+ *****************************************************************************/
+static fm_status TG(10)( fm_smEventInfo *eventInfo, void *userInfo )
+{
+    fm_status status = FM_OK;
+    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
+
     status = EnableDrainMode( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
+
     status = StopDeferredLpiTimer( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = AnStop( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
+
     status = DisablePhy( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = DisablePhyAutoneg( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
+
     status = PowerDownLane( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
+
     status = ResetPortModuleState( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
+
     status = WriteEplCfgA( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
+
     status = WriteEplCfgB( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
+
     status = WriteMac( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
+
     status = InitPcs( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
+
     status = ConfigureLane( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
+
     status = NotifyEthModeChange( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
+
     status = ReconfigureScheduler( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
+
     status = ReleaseSchedBwLnkDown( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
+
     status = NotifyApiPortDown( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
+
     status = DisableDrainMode( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
+
     status = UnlinkPortFromLanes( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
+
 ABORT:
     return status;
 
-}   /* end AnStateMachineS11E1Callback */
+}   /* end TransitionGroup10 */
+
 
 /*****************************************************************************/
-/** AnStateMachineS11E5Callback
- * \ingroup intPortStateMachine
+/* TransitionGroup11
  *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_AN_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_ADMIN_DOWN_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_UP''.
+ * \desc            Transition callback for port state machine.
  * 
  * \param[in]       eventInfo is a pointer to a caller-allocated area
  *                  containing the generic event descriptor.
@@ -6497,36 +4046,24 @@ ABORT:
  * \return          See return codes from the action callback functions.
  * 
  *****************************************************************************/
-static fm_status AnStateMachineS11E5Callback( fm_smEventInfo *eventInfo, void *userInfo )
+static fm_status TG(11)( fm_smEventInfo *eventInfo, void *userInfo )
 {
     fm_status status = FM_OK;
     fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = AnStop( eventInfo, userInfo );
+
+    status = EnableLoopback( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = SetTxFaultMode( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ReleaseSchedBwLnkDown( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = NotifyApiPortDown( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
+
 ABORT:
     return status;
 
-}   /* end AnStateMachineS11E5Callback */
+}   /* end TransitionGroup11 */
+
 
 /*****************************************************************************/
-/** AnStateMachineS11E6Callback
- * \ingroup intPortStateMachine
+/* TransitionGroup12
  *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_AN_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_ADMIN_PWRDOWN_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_UP''.
+ * \desc            Transition callback for port state machine.
  * 
  * \param[in]       eventInfo is a pointer to a caller-allocated area
  *                  containing the generic event descriptor.
@@ -6537,54 +4074,128 @@ ABORT:
  * \return          See return codes from the action callback functions.
  * 
  *****************************************************************************/
-static fm_status AnStateMachineS11E6Callback( fm_smEventInfo *eventInfo, void *userInfo )
+static fm_status TG(12)( fm_smEventInfo *eventInfo, void *userInfo )
 {
     fm_status status = FM_OK;
     fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
+
     status = StopDeferredLpiTimer( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = AnStop( eventInfo, userInfo );
+
+    status = StartPortStatusPollingTimer( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
+
+    status = ReleaseSchedBwLnkDown( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = NotifyApiPortDown( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+ABORT:
+    return status;
+
+}   /* end TransitionGroup12 */
+
+
+/*****************************************************************************/
+/* TransitionGroup13
+ *
+ * \desc            Transition callback for port state machine.
+ * 
+ * \param[in]       eventInfo is a pointer to a caller-allocated area
+ *                  containing the generic event descriptor.
+ * 
+ * \param[in]       userInfo is a pointer to a caller-allocated area containing
+ *                  purpose-specific event info.
+ * 
+ * \return          See return codes from the action callback functions.
+ * 
+ *****************************************************************************/
+static fm_status TG(13)( fm_smEventInfo *eventInfo, void *userInfo )
+{
+    fm_status status = FM_OK;
+    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
+
+    status = SetTxFaultMode( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = EnablePhy( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = RestoreDfe( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = ConfigureLoopback( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = RequestSchedBwAdmUp( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = PowerUpLane( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = ClearEplFifo( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = EnableLinkInterrupts( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+ABORT:
+    return status;
+
+}   /* end TransitionGroup13 */
+
+
+/*****************************************************************************/
+/* TransitionGroup14
+ *
+ * \desc            Transition callback for port state machine.
+ * 
+ * \param[in]       eventInfo is a pointer to a caller-allocated area
+ *                  containing the generic event descriptor.
+ * 
+ * \param[in]       userInfo is a pointer to a caller-allocated area containing
+ *                  purpose-specific event info.
+ * 
+ * \return          See return codes from the action callback functions.
+ * 
+ *****************************************************************************/
+static fm_status TG(14)( fm_smEventInfo *eventInfo, void *userInfo )
+{
+    fm_status status = FM_OK;
+    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
+
+    status = StopDeferredLpiTimer( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
     status = DisablePhy( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = DisablePhyAutoneg( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
+
     status = PowerDownLane( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
+
     status = ReleaseSchedBwAdmDown( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
+
     status = ReleaseSchedBwLnkDown( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
+
     status = NotifyApiPortDown( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
+
     status = DisableLinkInterrupts( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ReconfigurePortForAn( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
+
 ABORT:
     return status;
 
-}   /* end AnStateMachineS11E6Callback */
+}   /* end TransitionGroup14 */
+
 
 /*****************************************************************************/
-/** AnStateMachineS11E7Callback
- * \ingroup intPortStateMachine
+/* TransitionGroup15
  *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_AN_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_REMOTE_FAULT_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_UP''.
+ * \desc            Transition callback for port state machine.
  * 
  * \param[in]       eventInfo is a pointer to a caller-allocated area
  *                  containing the generic event descriptor.
@@ -6595,125 +4206,223 @@ ABORT:
  * \return          See return codes from the action callback functions.
  * 
  *****************************************************************************/
-static fm_status AnStateMachineS11E7Callback( fm_smEventInfo *eventInfo, void *userInfo )
+static fm_status TG(15)( fm_smEventInfo *eventInfo, void *userInfo )
 {
     fm_status status = FM_OK;
     fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = StopDeferredLpiTimer( eventInfo, userInfo );
+
+    status = StartPortStatusPollingTimer( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = AnStop( eventInfo, userInfo );
+
+    status = EnableLinkInterrupts( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
+
+ABORT:
+    return status;
+
+}   /* end TransitionGroup15 */
+
+
+/*****************************************************************************/
+/* TransitionGroup16
+ *
+ * \desc            Transition callback for port state machine.
+ * 
+ * \param[in]       eventInfo is a pointer to a caller-allocated area
+ *                  containing the generic event descriptor.
+ * 
+ * \param[in]       userInfo is a pointer to a caller-allocated area containing
+ *                  purpose-specific event info.
+ * 
+ * \return          See return codes from the action callback functions.
+ * 
+ *****************************************************************************/
+static fm_status TG(16)( fm_smEventInfo *eventInfo, void *userInfo )
+{
+    fm_status status = FM_OK;
+    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
+
+    status = StopDeferralTimer( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = DisablePhy( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = PowerDownLane( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = ReleaseSchedBwAdmDown( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = DisableLinkInterrupts( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+ABORT:
+    return status;
+
+}   /* end TransitionGroup16 */
+
+
+/*****************************************************************************/
+/* TransitionGroup17
+ *
+ * \desc            Transition callback for port state machine.
+ * 
+ * \param[in]       eventInfo is a pointer to a caller-allocated area
+ *                  containing the generic event descriptor.
+ * 
+ * \param[in]       userInfo is a pointer to a caller-allocated area containing
+ *                  purpose-specific event info.
+ * 
+ * \return          See return codes from the action callback functions.
+ * 
+ *****************************************************************************/
+static fm_status TG(17)( fm_smEventInfo *eventInfo, void *userInfo )
+{
+    fm_status status = FM_OK;
+    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
+
+    status = StopPortStatusPollingTimer( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = DisablePhy( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = PowerDownLane( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = ResetPortModuleState( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = ReconfigureScheduler( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = LinkPortToLanes( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = WriteEplCfgA( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = WriteEplCfgB( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = WriteMac( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = InitPcs( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = ConfigureLane( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = NotifyEthModeChange( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = EnablePhy( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = ConfigureFarLoopback( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = RestoreDfe( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = ConfigureLoopback( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = PowerUpLane( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = ClearEplFifo( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+ABORT:
+    return status;
+
+}   /* end TransitionGroup17 */
+
+
+/*****************************************************************************/
+/* TransitionGroup18
+ *
+ * \desc            Transition callback for port state machine.
+ * 
+ * \param[in]       eventInfo is a pointer to a caller-allocated area
+ *                  containing the generic event descriptor.
+ * 
+ * \param[in]       userInfo is a pointer to a caller-allocated area containing
+ *                  purpose-specific event info.
+ * 
+ * \return          See return codes from the action callback functions.
+ * 
+ *****************************************************************************/
+static fm_status TG(18)( fm_smEventInfo *eventInfo, void *userInfo )
+{
+    fm_status status = FM_OK;
+    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
+
+    status = StopPortStatusPollingTimer( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = DisableLinkInterrupts( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = EnableDrainMode( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = EnableFabricLoopback( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = DisableDrainMode( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = RequestSchedBwLnkUp( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = NotifyApiPortUp( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+ABORT:
+    return status;
+
+}   /* end TransitionGroup18 */
+
+
+/*****************************************************************************/
+/* TransitionGroup19
+ *
+ * \desc            Transition callback for port state machine.
+ * 
+ * \param[in]       eventInfo is a pointer to a caller-allocated area
+ *                  containing the generic event descriptor.
+ * 
+ * \param[in]       userInfo is a pointer to a caller-allocated area containing
+ *                  purpose-specific event info.
+ * 
+ * \return          See return codes from the action callback functions.
+ * 
+ *****************************************************************************/
+static fm_status TG(19)( fm_smEventInfo *eventInfo, void *userInfo )
+{
+    fm_status status = FM_OK;
+    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
+
     status = SetTxFaultMode( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ReleaseSchedBwLnkDown( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = NotifyApiPortDown( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
 
-}   /* end AnStateMachineS11E7Callback */
-
-/*****************************************************************************/
-/** AnStateMachineS11E8Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_AN_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_LOCAL_FAULT_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_UP''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status AnStateMachineS11E8Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = StopDeferredLpiTimer( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = AnStop( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = SetTxFaultMode( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ReleaseSchedBwLnkDown( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = NotifyApiPortDown( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end AnStateMachineS11E8Callback */
-
-/*****************************************************************************/
-/** AnStateMachineS11E9Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_AN_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_BIST_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_UP''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status AnStateMachineS11E9Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = StopDeferredLpiTimer( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = AnStop( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
     status = EnableBistMode( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ReleaseSchedBwLnkDown( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = NotifyApiPortDown( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
+
 ABORT:
     return status;
 
-}   /* end AnStateMachineS11E9Callback */
+}   /* end TransitionGroup19 */
+
 
 /*****************************************************************************/
-/** AnStateMachineS11E24Callback
- * \ingroup intPortStateMachine
+/* TransitionGroup20
  *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_AN_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_AN_DISABLE_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_UP''.
+ * \desc            Transition callback for port state machine.
  * 
  * \param[in]       eventInfo is a pointer to a caller-allocated area
  *                  containing the generic event descriptor.
@@ -6724,27 +4433,48 @@ ABORT:
  * \return          See return codes from the action callback functions.
  * 
  *****************************************************************************/
-static fm_status AnStateMachineS11E24Callback( fm_smEventInfo *eventInfo, void *userInfo )
+static fm_status TG(20)( fm_smEventInfo *eventInfo, void *userInfo )
 {
     fm_status status = FM_OK;
     fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = AnStop( eventInfo, userInfo );
+
+    status = ResetPortModuleState( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
+
+    status = ReconfigureScheduler( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = LinkPortToLanes( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = WriteEplCfgA( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = WriteEplCfgB( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = WriteMac( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = InitPcs( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = ConfigureLane( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = NotifyEthModeChange( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
 ABORT:
     return status;
 
-}   /* end AnStateMachineS11E24Callback */
+}   /* end TransitionGroup20 */
+
 
 /*****************************************************************************/
-/** AnStateMachineS11E11Callback
- * \ingroup intPortStateMachine
+/* TransitionGroup21
  *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_AN_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_REMOTE_FAULT_IND'' occurs in state
- *                  ''FM10000_PORT_STATE_UP''.
+ * \desc            Transition callback for port state machine.
  * 
  * \param[in]       eventInfo is a pointer to a caller-allocated area
  *                  containing the generic event descriptor.
@@ -6755,33 +4485,24 @@ ABORT:
  * \return          See return codes from the action callback functions.
  * 
  *****************************************************************************/
-static fm_status AnStateMachineS11E11Callback( fm_smEventInfo *eventInfo, void *userInfo )
+static fm_status TG(21)( fm_smEventInfo *eventInfo, void *userInfo )
 {
     fm_status status = FM_OK;
     fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = StopDeferredLpiTimer( eventInfo, userInfo );
+
+    status = EnableBistMode( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ReleaseSchedBwLnkDown( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = NotifyApiPortDown( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
+
 ABORT:
     return status;
 
-}   /* end AnStateMachineS11E11Callback */
+}   /* end TransitionGroup21 */
+
 
 /*****************************************************************************/
-/** AnStateMachineS11E12Callback
- * \ingroup intPortStateMachine
+/* TransitionGroup22
  *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_AN_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_LOCAL_FAULT_IND'' occurs in state
- *                  ''FM10000_PORT_STATE_UP''.
+ * \desc            Transition callback for port state machine.
  * 
  * \param[in]       eventInfo is a pointer to a caller-allocated area
  *                  containing the generic event descriptor.
@@ -6792,33 +4513,27 @@ ABORT:
  * \return          See return codes from the action callback functions.
  * 
  *****************************************************************************/
-static fm_status AnStateMachineS11E12Callback( fm_smEventInfo *eventInfo, void *userInfo )
+static fm_status TG(22)( fm_smEventInfo *eventInfo, void *userInfo )
 {
     fm_status status = FM_OK;
     fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = StopDeferredLpiTimer( eventInfo, userInfo );
+
+    status = StopPortStatusPollingTimer( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ReleaseSchedBwLnkDown( eventInfo, userInfo );
+
+    status = SetTxFaultMode( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = NotifyApiPortDown( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
+
 ABORT:
     return status;
 
-}   /* end AnStateMachineS11E12Callback */
+}   /* end TransitionGroup22 */
+
 
 /*****************************************************************************/
-/** AnStateMachineS11E29Callback
- * \ingroup intPortStateMachine
+/* TransitionGroup23
  *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_AN_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_EEE_SILENT_IND'' occurs in state
- *                  ''FM10000_PORT_STATE_UP''.
+ * \desc            Transition callback for port state machine.
  * 
  * \param[in]       eventInfo is a pointer to a caller-allocated area
  *                  containing the generic event descriptor.
@@ -6829,27 +4544,24 @@ ABORT:
  * \return          See return codes from the action callback functions.
  * 
  *****************************************************************************/
-static fm_status AnStateMachineS11E29Callback( fm_smEventInfo *eventInfo, void *userInfo )
+static fm_status TG(23)( fm_smEventInfo *eventInfo, void *userInfo )
 {
     fm_status status = FM_OK;
     fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
+
     status = EnableLowPowerIdle( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
+
 ABORT:
     return status;
 
-}   /* end AnStateMachineS11E29Callback */
+}   /* end TransitionGroup23 */
+
 
 /*****************************************************************************/
-/** AnStateMachineS11E21Callback
- * \ingroup intPortStateMachine
+/* TransitionGroup24
  *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_AN_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_DEFTIMER_EXP_IND'' occurs in state
- *                  ''FM10000_PORT_STATE_UP''.
+ * \desc            Transition callback for port state machine.
  * 
  * \param[in]       eventInfo is a pointer to a caller-allocated area
  *                  containing the generic event descriptor.
@@ -6860,86 +4572,48 @@ ABORT:
  * \return          See return codes from the action callback functions.
  * 
  *****************************************************************************/
-static fm_status AnStateMachineS11E21Callback( fm_smEventInfo *eventInfo, void *userInfo )
+static fm_status TG(24)( fm_smEventInfo *eventInfo, void *userInfo )
 {
     fm_status status = FM_OK;
     fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = DeferredLpiMode( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
 
-}   /* end AnStateMachineS11E21Callback */
-
-/******************************************************************************
- * Definitions of transition callbacks for FM10000_BASIC_PORT_STATE_MACHINE
- *****************************************************************************/
-
-/*****************************************************************************/
-/** BasicStateMachineS0E0Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_BASIC_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_CONFIG_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_DISABLED''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status BasicStateMachineS0E0Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
     status = ResetPortModuleState( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ReconfigureScheduler( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = LinkPortToLanes( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
+
     status = WriteEplCfgA( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
+
     status = WriteEplCfgB( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
+
     status = WriteMac( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
+
     status = InitPcs( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
+
     status = ConfigureLane( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
+
     status = NotifyEthModeChange( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
+
+    status = ReconfigureScheduler( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = UnlinkPortFromLanes( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
 ABORT:
     return status;
 
-}   /* end BasicStateMachineS0E0Callback */
+}   /* end TransitionGroup24 */
+
 
 /*****************************************************************************/
-/** BasicStateMachineS1E0Callback
- * \ingroup intPortStateMachine
+/* TransitionGroup25
  *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_BASIC_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_CONFIG_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_NEED_CONFIG''.
+ * \desc            Transition callback for port state machine.
  * 
  * \param[in]       eventInfo is a pointer to a caller-allocated area
  *                  containing the generic event descriptor.
@@ -6950,75 +4624,207 @@ ABORT:
  * \return          See return codes from the action callback functions.
  * 
  *****************************************************************************/
-static fm_status BasicStateMachineS1E0Callback( fm_smEventInfo *eventInfo, void *userInfo )
+static fm_status TG(25)( fm_smEventInfo *eventInfo, void *userInfo )
 {
     fm_status status = FM_OK;
     fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
+
+    status = DisablePhy( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = PowerDownLane( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = ReleaseSchedBwAdmDown( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = DisableLinkInterrupts( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+ABORT:
+    return status;
+
+}   /* end TransitionGroup25 */
+
+
+/*****************************************************************************/
+/* TransitionGroup26
+ *
+ * \desc            Transition callback for port state machine.
+ * 
+ * \param[in]       eventInfo is a pointer to a caller-allocated area
+ *                  containing the generic event descriptor.
+ * 
+ * \param[in]       userInfo is a pointer to a caller-allocated area containing
+ *                  purpose-specific event info.
+ * 
+ * \return          See return codes from the action callback functions.
+ * 
+ *****************************************************************************/
+static fm_status TG(26)( fm_smEventInfo *eventInfo, void *userInfo )
+{
+    fm_status status = FM_OK;
+    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
+
+    status = StopDeferralTimer( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = DisablePhy( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = PowerDownLane( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
     status = ResetPortModuleState( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ReconfigureScheduler( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = LinkPortToLanes( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
+
     status = WriteEplCfgA( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
+
     status = WriteEplCfgB( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
+
     status = WriteMac( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
+
     status = InitPcs( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
+
     status = ConfigureLane( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
+
     status = NotifyEthModeChange( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
+
+    status = ReconfigureScheduler( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = UnlinkPortFromLanes( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+ABORT:
+    return status;
+
+}   /* end TransitionGroup26 */
+
+
+/*****************************************************************************/
+/* TransitionGroup27
+ *
+ * \desc            Transition callback for port state machine.
+ * 
+ * \param[in]       eventInfo is a pointer to a caller-allocated area
+ *                  containing the generic event descriptor.
+ * 
+ * \param[in]       userInfo is a pointer to a caller-allocated area containing
+ *                  purpose-specific event info.
+ * 
+ * \return          See return codes from the action callback functions.
+ * 
+ *****************************************************************************/
+static fm_status TG(27)( fm_smEventInfo *eventInfo, void *userInfo )
+{
+    fm_status status = FM_OK;
+    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
+
+    status = StopDeferredLpiTimer( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = SetTxFaultMode( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = ReleaseSchedBwLnkDown( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = NotifyApiPortDown( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+ABORT:
+    return status;
+
+}   /* end TransitionGroup27 */
+
+
+/*****************************************************************************/
+/* TransitionGroup28
+ *
+ * \desc            Transition callback for port state machine.
+ * 
+ * \param[in]       eventInfo is a pointer to a caller-allocated area
+ *                  containing the generic event descriptor.
+ * 
+ * \param[in]       userInfo is a pointer to a caller-allocated area containing
+ *                  purpose-specific event info.
+ * 
+ * \return          See return codes from the action callback functions.
+ * 
+ *****************************************************************************/
+static fm_status TG(28)( fm_smEventInfo *eventInfo, void *userInfo )
+{
+    fm_status status = FM_OK;
+    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
+
+    status = ResetPortModuleState( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = ReconfigureScheduler( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = LinkPortToLanes( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = WriteEplCfgA( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = WriteEplCfgB( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = WriteMac( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = InitPcs( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = ConfigureLane( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = NotifyEthModeChange( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
     status = RestoreTxFaultMode( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
+
     status = EnablePhy( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
+
     status = ConfigureFarLoopback( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
+
     status = RestoreDfe( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
+
     status = ConfigureLoopback( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
+
     status = PowerUpLane( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
+
     status = ClearEplFifo( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
+
     status = EnableLinkInterrupts( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
+
 ABORT:
     return status;
 
-}   /* end BasicStateMachineS1E0Callback */
+}   /* end TransitionGroup28 */
+
 
 /*****************************************************************************/
-/** BasicStateMachineS2E0Callback
- * \ingroup intPortStateMachine
+/* TransitionGroup29
  *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_BASIC_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_CONFIG_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_CONFIGURED''.
+ * \desc            Transition callback for port state machine.
  * 
  * \param[in]       eventInfo is a pointer to a caller-allocated area
  *                  containing the generic event descriptor.
@@ -7029,51 +4835,27 @@ ABORT:
  * \return          See return codes from the action callback functions.
  * 
  *****************************************************************************/
-static fm_status BasicStateMachineS2E0Callback( fm_smEventInfo *eventInfo, void *userInfo )
+static fm_status TG(29)( fm_smEventInfo *eventInfo, void *userInfo )
 {
     fm_status status = FM_OK;
     fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = ResetPortModuleState( eventInfo, userInfo );
+
+    status = StopPortStatusPollingTimer( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ReconfigureScheduler( eventInfo, userInfo );
+
+    status = EnableBistMode( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = LinkPortToLanes( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = WriteEplCfgA( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = WriteEplCfgB( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = WriteMac( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = InitPcs( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ConfigureLane( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = NotifyEthModeChange( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
+
 ABORT:
     return status;
 
-}   /* end BasicStateMachineS2E0Callback */
+}   /* end TransitionGroup29 */
+
 
 /*****************************************************************************/
-/** BasicStateMachineS2E1Callback
- * \ingroup intPortStateMachine
+/* TransitionGroup30
  *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_BASIC_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_DISABLE_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_CONFIGURED''.
+ * \desc            Transition callback for port state machine.
  * 
  * \param[in]       eventInfo is a pointer to a caller-allocated area
  *                  containing the generic event descriptor.
@@ -7084,621 +4866,33 @@ ABORT:
  * \return          See return codes from the action callback functions.
  * 
  *****************************************************************************/
-static fm_status BasicStateMachineS2E1Callback( fm_smEventInfo *eventInfo, void *userInfo )
+static fm_status TG(30)( fm_smEventInfo *eventInfo, void *userInfo )
 {
     fm_status status = FM_OK;
     fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = ResetPortModuleState( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = WriteEplCfgA( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = WriteEplCfgB( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = WriteMac( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = InitPcs( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ConfigureLane( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = NotifyEthModeChange( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ReconfigureScheduler( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = UnlinkPortFromLanes( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
 
-}   /* end BasicStateMachineS2E1Callback */
-
-/*****************************************************************************/
-/** BasicStateMachineS2E4Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_BASIC_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_ADMIN_UP_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_CONFIGURED''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status BasicStateMachineS2E4Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = SetTxFaultMode( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = EnablePhy( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ConfigureFarLoopback( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = RestoreDfe( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ConfigureLoopback( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = RequestSchedBwAdmUp( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = PowerUpLane( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ClearEplFifo( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = EnableLinkInterrupts( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end BasicStateMachineS2E4Callback */
-
-/*****************************************************************************/
-/** BasicStateMachineS2E5Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_BASIC_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_ADMIN_DOWN_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_CONFIGURED''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status BasicStateMachineS2E5Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = SetTxFaultMode( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = EnablePhy( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ConfigureFarLoopback( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = RestoreDfe( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ConfigureLoopback( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = RequestSchedBwAdmUp( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = PowerUpLane( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ClearEplFifo( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = EnableLinkInterrupts( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end BasicStateMachineS2E5Callback */
-
-/*****************************************************************************/
-/** BasicStateMachineS2E7Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_BASIC_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_REMOTE_FAULT_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_CONFIGURED''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status BasicStateMachineS2E7Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = SetTxFaultMode( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = EnablePhy( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = RestoreDfe( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ConfigureLoopback( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = RequestSchedBwAdmUp( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = PowerUpLane( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ClearEplFifo( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = EnableLinkInterrupts( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end BasicStateMachineS2E7Callback */
-
-/*****************************************************************************/
-/** BasicStateMachineS2E8Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_BASIC_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_LOCAL_FAULT_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_CONFIGURED''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status BasicStateMachineS2E8Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = SetTxFaultMode( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = EnablePhy( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = RestoreDfe( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ConfigureLoopback( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = RequestSchedBwAdmUp( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = PowerUpLane( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ClearEplFifo( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = EnableLinkInterrupts( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end BasicStateMachineS2E8Callback */
-
-/*****************************************************************************/
-/** BasicStateMachineS2E9Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_BASIC_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_BIST_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_CONFIGURED''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status BasicStateMachineS2E9Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = SetTxFaultMode( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = EnablePhy( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = RestoreDfe( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ConfigureLoopback( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = RequestSchedBwAdmUp( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = PowerUpLane( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ClearEplFifo( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = EnableLinkInterrupts( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end BasicStateMachineS2E9Callback */
-
-/*****************************************************************************/
-/** BasicStateMachineS3E0Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_BASIC_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_CONFIG_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_POWERING_UP''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status BasicStateMachineS3E0Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = DisablePhy( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = PowerDownLane( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ResetPortModuleState( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ReconfigureScheduler( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = LinkPortToLanes( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = WriteEplCfgA( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = WriteEplCfgB( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = WriteMac( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = InitPcs( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ConfigureLane( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = NotifyEthModeChange( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = EnablePhy( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ConfigureFarLoopback( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = RestoreDfe( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ConfigureLoopback( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = PowerUpLane( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ClearEplFifo( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end BasicStateMachineS3E0Callback */
-
-/*****************************************************************************/
-/** BasicStateMachineS3E1Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_BASIC_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_DISABLE_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_POWERING_UP''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status BasicStateMachineS3E1Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = DisablePhy( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = PowerDownLane( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ResetPortModuleState( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = WriteEplCfgA( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = WriteEplCfgB( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = WriteMac( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = InitPcs( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ConfigureLane( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = NotifyEthModeChange( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ReconfigureScheduler( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = UnlinkPortFromLanes( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end BasicStateMachineS3E1Callback */
-
-/*****************************************************************************/
-/** BasicStateMachineS3E2Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_BASIC_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_LOOPBACK_ON_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_POWERING_UP''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status BasicStateMachineS3E2Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = EnableLoopback( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end BasicStateMachineS3E2Callback */
-
-/*****************************************************************************/
-/** BasicStateMachineS3E3Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_BASIC_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_LOOPBACK_OFF_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_POWERING_UP''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status BasicStateMachineS3E3Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = DisableLoopback( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end BasicStateMachineS3E3Callback */
-
-/*****************************************************************************/
-/** BasicStateMachineS3E4Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_BASIC_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_ADMIN_UP_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_POWERING_UP''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status BasicStateMachineS3E4Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = SetTxFaultMode( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end BasicStateMachineS3E4Callback */
-
-/*****************************************************************************/
-/** BasicStateMachineS3E5Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_BASIC_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_ADMIN_DOWN_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_POWERING_UP''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status BasicStateMachineS3E5Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = SetTxFaultMode( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end BasicStateMachineS3E5Callback */
-
-/*****************************************************************************/
-/** BasicStateMachineS3E6Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_BASIC_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_ADMIN_PWRDOWN_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_POWERING_UP''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status BasicStateMachineS3E6Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = DisablePhy( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = PowerDownLane( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ReleaseSchedBwAdmDown( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
     status = DisableLinkInterrupts( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
+
+    status = EnableDrainMode( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = EnableFabricLoopback( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = DisableDrainMode( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
 ABORT:
     return status;
 
-}   /* end BasicStateMachineS3E6Callback */
+}   /* end TransitionGroup30 */
+
 
 /*****************************************************************************/
-/** BasicStateMachineS3E7Callback
- * \ingroup intPortStateMachine
+/* TransitionGroup31
  *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_BASIC_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_REMOTE_FAULT_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_POWERING_UP''.
+ * \desc            Transition callback for port state machine.
  * 
  * \param[in]       eventInfo is a pointer to a caller-allocated area
  *                  containing the generic event descriptor.
@@ -7709,27 +4903,24 @@ ABORT:
  * \return          See return codes from the action callback functions.
  * 
  *****************************************************************************/
-static fm_status BasicStateMachineS3E7Callback( fm_smEventInfo *eventInfo, void *userInfo )
+static fm_status TG(31)( fm_smEventInfo *eventInfo, void *userInfo )
 {
     fm_status status = FM_OK;
     fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
+
     status = SetTxFaultMode( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
+
 ABORT:
     return status;
 
-}   /* end BasicStateMachineS3E7Callback */
+}   /* end TransitionGroup31 */
+
 
 /*****************************************************************************/
-/** BasicStateMachineS3E8Callback
- * \ingroup intPortStateMachine
+/* TransitionGroup32
  *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_BASIC_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_LOCAL_FAULT_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_POWERING_UP''.
+ * \desc            Transition callback for port state machine.
  * 
  * \param[in]       eventInfo is a pointer to a caller-allocated area
  *                  containing the generic event descriptor.
@@ -7740,89 +4931,81 @@ ABORT:
  * \return          See return codes from the action callback functions.
  * 
  *****************************************************************************/
-static fm_status BasicStateMachineS3E8Callback( fm_smEventInfo *eventInfo, void *userInfo )
+static fm_status TG(32)( fm_smEventInfo *eventInfo, void *userInfo )
 {
     fm_status status = FM_OK;
     fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = SetTxFaultMode( eventInfo, userInfo );
+
+    status = StopDeferredLpiTimer( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
 
-}   /* end BasicStateMachineS3E8Callback */
-
-/*****************************************************************************/
-/** BasicStateMachineS3E9Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_BASIC_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_BIST_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_POWERING_UP''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status BasicStateMachineS3E9Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = SetTxFaultMode( eventInfo, userInfo );
+    status = DisablePhy( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
 
-}   /* end BasicStateMachineS3E9Callback */
-
-/*****************************************************************************/
-/** BasicStateMachineS3E10Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_BASIC_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_CONFIGURE_DFE_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_POWERING_UP''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status BasicStateMachineS3E10Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = ConfigureDfe( eventInfo, userInfo );
+    status = PowerDownLane( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
+
+    status = ResetPortModuleState( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = ReconfigureScheduler( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = LinkPortToLanes( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = WriteEplCfgA( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = WriteEplCfgB( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = WriteMac( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = InitPcs( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = ConfigureLane( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = NotifyEthModeChange( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = ReleaseSchedBwLnkDown( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = NotifyApiPortDown( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = EnablePhy( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = ConfigureFarLoopback( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = RestoreDfe( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = ConfigureLoopback( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = PowerUpLane( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = ClearEplFifo( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
 ABORT:
     return status;
 
-}   /* end BasicStateMachineS3E10Callback */
+}   /* end TransitionGroup32 */
+
 
 /*****************************************************************************/
-/** BasicStateMachineS3E18Callback
- * \ingroup intPortStateMachine
+/* TransitionGroup33
  *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_BASIC_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_LANE_NOT_READY_IND'' occurs in state
- *                  ''FM10000_PORT_STATE_POWERING_UP''.
+ * \desc            Transition callback for port state machine.
  * 
  * \param[in]       eventInfo is a pointer to a caller-allocated area
  *                  containing the generic event descriptor.
@@ -7833,27 +5016,193 @@ ABORT:
  * \return          See return codes from the action callback functions.
  * 
  *****************************************************************************/
-static fm_status BasicStateMachineS3E18Callback( fm_smEventInfo *eventInfo, void *userInfo )
+static fm_status TG(33)( fm_smEventInfo *eventInfo, void *userInfo )
 {
     fm_status status = FM_OK;
     fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
+
+    status = DisableBistMode( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = DisablePhy( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = PowerDownLane( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = ResetPortModuleState( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = WriteEplCfgA( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = WriteEplCfgB( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = WriteMac( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = InitPcs( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = ConfigureLane( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = NotifyEthModeChange( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = ReconfigureScheduler( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = UnlinkPortFromLanes( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+ABORT:
+    return status;
+
+}   /* end TransitionGroup33 */
+
+
+/*****************************************************************************/
+/* TransitionGroup34
+ *
+ * \desc            Transition callback for port state machine.
+ * 
+ * \param[in]       eventInfo is a pointer to a caller-allocated area
+ *                  containing the generic event descriptor.
+ * 
+ * \param[in]       userInfo is a pointer to a caller-allocated area containing
+ *                  purpose-specific event info.
+ * 
+ * \return          See return codes from the action callback functions.
+ * 
+ *****************************************************************************/
+static fm_status TG(34)( fm_smEventInfo *eventInfo, void *userInfo )
+{
+    fm_status status = FM_OK;
+    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
+
+    status = RequestSchedBwLnkUp( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = NotifyApiPortUp( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+ABORT:
+    return status;
+
+}   /* end TransitionGroup34 */
+
+
+/*****************************************************************************/
+/* TransitionGroup35
+ *
+ * \desc            Transition callback for port state machine.
+ * 
+ * \param[in]       eventInfo is a pointer to a caller-allocated area
+ *                  containing the generic event descriptor.
+ * 
+ * \param[in]       userInfo is a pointer to a caller-allocated area containing
+ *                  purpose-specific event info.
+ * 
+ * \return          See return codes from the action callback functions.
+ * 
+ *****************************************************************************/
+static fm_status TG(35)( fm_smEventInfo *eventInfo, void *userInfo )
+{
+    fm_status status = FM_OK;
+    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
+
+    status = DisableBistMode( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = DisablePhy( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = PowerDownLane( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = ReleaseSchedBwAdmDown( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = DisableLinkInterrupts( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+ABORT:
+    return status;
+
+}   /* end TransitionGroup35 */
+
+
+/*****************************************************************************/
+/* TransitionGroup36
+ *
+ * \desc            Transition callback for port state machine.
+ * 
+ * \param[in]       eventInfo is a pointer to a caller-allocated area
+ *                  containing the generic event descriptor.
+ * 
+ * \param[in]       userInfo is a pointer to a caller-allocated area containing
+ *                  purpose-specific event info.
+ * 
+ * \return          See return codes from the action callback functions.
+ * 
+ *****************************************************************************/
+static fm_status TG(36)( fm_smEventInfo *eventInfo, void *userInfo )
+{
+    fm_status status = FM_OK;
+    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
+
+    status = StopDeferredLpiTimer( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = EnableBistMode( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = ReleaseSchedBwLnkDown( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = NotifyApiPortDown( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+ABORT:
+    return status;
+
+}   /* end TransitionGroup36 */
+
+
+/*****************************************************************************/
+/* TransitionGroup37
+ *
+ * \desc            Transition callback for port state machine.
+ * 
+ * \param[in]       eventInfo is a pointer to a caller-allocated area
+ *                  containing the generic event descriptor.
+ * 
+ * \param[in]       userInfo is a pointer to a caller-allocated area containing
+ *                  purpose-specific event info.
+ * 
+ * \return          See return codes from the action callback functions.
+ * 
+ *****************************************************************************/
+static fm_status TG(37)( fm_smEventInfo *eventInfo, void *userInfo )
+{
+    fm_status status = FM_OK;
+    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
+
     status = FlagError( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
+
 ABORT:
     return status;
 
-}   /* end BasicStateMachineS3E18Callback */
+}   /* end TransitionGroup37 */
+
 
 /*****************************************************************************/
-/** BasicStateMachineS4E0Callback
- * \ingroup intPortStateMachine
+/* TransitionGroup38
  *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_BASIC_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_CONFIG_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_DEFERRED_UP''.
+ * \desc            Transition callback for port state machine.
  * 
  * \param[in]       eventInfo is a pointer to a caller-allocated area
  *                  containing the generic event descriptor.
@@ -7864,1297 +5213,48 @@ ABORT:
  * \return          See return codes from the action callback functions.
  * 
  *****************************************************************************/
-static fm_status BasicStateMachineS4E0Callback( fm_smEventInfo *eventInfo, void *userInfo )
+static fm_status TG(38)( fm_smEventInfo *eventInfo, void *userInfo )
 {
     fm_status status = FM_OK;
     fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = StopDeferralTimer( eventInfo, userInfo );
+
+    status = SetTxFaultMode( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = DisablePhy( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = PowerDownLane( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ResetPortModuleState( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ReconfigureScheduler( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = LinkPortToLanes( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = WriteEplCfgA( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = WriteEplCfgB( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = WriteMac( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = InitPcs( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ConfigureLane( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = NotifyEthModeChange( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
+
     status = EnablePhy( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
+
     status = ConfigureFarLoopback( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
+
     status = RestoreDfe( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
+
     status = ConfigureLoopback( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
+
+    status = RequestSchedBwAdmUp( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
     status = PowerUpLane( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
+
     status = ClearEplFifo( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
 
-}   /* end BasicStateMachineS4E0Callback */
-
-/*****************************************************************************/
-/** BasicStateMachineS4E1Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_BASIC_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_DISABLE_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_DEFERRED_UP''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status BasicStateMachineS4E1Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = StopDeferralTimer( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = DisablePhy( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = PowerDownLane( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ResetPortModuleState( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = WriteEplCfgA( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = WriteEplCfgB( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = WriteMac( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = InitPcs( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ConfigureLane( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = NotifyEthModeChange( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ReconfigureScheduler( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = UnlinkPortFromLanes( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end BasicStateMachineS4E1Callback */
-
-/*****************************************************************************/
-/** BasicStateMachineS4E2Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_BASIC_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_LOOPBACK_ON_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_DEFERRED_UP''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status BasicStateMachineS4E2Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = EnableLoopback( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end BasicStateMachineS4E2Callback */
-
-/*****************************************************************************/
-/** BasicStateMachineS4E3Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_BASIC_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_LOOPBACK_OFF_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_DEFERRED_UP''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status BasicStateMachineS4E3Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = DisableLoopback( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end BasicStateMachineS4E3Callback */
-
-/*****************************************************************************/
-/** BasicStateMachineS4E4Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_BASIC_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_ADMIN_UP_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_DEFERRED_UP''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status BasicStateMachineS4E4Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = SetTxFaultMode( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end BasicStateMachineS4E4Callback */
-
-/*****************************************************************************/
-/** BasicStateMachineS4E5Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_BASIC_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_ADMIN_DOWN_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_DEFERRED_UP''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status BasicStateMachineS4E5Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = SetTxFaultMode( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end BasicStateMachineS4E5Callback */
-
-/*****************************************************************************/
-/** BasicStateMachineS4E6Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_BASIC_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_ADMIN_PWRDOWN_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_DEFERRED_UP''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status BasicStateMachineS4E6Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = StopDeferralTimer( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = DisablePhy( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = PowerDownLane( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ReleaseSchedBwAdmDown( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = DisableLinkInterrupts( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end BasicStateMachineS4E6Callback */
-
-/*****************************************************************************/
-/** BasicStateMachineS4E7Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_BASIC_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_REMOTE_FAULT_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_DEFERRED_UP''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status BasicStateMachineS4E7Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = SetTxFaultMode( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end BasicStateMachineS4E7Callback */
-
-/*****************************************************************************/
-/** BasicStateMachineS4E8Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_BASIC_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_LOCAL_FAULT_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_DEFERRED_UP''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status BasicStateMachineS4E8Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = SetTxFaultMode( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end BasicStateMachineS4E8Callback */
-
-/*****************************************************************************/
-/** BasicStateMachineS4E9Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_BASIC_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_BIST_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_DEFERRED_UP''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status BasicStateMachineS4E9Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = SetTxFaultMode( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = DisableLinkInterrupts( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end BasicStateMachineS4E9Callback */
-
-/*****************************************************************************/
-/** BasicStateMachineS4E10Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_BASIC_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_CONFIGURE_DFE_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_DEFERRED_UP''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status BasicStateMachineS4E10Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = ConfigureDfe( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end BasicStateMachineS4E10Callback */
-
-/*****************************************************************************/
-/** BasicStateMachineS4E18Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_BASIC_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_LANE_NOT_READY_IND'' occurs in state
- *                  ''FM10000_PORT_STATE_DEFERRED_UP''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status BasicStateMachineS4E18Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = FlagError( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end BasicStateMachineS4E18Callback */
-
-/*****************************************************************************/
-/** BasicStateMachineS6E0Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_BASIC_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_CONFIG_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_ADMIN_FAULT''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status BasicStateMachineS6E0Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = DisablePhy( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = PowerDownLane( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ResetPortModuleState( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ReconfigureScheduler( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = LinkPortToLanes( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = WriteEplCfgA( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = WriteEplCfgB( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = WriteMac( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = InitPcs( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ConfigureLane( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = NotifyEthModeChange( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = EnablePhy( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ConfigureFarLoopback( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = RestoreDfe( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ConfigureLoopback( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = PowerUpLane( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ClearEplFifo( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end BasicStateMachineS6E0Callback */
-
-/*****************************************************************************/
-/** BasicStateMachineS6E1Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_BASIC_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_DISABLE_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_ADMIN_FAULT''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status BasicStateMachineS6E1Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = DisablePhy( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = PowerDownLane( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ResetPortModuleState( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = WriteEplCfgA( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = WriteEplCfgB( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = WriteMac( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = InitPcs( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ConfigureLane( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = NotifyEthModeChange( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ReconfigureScheduler( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = UnlinkPortFromLanes( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end BasicStateMachineS6E1Callback */
-
-/*****************************************************************************/
-/** BasicStateMachineS6E5Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_BASIC_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_ADMIN_DOWN_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_ADMIN_FAULT''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status BasicStateMachineS6E5Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = SetTxFaultMode( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end BasicStateMachineS6E5Callback */
-
-/*****************************************************************************/
-/** BasicStateMachineS6E6Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_BASIC_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_ADMIN_PWRDOWN_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_ADMIN_FAULT''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status BasicStateMachineS6E6Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = DisablePhy( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = PowerDownLane( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ReleaseSchedBwAdmDown( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = DisableLinkInterrupts( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end BasicStateMachineS6E6Callback */
-
-/*****************************************************************************/
-/** BasicStateMachineS6E7Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_BASIC_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_REMOTE_FAULT_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_ADMIN_FAULT''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status BasicStateMachineS6E7Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = SetTxFaultMode( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end BasicStateMachineS6E7Callback */
-
-/*****************************************************************************/
-/** BasicStateMachineS6E8Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_BASIC_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_LOCAL_FAULT_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_ADMIN_FAULT''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status BasicStateMachineS6E8Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = SetTxFaultMode( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end BasicStateMachineS6E8Callback */
-
-/*****************************************************************************/
-/** BasicStateMachineS6E9Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_BASIC_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_BIST_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_ADMIN_FAULT''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status BasicStateMachineS6E9Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = SetTxFaultMode( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = EnableBistMode( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end BasicStateMachineS6E9Callback */
-
-/*****************************************************************************/
-/** BasicStateMachineS6E10Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_BASIC_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_CONFIGURE_DFE_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_ADMIN_FAULT''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status BasicStateMachineS6E10Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = ConfigureDfe( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end BasicStateMachineS6E10Callback */
-
-/*****************************************************************************/
-/** BasicStateMachineS7E0Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_BASIC_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_CONFIG_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_LOCAL_FAULT''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status BasicStateMachineS7E0Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = StopPortStatusPollingTimer( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = DisablePhy( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = PowerDownLane( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ResetPortModuleState( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ReconfigureScheduler( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = LinkPortToLanes( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = WriteEplCfgA( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = WriteEplCfgB( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = WriteMac( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = InitPcs( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ConfigureLane( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = NotifyEthModeChange( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = EnablePhy( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ConfigureFarLoopback( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = RestoreDfe( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ConfigureLoopback( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = PowerUpLane( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ClearEplFifo( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end BasicStateMachineS7E0Callback */
-
-/*****************************************************************************/
-/** BasicStateMachineS7E1Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_BASIC_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_DISABLE_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_LOCAL_FAULT''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status BasicStateMachineS7E1Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = StopPortStatusPollingTimer( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = DisablePhy( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = PowerDownLane( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ResetPortModuleState( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = WriteEplCfgA( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = WriteEplCfgB( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = WriteMac( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = InitPcs( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ConfigureLane( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = NotifyEthModeChange( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ReconfigureScheduler( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = UnlinkPortFromLanes( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end BasicStateMachineS7E1Callback */
-
-/*****************************************************************************/
-/** BasicStateMachineS7E2Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_BASIC_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_LOOPBACK_ON_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_LOCAL_FAULT''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status BasicStateMachineS7E2Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = EnableLoopback( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end BasicStateMachineS7E2Callback */
-
-/*****************************************************************************/
-/** BasicStateMachineS7E3Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_BASIC_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_LOOPBACK_OFF_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_LOCAL_FAULT''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status BasicStateMachineS7E3Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = DisableLoopback( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end BasicStateMachineS7E3Callback */
-
-/*****************************************************************************/
-/** BasicStateMachineS7E27Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_BASIC_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_FABRIC_LOOPBACK_ON_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_LOCAL_FAULT''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status BasicStateMachineS7E27Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = StopPortStatusPollingTimer( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = DisableLinkInterrupts( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = EnableDrainMode( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = EnableFabricLoopback( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = DisableDrainMode( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = RequestSchedBwLnkUp( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = NotifyApiPortUp( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end BasicStateMachineS7E27Callback */
-
-/*****************************************************************************/
-/** BasicStateMachineS7E5Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_BASIC_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_ADMIN_DOWN_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_LOCAL_FAULT''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status BasicStateMachineS7E5Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = SetTxFaultMode( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end BasicStateMachineS7E5Callback */
-
-/*****************************************************************************/
-/** BasicStateMachineS7E6Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_BASIC_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_ADMIN_PWRDOWN_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_LOCAL_FAULT''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status BasicStateMachineS7E6Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = StopPortStatusPollingTimer( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = DisablePhy( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = PowerDownLane( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ReleaseSchedBwAdmDown( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = DisableLinkInterrupts( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end BasicStateMachineS7E6Callback */
-
-/*****************************************************************************/
-/** BasicStateMachineS7E7Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_BASIC_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_REMOTE_FAULT_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_LOCAL_FAULT''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status BasicStateMachineS7E7Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = SetTxFaultMode( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end BasicStateMachineS7E7Callback */
-
-/*****************************************************************************/
-/** BasicStateMachineS7E8Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_BASIC_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_LOCAL_FAULT_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_LOCAL_FAULT''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status BasicStateMachineS7E8Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = SetTxFaultMode( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end BasicStateMachineS7E8Callback */
-
-/*****************************************************************************/
-/** BasicStateMachineS7E9Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_BASIC_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_BIST_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_LOCAL_FAULT''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status BasicStateMachineS7E9Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = StopPortStatusPollingTimer( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = EnableBistMode( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end BasicStateMachineS7E9Callback */
-
-/*****************************************************************************/
-/** BasicStateMachineS7E10Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_BASIC_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_CONFIGURE_DFE_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_LOCAL_FAULT''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status BasicStateMachineS7E10Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = ConfigureDfe( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end BasicStateMachineS7E10Callback */
-
-/*****************************************************************************/
-/** BasicStateMachineS7E11Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_BASIC_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_REMOTE_FAULT_IND'' occurs in state
- *                  ''FM10000_PORT_STATE_LOCAL_FAULT''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status BasicStateMachineS7E11Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = StartPortStatusPollingTimer( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
     status = EnableLinkInterrupts( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
+
 ABORT:
     return status;
 
-}   /* end BasicStateMachineS7E11Callback */
+}   /* end TransitionGroup38 */
+
 
 /*****************************************************************************/
-/** BasicStateMachineS7E20Callback
- * \ingroup intPortStateMachine
+/* TransitionGroup39
  *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_BASIC_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_LINK_UP_IND'' occurs in state
- *                  ''FM10000_PORT_STATE_LOCAL_FAULT''.
+ * \desc            Transition callback for port state machine.
  * 
  * \param[in]       eventInfo is a pointer to a caller-allocated area
  *                  containing the generic event descriptor.
@@ -9165,112 +5265,75 @@ ABORT:
  * \return          See return codes from the action callback functions.
  * 
  *****************************************************************************/
-static fm_status BasicStateMachineS7E20Callback( fm_smEventInfo *eventInfo, void *userInfo )
+static fm_status TG(39)( fm_smEventInfo *eventInfo, void *userInfo )
 {
     fm_status status = FM_OK;
     fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = RequestSchedBwLnkUp( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = NotifyApiPortUp( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
 
-}   /* end BasicStateMachineS7E20Callback */
-
-/*****************************************************************************/
-/** BasicStateMachineS8E0Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_BASIC_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_CONFIG_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_REMOTE_FAULT''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status BasicStateMachineS8E0Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = StopPortStatusPollingTimer( eventInfo, userInfo );
+    status = DisableBistMode( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
+
     status = DisablePhy( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
+
     status = PowerDownLane( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
+
     status = ResetPortModuleState( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
+
     status = ReconfigureScheduler( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
+
     status = LinkPortToLanes( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
+
     status = WriteEplCfgA( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
+
     status = WriteEplCfgB( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
+
     status = WriteMac( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
+
     status = InitPcs( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
+
     status = ConfigureLane( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
+
     status = NotifyEthModeChange( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
+
     status = EnablePhy( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
+
     status = ConfigureFarLoopback( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
+
     status = RestoreDfe( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
+
     status = ConfigureLoopback( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
+
     status = PowerUpLane( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
+
     status = ClearEplFifo( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
+
 ABORT:
     return status;
 
-}   /* end BasicStateMachineS8E0Callback */
+}   /* end TransitionGroup39 */
+
 
 /*****************************************************************************/
-/** BasicStateMachineS8E1Callback
- * \ingroup intPortStateMachine
+/* TransitionGroup40
  *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_BASIC_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_DISABLE_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_REMOTE_FAULT''.
+ * \desc            Transition callback for port state machine.
  * 
  * \param[in]       eventInfo is a pointer to a caller-allocated area
  *                  containing the generic event descriptor.
@@ -9281,60 +5344,54 @@ ABORT:
  * \return          See return codes from the action callback functions.
  * 
  *****************************************************************************/
-static fm_status BasicStateMachineS8E1Callback( fm_smEventInfo *eventInfo, void *userInfo )
+static fm_status TG(40)( fm_smEventInfo *eventInfo, void *userInfo )
 {
     fm_status status = FM_OK;
     fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = StopPortStatusPollingTimer( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
+
     status = DisablePhy( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
+
     status = PowerDownLane( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
+
     status = ResetPortModuleState( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
+
     status = WriteEplCfgA( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
+
     status = WriteEplCfgB( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
+
     status = WriteMac( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
+
     status = InitPcs( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
+
     status = ConfigureLane( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
+
     status = NotifyEthModeChange( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
+
     status = ReconfigureScheduler( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
+
     status = UnlinkPortFromLanes( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
+
 ABORT:
     return status;
 
-}   /* end BasicStateMachineS8E1Callback */
+}   /* end TransitionGroup40 */
+
 
 /*****************************************************************************/
-/** BasicStateMachineS8E2Callback
- * \ingroup intPortStateMachine
+/* TransitionGroup41
  *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_BASIC_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_LOOPBACK_ON_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_REMOTE_FAULT''.
+ * \desc            Transition callback for port state machine.
  * 
  * \param[in]       eventInfo is a pointer to a caller-allocated area
  *                  containing the generic event descriptor.
@@ -9345,1449 +5402,24 @@ ABORT:
  * \return          See return codes from the action callback functions.
  * 
  *****************************************************************************/
-static fm_status BasicStateMachineS8E2Callback( fm_smEventInfo *eventInfo, void *userInfo )
+static fm_status TG(41)( fm_smEventInfo *eventInfo, void *userInfo )
 {
     fm_status status = FM_OK;
     fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = EnableLoopback( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
 
-}   /* end BasicStateMachineS8E2Callback */
-
-/*****************************************************************************/
-/** BasicStateMachineS8E3Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_BASIC_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_LOOPBACK_OFF_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_REMOTE_FAULT''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status BasicStateMachineS8E3Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = DisableLoopback( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end BasicStateMachineS8E3Callback */
-
-/*****************************************************************************/
-/** BasicStateMachineS8E27Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_BASIC_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_FABRIC_LOOPBACK_ON_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_REMOTE_FAULT''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status BasicStateMachineS8E27Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = StopPortStatusPollingTimer( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = DisableLinkInterrupts( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = EnableDrainMode( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = EnableFabricLoopback( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = DisableDrainMode( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = RequestSchedBwLnkUp( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = NotifyApiPortUp( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end BasicStateMachineS8E27Callback */
-
-/*****************************************************************************/
-/** BasicStateMachineS8E5Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_BASIC_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_ADMIN_DOWN_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_REMOTE_FAULT''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status BasicStateMachineS8E5Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = SetTxFaultMode( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end BasicStateMachineS8E5Callback */
-
-/*****************************************************************************/
-/** BasicStateMachineS8E6Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_BASIC_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_ADMIN_PWRDOWN_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_REMOTE_FAULT''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status BasicStateMachineS8E6Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = StopPortStatusPollingTimer( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = DisablePhy( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = PowerDownLane( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ReleaseSchedBwAdmDown( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = DisableLinkInterrupts( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end BasicStateMachineS8E6Callback */
-
-/*****************************************************************************/
-/** BasicStateMachineS8E7Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_BASIC_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_REMOTE_FAULT_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_REMOTE_FAULT''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status BasicStateMachineS8E7Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = StopPortStatusPollingTimer( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = SetTxFaultMode( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end BasicStateMachineS8E7Callback */
-
-/*****************************************************************************/
-/** BasicStateMachineS8E8Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_BASIC_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_LOCAL_FAULT_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_REMOTE_FAULT''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status BasicStateMachineS8E8Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = StopPortStatusPollingTimer( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = SetTxFaultMode( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end BasicStateMachineS8E8Callback */
-
-/*****************************************************************************/
-/** BasicStateMachineS8E9Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_BASIC_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_BIST_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_REMOTE_FAULT''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status BasicStateMachineS8E9Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = StopPortStatusPollingTimer( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = EnableBistMode( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end BasicStateMachineS8E9Callback */
-
-/*****************************************************************************/
-/** BasicStateMachineS8E10Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_BASIC_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_CONFIGURE_DFE_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_REMOTE_FAULT''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status BasicStateMachineS8E10Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = ConfigureDfe( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end BasicStateMachineS8E10Callback */
-
-/*****************************************************************************/
-/** BasicStateMachineS8E12Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_BASIC_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_LOCAL_FAULT_IND'' occurs in state
- *                  ''FM10000_PORT_STATE_REMOTE_FAULT''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status BasicStateMachineS8E12Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = StartPortStatusPollingTimer( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end BasicStateMachineS8E12Callback */
-
-/*****************************************************************************/
-/** BasicStateMachineS8E20Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_BASIC_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_LINK_UP_IND'' occurs in state
- *                  ''FM10000_PORT_STATE_REMOTE_FAULT''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status BasicStateMachineS8E20Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = RequestSchedBwLnkUp( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = NotifyApiPortUp( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end BasicStateMachineS8E20Callback */
-
-/*****************************************************************************/
-/** BasicStateMachineS9E0Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_BASIC_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_CONFIG_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_BIST''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status BasicStateMachineS9E0Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = DisableBistMode( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = DisablePhy( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = PowerDownLane( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ResetPortModuleState( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ReconfigureScheduler( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = LinkPortToLanes( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = WriteEplCfgA( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = WriteEplCfgB( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = WriteMac( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = InitPcs( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ConfigureLane( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = NotifyEthModeChange( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = EnablePhy( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ConfigureFarLoopback( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = RestoreDfe( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ConfigureLoopback( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = PowerUpLane( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ClearEplFifo( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end BasicStateMachineS9E0Callback */
-
-/*****************************************************************************/
-/** BasicStateMachineS9E1Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_BASIC_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_DISABLE_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_BIST''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status BasicStateMachineS9E1Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = DisableBistMode( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = DisablePhy( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = PowerDownLane( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ResetPortModuleState( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = WriteEplCfgA( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = WriteEplCfgB( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = WriteMac( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = InitPcs( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ConfigureLane( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = NotifyEthModeChange( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ReconfigureScheduler( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = UnlinkPortFromLanes( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end BasicStateMachineS9E1Callback */
-
-/*****************************************************************************/
-/** BasicStateMachineS9E2Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_BASIC_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_LOOPBACK_ON_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_BIST''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status BasicStateMachineS9E2Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = EnableLoopback( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end BasicStateMachineS9E2Callback */
-
-/*****************************************************************************/
-/** BasicStateMachineS9E3Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_BASIC_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_LOOPBACK_OFF_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_BIST''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status BasicStateMachineS9E3Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = DisableLoopback( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end BasicStateMachineS9E3Callback */
-
-/*****************************************************************************/
-/** BasicStateMachineS9E5Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_BASIC_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_ADMIN_DOWN_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_BIST''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status BasicStateMachineS9E5Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = SetTxFaultMode( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = DisableBistMode( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end BasicStateMachineS9E5Callback */
-
-/*****************************************************************************/
-/** BasicStateMachineS9E6Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_BASIC_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_ADMIN_PWRDOWN_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_BIST''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status BasicStateMachineS9E6Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = DisableBistMode( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = DisablePhy( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = PowerDownLane( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ReleaseSchedBwAdmDown( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = DisableLinkInterrupts( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end BasicStateMachineS9E6Callback */
-
-/*****************************************************************************/
-/** BasicStateMachineS9E7Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_BASIC_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_REMOTE_FAULT_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_BIST''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status BasicStateMachineS9E7Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = SetTxFaultMode( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = DisableBistMode( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end BasicStateMachineS9E7Callback */
-
-/*****************************************************************************/
-/** BasicStateMachineS9E8Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_BASIC_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_LOCAL_FAULT_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_BIST''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status BasicStateMachineS9E8Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = SetTxFaultMode( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = DisableBistMode( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end BasicStateMachineS9E8Callback */
-
-/*****************************************************************************/
-/** BasicStateMachineS9E9Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_BASIC_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_BIST_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_BIST''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status BasicStateMachineS9E9Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = EnableBistMode( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end BasicStateMachineS9E9Callback */
-
-/*****************************************************************************/
-/** BasicStateMachineS9E10Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_BASIC_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_CONFIGURE_DFE_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_BIST''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status BasicStateMachineS9E10Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = ConfigureDfe( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end BasicStateMachineS9E10Callback */
-
-/*****************************************************************************/
-/** BasicStateMachineS11E0Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_BASIC_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_CONFIG_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_UP''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status BasicStateMachineS11E0Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = StopDeferredLpiTimer( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = DisablePhy( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = PowerDownLane( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ResetPortModuleState( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ReconfigureScheduler( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = LinkPortToLanes( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = WriteEplCfgA( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = WriteEplCfgB( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = WriteMac( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = InitPcs( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ConfigureLane( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = NotifyEthModeChange( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ReleaseSchedBwLnkDown( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = NotifyApiPortDown( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = EnablePhy( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ConfigureFarLoopback( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = RestoreDfe( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ConfigureLoopback( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = PowerUpLane( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ClearEplFifo( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end BasicStateMachineS11E0Callback */
-
-/*****************************************************************************/
-/** BasicStateMachineS11E1Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_BASIC_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_DISABLE_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_UP''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status BasicStateMachineS11E1Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = EnableDrainMode( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = StopDeferredLpiTimer( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = DisablePhy( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = PowerDownLane( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ResetPortModuleState( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = WriteEplCfgA( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = WriteEplCfgB( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = WriteMac( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = InitPcs( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ConfigureLane( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = NotifyEthModeChange( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ReconfigureScheduler( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ReleaseSchedBwLnkDown( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = NotifyApiPortDown( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = DisableDrainMode( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = UnlinkPortFromLanes( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end BasicStateMachineS11E1Callback */
-
-/*****************************************************************************/
-/** BasicStateMachineS11E2Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_BASIC_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_LOOPBACK_ON_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_UP''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status BasicStateMachineS11E2Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = EnableLoopback( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end BasicStateMachineS11E2Callback */
-
-/*****************************************************************************/
-/** BasicStateMachineS11E3Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_BASIC_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_LOOPBACK_OFF_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_UP''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status BasicStateMachineS11E3Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = DisableLoopback( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end BasicStateMachineS11E3Callback */
-
-/*****************************************************************************/
-/** BasicStateMachineS11E27Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_BASIC_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_FABRIC_LOOPBACK_ON_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_UP''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status BasicStateMachineS11E27Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = DisableLinkInterrupts( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = EnableDrainMode( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = EnableFabricLoopback( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = DisableDrainMode( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end BasicStateMachineS11E27Callback */
-
-/*****************************************************************************/
-/** BasicStateMachineS11E5Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_BASIC_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_ADMIN_DOWN_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_UP''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status BasicStateMachineS11E5Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = StopDeferredLpiTimer( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = SetTxFaultMode( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ReleaseSchedBwLnkDown( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = NotifyApiPortDown( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end BasicStateMachineS11E5Callback */
-
-/*****************************************************************************/
-/** BasicStateMachineS11E6Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_BASIC_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_ADMIN_PWRDOWN_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_UP''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status BasicStateMachineS11E6Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = StopDeferredLpiTimer( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = DisablePhy( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = PowerDownLane( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ReleaseSchedBwAdmDown( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ReleaseSchedBwLnkDown( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = NotifyApiPortDown( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = DisableLinkInterrupts( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end BasicStateMachineS11E6Callback */
-
-/*****************************************************************************/
-/** BasicStateMachineS11E7Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_BASIC_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_REMOTE_FAULT_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_UP''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status BasicStateMachineS11E7Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = StopDeferredLpiTimer( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = SetTxFaultMode( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ReleaseSchedBwLnkDown( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = NotifyApiPortDown( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end BasicStateMachineS11E7Callback */
-
-/*****************************************************************************/
-/** BasicStateMachineS11E8Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_BASIC_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_LOCAL_FAULT_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_UP''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status BasicStateMachineS11E8Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = StopDeferredLpiTimer( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = SetTxFaultMode( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ReleaseSchedBwLnkDown( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = NotifyApiPortDown( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end BasicStateMachineS11E8Callback */
-
-/*****************************************************************************/
-/** BasicStateMachineS11E9Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_BASIC_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_BIST_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_UP''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status BasicStateMachineS11E9Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = StopDeferredLpiTimer( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = EnableBistMode( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ReleaseSchedBwLnkDown( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = NotifyApiPortDown( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end BasicStateMachineS11E9Callback */
-
-/*****************************************************************************/
-/** BasicStateMachineS11E10Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_BASIC_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_CONFIGURE_DFE_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_UP''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status BasicStateMachineS11E10Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = StopDeferredLpiTimer( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ConfigureDfe( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end BasicStateMachineS11E10Callback */
-
-/*****************************************************************************/
-/** BasicStateMachineS11E11Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_BASIC_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_REMOTE_FAULT_IND'' occurs in state
- *                  ''FM10000_PORT_STATE_UP''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status BasicStateMachineS11E11Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = StopDeferredLpiTimer( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = StartPortStatusPollingTimer( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ReleaseSchedBwLnkDown( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = NotifyApiPortDown( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end BasicStateMachineS11E11Callback */
-
-/*****************************************************************************/
-/** BasicStateMachineS11E12Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_BASIC_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_LOCAL_FAULT_IND'' occurs in state
- *                  ''FM10000_PORT_STATE_UP''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status BasicStateMachineS11E12Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = StopDeferredLpiTimer( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = StartPortStatusPollingTimer( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ReleaseSchedBwLnkDown( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = NotifyApiPortDown( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end BasicStateMachineS11E12Callback */
-
-/*****************************************************************************/
-/** BasicStateMachineS11E29Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_BASIC_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_EEE_SILENT_IND'' occurs in state
- *                  ''FM10000_PORT_STATE_UP''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status BasicStateMachineS11E29Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = EnableLowPowerIdle( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end BasicStateMachineS11E29Callback */
-
-/*****************************************************************************/
-/** BasicStateMachineS11E21Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_BASIC_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_DEFTIMER_EXP_IND'' occurs in state
- *                  ''FM10000_PORT_STATE_UP''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status BasicStateMachineS11E21Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
     status = DeferredLpiMode( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
+
 ABORT:
     return status;
 
-}   /* end BasicStateMachineS11E21Callback */
+}   /* end TransitionGroup41 */
 
-/******************************************************************************
- * Definitions of transition callbacks for FM10000_PCIE_PORT_STATE_MACHINE
- *****************************************************************************/
 
 /*****************************************************************************/
-/** PcieStateMachineS0E20Callback
- * \ingroup intPortStateMachine
+/* TransitionGroup42
  *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_PCIE_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_LINK_UP_IND'' occurs in state
- *                  ''FM10000_PORT_STATE_DISABLED''.
+ * \desc            Transition callback for port state machine.
  * 
  * \param[in]       eventInfo is a pointer to a caller-allocated area
  *                  containing the generic event descriptor.
@@ -10798,30 +5430,42 @@ ABORT:
  * \return          See return codes from the action callback functions.
  * 
  *****************************************************************************/
-static fm_status PcieStateMachineS0E20Callback( fm_smEventInfo *eventInfo, void *userInfo )
+static fm_status TG(42)( fm_smEventInfo *eventInfo, void *userInfo )
 {
     fm_status status = FM_OK;
     fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = RequestSchedBwLnkUp( eventInfo, userInfo );
+
+    status = StopAnWatchDogTimer( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = EnablePcieInterrupts( eventInfo, userInfo );
+
+    status = AnStop( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
+
+    status = DisablePhy( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = DisablePhyAutoneg( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = PowerDownLane( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = ReleaseSchedBwAdmDown( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = DisableLinkInterrupts( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
 ABORT:
     return status;
 
-}   /* end PcieStateMachineS0E20Callback */
+}   /* end TransitionGroup42 */
+
 
 /*****************************************************************************/
-/** PcieStateMachineS0E19Callback
- * \ingroup intPortStateMachine
+/* TransitionGroup43
  *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_PCIE_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_LINK_DOWN_IND'' occurs in state
- *                  ''FM10000_PORT_STATE_DISABLED''.
+ * \desc            Transition callback for port state machine.
  * 
  * \param[in]       eventInfo is a pointer to a caller-allocated area
  *                  containing the generic event descriptor.
@@ -10832,572 +5476,75 @@ ABORT:
  * \return          See return codes from the action callback functions.
  * 
  *****************************************************************************/
-static fm_status PcieStateMachineS0E19Callback( fm_smEventInfo *eventInfo, void *userInfo )
+static fm_status TG(43)( fm_smEventInfo *eventInfo, void *userInfo )
 {
     fm_status status = FM_OK;
     fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = EnablePcieInterrupts( eventInfo, userInfo );
+
+    status = DisablePhy( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
 
-}   /* end PcieStateMachineS0E19Callback */
-
-/*****************************************************************************/
-/** PcieStateMachineS0E2Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_PCIE_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_LOOPBACK_ON_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_DISABLED''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status PcieStateMachineS0E2Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = FlagError( eventInfo, userInfo );
+    status = DisablePhyAutoneg( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
 
-}   /* end PcieStateMachineS0E2Callback */
-
-/*****************************************************************************/
-/** PcieStateMachineS0E3Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_PCIE_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_LOOPBACK_OFF_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_DISABLED''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status PcieStateMachineS0E3Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = FlagError( eventInfo, userInfo );
+    status = PowerDownLane( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
 
-}   /* end PcieStateMachineS0E3Callback */
-
-/*****************************************************************************/
-/** PcieStateMachineS0E6Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_PCIE_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_ADMIN_PWRDOWN_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_DISABLED''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status PcieStateMachineS0E6Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = FlagError( eventInfo, userInfo );
+    status = ResetPortModuleState( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
 
-}   /* end PcieStateMachineS0E6Callback */
-
-/*****************************************************************************/
-/** PcieStateMachineS0E7Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_PCIE_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_REMOTE_FAULT_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_DISABLED''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status PcieStateMachineS0E7Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = FlagError( eventInfo, userInfo );
+    status = CheckAndPreReserveSchedBw( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
 
-}   /* end PcieStateMachineS0E7Callback */
-
-/*****************************************************************************/
-/** PcieStateMachineS0E8Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_PCIE_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_LOCAL_FAULT_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_DISABLED''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status PcieStateMachineS0E8Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = FlagError( eventInfo, userInfo );
+    status = LinkPortToLanes( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
 
-}   /* end PcieStateMachineS0E8Callback */
-
-/*****************************************************************************/
-/** PcieStateMachineS0E9Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_PCIE_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_BIST_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_DISABLED''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status PcieStateMachineS0E9Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = FlagError( eventInfo, userInfo );
+    status = WriteEplCfgA( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
 
-}   /* end PcieStateMachineS0E9Callback */
-
-/*****************************************************************************/
-/** PcieStateMachineS0E11Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_PCIE_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_REMOTE_FAULT_IND'' occurs in state
- *                  ''FM10000_PORT_STATE_DISABLED''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status PcieStateMachineS0E11Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = FlagError( eventInfo, userInfo );
+    status = WriteEplCfgB( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
 
-}   /* end PcieStateMachineS0E11Callback */
-
-/*****************************************************************************/
-/** PcieStateMachineS0E12Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_PCIE_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_LOCAL_FAULT_IND'' occurs in state
- *                  ''FM10000_PORT_STATE_DISABLED''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status PcieStateMachineS0E12Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = FlagError( eventInfo, userInfo );
+    status = WriteMac( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
 
-}   /* end PcieStateMachineS0E12Callback */
-
-/*****************************************************************************/
-/** PcieStateMachineS0E13Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_PCIE_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_LANE_DFE_COMPLETE_IND'' occurs in state
- *                  ''FM10000_PORT_STATE_DISABLED''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status PcieStateMachineS0E13Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = FlagError( eventInfo, userInfo );
+    status = InitPcs( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
 
-}   /* end PcieStateMachineS0E13Callback */
-
-/*****************************************************************************/
-/** PcieStateMachineS0E14Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_PCIE_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_LANE_DFE_FAILED_IND'' occurs in state
- *                  ''FM10000_PORT_STATE_DISABLED''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status PcieStateMachineS0E14Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = FlagError( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end PcieStateMachineS0E14Callback */
-
-/*****************************************************************************/
-/** PcieStateMachineS0E15Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_PCIE_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_LANE_KR_COMPLETE_IND'' occurs in state
- *                  ''FM10000_PORT_STATE_DISABLED''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status PcieStateMachineS0E15Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = FlagError( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end PcieStateMachineS0E15Callback */
-
-/*****************************************************************************/
-/** PcieStateMachineS0E16Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_PCIE_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_LANE_KR_FAILED_IND'' occurs in state
- *                  ''FM10000_PORT_STATE_DISABLED''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status PcieStateMachineS0E16Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = FlagError( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end PcieStateMachineS0E16Callback */
-
-/*****************************************************************************/
-/** PcieStateMachineS0E17Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_PCIE_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_LANE_READY_IND'' occurs in state
- *                  ''FM10000_PORT_STATE_DISABLED''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status PcieStateMachineS0E17Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = FlagError( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end PcieStateMachineS0E17Callback */
-
-/*****************************************************************************/
-/** PcieStateMachineS0E18Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_PCIE_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_LANE_NOT_READY_IND'' occurs in state
- *                  ''FM10000_PORT_STATE_DISABLED''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status PcieStateMachineS0E18Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = FlagError( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end PcieStateMachineS0E18Callback */
-
-/*****************************************************************************/
-/** PcieStateMachineS0E21Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_PCIE_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_DEFTIMER_EXP_IND'' occurs in state
- *                  ''FM10000_PORT_STATE_DISABLED''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status PcieStateMachineS0E21Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = FlagError( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end PcieStateMachineS0E21Callback */
-
-/*****************************************************************************/
-/** PcieStateMachineS10E0Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_PCIE_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_CONFIG_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_DOWN''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status PcieStateMachineS10E0Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = FlagError( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end PcieStateMachineS10E0Callback */
-
-/*****************************************************************************/
-/** PcieStateMachineS10E1Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_PCIE_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_DISABLE_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_DOWN''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status PcieStateMachineS10E1Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
     status = ConfigureLane( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ReconfigureScheduler( eventInfo, userInfo );
+
+    status = NotifyEthModeChange( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ReleaseSchedBwLnkDown( eventInfo, userInfo );
+
+    status = EnablePhy( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = NotifyApiPortDown( eventInfo, userInfo );
+
+    status = EnablePhyAutoneg( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = UnlinkPortFromLanes( eventInfo, userInfo );
+
+    status = RestoreDfe( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = DisablePcieInterrupts( eventInfo, userInfo );
+
+    status = ConfigureLoopback( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = DisablePepLoopback( eventInfo, userInfo );
+
+    status = PowerUpLane( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
+
+    status = ClearEplFifo( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
 ABORT:
     return status;
 
-}   /* end PcieStateMachineS10E1Callback */
+}   /* end TransitionGroup43 */
+
 
 /*****************************************************************************/
-/** PcieStateMachineS10E20Callback
- * \ingroup intPortStateMachine
+/* TransitionGroup44
  *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_PCIE_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_LINK_UP_IND'' occurs in state
- *                  ''FM10000_PORT_STATE_DOWN''.
+ * \desc            Transition callback for port state machine.
  * 
  * \param[in]       eventInfo is a pointer to a caller-allocated area
  *                  containing the generic event descriptor.
@@ -11408,48 +5555,1942 @@ ABORT:
  * \return          See return codes from the action callback functions.
  * 
  *****************************************************************************/
-static fm_status PcieStateMachineS10E20Callback( fm_smEventInfo *eventInfo, void *userInfo )
+static fm_status TG(44)( fm_smEventInfo *eventInfo, void *userInfo )
 {
     fm_status status = FM_OK;
     fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
+
+    status = AnStop( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = DisablePhy( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = DisablePhyAutoneg( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = PowerDownLane( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = ResetPortModuleState( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = CheckAndPreReserveSchedBw( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = LinkPortToLanes( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = WriteEplCfgA( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = WriteEplCfgB( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = WriteMac( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = InitPcs( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = ConfigureLane( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = NotifyEthModeChange( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = SetTxFaultModeToNormal( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = EnablePhy( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = EnablePhyAutoneg( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = RestoreDfe( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = ConfigureLoopback( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = PowerUpLane( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = ClearEplFifo( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+ABORT:
+    return status;
+
+}   /* end TransitionGroup44 */
+
+
+/*****************************************************************************/
+/* TransitionGroup45
+ *
+ * \desc            Transition callback for port state machine.
+ * 
+ * \param[in]       eventInfo is a pointer to a caller-allocated area
+ *                  containing the generic event descriptor.
+ * 
+ * \param[in]       userInfo is a pointer to a caller-allocated area containing
+ *                  purpose-specific event info.
+ * 
+ * \return          See return codes from the action callback functions.
+ * 
+ *****************************************************************************/
+static fm_status TG(45)( fm_smEventInfo *eventInfo, void *userInfo )
+{
+    fm_status status = FM_OK;
+    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
+
+    status = StopDeferredLpiTimer( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = ReleaseSchedBwLnkDown( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = NotifyApiPortDown( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+ABORT:
+    return status;
+
+}   /* end TransitionGroup45 */
+
+
+/*****************************************************************************/
+/* TransitionGroup46
+ *
+ * \desc            Transition callback for port state machine.
+ * 
+ * \param[in]       eventInfo is a pointer to a caller-allocated area
+ *                  containing the generic event descriptor.
+ * 
+ * \param[in]       userInfo is a pointer to a caller-allocated area containing
+ *                  purpose-specific event info.
+ * 
+ * \return          See return codes from the action callback functions.
+ * 
+ *****************************************************************************/
+static fm_status TG(46)( fm_smEventInfo *eventInfo, void *userInfo )
+{
+    fm_status status = FM_OK;
+    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
+
+    status = AnStop( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = AnStart( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = StartAnWatchDogTimer( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+ABORT:
+    return status;
+
+}   /* end TransitionGroup46 */
+
+
+/*****************************************************************************/
+/* TransitionGroup47
+ *
+ * \desc            Transition callback for port state machine.
+ * 
+ * \param[in]       eventInfo is a pointer to a caller-allocated area
+ *                  containing the generic event descriptor.
+ * 
+ * \param[in]       userInfo is a pointer to a caller-allocated area containing
+ *                  purpose-specific event info.
+ * 
+ * \return          See return codes from the action callback functions.
+ * 
+ *****************************************************************************/
+static fm_status TG(47)( fm_smEventInfo *eventInfo, void *userInfo )
+{
+    fm_status status = FM_OK;
+    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
+
+    status = AnStop( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = DisablePhy( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = DisablePhyAutoneg( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = PowerDownLane( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = ReleaseSchedBwAdmDown( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = DisableLinkInterrupts( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = ReconfigurePortForAn( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+ABORT:
+    return status;
+
+}   /* end TransitionGroup47 */
+
+
+/*****************************************************************************/
+/* TransitionGroup48
+ *
+ * \desc            Transition callback for port state machine.
+ * 
+ * \param[in]       eventInfo is a pointer to a caller-allocated area
+ *                  containing the generic event descriptor.
+ * 
+ * \param[in]       userInfo is a pointer to a caller-allocated area containing
+ *                  purpose-specific event info.
+ * 
+ * \return          See return codes from the action callback functions.
+ * 
+ *****************************************************************************/
+static fm_status TG(48)( fm_smEventInfo *eventInfo, void *userInfo )
+{
+    fm_status status = FM_OK;
+    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
+
+    status = CheckAndPreReserveSchedBw( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = AnStop( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = AnStart( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = StartAnWatchDogTimer( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+ABORT:
+    return status;
+
+}   /* end TransitionGroup48 */
+
+
+/*****************************************************************************/
+/* TransitionGroup49
+ *
+ * \desc            Transition callback for port state machine.
+ * 
+ * \param[in]       eventInfo is a pointer to a caller-allocated area
+ *                  containing the generic event descriptor.
+ * 
+ * \param[in]       userInfo is a pointer to a caller-allocated area containing
+ *                  purpose-specific event info.
+ * 
+ * \return          See return codes from the action callback functions.
+ * 
+ *****************************************************************************/
+static fm_status TG(49)( fm_smEventInfo *eventInfo, void *userInfo )
+{
+    fm_status status = FM_OK;
+    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
+
+    status = StopDeferredLpiTimer( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = AnStop( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = SetTxFaultMode( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = ReleaseSchedBwLnkDown( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = NotifyApiPortDown( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+ABORT:
+    return status;
+
+}   /* end TransitionGroup49 */
+
+
+/*****************************************************************************/
+/* TransitionGroup50
+ *
+ * \desc            Transition callback for port state machine.
+ * 
+ * \param[in]       eventInfo is a pointer to a caller-allocated area
+ *                  containing the generic event descriptor.
+ * 
+ * \param[in]       userInfo is a pointer to a caller-allocated area containing
+ *                  purpose-specific event info.
+ * 
+ * \return          See return codes from the action callback functions.
+ * 
+ *****************************************************************************/
+static fm_status TG(50)( fm_smEventInfo *eventInfo, void *userInfo )
+{
+    fm_status status = FM_OK;
+    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
+
+    status = StopAnWatchDogTimer( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = AnStop( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = DisablePhy( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = DisablePhyAutoneg( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = PowerDownLane( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = ResetPortModuleState( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = CheckAndPreReserveSchedBw( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = LinkPortToLanes( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = WriteEplCfgA( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = WriteEplCfgB( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = WriteMac( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = InitPcs( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = ConfigureLane( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = NotifyEthModeChange( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = EnablePhy( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = EnablePhyAutoneg( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = RestoreDfe( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = ConfigureLoopback( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = PowerUpLane( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = ClearEplFifo( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+ABORT:
+    return status;
+
+}   /* end TransitionGroup50 */
+
+
+/*****************************************************************************/
+/* TransitionGroup51
+ *
+ * \desc            Transition callback for port state machine.
+ * 
+ * \param[in]       eventInfo is a pointer to a caller-allocated area
+ *                  containing the generic event descriptor.
+ * 
+ * \param[in]       userInfo is a pointer to a caller-allocated area containing
+ *                  purpose-specific event info.
+ * 
+ * \return          See return codes from the action callback functions.
+ * 
+ *****************************************************************************/
+static fm_status TG(51)( fm_smEventInfo *eventInfo, void *userInfo )
+{
+    fm_status status = FM_OK;
+    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
+
+    status = StopDeferralTimer( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = DisablePhy( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = DisablePhyAutoneg( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = PowerDownLane( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = ResetPortModuleState( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = CheckAndPreReserveSchedBw( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = LinkPortToLanes( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = WriteEplCfgA( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = WriteEplCfgB( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = WriteMac( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = InitPcs( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = ConfigureLane( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = NotifyEthModeChange( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = EnablePhy( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = EnablePhyAutoneg( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = RestoreDfe( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = ConfigureLoopback( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = PowerUpLane( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = ClearEplFifo( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+ABORT:
+    return status;
+
+}   /* end TransitionGroup51 */
+
+
+/*****************************************************************************/
+/* TransitionGroup52
+ *
+ * \desc            Transition callback for port state machine.
+ * 
+ * \param[in]       eventInfo is a pointer to a caller-allocated area
+ *                  containing the generic event descriptor.
+ * 
+ * \param[in]       userInfo is a pointer to a caller-allocated area containing
+ *                  purpose-specific event info.
+ * 
+ * \return          See return codes from the action callback functions.
+ * 
+ *****************************************************************************/
+static fm_status TG(52)( fm_smEventInfo *eventInfo, void *userInfo )
+{
+    fm_status status = FM_OK;
+    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
+
+    status = SetTxFaultModeToNormal( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = EnableBistMode( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+ABORT:
+    return status;
+
+}   /* end TransitionGroup52 */
+
+
+/*****************************************************************************/
+/* TransitionGroup53
+ *
+ * \desc            Transition callback for port state machine.
+ * 
+ * \param[in]       eventInfo is a pointer to a caller-allocated area
+ *                  containing the generic event descriptor.
+ * 
+ * \param[in]       userInfo is a pointer to a caller-allocated area containing
+ *                  purpose-specific event info.
+ * 
+ * \return          See return codes from the action callback functions.
+ * 
+ *****************************************************************************/
+static fm_status TG(53)( fm_smEventInfo *eventInfo, void *userInfo )
+{
+    fm_status status = FM_OK;
+    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
+
+    status = StopDeferredLpiTimer( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = AnStop( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = DisablePhy( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = DisablePhyAutoneg( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = PowerDownLane( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = ResetPortModuleState( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = CheckAndPreReserveSchedBw( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = LinkPortToLanes( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = WriteEplCfgA( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = WriteEplCfgB( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = WriteMac( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = InitPcs( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = ConfigureLane( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = NotifyEthModeChange( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = ReleaseSchedBwLnkDown( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = NotifyApiPortDown( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = EnablePhy( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = EnablePhyAutoneg( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = RestoreDfe( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = ConfigureLoopback( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = PowerUpLane( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = ClearEplFifo( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+ABORT:
+    return status;
+
+}   /* end TransitionGroup53 */
+
+
+/*****************************************************************************/
+/* TransitionGroup54
+ *
+ * \desc            Transition callback for port state machine.
+ * 
+ * \param[in]       eventInfo is a pointer to a caller-allocated area
+ *                  containing the generic event descriptor.
+ * 
+ * \param[in]       userInfo is a pointer to a caller-allocated area containing
+ *                  purpose-specific event info.
+ * 
+ * \return          See return codes from the action callback functions.
+ * 
+ *****************************************************************************/
+static fm_status TG(54)( fm_smEventInfo *eventInfo, void *userInfo )
+{
+    fm_status status = FM_OK;
+    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
+
+    status = DisableBistMode( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = DisablePhy( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = DisablePhyAutoneg( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = PowerDownLane( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = ReleaseSchedBwAdmDown( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = DisableLinkInterrupts( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = ReconfigurePortForAn( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+ABORT:
+    return status;
+
+}   /* end TransitionGroup54 */
+
+
+/*****************************************************************************/
+/* TransitionGroup55
+ *
+ * \desc            Transition callback for port state machine.
+ * 
+ * \param[in]       eventInfo is a pointer to a caller-allocated area
+ *                  containing the generic event descriptor.
+ * 
+ * \param[in]       userInfo is a pointer to a caller-allocated area containing
+ *                  purpose-specific event info.
+ * 
+ * \return          See return codes from the action callback functions.
+ * 
+ *****************************************************************************/
+static fm_status TG(55)( fm_smEventInfo *eventInfo, void *userInfo )
+{
+    fm_status status = FM_OK;
+    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
+
+    status = AnStop( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = SetTxFaultMode( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+ABORT:
+    return status;
+
+}   /* end TransitionGroup55 */
+
+
+/*****************************************************************************/
+/* TransitionGroup56
+ *
+ * \desc            Transition callback for port state machine.
+ * 
+ * \param[in]       eventInfo is a pointer to a caller-allocated area
+ *                  containing the generic event descriptor.
+ * 
+ * \param[in]       userInfo is a pointer to a caller-allocated area containing
+ *                  purpose-specific event info.
+ * 
+ * \return          See return codes from the action callback functions.
+ * 
+ *****************************************************************************/
+static fm_status TG(56)( fm_smEventInfo *eventInfo, void *userInfo )
+{
+    fm_status status = FM_OK;
+    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
+
+    status = AnStop( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = SetTxFaultMode( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = ReleaseSchedBwLnkDown( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = NotifyApiPortDown( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+ABORT:
+    return status;
+
+}   /* end TransitionGroup56 */
+
+
+/*****************************************************************************/
+/* TransitionGroup57
+ *
+ * \desc            Transition callback for port state machine.
+ * 
+ * \param[in]       eventInfo is a pointer to a caller-allocated area
+ *                  containing the generic event descriptor.
+ * 
+ * \param[in]       userInfo is a pointer to a caller-allocated area containing
+ *                  purpose-specific event info.
+ * 
+ * \return          See return codes from the action callback functions.
+ * 
+ *****************************************************************************/
+static fm_status TG(57)( fm_smEventInfo *eventInfo, void *userInfo )
+{
+    fm_status status = FM_OK;
+    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
+
+    status = AnStop( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = DisablePhy( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = DisablePhyAutoneg( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = PowerDownLane( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = ResetPortModuleState( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = WriteEplCfgA( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = WriteEplCfgB( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = WriteMac( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = InitPcs( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = ConfigureLane( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = NotifyEthModeChange( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = ReconfigureScheduler( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = UnlinkPortFromLanes( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+ABORT:
+    return status;
+
+}   /* end TransitionGroup57 */
+
+
+/*****************************************************************************/
+/* TransitionGroup58
+ *
+ * \desc            Transition callback for port state machine.
+ * 
+ * \param[in]       eventInfo is a pointer to a caller-allocated area
+ *                  containing the generic event descriptor.
+ * 
+ * \param[in]       userInfo is a pointer to a caller-allocated area containing
+ *                  purpose-specific event info.
+ * 
+ * \return          See return codes from the action callback functions.
+ * 
+ *****************************************************************************/
+static fm_status TG(58)( fm_smEventInfo *eventInfo, void *userInfo )
+{
+    fm_status status = FM_OK;
+    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
+
+    status = SetTxFaultModeToNormal( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = EnablePhy( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = EnablePhyAutoneg( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = RestoreDfe( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = ConfigureLoopback( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = RequestSchedBwAdmUpAn( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = PowerUpLane( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = ClearEplFifo( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = EnableLinkInterrupts( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+ABORT:
+    return status;
+
+}   /* end TransitionGroup58 */
+
+
+/*****************************************************************************/
+/* TransitionGroup59
+ *
+ * \desc            Transition callback for port state machine.
+ * 
+ * \param[in]       eventInfo is a pointer to a caller-allocated area
+ *                  containing the generic event descriptor.
+ * 
+ * \param[in]       userInfo is a pointer to a caller-allocated area containing
+ *                  purpose-specific event info.
+ * 
+ * \return          See return codes from the action callback functions.
+ * 
+ *****************************************************************************/
+static fm_status TG(59)( fm_smEventInfo *eventInfo, void *userInfo )
+{
+    fm_status status = FM_OK;
+    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
+
+    status = StopAnWatchDogTimer( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = AnStop( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = DisablePhy( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = DisablePhyAutoneg( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = PowerDownLane( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = ResetPortModuleState( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = WriteEplCfgA( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = WriteEplCfgB( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = WriteMac( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = InitPcs( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = ConfigureLane( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = NotifyEthModeChange( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = ReconfigureScheduler( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = UnlinkPortFromLanes( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+ABORT:
+    return status;
+
+}   /* end TransitionGroup59 */
+
+
+/*****************************************************************************/
+/* TransitionGroup60
+ *
+ * \desc            Transition callback for port state machine.
+ * 
+ * \param[in]       eventInfo is a pointer to a caller-allocated area
+ *                  containing the generic event descriptor.
+ * 
+ * \param[in]       userInfo is a pointer to a caller-allocated area containing
+ *                  purpose-specific event info.
+ * 
+ * \return          See return codes from the action callback functions.
+ * 
+ *****************************************************************************/
+static fm_status TG(60)( fm_smEventInfo *eventInfo, void *userInfo )
+{
+    fm_status status = FM_OK;
+    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
+
+    status = StopAnWatchDogTimer( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = AnStop( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+ABORT:
+    return status;
+
+}   /* end TransitionGroup60 */
+
+
+/*****************************************************************************/
+/* TransitionGroup61
+ *
+ * \desc            Transition callback for port state machine.
+ * 
+ * \param[in]       eventInfo is a pointer to a caller-allocated area
+ *                  containing the generic event descriptor.
+ * 
+ * \param[in]       userInfo is a pointer to a caller-allocated area containing
+ *                  purpose-specific event info.
+ * 
+ * \return          See return codes from the action callback functions.
+ * 
+ *****************************************************************************/
+static fm_status TG(61)( fm_smEventInfo *eventInfo, void *userInfo )
+{
+    fm_status status = FM_OK;
+    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
+
+    status = DisablePhy( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = DisablePhyAutoneg( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = PowerDownLane( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = ReleaseSchedBwAdmDown( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = DisableLinkInterrupts( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = ReconfigurePortForAn( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+ABORT:
+    return status;
+
+}   /* end TransitionGroup61 */
+
+
+/*****************************************************************************/
+/* TransitionGroup62
+ *
+ * \desc            Transition callback for port state machine.
+ * 
+ * \param[in]       eventInfo is a pointer to a caller-allocated area
+ *                  containing the generic event descriptor.
+ * 
+ * \param[in]       userInfo is a pointer to a caller-allocated area containing
+ *                  purpose-specific event info.
+ * 
+ * \return          See return codes from the action callback functions.
+ * 
+ *****************************************************************************/
+static fm_status TG(62)( fm_smEventInfo *eventInfo, void *userInfo )
+{
+    fm_status status = FM_OK;
+    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
+
+    status = DisableBistMode( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = AnStop( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = DisablePhy( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = DisablePhyAutoneg( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = PowerDownLane( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = ResetPortModuleState( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = WriteEplCfgA( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = WriteEplCfgB( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = WriteMac( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = InitPcs( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = ConfigureLane( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = NotifyEthModeChange( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = ReconfigureScheduler( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = UnlinkPortFromLanes( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+ABORT:
+    return status;
+
+}   /* end TransitionGroup62 */
+
+
+/*****************************************************************************/
+/* TransitionGroup63
+ *
+ * \desc            Transition callback for port state machine.
+ * 
+ * \param[in]       eventInfo is a pointer to a caller-allocated area
+ *                  containing the generic event descriptor.
+ * 
+ * \param[in]       userInfo is a pointer to a caller-allocated area containing
+ *                  purpose-specific event info.
+ * 
+ * \return          See return codes from the action callback functions.
+ * 
+ *****************************************************************************/
+static fm_status TG(63)( fm_smEventInfo *eventInfo, void *userInfo )
+{
+    fm_status status = FM_OK;
+    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
+
+    status = EnableDrainMode( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = StopDeferredLpiTimer( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = AnStop( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = DisablePhy( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = DisablePhyAutoneg( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = PowerDownLane( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = ResetPortModuleState( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = WriteEplCfgA( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = WriteEplCfgB( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = WriteMac( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = InitPcs( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = ConfigureLane( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = NotifyEthModeChange( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = ReconfigureScheduler( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = ReleaseSchedBwLnkDown( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = NotifyApiPortDown( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = DisableDrainMode( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = UnlinkPortFromLanes( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+ABORT:
+    return status;
+
+}   /* end TransitionGroup63 */
+
+
+/*****************************************************************************/
+/* TransitionGroup64
+ *
+ * \desc            Transition callback for port state machine.
+ * 
+ * \param[in]       eventInfo is a pointer to a caller-allocated area
+ *                  containing the generic event descriptor.
+ * 
+ * \param[in]       userInfo is a pointer to a caller-allocated area containing
+ *                  purpose-specific event info.
+ * 
+ * \return          See return codes from the action callback functions.
+ * 
+ *****************************************************************************/
+static fm_status TG(64)( fm_smEventInfo *eventInfo, void *userInfo )
+{
+    fm_status status = FM_OK;
+    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
+
+    status = AnStop( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+ABORT:
+    return status;
+
+}   /* end TransitionGroup64 */
+
+
+/*****************************************************************************/
+/* TransitionGroup65
+ *
+ * \desc            Transition callback for port state machine.
+ * 
+ * \param[in]       eventInfo is a pointer to a caller-allocated area
+ *                  containing the generic event descriptor.
+ * 
+ * \param[in]       userInfo is a pointer to a caller-allocated area containing
+ *                  purpose-specific event info.
+ * 
+ * \return          See return codes from the action callback functions.
+ * 
+ *****************************************************************************/
+static fm_status TG(65)( fm_smEventInfo *eventInfo, void *userInfo )
+{
+    fm_status status = FM_OK;
+    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
+
+    status = AnStop( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = EnableBistMode( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+ABORT:
+    return status;
+
+}   /* end TransitionGroup65 */
+
+
+/*****************************************************************************/
+/* TransitionGroup66
+ *
+ * \desc            Transition callback for port state machine.
+ * 
+ * \param[in]       eventInfo is a pointer to a caller-allocated area
+ *                  containing the generic event descriptor.
+ * 
+ * \param[in]       userInfo is a pointer to a caller-allocated area containing
+ *                  purpose-specific event info.
+ * 
+ * \return          See return codes from the action callback functions.
+ * 
+ *****************************************************************************/
+static fm_status TG(66)( fm_smEventInfo *eventInfo, void *userInfo )
+{
+    fm_status status = FM_OK;
+    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
+
+    status = StopDeferralTimer( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = DisablePhy( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = DisablePhyAutoneg( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = PowerDownLane( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = ResetPortModuleState( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = WriteEplCfgA( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = WriteEplCfgB( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = WriteMac( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = InitPcs( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = ConfigureLane( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = NotifyEthModeChange( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = ReconfigureScheduler( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = UnlinkPortFromLanes( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+ABORT:
+    return status;
+
+}   /* end TransitionGroup66 */
+
+
+/*****************************************************************************/
+/* TransitionGroup67
+ *
+ * \desc            Transition callback for port state machine.
+ * 
+ * \param[in]       eventInfo is a pointer to a caller-allocated area
+ *                  containing the generic event descriptor.
+ * 
+ * \param[in]       userInfo is a pointer to a caller-allocated area containing
+ *                  purpose-specific event info.
+ * 
+ * \return          See return codes from the action callback functions.
+ * 
+ *****************************************************************************/
+static fm_status TG(67)( fm_smEventInfo *eventInfo, void *userInfo )
+{
+    fm_status status = FM_OK;
+    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
+
+    status = StopDeferralTimer( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = DisablePhy( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = DisablePhyAutoneg( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = PowerDownLane( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = ReleaseSchedBwAdmDown( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = DisableLinkInterrupts( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+ABORT:
+    return status;
+
+}   /* end TransitionGroup67 */
+
+
+/*****************************************************************************/
+/* TransitionGroup68
+ *
+ * \desc            Transition callback for port state machine.
+ * 
+ * \param[in]       eventInfo is a pointer to a caller-allocated area
+ *                  containing the generic event descriptor.
+ * 
+ * \param[in]       userInfo is a pointer to a caller-allocated area containing
+ *                  purpose-specific event info.
+ * 
+ * \return          See return codes from the action callback functions.
+ * 
+ *****************************************************************************/
+static fm_status TG(68)( fm_smEventInfo *eventInfo, void *userInfo )
+{
+    fm_status status = FM_OK;
+    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
+
+    status = DisableBistMode( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = EnableBistMode( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+ABORT:
+    return status;
+
+}   /* end TransitionGroup68 */
+
+
+/*****************************************************************************/
+/* TransitionGroup69
+ *
+ * \desc            Transition callback for port state machine.
+ * 
+ * \param[in]       eventInfo is a pointer to a caller-allocated area
+ *                  containing the generic event descriptor.
+ * 
+ * \param[in]       userInfo is a pointer to a caller-allocated area containing
+ *                  purpose-specific event info.
+ * 
+ * \return          See return codes from the action callback functions.
+ * 
+ *****************************************************************************/
+static fm_status TG(69)( fm_smEventInfo *eventInfo, void *userInfo )
+{
+    fm_status status = FM_OK;
+    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
+
+    status = AnStop( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = DisablePhy( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = DisablePhyAutoneg( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = PowerDownLane( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = ResetPortModuleState( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = CheckAndPreReserveSchedBw( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = LinkPortToLanes( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = WriteEplCfgA( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = WriteEplCfgB( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = WriteMac( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = InitPcs( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = ConfigureLane( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = NotifyEthModeChange( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = EnablePhy( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = EnablePhyAutoneg( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = RestoreDfe( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = ConfigureLoopback( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = PowerUpLane( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = ClearEplFifo( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+ABORT:
+    return status;
+
+}   /* end TransitionGroup69 */
+
+
+/*****************************************************************************/
+/* TransitionGroup70
+ *
+ * \desc            Transition callback for port state machine.
+ * 
+ * \param[in]       eventInfo is a pointer to a caller-allocated area
+ *                  containing the generic event descriptor.
+ * 
+ * \param[in]       userInfo is a pointer to a caller-allocated area containing
+ *                  purpose-specific event info.
+ * 
+ * \return          See return codes from the action callback functions.
+ * 
+ *****************************************************************************/
+static fm_status TG(70)( fm_smEventInfo *eventInfo, void *userInfo )
+{
+    fm_status status = FM_OK;
+    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
+
+    status = DisableBistMode( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = AnStop( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = DisablePhy( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = DisablePhyAutoneg( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = PowerDownLane( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = ResetPortModuleState( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = CheckAndPreReserveSchedBw( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = LinkPortToLanes( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = WriteEplCfgA( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = WriteEplCfgB( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = WriteMac( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = InitPcs( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = ConfigureLane( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = NotifyEthModeChange( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = EnablePhy( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = EnablePhyAutoneg( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = RestoreDfe( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = ConfigureLoopback( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = PowerUpLane( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = ClearEplFifo( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+ABORT:
+    return status;
+
+}   /* end TransitionGroup70 */
+
+
+/*****************************************************************************/
+/* TransitionGroup71
+ *
+ * \desc            Transition callback for port state machine.
+ * 
+ * \param[in]       eventInfo is a pointer to a caller-allocated area
+ *                  containing the generic event descriptor.
+ * 
+ * \param[in]       userInfo is a pointer to a caller-allocated area containing
+ *                  purpose-specific event info.
+ * 
+ * \return          See return codes from the action callback functions.
+ * 
+ *****************************************************************************/
+static fm_status TG(71)( fm_smEventInfo *eventInfo, void *userInfo )
+{
+    fm_status status = FM_OK;
+    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
+
+    status = StopDeferredLpiTimer( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = AnStop( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = DisablePhy( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = DisablePhyAutoneg( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = PowerDownLane( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = ReleaseSchedBwAdmDown( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = ReleaseSchedBwLnkDown( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = NotifyApiPortDown( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = DisableLinkInterrupts( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = ReconfigurePortForAn( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+ABORT:
+    return status;
+
+}   /* end TransitionGroup71 */
+
+
+/*****************************************************************************/
+/* TransitionGroup72
+ *
+ * \desc            Transition callback for port state machine.
+ * 
+ * \param[in]       eventInfo is a pointer to a caller-allocated area
+ *                  containing the generic event descriptor.
+ * 
+ * \param[in]       userInfo is a pointer to a caller-allocated area containing
+ *                  purpose-specific event info.
+ * 
+ * \return          See return codes from the action callback functions.
+ * 
+ *****************************************************************************/
+static fm_status TG(72)( fm_smEventInfo *eventInfo, void *userInfo )
+{
+    fm_status status = FM_OK;
+    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
+
+    status = ResetPortModuleState( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = CheckAndPreReserveSchedBw( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = LinkPortToLanes( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = WriteEplCfgA( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = WriteEplCfgB( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = WriteMac( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = InitPcs( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = ConfigureLane( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = NotifyEthModeChange( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = SetTxFaultModeToNormal( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = EnablePhy( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = EnablePhyAutoneg( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = RestoreDfe( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = ConfigureLoopback( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = PowerUpLane( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = ClearEplFifo( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = EnableLinkInterrupts( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+ABORT:
+    return status;
+
+}   /* end TransitionGroup72 */
+
+
+/*****************************************************************************/
+/* TransitionGroup73
+ *
+ * \desc            Transition callback for port state machine.
+ * 
+ * \param[in]       eventInfo is a pointer to a caller-allocated area
+ *                  containing the generic event descriptor.
+ * 
+ * \param[in]       userInfo is a pointer to a caller-allocated area containing
+ *                  purpose-specific event info.
+ * 
+ * \return          See return codes from the action callback functions.
+ * 
+ *****************************************************************************/
+static fm_status TG(73)( fm_smEventInfo *eventInfo, void *userInfo )
+{
+    fm_status status = FM_OK;
+    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
+
+    status = DisablePhy( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = DisablePhyAutoneg( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = PowerDownLane( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = ResetPortModuleState( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = WriteEplCfgA( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = WriteEplCfgB( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = WriteMac( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = InitPcs( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = ConfigureLane( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = NotifyEthModeChange( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = ReconfigureScheduler( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = UnlinkPortFromLanes( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+ABORT:
+    return status;
+
+}   /* end TransitionGroup73 */
+
+
+/*****************************************************************************/
+/* TransitionGroup74
+ *
+ * \desc            Transition callback for port state machine.
+ * 
+ * \param[in]       eventInfo is a pointer to a caller-allocated area
+ *                  containing the generic event descriptor.
+ * 
+ * \param[in]       userInfo is a pointer to a caller-allocated area containing
+ *                  purpose-specific event info.
+ * 
+ * \return          See return codes from the action callback functions.
+ * 
+ *****************************************************************************/
+static fm_status TG(74)( fm_smEventInfo *eventInfo, void *userInfo )
+{
+    fm_status status = FM_OK;
+    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
+
+    status = ResetPortModuleState( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = CheckAndPreReserveSchedBw( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = LinkPortToLanes( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = WriteEplCfgA( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = WriteEplCfgB( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = WriteMac( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = InitPcs( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = ConfigureLane( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = NotifyEthModeChange( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+ABORT:
+    return status;
+
+}   /* end TransitionGroup74 */
+
+
+/*****************************************************************************/
+/* TransitionGroup75
+ *
+ * \desc            Transition callback for port state machine.
+ * 
+ * \param[in]       eventInfo is a pointer to a caller-allocated area
+ *                  containing the generic event descriptor.
+ * 
+ * \param[in]       userInfo is a pointer to a caller-allocated area containing
+ *                  purpose-specific event info.
+ * 
+ * \return          See return codes from the action callback functions.
+ * 
+ *****************************************************************************/
+static fm_status TG(75)( fm_smEventInfo *eventInfo, void *userInfo )
+{
+    fm_status status = FM_OK;
+    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
+
+    status = StopDeferredLpiTimer( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = AnStop( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = EnableBistMode( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = ReleaseSchedBwLnkDown( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = NotifyApiPortDown( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+ABORT:
+    return status;
+
+}   /* end TransitionGroup75 */
+
+
+/*****************************************************************************/
+/* TransitionGroup76
+ *
+ * \desc            Transition callback for port state machine.
+ * 
+ * \param[in]       eventInfo is a pointer to a caller-allocated area
+ *                  containing the generic event descriptor.
+ * 
+ * \param[in]       userInfo is a pointer to a caller-allocated area containing
+ *                  purpose-specific event info.
+ * 
+ * \return          See return codes from the action callback functions.
+ * 
+ *****************************************************************************/
+static fm_status TG(76)( fm_smEventInfo *eventInfo, void *userInfo )
+{
+    fm_status status = FM_OK;
+    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
+
+    status = EnablePcieInterrupts( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+ABORT:
+    return status;
+
+}   /* end TransitionGroup76 */
+
+
+/*****************************************************************************/
+/* TransitionGroup77
+ *
+ * \desc            Transition callback for port state machine.
+ * 
+ * \param[in]       eventInfo is a pointer to a caller-allocated area
+ *                  containing the generic event descriptor.
+ * 
+ * \param[in]       userInfo is a pointer to a caller-allocated area containing
+ *                  purpose-specific event info.
+ * 
+ * \return          See return codes from the action callback functions.
+ * 
+ *****************************************************************************/
+static fm_status TG(77)( fm_smEventInfo *eventInfo, void *userInfo )
+{
+    fm_status status = FM_OK;
+    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
+
+    status = DisablePepLoopback( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+ABORT:
+    return status;
+
+}   /* end TransitionGroup77 */
+
+
+/*****************************************************************************/
+/* TransitionGroup78
+ *
+ * \desc            Transition callback for port state machine.
+ * 
+ * \param[in]       eventInfo is a pointer to a caller-allocated area
+ *                  containing the generic event descriptor.
+ * 
+ * \param[in]       userInfo is a pointer to a caller-allocated area containing
+ *                  purpose-specific event info.
+ * 
+ * \return          See return codes from the action callback functions.
+ * 
+ *****************************************************************************/
+static fm_status TG(78)( fm_smEventInfo *eventInfo, void *userInfo )
+{
+    fm_status status = FM_OK;
+    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
+
+    status = UpdatePcieModeAndSpeed( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = UpdatePcieLaneReversal( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = EnablePcieInterrupts( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+ABORT:
+    return status;
+
+}   /* end TransitionGroup78 */
+
+
+/*****************************************************************************/
+/* TransitionGroup79
+ *
+ * \desc            Transition callback for port state machine.
+ * 
+ * \param[in]       eventInfo is a pointer to a caller-allocated area
+ *                  containing the generic event descriptor.
+ * 
+ * \param[in]       userInfo is a pointer to a caller-allocated area containing
+ *                  purpose-specific event info.
+ * 
+ * \return          See return codes from the action callback functions.
+ * 
+ *****************************************************************************/
+static fm_status TG(79)( fm_smEventInfo *eventInfo, void *userInfo )
+{
+    fm_status status = FM_OK;
+    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
+
+    status = EnablePepLoopback( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = RequestSchedBwLnkUp( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = NotifyApiPortUp( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+ABORT:
+    return status;
+
+}   /* end TransitionGroup79 */
+
+
+/*****************************************************************************/
+/* TransitionGroup80
+ *
+ * \desc            Transition callback for port state machine.
+ * 
+ * \param[in]       eventInfo is a pointer to a caller-allocated area
+ *                  containing the generic event descriptor.
+ * 
+ * \param[in]       userInfo is a pointer to a caller-allocated area containing
+ *                  purpose-specific event info.
+ * 
+ * \return          See return codes from the action callback functions.
+ * 
+ *****************************************************************************/
+static fm_status TG(80)( fm_smEventInfo *eventInfo, void *userInfo )
+{
+    fm_status status = FM_OK;
+    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
+
+    status = ConfigureLane( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = ReconfigureScheduler( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = ReleaseSchedBwLnkDown( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = NotifyApiPortDown( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = UnlinkPortFromLanes( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = DisablePcieInterrupts( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = DisablePepLoopback( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+ABORT:
+    return status;
+
+}   /* end TransitionGroup80 */
+
+
+/*****************************************************************************/
+/* TransitionGroup81
+ *
+ * \desc            Transition callback for port state machine.
+ * 
+ * \param[in]       eventInfo is a pointer to a caller-allocated area
+ *                  containing the generic event descriptor.
+ * 
+ * \param[in]       userInfo is a pointer to a caller-allocated area containing
+ *                  purpose-specific event info.
+ * 
+ * \return          See return codes from the action callback functions.
+ * 
+ *****************************************************************************/
+static fm_status TG(81)( fm_smEventInfo *eventInfo, void *userInfo )
+{
+    fm_status status = FM_OK;
+    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
+
     status = InitPepMailbox( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
+
     status = DisablePepLoopback( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
+
     status = UpdatePcieModeAndSpeed( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = UpdatePcieLanePolarity( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
+
     status = UpdatePcieLaneReversal( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
+
     status = RequestSchedBwLnkUp( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
+
     status = NotifyApiPortUp( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
+
     status = EnablePcieInterrupts( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
+
 ABORT:
     return status;
 
-}   /* end PcieStateMachineS10E20Callback */
+}   /* end TransitionGroup81 */
+
 
 /*****************************************************************************/
-/** PcieStateMachineS10E19Callback
- * \ingroup intPortStateMachine
+/* TransitionGroup82
  *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_PCIE_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_LINK_DOWN_IND'' occurs in state
- *                  ''FM10000_PORT_STATE_DOWN''.
+ * \desc            Transition callback for port state machine.
  * 
  * \param[in]       eventInfo is a pointer to a caller-allocated area
  *                  containing the generic event descriptor.
@@ -11460,748 +7501,55 @@ ABORT:
  * \return          See return codes from the action callback functions.
  * 
  *****************************************************************************/
-static fm_status PcieStateMachineS10E19Callback( fm_smEventInfo *eventInfo, void *userInfo )
+static fm_status TG(82)( fm_smEventInfo *eventInfo, void *userInfo )
 {
     fm_status status = FM_OK;
     fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = EnablePcieInterrupts( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
 
-}   /* end PcieStateMachineS10E19Callback */
-
-/*****************************************************************************/
-/** PcieStateMachineS10E2Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_PCIE_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_LOOPBACK_ON_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_DOWN''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status PcieStateMachineS10E2Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = FlagError( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end PcieStateMachineS10E2Callback */
-
-/*****************************************************************************/
-/** PcieStateMachineS10E3Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_PCIE_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_LOOPBACK_OFF_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_DOWN''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status PcieStateMachineS10E3Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = FlagError( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end PcieStateMachineS10E3Callback */
-
-/*****************************************************************************/
-/** PcieStateMachineS10E4Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_PCIE_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_ADMIN_UP_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_DOWN''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status PcieStateMachineS10E4Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = DisableDrainMode( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = NotifyApiPortUp( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end PcieStateMachineS10E4Callback */
-
-/*****************************************************************************/
-/** PcieStateMachineS10E5Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_PCIE_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_ADMIN_DOWN_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_DOWN''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status PcieStateMachineS10E5Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = EnableDrainMode( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = NotifyApiPortDown( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end PcieStateMachineS10E5Callback */
-
-/*****************************************************************************/
-/** PcieStateMachineS10E6Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_PCIE_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_ADMIN_PWRDOWN_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_DOWN''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status PcieStateMachineS10E6Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = FlagError( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end PcieStateMachineS10E6Callback */
-
-/*****************************************************************************/
-/** PcieStateMachineS10E7Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_PCIE_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_REMOTE_FAULT_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_DOWN''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status PcieStateMachineS10E7Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = FlagError( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end PcieStateMachineS10E7Callback */
-
-/*****************************************************************************/
-/** PcieStateMachineS10E8Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_PCIE_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_LOCAL_FAULT_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_DOWN''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status PcieStateMachineS10E8Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = FlagError( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end PcieStateMachineS10E8Callback */
-
-/*****************************************************************************/
-/** PcieStateMachineS10E9Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_PCIE_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_BIST_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_DOWN''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status PcieStateMachineS10E9Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = FlagError( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end PcieStateMachineS10E9Callback */
-
-/*****************************************************************************/
-/** PcieStateMachineS10E11Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_PCIE_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_REMOTE_FAULT_IND'' occurs in state
- *                  ''FM10000_PORT_STATE_DOWN''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status PcieStateMachineS10E11Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = FlagError( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end PcieStateMachineS10E11Callback */
-
-/*****************************************************************************/
-/** PcieStateMachineS10E12Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_PCIE_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_LOCAL_FAULT_IND'' occurs in state
- *                  ''FM10000_PORT_STATE_DOWN''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status PcieStateMachineS10E12Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = FlagError( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end PcieStateMachineS10E12Callback */
-
-/*****************************************************************************/
-/** PcieStateMachineS10E13Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_PCIE_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_LANE_DFE_COMPLETE_IND'' occurs in state
- *                  ''FM10000_PORT_STATE_DOWN''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status PcieStateMachineS10E13Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = FlagError( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end PcieStateMachineS10E13Callback */
-
-/*****************************************************************************/
-/** PcieStateMachineS10E14Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_PCIE_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_LANE_DFE_FAILED_IND'' occurs in state
- *                  ''FM10000_PORT_STATE_DOWN''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status PcieStateMachineS10E14Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = FlagError( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end PcieStateMachineS10E14Callback */
-
-/*****************************************************************************/
-/** PcieStateMachineS10E15Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_PCIE_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_LANE_KR_COMPLETE_IND'' occurs in state
- *                  ''FM10000_PORT_STATE_DOWN''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status PcieStateMachineS10E15Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = FlagError( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end PcieStateMachineS10E15Callback */
-
-/*****************************************************************************/
-/** PcieStateMachineS10E16Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_PCIE_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_LANE_KR_FAILED_IND'' occurs in state
- *                  ''FM10000_PORT_STATE_DOWN''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status PcieStateMachineS10E16Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = FlagError( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end PcieStateMachineS10E16Callback */
-
-/*****************************************************************************/
-/** PcieStateMachineS10E17Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_PCIE_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_LANE_READY_IND'' occurs in state
- *                  ''FM10000_PORT_STATE_DOWN''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status PcieStateMachineS10E17Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = FlagError( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end PcieStateMachineS10E17Callback */
-
-/*****************************************************************************/
-/** PcieStateMachineS10E18Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_PCIE_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_LANE_NOT_READY_IND'' occurs in state
- *                  ''FM10000_PORT_STATE_DOWN''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status PcieStateMachineS10E18Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = FlagError( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end PcieStateMachineS10E18Callback */
-
-/*****************************************************************************/
-/** PcieStateMachineS10E21Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_PCIE_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_DEFTIMER_EXP_IND'' occurs in state
- *                  ''FM10000_PORT_STATE_DOWN''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status PcieStateMachineS10E21Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = FlagError( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end PcieStateMachineS10E21Callback */
-
-/*****************************************************************************/
-/** PcieStateMachineS10E27Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_PCIE_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_FABRIC_LOOPBACK_ON_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_DOWN''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status PcieStateMachineS10E27Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
     status = EnablePepLoopback( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
+
+ABORT:
+    return status;
+
+}   /* end TransitionGroup82 */
+
+
+/*****************************************************************************/
+/* TransitionGroup83
+ *
+ * \desc            Transition callback for port state machine.
+ * 
+ * \param[in]       eventInfo is a pointer to a caller-allocated area
+ *                  containing the generic event descriptor.
+ * 
+ * \param[in]       userInfo is a pointer to a caller-allocated area containing
+ *                  purpose-specific event info.
+ * 
+ * \return          See return codes from the action callback functions.
+ * 
+ *****************************************************************************/
+static fm_status TG(83)( fm_smEventInfo *eventInfo, void *userInfo )
+{
+    fm_status status = FM_OK;
+    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
+
     status = RequestSchedBwLnkUp( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = NotifyApiPortUp( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
 
-}   /* end PcieStateMachineS10E27Callback */
-
-/*****************************************************************************/
-/** PcieStateMachineS10E28Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_PCIE_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_FABRIC_LOOPBACK_OFF_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_DOWN''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status PcieStateMachineS10E28Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = DisablePepLoopback( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end PcieStateMachineS10E28Callback */
-
-/*****************************************************************************/
-/** PcieStateMachineS11E0Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_PCIE_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_CONFIG_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_UP''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status PcieStateMachineS11E0Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = FlagError( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end PcieStateMachineS11E0Callback */
-
-/*****************************************************************************/
-/** PcieStateMachineS11E1Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_PCIE_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_DISABLE_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_UP''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status PcieStateMachineS11E1Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = ConfigureLane( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ReconfigureScheduler( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ReleaseSchedBwLnkDown( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = NotifyApiPortDown( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = UnlinkPortFromLanes( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = DisablePcieInterrupts( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = DisablePepLoopback( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end PcieStateMachineS11E1Callback */
-
-/*****************************************************************************/
-/** PcieStateMachineS11E20Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_PCIE_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_LINK_UP_IND'' occurs in state
- *                  ''FM10000_PORT_STATE_UP''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status PcieStateMachineS11E20Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = UpdatePcieModeAndSpeed( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = UpdatePcieLanePolarity( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = UpdatePcieLaneReversal( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
     status = EnablePcieInterrupts( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
+
 ABORT:
     return status;
 
-}   /* end PcieStateMachineS11E20Callback */
+}   /* end TransitionGroup83 */
+
 
 /*****************************************************************************/
-/** PcieStateMachineS11E19Callback
- * \ingroup intPortStateMachine
+/* TransitionGroup84
  *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_PCIE_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_LINK_DOWN_IND'' occurs in state
- *                  ''FM10000_PORT_STATE_UP''.
+ * \desc            Transition callback for port state machine.
  * 
  * \param[in]       eventInfo is a pointer to a caller-allocated area
  *                  containing the generic event descriptor.
@@ -12212,172 +7560,27 @@ ABORT:
  * \return          See return codes from the action callback functions.
  * 
  *****************************************************************************/
-static fm_status PcieStateMachineS11E19Callback( fm_smEventInfo *eventInfo, void *userInfo )
+static fm_status TG(84)( fm_smEventInfo *eventInfo, void *userInfo )
 {
     fm_status status = FM_OK;
     fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = UpdatePcieModeAndSpeed( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = UpdatePcieLanePolarity( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = UpdatePcieLaneReversal( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = ReleaseSchedBwLnkDown( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = NotifyApiPortDown( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = EnablePcieInterrupts( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
 
-}   /* end PcieStateMachineS11E19Callback */
-
-/*****************************************************************************/
-/** PcieStateMachineS11E2Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_PCIE_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_LOOPBACK_ON_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_UP''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status PcieStateMachineS11E2Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = FlagError( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end PcieStateMachineS11E2Callback */
-
-/*****************************************************************************/
-/** PcieStateMachineS11E3Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_PCIE_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_LOOPBACK_OFF_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_UP''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status PcieStateMachineS11E3Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = FlagError( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end PcieStateMachineS11E3Callback */
-
-/*****************************************************************************/
-/** PcieStateMachineS11E4Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_PCIE_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_ADMIN_UP_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_UP''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status PcieStateMachineS11E4Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = DisableDrainMode( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-    status = NotifyApiPortUp( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end PcieStateMachineS11E4Callback */
-
-/*****************************************************************************/
-/** PcieStateMachineS11E5Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_PCIE_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_ADMIN_DOWN_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_UP''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status PcieStateMachineS11E5Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
     status = EnableDrainMode( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
+
     status = NotifyApiPortDown( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
+
 ABORT:
     return status;
 
-}   /* end PcieStateMachineS11E5Callback */
+}   /* end TransitionGroup84 */
+
 
 /*****************************************************************************/
-/** PcieStateMachineS11E6Callback
- * \ingroup intPortStateMachine
+/* TransitionGroup85
  *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_PCIE_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_ADMIN_PWRDOWN_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_UP''.
+ * \desc            Transition callback for port state machine.
  * 
  * \param[in]       eventInfo is a pointer to a caller-allocated area
  *                  containing the generic event descriptor.
@@ -12388,27 +7591,27 @@ ABORT:
  * \return          See return codes from the action callback functions.
  * 
  *****************************************************************************/
-static fm_status PcieStateMachineS11E6Callback( fm_smEventInfo *eventInfo, void *userInfo )
+static fm_status TG(85)( fm_smEventInfo *eventInfo, void *userInfo )
 {
     fm_status status = FM_OK;
     fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = FlagError( eventInfo, userInfo );
+
+    status = DisableDrainMode( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
+
+    status = NotifyApiPortUp( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
 ABORT:
     return status;
 
-}   /* end PcieStateMachineS11E6Callback */
+}   /* end TransitionGroup85 */
+
 
 /*****************************************************************************/
-/** PcieStateMachineS11E7Callback
- * \ingroup intPortStateMachine
+/* TransitionGroup86
  *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_PCIE_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_REMOTE_FAULT_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_UP''.
+ * \desc            Transition callback for port state machine.
  * 
  * \param[in]       eventInfo is a pointer to a caller-allocated area
  *                  containing the generic event descriptor.
@@ -12419,421 +7622,31 @@ ABORT:
  * \return          See return codes from the action callback functions.
  * 
  *****************************************************************************/
-static fm_status PcieStateMachineS11E7Callback( fm_smEventInfo *eventInfo, void *userInfo )
+static fm_status TG(86)( fm_smEventInfo *eventInfo, void *userInfo )
 {
     fm_status status = FM_OK;
     fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = FlagError( eventInfo, userInfo );
+
+    status = UpdatePcieModeAndSpeed( eventInfo, userInfo );
     FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
+
+    status = UpdatePcieLaneReversal( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = ReleaseSchedBwLnkDown( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = NotifyApiPortDown( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
+    status = EnablePcieInterrupts( eventInfo, userInfo );
+    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
+
 ABORT:
     return status;
 
-}   /* end PcieStateMachineS11E7Callback */
+}   /* end TransitionGroup86 */
 
-/*****************************************************************************/
-/** PcieStateMachineS11E8Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_PCIE_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_LOCAL_FAULT_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_UP''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status PcieStateMachineS11E8Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = FlagError( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end PcieStateMachineS11E8Callback */
-
-/*****************************************************************************/
-/** PcieStateMachineS11E9Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_PCIE_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_BIST_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_UP''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status PcieStateMachineS11E9Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = FlagError( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end PcieStateMachineS11E9Callback */
-
-/*****************************************************************************/
-/** PcieStateMachineS11E11Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_PCIE_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_REMOTE_FAULT_IND'' occurs in state
- *                  ''FM10000_PORT_STATE_UP''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status PcieStateMachineS11E11Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = FlagError( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end PcieStateMachineS11E11Callback */
-
-/*****************************************************************************/
-/** PcieStateMachineS11E12Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_PCIE_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_LOCAL_FAULT_IND'' occurs in state
- *                  ''FM10000_PORT_STATE_UP''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status PcieStateMachineS11E12Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = FlagError( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end PcieStateMachineS11E12Callback */
-
-/*****************************************************************************/
-/** PcieStateMachineS11E13Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_PCIE_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_LANE_DFE_COMPLETE_IND'' occurs in state
- *                  ''FM10000_PORT_STATE_UP''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status PcieStateMachineS11E13Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = FlagError( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end PcieStateMachineS11E13Callback */
-
-/*****************************************************************************/
-/** PcieStateMachineS11E14Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_PCIE_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_LANE_DFE_FAILED_IND'' occurs in state
- *                  ''FM10000_PORT_STATE_UP''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status PcieStateMachineS11E14Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = FlagError( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end PcieStateMachineS11E14Callback */
-
-/*****************************************************************************/
-/** PcieStateMachineS11E15Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_PCIE_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_LANE_KR_COMPLETE_IND'' occurs in state
- *                  ''FM10000_PORT_STATE_UP''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status PcieStateMachineS11E15Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = FlagError( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end PcieStateMachineS11E15Callback */
-
-/*****************************************************************************/
-/** PcieStateMachineS11E16Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_PCIE_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_LANE_KR_FAILED_IND'' occurs in state
- *                  ''FM10000_PORT_STATE_UP''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status PcieStateMachineS11E16Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = FlagError( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end PcieStateMachineS11E16Callback */
-
-/*****************************************************************************/
-/** PcieStateMachineS11E17Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_PCIE_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_LANE_READY_IND'' occurs in state
- *                  ''FM10000_PORT_STATE_UP''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status PcieStateMachineS11E17Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = FlagError( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end PcieStateMachineS11E17Callback */
-
-/*****************************************************************************/
-/** PcieStateMachineS11E18Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_PCIE_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_LANE_NOT_READY_IND'' occurs in state
- *                  ''FM10000_PORT_STATE_UP''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status PcieStateMachineS11E18Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = FlagError( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end PcieStateMachineS11E18Callback */
-
-/*****************************************************************************/
-/** PcieStateMachineS11E21Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_PCIE_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_DEFTIMER_EXP_IND'' occurs in state
- *                  ''FM10000_PORT_STATE_UP''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status PcieStateMachineS11E21Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = FlagError( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end PcieStateMachineS11E21Callback */
-
-/*****************************************************************************/
-/** PcieStateMachineS11E27Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_PCIE_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_FABRIC_LOOPBACK_ON_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_UP''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status PcieStateMachineS11E27Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = EnablePepLoopback( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end PcieStateMachineS11E27Callback */
-
-/*****************************************************************************/
-/** PcieStateMachineS11E28Callback
- * \ingroup intPortStateMachine
- *
- * \desc            Transition callback for port state machine type
- *                  ''FM10000_PCIE_PORT_STATE_MACHINE'', when event
- *                  ''FM10000_PORT_EVENT_FABRIC_LOOPBACK_OFF_REQ'' occurs in state
- *                  ''FM10000_PORT_STATE_UP''.
- * 
- * \param[in]       eventInfo is a pointer to a caller-allocated area
- *                  containing the generic event descriptor.
- * 
- * \param[in]       userInfo is a pointer to a caller-allocated area containing
- *                  purpose-specific event info.
- * 
- * \return          See return codes from the action callback functions.
- * 
- *****************************************************************************/
-static fm_status PcieStateMachineS11E28Callback( fm_smEventInfo *eventInfo, void *userInfo )
-{
-    fm_status status = FM_OK;
-    fm_int port = ((fm10000_portSmEventInfo *)userInfo)->portPtr->portNumber;
-        
-    status = DisablePepLoopback( eventInfo, userInfo );
-    FM_LOG_ABORT_ON_ERR_V2( FM_LOG_CAT_PORT, port, status );
-            
-ABORT:
-    return status;
-
-}   /* end PcieStateMachineS11E28Callback */
 
 
 /*****************************************************************************
@@ -12842,8 +7655,7 @@ ABORT:
 
 
 /*****************************************************************************/
-/** fm10000RegisterAnPortStateMachine
- * \ingroup intPortStateMachine
+/* fm10000RegisterAnPortStateMachine
  *
  * \desc            This function registers with the Generic State Machine
  *                  Engine state machine type ''FM10000_AN_PORT_STATE_MACHINE''.
@@ -12861,9 +7673,9 @@ ABORT:
  *****************************************************************************/
 fm_status fm10000RegisterAnPortStateMachine( void )
 {
-    fm_int      i;
-    fm_status   status;
-    fm_smTransitionEntry  stt[FM10000_PORT_STATE_MAX][FM10000_PORT_EVENT_MAX];
+    fm_uint i;
+    fm_status status;
+    fm_smTransitionEntry stt[FM10000_PORT_STATE_MAX][FM10000_PORT_EVENT_MAX];
     fm_smTransitionEntry *dynstt[FM10000_PORT_STATE_MAX];
     fm_smTransitionLogCallback logCallback;
 
@@ -12875,1088 +7687,39 @@ fm_status fm10000RegisterAnPortStateMachine( void )
     /* clear out the temporary state transition table */
     FM_MEMSET_S( stt, sizeof(stt), 0, sizeof(stt));
 
-    /* transition for state=PORT_STATE_DISABLED(0), event=PORT_EVENT_CONFIG_REQ(0) */
-    stt[FM10000_PORT_STATE_DISABLED]
-       [FM10000_PORT_EVENT_CONFIG_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_DISABLED]
-       [FM10000_PORT_EVENT_CONFIG_REQ].nextState = FM10000_PORT_STATE_CONFIGURED;
-    stt[FM10000_PORT_STATE_DISABLED]
-       [FM10000_PORT_EVENT_CONFIG_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_DISABLED]
-       [FM10000_PORT_EVENT_CONFIG_REQ].transitionCallback = AnStateMachineS0E0Callback;
-
-    /* transition for state=PORT_STATE_DISABLED(0), event=PORT_EVENT_ADMIN_UP_REQ(4) */
-    stt[FM10000_PORT_STATE_DISABLED]
-       [FM10000_PORT_EVENT_ADMIN_UP_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_DISABLED]
-       [FM10000_PORT_EVENT_ADMIN_UP_REQ].nextState = FM10000_PORT_STATE_NEED_CONFIG;
-    stt[FM10000_PORT_STATE_DISABLED]
-       [FM10000_PORT_EVENT_ADMIN_UP_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_DISABLED]
-       [FM10000_PORT_EVENT_ADMIN_UP_REQ].transitionCallback = NULL;
-
-    /* transition for state=PORT_STATE_DISABLED(0), event=PORT_EVENT_ADMIN_DOWN_REQ(5) */
-    stt[FM10000_PORT_STATE_DISABLED]
-       [FM10000_PORT_EVENT_ADMIN_DOWN_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_DISABLED]
-       [FM10000_PORT_EVENT_ADMIN_DOWN_REQ].nextState = FM10000_PORT_STATE_NEED_CONFIG;
-    stt[FM10000_PORT_STATE_DISABLED]
-       [FM10000_PORT_EVENT_ADMIN_DOWN_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_DISABLED]
-       [FM10000_PORT_EVENT_ADMIN_DOWN_REQ].transitionCallback = NULL;
-
-    /* transition for state=PORT_STATE_DISABLED(0), event=PORT_EVENT_REMOTE_FAULT_REQ(7) */
-    stt[FM10000_PORT_STATE_DISABLED]
-       [FM10000_PORT_EVENT_REMOTE_FAULT_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_DISABLED]
-       [FM10000_PORT_EVENT_REMOTE_FAULT_REQ].nextState = FM10000_PORT_STATE_NEED_CONFIG;
-    stt[FM10000_PORT_STATE_DISABLED]
-       [FM10000_PORT_EVENT_REMOTE_FAULT_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_DISABLED]
-       [FM10000_PORT_EVENT_REMOTE_FAULT_REQ].transitionCallback = NULL;
-
-    /* transition for state=PORT_STATE_DISABLED(0), event=PORT_EVENT_LOCAL_FAULT_REQ(8) */
-    stt[FM10000_PORT_STATE_DISABLED]
-       [FM10000_PORT_EVENT_LOCAL_FAULT_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_DISABLED]
-       [FM10000_PORT_EVENT_LOCAL_FAULT_REQ].nextState = FM10000_PORT_STATE_NEED_CONFIG;
-    stt[FM10000_PORT_STATE_DISABLED]
-       [FM10000_PORT_EVENT_LOCAL_FAULT_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_DISABLED]
-       [FM10000_PORT_EVENT_LOCAL_FAULT_REQ].transitionCallback = NULL;
-
-    /* transition for state=PORT_STATE_DISABLED(0), event=PORT_EVENT_BIST_REQ(9) */
-    stt[FM10000_PORT_STATE_DISABLED]
-       [FM10000_PORT_EVENT_BIST_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_DISABLED]
-       [FM10000_PORT_EVENT_BIST_REQ].nextState = FM10000_PORT_STATE_NEED_CONFIG;
-    stt[FM10000_PORT_STATE_DISABLED]
-       [FM10000_PORT_EVENT_BIST_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_DISABLED]
-       [FM10000_PORT_EVENT_BIST_REQ].transitionCallback = NULL;
-
-    /* transition for state=PORT_STATE_NEED_CONFIG(1), event=PORT_EVENT_CONFIG_REQ(0) */
-    stt[FM10000_PORT_STATE_NEED_CONFIG]
-       [FM10000_PORT_EVENT_CONFIG_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_NEED_CONFIG]
-       [FM10000_PORT_EVENT_CONFIG_REQ].nextState = FM10000_PORT_STATE_POWERING_UP;
-    stt[FM10000_PORT_STATE_NEED_CONFIG]
-       [FM10000_PORT_EVENT_CONFIG_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_NEED_CONFIG]
-       [FM10000_PORT_EVENT_CONFIG_REQ].transitionCallback = AnStateMachineS1E0Callback;
-
-    /* transition for state=PORT_STATE_NEED_CONFIG(1), event=PORT_EVENT_ADMIN_PWRDOWN_REQ(6) */
-    stt[FM10000_PORT_STATE_NEED_CONFIG]
-       [FM10000_PORT_EVENT_ADMIN_PWRDOWN_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_NEED_CONFIG]
-       [FM10000_PORT_EVENT_ADMIN_PWRDOWN_REQ].nextState = FM10000_PORT_STATE_DISABLED;
-    stt[FM10000_PORT_STATE_NEED_CONFIG]
-       [FM10000_PORT_EVENT_ADMIN_PWRDOWN_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_NEED_CONFIG]
-       [FM10000_PORT_EVENT_ADMIN_PWRDOWN_REQ].transitionCallback = NULL;
-
-    /* transition for state=PORT_STATE_CONFIGURED(2), event=PORT_EVENT_CONFIG_REQ(0) */
-    stt[FM10000_PORT_STATE_CONFIGURED]
-       [FM10000_PORT_EVENT_CONFIG_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_CONFIGURED]
-       [FM10000_PORT_EVENT_CONFIG_REQ].nextState = FM10000_PORT_STATE_CONFIGURED;
-    stt[FM10000_PORT_STATE_CONFIGURED]
-       [FM10000_PORT_EVENT_CONFIG_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_CONFIGURED]
-       [FM10000_PORT_EVENT_CONFIG_REQ].transitionCallback = AnStateMachineS2E0Callback;
-
-    /* transition for state=PORT_STATE_CONFIGURED(2), event=PORT_EVENT_DISABLE_REQ(1) */
-    stt[FM10000_PORT_STATE_CONFIGURED]
-       [FM10000_PORT_EVENT_DISABLE_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_CONFIGURED]
-       [FM10000_PORT_EVENT_DISABLE_REQ].nextState = FM10000_PORT_STATE_DISABLED;
-    stt[FM10000_PORT_STATE_CONFIGURED]
-       [FM10000_PORT_EVENT_DISABLE_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_CONFIGURED]
-       [FM10000_PORT_EVENT_DISABLE_REQ].transitionCallback = AnStateMachineS2E1Callback;
-
-    /* transition for state=PORT_STATE_CONFIGURED(2), event=PORT_EVENT_ADMIN_UP_REQ(4) */
-    stt[FM10000_PORT_STATE_CONFIGURED]
-       [FM10000_PORT_EVENT_ADMIN_UP_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_CONFIGURED]
-       [FM10000_PORT_EVENT_ADMIN_UP_REQ].nextState = FM10000_PORT_STATE_POWERING_UP;
-    stt[FM10000_PORT_STATE_CONFIGURED]
-       [FM10000_PORT_EVENT_ADMIN_UP_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_CONFIGURED]
-       [FM10000_PORT_EVENT_ADMIN_UP_REQ].transitionCallback = AnStateMachineS2E4Callback;
-
-    /* transition for state=PORT_STATE_CONFIGURED(2), event=PORT_EVENT_ADMIN_DOWN_REQ(5) */
-    stt[FM10000_PORT_STATE_CONFIGURED]
-       [FM10000_PORT_EVENT_ADMIN_DOWN_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_CONFIGURED]
-       [FM10000_PORT_EVENT_ADMIN_DOWN_REQ].nextState = FM10000_PORT_STATE_POWERING_UP;
-    stt[FM10000_PORT_STATE_CONFIGURED]
-       [FM10000_PORT_EVENT_ADMIN_DOWN_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_CONFIGURED]
-       [FM10000_PORT_EVENT_ADMIN_DOWN_REQ].transitionCallback = AnStateMachineS2E5Callback;
-
-    /* transition for state=PORT_STATE_CONFIGURED(2), event=PORT_EVENT_REMOTE_FAULT_REQ(7) */
-    stt[FM10000_PORT_STATE_CONFIGURED]
-       [FM10000_PORT_EVENT_REMOTE_FAULT_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_CONFIGURED]
-       [FM10000_PORT_EVENT_REMOTE_FAULT_REQ].nextState = FM10000_PORT_STATE_POWERING_UP;
-    stt[FM10000_PORT_STATE_CONFIGURED]
-       [FM10000_PORT_EVENT_REMOTE_FAULT_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_CONFIGURED]
-       [FM10000_PORT_EVENT_REMOTE_FAULT_REQ].transitionCallback = AnStateMachineS2E7Callback;
-
-    /* transition for state=PORT_STATE_CONFIGURED(2), event=PORT_EVENT_LOCAL_FAULT_REQ(8) */
-    stt[FM10000_PORT_STATE_CONFIGURED]
-       [FM10000_PORT_EVENT_LOCAL_FAULT_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_CONFIGURED]
-       [FM10000_PORT_EVENT_LOCAL_FAULT_REQ].nextState = FM10000_PORT_STATE_POWERING_UP;
-    stt[FM10000_PORT_STATE_CONFIGURED]
-       [FM10000_PORT_EVENT_LOCAL_FAULT_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_CONFIGURED]
-       [FM10000_PORT_EVENT_LOCAL_FAULT_REQ].transitionCallback = AnStateMachineS2E8Callback;
-
-    /* transition for state=PORT_STATE_CONFIGURED(2), event=PORT_EVENT_BIST_REQ(9) */
-    stt[FM10000_PORT_STATE_CONFIGURED]
-       [FM10000_PORT_EVENT_BIST_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_CONFIGURED]
-       [FM10000_PORT_EVENT_BIST_REQ].nextState = FM10000_PORT_STATE_POWERING_UP;
-    stt[FM10000_PORT_STATE_CONFIGURED]
-       [FM10000_PORT_EVENT_BIST_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_CONFIGURED]
-       [FM10000_PORT_EVENT_BIST_REQ].transitionCallback = AnStateMachineS2E9Callback;
-
-    /* transition for state=PORT_STATE_POWERING_UP(3), event=PORT_EVENT_CONFIG_REQ(0) */
-    stt[FM10000_PORT_STATE_POWERING_UP]
-       [FM10000_PORT_EVENT_CONFIG_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_POWERING_UP]
-       [FM10000_PORT_EVENT_CONFIG_REQ].nextState = FM10000_PORT_STATE_POWERING_UP;
-    stt[FM10000_PORT_STATE_POWERING_UP]
-       [FM10000_PORT_EVENT_CONFIG_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_POWERING_UP]
-       [FM10000_PORT_EVENT_CONFIG_REQ].transitionCallback = AnStateMachineS3E0Callback;
-
-    /* transition for state=PORT_STATE_POWERING_UP(3), event=PORT_EVENT_DISABLE_REQ(1) */
-    stt[FM10000_PORT_STATE_POWERING_UP]
-       [FM10000_PORT_EVENT_DISABLE_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_POWERING_UP]
-       [FM10000_PORT_EVENT_DISABLE_REQ].nextState = FM10000_PORT_STATE_NEED_CONFIG;
-    stt[FM10000_PORT_STATE_POWERING_UP]
-       [FM10000_PORT_EVENT_DISABLE_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_POWERING_UP]
-       [FM10000_PORT_EVENT_DISABLE_REQ].transitionCallback = AnStateMachineS3E1Callback;
-
-    /* transition for state=PORT_STATE_POWERING_UP(3), event=PORT_EVENT_ADMIN_PWRDOWN_REQ(6) */
-    stt[FM10000_PORT_STATE_POWERING_UP]
-       [FM10000_PORT_EVENT_ADMIN_PWRDOWN_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_POWERING_UP]
-       [FM10000_PORT_EVENT_ADMIN_PWRDOWN_REQ].nextState = FM10000_PORT_STATE_CONFIGURED;
-    stt[FM10000_PORT_STATE_POWERING_UP]
-       [FM10000_PORT_EVENT_ADMIN_PWRDOWN_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_POWERING_UP]
-       [FM10000_PORT_EVENT_ADMIN_PWRDOWN_REQ].transitionCallback = AnStateMachineS3E6Callback;
-
-    /* transition for state=PORT_STATE_POWERING_UP(3), event=PORT_EVENT_LANE_READY_IND(17) */
-    stt[FM10000_PORT_STATE_POWERING_UP]
-       [FM10000_PORT_EVENT_LANE_READY_IND].used = TRUE;
-    stt[FM10000_PORT_STATE_POWERING_UP]
-       [FM10000_PORT_EVENT_LANE_READY_IND].nextState = FM_STATE_UNSPECIFIED;
-    stt[FM10000_PORT_STATE_POWERING_UP]
-       [FM10000_PORT_EVENT_LANE_READY_IND].conditionCallback = CheckLanesReady;
-    stt[FM10000_PORT_STATE_POWERING_UP]
-       [FM10000_PORT_EVENT_LANE_READY_IND].transitionCallback = NULL;
-
-    /* transition for state=PORT_STATE_POWERING_UP(3), event=PORT_EVENT_LANE_NOT_READY_IND(18) */
-    stt[FM10000_PORT_STATE_POWERING_UP]
-       [FM10000_PORT_EVENT_LANE_NOT_READY_IND].used = TRUE;
-    stt[FM10000_PORT_STATE_POWERING_UP]
-       [FM10000_PORT_EVENT_LANE_NOT_READY_IND].nextState = FM10000_PORT_STATE_POWERING_UP;
-    stt[FM10000_PORT_STATE_POWERING_UP]
-       [FM10000_PORT_EVENT_LANE_NOT_READY_IND].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_POWERING_UP]
-       [FM10000_PORT_EVENT_LANE_NOT_READY_IND].transitionCallback = AnStateMachineS3E18Callback;
-
-    /* transition for state=PORT_STATE_POWERING_UP(3), event=PORT_EVENT_AN_RESTARTED_IND(26) */
-    stt[FM10000_PORT_STATE_POWERING_UP]
-       [FM10000_PORT_EVENT_AN_RESTARTED_IND].used = TRUE;
-    stt[FM10000_PORT_STATE_POWERING_UP]
-       [FM10000_PORT_EVENT_AN_RESTARTED_IND].nextState = FM_STATE_UNSPECIFIED;
-    stt[FM10000_PORT_STATE_POWERING_UP]
-       [FM10000_PORT_EVENT_AN_RESTARTED_IND].conditionCallback = AnRestart;
-    stt[FM10000_PORT_STATE_POWERING_UP]
-       [FM10000_PORT_EVENT_AN_RESTARTED_IND].transitionCallback = NULL;
-
-    /* transition for state=PORT_STATE_DEFERRED_UP(4), event=PORT_EVENT_CONFIG_REQ(0) */
-    stt[FM10000_PORT_STATE_DEFERRED_UP]
-       [FM10000_PORT_EVENT_CONFIG_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_DEFERRED_UP]
-       [FM10000_PORT_EVENT_CONFIG_REQ].nextState = FM10000_PORT_STATE_POWERING_UP;
-    stt[FM10000_PORT_STATE_DEFERRED_UP]
-       [FM10000_PORT_EVENT_CONFIG_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_DEFERRED_UP]
-       [FM10000_PORT_EVENT_CONFIG_REQ].transitionCallback = AnStateMachineS4E0Callback;
-
-    /* transition for state=PORT_STATE_DEFERRED_UP(4), event=PORT_EVENT_DISABLE_REQ(1) */
-    stt[FM10000_PORT_STATE_DEFERRED_UP]
-       [FM10000_PORT_EVENT_DISABLE_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_DEFERRED_UP]
-       [FM10000_PORT_EVENT_DISABLE_REQ].nextState = FM10000_PORT_STATE_NEED_CONFIG;
-    stt[FM10000_PORT_STATE_DEFERRED_UP]
-       [FM10000_PORT_EVENT_DISABLE_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_DEFERRED_UP]
-       [FM10000_PORT_EVENT_DISABLE_REQ].transitionCallback = AnStateMachineS4E1Callback;
-
-    /* transition for state=PORT_STATE_DEFERRED_UP(4), event=PORT_EVENT_ADMIN_PWRDOWN_REQ(6) */
-    stt[FM10000_PORT_STATE_DEFERRED_UP]
-       [FM10000_PORT_EVENT_ADMIN_PWRDOWN_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_DEFERRED_UP]
-       [FM10000_PORT_EVENT_ADMIN_PWRDOWN_REQ].nextState = FM10000_PORT_STATE_CONFIGURED;
-    stt[FM10000_PORT_STATE_DEFERRED_UP]
-       [FM10000_PORT_EVENT_ADMIN_PWRDOWN_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_DEFERRED_UP]
-       [FM10000_PORT_EVENT_ADMIN_PWRDOWN_REQ].transitionCallback = AnStateMachineS4E6Callback;
-
-    /* transition for state=PORT_STATE_DEFERRED_UP(4), event=PORT_EVENT_DEFTIMER_EXP_IND(21) */
-    stt[FM10000_PORT_STATE_DEFERRED_UP]
-       [FM10000_PORT_EVENT_DEFTIMER_EXP_IND].used = TRUE;
-    stt[FM10000_PORT_STATE_DEFERRED_UP]
-       [FM10000_PORT_EVENT_DEFTIMER_EXP_IND].nextState = FM_STATE_UNSPECIFIED;
-    stt[FM10000_PORT_STATE_DEFERRED_UP]
-       [FM10000_PORT_EVENT_DEFTIMER_EXP_IND].conditionCallback = ProcessDeferralTimerWithAn;
-    stt[FM10000_PORT_STATE_DEFERRED_UP]
-       [FM10000_PORT_EVENT_DEFTIMER_EXP_IND].transitionCallback = NULL;
-
-    /* transition for state=PORT_STATE_DEFERRED_UP(4), event=PORT_EVENT_AN_RESTARTED_IND(26) */
-    stt[FM10000_PORT_STATE_DEFERRED_UP]
-       [FM10000_PORT_EVENT_AN_RESTARTED_IND].used = TRUE;
-    stt[FM10000_PORT_STATE_DEFERRED_UP]
-       [FM10000_PORT_EVENT_AN_RESTARTED_IND].nextState = FM_STATE_UNSPECIFIED;
-    stt[FM10000_PORT_STATE_DEFERRED_UP]
-       [FM10000_PORT_EVENT_AN_RESTARTED_IND].conditionCallback = AnRestart;
-    stt[FM10000_PORT_STATE_DEFERRED_UP]
-       [FM10000_PORT_EVENT_AN_RESTARTED_IND].transitionCallback = NULL;
-
-    /* transition for state=PORT_STATE_DEFERRED_UP(4), event=PORT_EVENT_LINK_DOWN_IND(19) */
-    stt[FM10000_PORT_STATE_DEFERRED_UP]
-       [FM10000_PORT_EVENT_LINK_DOWN_IND].used = TRUE;
-    stt[FM10000_PORT_STATE_DEFERRED_UP]
-       [FM10000_PORT_EVENT_LINK_DOWN_IND].nextState = FM10000_PORT_STATE_DEFERRED_UP;
-    stt[FM10000_PORT_STATE_DEFERRED_UP]
-       [FM10000_PORT_EVENT_LINK_DOWN_IND].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_DEFERRED_UP]
-       [FM10000_PORT_EVENT_LINK_DOWN_IND].transitionCallback = NULL;
-
-    /* transition for state=PORT_STATE_DEFERRED_UP(4), event=PORT_EVENT_LINK_UP_IND(20) */
-    stt[FM10000_PORT_STATE_DEFERRED_UP]
-       [FM10000_PORT_EVENT_LINK_UP_IND].used = TRUE;
-    stt[FM10000_PORT_STATE_DEFERRED_UP]
-       [FM10000_PORT_EVENT_LINK_UP_IND].nextState = FM10000_PORT_STATE_DEFERRED_UP;
-    stt[FM10000_PORT_STATE_DEFERRED_UP]
-       [FM10000_PORT_EVENT_LINK_UP_IND].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_DEFERRED_UP]
-       [FM10000_PORT_EVENT_LINK_UP_IND].transitionCallback = NULL;
-
-    /* transition for state=PORT_STATE_DEFERRED_UP(4), event=PORT_EVENT_REMOTE_FAULT_IND(11) */
-    stt[FM10000_PORT_STATE_DEFERRED_UP]
-       [FM10000_PORT_EVENT_REMOTE_FAULT_IND].used = TRUE;
-    stt[FM10000_PORT_STATE_DEFERRED_UP]
-       [FM10000_PORT_EVENT_REMOTE_FAULT_IND].nextState = FM10000_PORT_STATE_DEFERRED_UP;
-    stt[FM10000_PORT_STATE_DEFERRED_UP]
-       [FM10000_PORT_EVENT_REMOTE_FAULT_IND].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_DEFERRED_UP]
-       [FM10000_PORT_EVENT_REMOTE_FAULT_IND].transitionCallback = NULL;
-
-    /* transition for state=PORT_STATE_DEFERRED_UP(4), event=PORT_EVENT_LOCAL_FAULT_IND(12) */
-    stt[FM10000_PORT_STATE_DEFERRED_UP]
-       [FM10000_PORT_EVENT_LOCAL_FAULT_IND].used = TRUE;
-    stt[FM10000_PORT_STATE_DEFERRED_UP]
-       [FM10000_PORT_EVENT_LOCAL_FAULT_IND].nextState = FM10000_PORT_STATE_DEFERRED_UP;
-    stt[FM10000_PORT_STATE_DEFERRED_UP]
-       [FM10000_PORT_EVENT_LOCAL_FAULT_IND].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_DEFERRED_UP]
-       [FM10000_PORT_EVENT_LOCAL_FAULT_IND].transitionCallback = NULL;
-
-    /* transition for state=PORT_STATE_AUTONEG(5), event=PORT_EVENT_CONFIG_REQ(0) */
-    stt[FM10000_PORT_STATE_AUTONEG]
-       [FM10000_PORT_EVENT_CONFIG_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_AUTONEG]
-       [FM10000_PORT_EVENT_CONFIG_REQ].nextState = FM10000_PORT_STATE_POWERING_UP;
-    stt[FM10000_PORT_STATE_AUTONEG]
-       [FM10000_PORT_EVENT_CONFIG_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_AUTONEG]
-       [FM10000_PORT_EVENT_CONFIG_REQ].transitionCallback = AnStateMachineS5E0Callback;
-
-    /* transition for state=PORT_STATE_AUTONEG(5), event=PORT_EVENT_DISABLE_REQ(1) */
-    stt[FM10000_PORT_STATE_AUTONEG]
-       [FM10000_PORT_EVENT_DISABLE_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_AUTONEG]
-       [FM10000_PORT_EVENT_DISABLE_REQ].nextState = FM10000_PORT_STATE_NEED_CONFIG;
-    stt[FM10000_PORT_STATE_AUTONEG]
-       [FM10000_PORT_EVENT_DISABLE_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_AUTONEG]
-       [FM10000_PORT_EVENT_DISABLE_REQ].transitionCallback = AnStateMachineS5E1Callback;
-
-    /* transition for state=PORT_STATE_AUTONEG(5), event=PORT_EVENT_LOOPBACK_ON_REQ(2) */
-    stt[FM10000_PORT_STATE_AUTONEG]
-       [FM10000_PORT_EVENT_LOOPBACK_ON_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_AUTONEG]
-       [FM10000_PORT_EVENT_LOOPBACK_ON_REQ].nextState = FM10000_PORT_STATE_AUTONEG;
-    stt[FM10000_PORT_STATE_AUTONEG]
-       [FM10000_PORT_EVENT_LOOPBACK_ON_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_AUTONEG]
-       [FM10000_PORT_EVENT_LOOPBACK_ON_REQ].transitionCallback = AnStateMachineS5E2Callback;
-
-    /* transition for state=PORT_STATE_AUTONEG(5), event=PORT_EVENT_LOOPBACK_OFF_REQ(3) */
-    stt[FM10000_PORT_STATE_AUTONEG]
-       [FM10000_PORT_EVENT_LOOPBACK_OFF_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_AUTONEG]
-       [FM10000_PORT_EVENT_LOOPBACK_OFF_REQ].nextState = FM10000_PORT_STATE_AUTONEG;
-    stt[FM10000_PORT_STATE_AUTONEG]
-       [FM10000_PORT_EVENT_LOOPBACK_OFF_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_AUTONEG]
-       [FM10000_PORT_EVENT_LOOPBACK_OFF_REQ].transitionCallback = AnStateMachineS5E3Callback;
-
-    /* transition for state=PORT_STATE_AUTONEG(5), event=PORT_EVENT_ADMIN_PWRDOWN_REQ(6) */
-    stt[FM10000_PORT_STATE_AUTONEG]
-       [FM10000_PORT_EVENT_ADMIN_PWRDOWN_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_AUTONEG]
-       [FM10000_PORT_EVENT_ADMIN_PWRDOWN_REQ].nextState = FM10000_PORT_STATE_CONFIGURED;
-    stt[FM10000_PORT_STATE_AUTONEG]
-       [FM10000_PORT_EVENT_ADMIN_PWRDOWN_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_AUTONEG]
-       [FM10000_PORT_EVENT_ADMIN_PWRDOWN_REQ].transitionCallback = AnStateMachineS5E6Callback;
-
-    /* transition for state=PORT_STATE_AUTONEG(5), event=PORT_EVENT_AN_CONFIG_REQ(23) */
-    stt[FM10000_PORT_STATE_AUTONEG]
-       [FM10000_PORT_EVENT_AN_CONFIG_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_AUTONEG]
-       [FM10000_PORT_EVENT_AN_CONFIG_REQ].nextState = FM10000_PORT_STATE_AUTONEG;
-    stt[FM10000_PORT_STATE_AUTONEG]
-       [FM10000_PORT_EVENT_AN_CONFIG_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_AUTONEG]
-       [FM10000_PORT_EVENT_AN_CONFIG_REQ].transitionCallback = AnStateMachineS5E23Callback;
-
-    /* transition for state=PORT_STATE_AUTONEG(5), event=PORT_EVENT_DEFTIMER_EXP_IND(21) */
-    stt[FM10000_PORT_STATE_AUTONEG]
-       [FM10000_PORT_EVENT_DEFTIMER_EXP_IND].used = TRUE;
-    stt[FM10000_PORT_STATE_AUTONEG]
-       [FM10000_PORT_EVENT_DEFTIMER_EXP_IND].nextState = FM_STATE_UNSPECIFIED;
-    stt[FM10000_PORT_STATE_AUTONEG]
-       [FM10000_PORT_EVENT_DEFTIMER_EXP_IND].conditionCallback = AnRestart;
-    stt[FM10000_PORT_STATE_AUTONEG]
-       [FM10000_PORT_EVENT_DEFTIMER_EXP_IND].transitionCallback = NULL;
-
-    /* transition for state=PORT_STATE_AUTONEG(5), event=PORT_EVENT_AN_DISABLE_REQ(24) */
-    stt[FM10000_PORT_STATE_AUTONEG]
-       [FM10000_PORT_EVENT_AN_DISABLE_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_AUTONEG]
-       [FM10000_PORT_EVENT_AN_DISABLE_REQ].nextState = FM10000_PORT_STATE_AUTONEG;
-    stt[FM10000_PORT_STATE_AUTONEG]
-       [FM10000_PORT_EVENT_AN_DISABLE_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_AUTONEG]
-       [FM10000_PORT_EVENT_AN_DISABLE_REQ].transitionCallback = AnStateMachineS5E24Callback;
-
-    /* transition for state=PORT_STATE_AUTONEG(5), event=PORT_EVENT_AN_COMPLETE_IND(25) */
-    stt[FM10000_PORT_STATE_AUTONEG]
-       [FM10000_PORT_EVENT_AN_COMPLETE_IND].used = TRUE;
-    stt[FM10000_PORT_STATE_AUTONEG]
-       [FM10000_PORT_EVENT_AN_COMPLETE_IND].nextState = FM_STATE_UNSPECIFIED;
-    stt[FM10000_PORT_STATE_AUTONEG]
-       [FM10000_PORT_EVENT_AN_COMPLETE_IND].conditionCallback = EnterNegotiatedMode;
-    stt[FM10000_PORT_STATE_AUTONEG]
-       [FM10000_PORT_EVENT_AN_COMPLETE_IND].transitionCallback = NULL;
-
-    /* transition for state=PORT_STATE_ADMIN_FAULT(6), event=PORT_EVENT_CONFIG_REQ(0) */
-    stt[FM10000_PORT_STATE_ADMIN_FAULT]
-       [FM10000_PORT_EVENT_CONFIG_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_ADMIN_FAULT]
-       [FM10000_PORT_EVENT_CONFIG_REQ].nextState = FM10000_PORT_STATE_POWERING_UP;
-    stt[FM10000_PORT_STATE_ADMIN_FAULT]
-       [FM10000_PORT_EVENT_CONFIG_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_ADMIN_FAULT]
-       [FM10000_PORT_EVENT_CONFIG_REQ].transitionCallback = AnStateMachineS6E0Callback;
-
-    /* transition for state=PORT_STATE_ADMIN_FAULT(6), event=PORT_EVENT_DISABLE_REQ(1) */
-    stt[FM10000_PORT_STATE_ADMIN_FAULT]
-       [FM10000_PORT_EVENT_DISABLE_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_ADMIN_FAULT]
-       [FM10000_PORT_EVENT_DISABLE_REQ].nextState = FM10000_PORT_STATE_NEED_CONFIG;
-    stt[FM10000_PORT_STATE_ADMIN_FAULT]
-       [FM10000_PORT_EVENT_DISABLE_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_ADMIN_FAULT]
-       [FM10000_PORT_EVENT_DISABLE_REQ].transitionCallback = AnStateMachineS6E1Callback;
-
-    /* transition for state=PORT_STATE_ADMIN_FAULT(6), event=PORT_EVENT_ADMIN_UP_REQ(4) */
-    stt[FM10000_PORT_STATE_ADMIN_FAULT]
-       [FM10000_PORT_EVENT_ADMIN_UP_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_ADMIN_FAULT]
-       [FM10000_PORT_EVENT_ADMIN_UP_REQ].nextState = FM_STATE_UNSPECIFIED;
-    stt[FM10000_PORT_STATE_ADMIN_FAULT]
-       [FM10000_PORT_EVENT_ADMIN_UP_REQ].conditionCallback = AnRestart;
-    stt[FM10000_PORT_STATE_ADMIN_FAULT]
-       [FM10000_PORT_EVENT_ADMIN_UP_REQ].transitionCallback = NULL;
-
-    /* transition for state=PORT_STATE_ADMIN_FAULT(6), event=PORT_EVENT_ADMIN_DOWN_REQ(5) */
-    stt[FM10000_PORT_STATE_ADMIN_FAULT]
-       [FM10000_PORT_EVENT_ADMIN_DOWN_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_ADMIN_FAULT]
-       [FM10000_PORT_EVENT_ADMIN_DOWN_REQ].nextState = FM10000_PORT_STATE_ADMIN_FAULT;
-    stt[FM10000_PORT_STATE_ADMIN_FAULT]
-       [FM10000_PORT_EVENT_ADMIN_DOWN_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_ADMIN_FAULT]
-       [FM10000_PORT_EVENT_ADMIN_DOWN_REQ].transitionCallback = AnStateMachineS6E5Callback;
-
-    /* transition for state=PORT_STATE_ADMIN_FAULT(6), event=PORT_EVENT_ADMIN_PWRDOWN_REQ(6) */
-    stt[FM10000_PORT_STATE_ADMIN_FAULT]
-       [FM10000_PORT_EVENT_ADMIN_PWRDOWN_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_ADMIN_FAULT]
-       [FM10000_PORT_EVENT_ADMIN_PWRDOWN_REQ].nextState = FM10000_PORT_STATE_CONFIGURED;
-    stt[FM10000_PORT_STATE_ADMIN_FAULT]
-       [FM10000_PORT_EVENT_ADMIN_PWRDOWN_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_ADMIN_FAULT]
-       [FM10000_PORT_EVENT_ADMIN_PWRDOWN_REQ].transitionCallback = AnStateMachineS6E6Callback;
-
-    /* transition for state=PORT_STATE_ADMIN_FAULT(6), event=PORT_EVENT_REMOTE_FAULT_REQ(7) */
-    stt[FM10000_PORT_STATE_ADMIN_FAULT]
-       [FM10000_PORT_EVENT_REMOTE_FAULT_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_ADMIN_FAULT]
-       [FM10000_PORT_EVENT_REMOTE_FAULT_REQ].nextState = FM10000_PORT_STATE_ADMIN_FAULT;
-    stt[FM10000_PORT_STATE_ADMIN_FAULT]
-       [FM10000_PORT_EVENT_REMOTE_FAULT_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_ADMIN_FAULT]
-       [FM10000_PORT_EVENT_REMOTE_FAULT_REQ].transitionCallback = AnStateMachineS6E7Callback;
-
-    /* transition for state=PORT_STATE_ADMIN_FAULT(6), event=PORT_EVENT_LOCAL_FAULT_REQ(8) */
-    stt[FM10000_PORT_STATE_ADMIN_FAULT]
-       [FM10000_PORT_EVENT_LOCAL_FAULT_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_ADMIN_FAULT]
-       [FM10000_PORT_EVENT_LOCAL_FAULT_REQ].nextState = FM10000_PORT_STATE_ADMIN_FAULT;
-    stt[FM10000_PORT_STATE_ADMIN_FAULT]
-       [FM10000_PORT_EVENT_LOCAL_FAULT_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_ADMIN_FAULT]
-       [FM10000_PORT_EVENT_LOCAL_FAULT_REQ].transitionCallback = AnStateMachineS6E8Callback;
-
-    /* transition for state=PORT_STATE_ADMIN_FAULT(6), event=PORT_EVENT_BIST_REQ(9) */
-    stt[FM10000_PORT_STATE_ADMIN_FAULT]
-       [FM10000_PORT_EVENT_BIST_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_ADMIN_FAULT]
-       [FM10000_PORT_EVENT_BIST_REQ].nextState = FM10000_PORT_STATE_POWERING_UP;
-    stt[FM10000_PORT_STATE_ADMIN_FAULT]
-       [FM10000_PORT_EVENT_BIST_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_ADMIN_FAULT]
-       [FM10000_PORT_EVENT_BIST_REQ].transitionCallback = AnStateMachineS6E9Callback;
-
-    /* transition for state=PORT_STATE_ADMIN_FAULT(6), event=PORT_EVENT_AN_CONFIG_REQ(23) */
-    stt[FM10000_PORT_STATE_ADMIN_FAULT]
-       [FM10000_PORT_EVENT_AN_CONFIG_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_ADMIN_FAULT]
-       [FM10000_PORT_EVENT_AN_CONFIG_REQ].nextState = FM_STATE_UNSPECIFIED;
-    stt[FM10000_PORT_STATE_ADMIN_FAULT]
-       [FM10000_PORT_EVENT_AN_CONFIG_REQ].conditionCallback = AnRestart;
-    stt[FM10000_PORT_STATE_ADMIN_FAULT]
-       [FM10000_PORT_EVENT_AN_CONFIG_REQ].transitionCallback = NULL;
-
-    /* transition for state=PORT_STATE_ADMIN_FAULT(6), event=PORT_EVENT_AN_DISABLE_REQ(24) */
-    stt[FM10000_PORT_STATE_ADMIN_FAULT]
-       [FM10000_PORT_EVENT_AN_DISABLE_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_ADMIN_FAULT]
-       [FM10000_PORT_EVENT_AN_DISABLE_REQ].nextState = FM10000_PORT_STATE_ADMIN_FAULT;
-    stt[FM10000_PORT_STATE_ADMIN_FAULT]
-       [FM10000_PORT_EVENT_AN_DISABLE_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_ADMIN_FAULT]
-       [FM10000_PORT_EVENT_AN_DISABLE_REQ].transitionCallback = AnStateMachineS6E24Callback;
-
-    /* transition for state=PORT_STATE_ADMIN_FAULT(6), event=PORT_EVENT_AN_RESTARTED_IND(26) */
-    stt[FM10000_PORT_STATE_ADMIN_FAULT]
-       [FM10000_PORT_EVENT_AN_RESTARTED_IND].used = TRUE;
-    stt[FM10000_PORT_STATE_ADMIN_FAULT]
-       [FM10000_PORT_EVENT_AN_RESTARTED_IND].nextState = FM_STATE_UNSPECIFIED;
-    stt[FM10000_PORT_STATE_ADMIN_FAULT]
-       [FM10000_PORT_EVENT_AN_RESTARTED_IND].conditionCallback = AnRestart;
-    stt[FM10000_PORT_STATE_ADMIN_FAULT]
-       [FM10000_PORT_EVENT_AN_RESTARTED_IND].transitionCallback = NULL;
-
-    /* transition for state=PORT_STATE_LOCAL_FAULT(7), event=PORT_EVENT_CONFIG_REQ(0) */
-    stt[FM10000_PORT_STATE_LOCAL_FAULT]
-       [FM10000_PORT_EVENT_CONFIG_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_LOCAL_FAULT]
-       [FM10000_PORT_EVENT_CONFIG_REQ].nextState = FM10000_PORT_STATE_POWERING_UP;
-    stt[FM10000_PORT_STATE_LOCAL_FAULT]
-       [FM10000_PORT_EVENT_CONFIG_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_LOCAL_FAULT]
-       [FM10000_PORT_EVENT_CONFIG_REQ].transitionCallback = AnStateMachineS7E0Callback;
-
-    /* transition for state=PORT_STATE_LOCAL_FAULT(7), event=PORT_EVENT_DISABLE_REQ(1) */
-    stt[FM10000_PORT_STATE_LOCAL_FAULT]
-       [FM10000_PORT_EVENT_DISABLE_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_LOCAL_FAULT]
-       [FM10000_PORT_EVENT_DISABLE_REQ].nextState = FM10000_PORT_STATE_NEED_CONFIG;
-    stt[FM10000_PORT_STATE_LOCAL_FAULT]
-       [FM10000_PORT_EVENT_DISABLE_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_LOCAL_FAULT]
-       [FM10000_PORT_EVENT_DISABLE_REQ].transitionCallback = AnStateMachineS7E1Callback;
-
-    /* transition for state=PORT_STATE_LOCAL_FAULT(7), event=PORT_EVENT_LOOPBACK_ON_REQ(2) */
-    stt[FM10000_PORT_STATE_LOCAL_FAULT]
-       [FM10000_PORT_EVENT_LOOPBACK_ON_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_LOCAL_FAULT]
-       [FM10000_PORT_EVENT_LOOPBACK_ON_REQ].nextState = FM_STATE_UNSPECIFIED;
-    stt[FM10000_PORT_STATE_LOCAL_FAULT]
-       [FM10000_PORT_EVENT_LOOPBACK_ON_REQ].conditionCallback = AnRestart;
-    stt[FM10000_PORT_STATE_LOCAL_FAULT]
-       [FM10000_PORT_EVENT_LOOPBACK_ON_REQ].transitionCallback = NULL;
-
-    /* transition for state=PORT_STATE_LOCAL_FAULT(7), event=PORT_EVENT_LOOPBACK_OFF_REQ(3) */
-    stt[FM10000_PORT_STATE_LOCAL_FAULT]
-       [FM10000_PORT_EVENT_LOOPBACK_OFF_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_LOCAL_FAULT]
-       [FM10000_PORT_EVENT_LOOPBACK_OFF_REQ].nextState = FM_STATE_UNSPECIFIED;
-    stt[FM10000_PORT_STATE_LOCAL_FAULT]
-       [FM10000_PORT_EVENT_LOOPBACK_OFF_REQ].conditionCallback = AnRestart;
-    stt[FM10000_PORT_STATE_LOCAL_FAULT]
-       [FM10000_PORT_EVENT_LOOPBACK_OFF_REQ].transitionCallback = NULL;
-
-    /* transition for state=PORT_STATE_LOCAL_FAULT(7), event=PORT_EVENT_ADMIN_DOWN_REQ(5) */
-    stt[FM10000_PORT_STATE_LOCAL_FAULT]
-       [FM10000_PORT_EVENT_ADMIN_DOWN_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_LOCAL_FAULT]
-       [FM10000_PORT_EVENT_ADMIN_DOWN_REQ].nextState = FM10000_PORT_STATE_ADMIN_FAULT;
-    stt[FM10000_PORT_STATE_LOCAL_FAULT]
-       [FM10000_PORT_EVENT_ADMIN_DOWN_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_LOCAL_FAULT]
-       [FM10000_PORT_EVENT_ADMIN_DOWN_REQ].transitionCallback = AnStateMachineS7E5Callback;
-
-    /* transition for state=PORT_STATE_LOCAL_FAULT(7), event=PORT_EVENT_ADMIN_PWRDOWN_REQ(6) */
-    stt[FM10000_PORT_STATE_LOCAL_FAULT]
-       [FM10000_PORT_EVENT_ADMIN_PWRDOWN_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_LOCAL_FAULT]
-       [FM10000_PORT_EVENT_ADMIN_PWRDOWN_REQ].nextState = FM10000_PORT_STATE_CONFIGURED;
-    stt[FM10000_PORT_STATE_LOCAL_FAULT]
-       [FM10000_PORT_EVENT_ADMIN_PWRDOWN_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_LOCAL_FAULT]
-       [FM10000_PORT_EVENT_ADMIN_PWRDOWN_REQ].transitionCallback = AnStateMachineS7E6Callback;
-
-    /* transition for state=PORT_STATE_LOCAL_FAULT(7), event=PORT_EVENT_REMOTE_FAULT_REQ(7) */
-    stt[FM10000_PORT_STATE_LOCAL_FAULT]
-       [FM10000_PORT_EVENT_REMOTE_FAULT_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_LOCAL_FAULT]
-       [FM10000_PORT_EVENT_REMOTE_FAULT_REQ].nextState = FM10000_PORT_STATE_ADMIN_FAULT;
-    stt[FM10000_PORT_STATE_LOCAL_FAULT]
-       [FM10000_PORT_EVENT_REMOTE_FAULT_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_LOCAL_FAULT]
-       [FM10000_PORT_EVENT_REMOTE_FAULT_REQ].transitionCallback = AnStateMachineS7E7Callback;
-
-    /* transition for state=PORT_STATE_LOCAL_FAULT(7), event=PORT_EVENT_LOCAL_FAULT_REQ(8) */
-    stt[FM10000_PORT_STATE_LOCAL_FAULT]
-       [FM10000_PORT_EVENT_LOCAL_FAULT_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_LOCAL_FAULT]
-       [FM10000_PORT_EVENT_LOCAL_FAULT_REQ].nextState = FM10000_PORT_STATE_ADMIN_FAULT;
-    stt[FM10000_PORT_STATE_LOCAL_FAULT]
-       [FM10000_PORT_EVENT_LOCAL_FAULT_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_LOCAL_FAULT]
-       [FM10000_PORT_EVENT_LOCAL_FAULT_REQ].transitionCallback = AnStateMachineS7E8Callback;
-
-    /* transition for state=PORT_STATE_LOCAL_FAULT(7), event=PORT_EVENT_BIST_REQ(9) */
-    stt[FM10000_PORT_STATE_LOCAL_FAULT]
-       [FM10000_PORT_EVENT_BIST_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_LOCAL_FAULT]
-       [FM10000_PORT_EVENT_BIST_REQ].nextState = FM10000_PORT_STATE_BIST;
-    stt[FM10000_PORT_STATE_LOCAL_FAULT]
-       [FM10000_PORT_EVENT_BIST_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_LOCAL_FAULT]
-       [FM10000_PORT_EVENT_BIST_REQ].transitionCallback = AnStateMachineS7E9Callback;
-
-    /* transition for state=PORT_STATE_LOCAL_FAULT(7), event=PORT_EVENT_AN_CONFIG_REQ(23) */
-    stt[FM10000_PORT_STATE_LOCAL_FAULT]
-       [FM10000_PORT_EVENT_AN_CONFIG_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_LOCAL_FAULT]
-       [FM10000_PORT_EVENT_AN_CONFIG_REQ].nextState = FM_STATE_UNSPECIFIED;
-    stt[FM10000_PORT_STATE_LOCAL_FAULT]
-       [FM10000_PORT_EVENT_AN_CONFIG_REQ].conditionCallback = AnRestart;
-    stt[FM10000_PORT_STATE_LOCAL_FAULT]
-       [FM10000_PORT_EVENT_AN_CONFIG_REQ].transitionCallback = NULL;
-
-    /* transition for state=PORT_STATE_LOCAL_FAULT(7), event=PORT_EVENT_AN_DISABLE_REQ(24) */
-    stt[FM10000_PORT_STATE_LOCAL_FAULT]
-       [FM10000_PORT_EVENT_AN_DISABLE_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_LOCAL_FAULT]
-       [FM10000_PORT_EVENT_AN_DISABLE_REQ].nextState = FM10000_PORT_STATE_LOCAL_FAULT;
-    stt[FM10000_PORT_STATE_LOCAL_FAULT]
-       [FM10000_PORT_EVENT_AN_DISABLE_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_LOCAL_FAULT]
-       [FM10000_PORT_EVENT_AN_DISABLE_REQ].transitionCallback = AnStateMachineS7E24Callback;
-
-    /* transition for state=PORT_STATE_LOCAL_FAULT(7), event=PORT_EVENT_REMOTE_FAULT_IND(11) */
-    stt[FM10000_PORT_STATE_LOCAL_FAULT]
-       [FM10000_PORT_EVENT_REMOTE_FAULT_IND].used = TRUE;
-    stt[FM10000_PORT_STATE_LOCAL_FAULT]
-       [FM10000_PORT_EVENT_REMOTE_FAULT_IND].nextState = FM10000_PORT_STATE_REMOTE_FAULT;
-    stt[FM10000_PORT_STATE_LOCAL_FAULT]
-       [FM10000_PORT_EVENT_REMOTE_FAULT_IND].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_LOCAL_FAULT]
-       [FM10000_PORT_EVENT_REMOTE_FAULT_IND].transitionCallback = NULL;
-
-    /* transition for state=PORT_STATE_LOCAL_FAULT(7), event=PORT_EVENT_LINK_UP_IND(20) */
-    stt[FM10000_PORT_STATE_LOCAL_FAULT]
-       [FM10000_PORT_EVENT_LINK_UP_IND].used = TRUE;
-    stt[FM10000_PORT_STATE_LOCAL_FAULT]
-       [FM10000_PORT_EVENT_LINK_UP_IND].nextState = FM10000_PORT_STATE_UP;
-    stt[FM10000_PORT_STATE_LOCAL_FAULT]
-       [FM10000_PORT_EVENT_LINK_UP_IND].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_LOCAL_FAULT]
-       [FM10000_PORT_EVENT_LINK_UP_IND].transitionCallback = AnStateMachineS7E20Callback;
-
-    /* transition for state=PORT_STATE_LOCAL_FAULT(7), event=PORT_EVENT_AN_RESTARTED_IND(26) */
-    stt[FM10000_PORT_STATE_LOCAL_FAULT]
-       [FM10000_PORT_EVENT_AN_RESTARTED_IND].used = TRUE;
-    stt[FM10000_PORT_STATE_LOCAL_FAULT]
-       [FM10000_PORT_EVENT_AN_RESTARTED_IND].nextState = FM_STATE_UNSPECIFIED;
-    stt[FM10000_PORT_STATE_LOCAL_FAULT]
-       [FM10000_PORT_EVENT_AN_RESTARTED_IND].conditionCallback = AnRestart;
-    stt[FM10000_PORT_STATE_LOCAL_FAULT]
-       [FM10000_PORT_EVENT_AN_RESTARTED_IND].transitionCallback = NULL;
-
-    /* transition for state=PORT_STATE_REMOTE_FAULT(8), event=PORT_EVENT_CONFIG_REQ(0) */
-    stt[FM10000_PORT_STATE_REMOTE_FAULT]
-       [FM10000_PORT_EVENT_CONFIG_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_REMOTE_FAULT]
-       [FM10000_PORT_EVENT_CONFIG_REQ].nextState = FM10000_PORT_STATE_POWERING_UP;
-    stt[FM10000_PORT_STATE_REMOTE_FAULT]
-       [FM10000_PORT_EVENT_CONFIG_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_REMOTE_FAULT]
-       [FM10000_PORT_EVENT_CONFIG_REQ].transitionCallback = AnStateMachineS8E0Callback;
-
-    /* transition for state=PORT_STATE_REMOTE_FAULT(8), event=PORT_EVENT_DISABLE_REQ(1) */
-    stt[FM10000_PORT_STATE_REMOTE_FAULT]
-       [FM10000_PORT_EVENT_DISABLE_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_REMOTE_FAULT]
-       [FM10000_PORT_EVENT_DISABLE_REQ].nextState = FM10000_PORT_STATE_NEED_CONFIG;
-    stt[FM10000_PORT_STATE_REMOTE_FAULT]
-       [FM10000_PORT_EVENT_DISABLE_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_REMOTE_FAULT]
-       [FM10000_PORT_EVENT_DISABLE_REQ].transitionCallback = AnStateMachineS8E1Callback;
-
-    /* transition for state=PORT_STATE_REMOTE_FAULT(8), event=PORT_EVENT_LOOPBACK_ON_REQ(2) */
-    stt[FM10000_PORT_STATE_REMOTE_FAULT]
-       [FM10000_PORT_EVENT_LOOPBACK_ON_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_REMOTE_FAULT]
-       [FM10000_PORT_EVENT_LOOPBACK_ON_REQ].nextState = FM_STATE_UNSPECIFIED;
-    stt[FM10000_PORT_STATE_REMOTE_FAULT]
-       [FM10000_PORT_EVENT_LOOPBACK_ON_REQ].conditionCallback = AnRestart;
-    stt[FM10000_PORT_STATE_REMOTE_FAULT]
-       [FM10000_PORT_EVENT_LOOPBACK_ON_REQ].transitionCallback = NULL;
-
-    /* transition for state=PORT_STATE_REMOTE_FAULT(8), event=PORT_EVENT_LOOPBACK_OFF_REQ(3) */
-    stt[FM10000_PORT_STATE_REMOTE_FAULT]
-       [FM10000_PORT_EVENT_LOOPBACK_OFF_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_REMOTE_FAULT]
-       [FM10000_PORT_EVENT_LOOPBACK_OFF_REQ].nextState = FM_STATE_UNSPECIFIED;
-    stt[FM10000_PORT_STATE_REMOTE_FAULT]
-       [FM10000_PORT_EVENT_LOOPBACK_OFF_REQ].conditionCallback = AnRestart;
-    stt[FM10000_PORT_STATE_REMOTE_FAULT]
-       [FM10000_PORT_EVENT_LOOPBACK_OFF_REQ].transitionCallback = NULL;
-
-    /* transition for state=PORT_STATE_REMOTE_FAULT(8), event=PORT_EVENT_ADMIN_DOWN_REQ(5) */
-    stt[FM10000_PORT_STATE_REMOTE_FAULT]
-       [FM10000_PORT_EVENT_ADMIN_DOWN_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_REMOTE_FAULT]
-       [FM10000_PORT_EVENT_ADMIN_DOWN_REQ].nextState = FM10000_PORT_STATE_ADMIN_FAULT;
-    stt[FM10000_PORT_STATE_REMOTE_FAULT]
-       [FM10000_PORT_EVENT_ADMIN_DOWN_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_REMOTE_FAULT]
-       [FM10000_PORT_EVENT_ADMIN_DOWN_REQ].transitionCallback = AnStateMachineS8E5Callback;
-
-    /* transition for state=PORT_STATE_REMOTE_FAULT(8), event=PORT_EVENT_ADMIN_PWRDOWN_REQ(6) */
-    stt[FM10000_PORT_STATE_REMOTE_FAULT]
-       [FM10000_PORT_EVENT_ADMIN_PWRDOWN_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_REMOTE_FAULT]
-       [FM10000_PORT_EVENT_ADMIN_PWRDOWN_REQ].nextState = FM10000_PORT_STATE_CONFIGURED;
-    stt[FM10000_PORT_STATE_REMOTE_FAULT]
-       [FM10000_PORT_EVENT_ADMIN_PWRDOWN_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_REMOTE_FAULT]
-       [FM10000_PORT_EVENT_ADMIN_PWRDOWN_REQ].transitionCallback = AnStateMachineS8E6Callback;
-
-    /* transition for state=PORT_STATE_REMOTE_FAULT(8), event=PORT_EVENT_REMOTE_FAULT_REQ(7) */
-    stt[FM10000_PORT_STATE_REMOTE_FAULT]
-       [FM10000_PORT_EVENT_REMOTE_FAULT_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_REMOTE_FAULT]
-       [FM10000_PORT_EVENT_REMOTE_FAULT_REQ].nextState = FM10000_PORT_STATE_ADMIN_FAULT;
-    stt[FM10000_PORT_STATE_REMOTE_FAULT]
-       [FM10000_PORT_EVENT_REMOTE_FAULT_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_REMOTE_FAULT]
-       [FM10000_PORT_EVENT_REMOTE_FAULT_REQ].transitionCallback = AnStateMachineS8E7Callback;
-
-    /* transition for state=PORT_STATE_REMOTE_FAULT(8), event=PORT_EVENT_LOCAL_FAULT_REQ(8) */
-    stt[FM10000_PORT_STATE_REMOTE_FAULT]
-       [FM10000_PORT_EVENT_LOCAL_FAULT_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_REMOTE_FAULT]
-       [FM10000_PORT_EVENT_LOCAL_FAULT_REQ].nextState = FM10000_PORT_STATE_ADMIN_FAULT;
-    stt[FM10000_PORT_STATE_REMOTE_FAULT]
-       [FM10000_PORT_EVENT_LOCAL_FAULT_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_REMOTE_FAULT]
-       [FM10000_PORT_EVENT_LOCAL_FAULT_REQ].transitionCallback = AnStateMachineS8E8Callback;
-
-    /* transition for state=PORT_STATE_REMOTE_FAULT(8), event=PORT_EVENT_BIST_REQ(9) */
-    stt[FM10000_PORT_STATE_REMOTE_FAULT]
-       [FM10000_PORT_EVENT_BIST_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_REMOTE_FAULT]
-       [FM10000_PORT_EVENT_BIST_REQ].nextState = FM10000_PORT_STATE_BIST;
-    stt[FM10000_PORT_STATE_REMOTE_FAULT]
-       [FM10000_PORT_EVENT_BIST_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_REMOTE_FAULT]
-       [FM10000_PORT_EVENT_BIST_REQ].transitionCallback = AnStateMachineS8E9Callback;
-
-    /* transition for state=PORT_STATE_REMOTE_FAULT(8), event=PORT_EVENT_AN_CONFIG_REQ(23) */
-    stt[FM10000_PORT_STATE_REMOTE_FAULT]
-       [FM10000_PORT_EVENT_AN_CONFIG_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_REMOTE_FAULT]
-       [FM10000_PORT_EVENT_AN_CONFIG_REQ].nextState = FM_STATE_UNSPECIFIED;
-    stt[FM10000_PORT_STATE_REMOTE_FAULT]
-       [FM10000_PORT_EVENT_AN_CONFIG_REQ].conditionCallback = AnRestart;
-    stt[FM10000_PORT_STATE_REMOTE_FAULT]
-       [FM10000_PORT_EVENT_AN_CONFIG_REQ].transitionCallback = NULL;
-
-    /* transition for state=PORT_STATE_REMOTE_FAULT(8), event=PORT_EVENT_AN_DISABLE_REQ(24) */
-    stt[FM10000_PORT_STATE_REMOTE_FAULT]
-       [FM10000_PORT_EVENT_AN_DISABLE_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_REMOTE_FAULT]
-       [FM10000_PORT_EVENT_AN_DISABLE_REQ].nextState = FM10000_PORT_STATE_REMOTE_FAULT;
-    stt[FM10000_PORT_STATE_REMOTE_FAULT]
-       [FM10000_PORT_EVENT_AN_DISABLE_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_REMOTE_FAULT]
-       [FM10000_PORT_EVENT_AN_DISABLE_REQ].transitionCallback = AnStateMachineS8E24Callback;
-
-    /* transition for state=PORT_STATE_REMOTE_FAULT(8), event=PORT_EVENT_LOCAL_FAULT_IND(12) */
-    stt[FM10000_PORT_STATE_REMOTE_FAULT]
-       [FM10000_PORT_EVENT_LOCAL_FAULT_IND].used = TRUE;
-    stt[FM10000_PORT_STATE_REMOTE_FAULT]
-       [FM10000_PORT_EVENT_LOCAL_FAULT_IND].nextState = FM10000_PORT_STATE_LOCAL_FAULT;
-    stt[FM10000_PORT_STATE_REMOTE_FAULT]
-       [FM10000_PORT_EVENT_LOCAL_FAULT_IND].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_REMOTE_FAULT]
-       [FM10000_PORT_EVENT_LOCAL_FAULT_IND].transitionCallback = NULL;
-
-    /* transition for state=PORT_STATE_REMOTE_FAULT(8), event=PORT_EVENT_LINK_UP_IND(20) */
-    stt[FM10000_PORT_STATE_REMOTE_FAULT]
-       [FM10000_PORT_EVENT_LINK_UP_IND].used = TRUE;
-    stt[FM10000_PORT_STATE_REMOTE_FAULT]
-       [FM10000_PORT_EVENT_LINK_UP_IND].nextState = FM10000_PORT_STATE_UP;
-    stt[FM10000_PORT_STATE_REMOTE_FAULT]
-       [FM10000_PORT_EVENT_LINK_UP_IND].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_REMOTE_FAULT]
-       [FM10000_PORT_EVENT_LINK_UP_IND].transitionCallback = AnStateMachineS8E20Callback;
-
-    /* transition for state=PORT_STATE_REMOTE_FAULT(8), event=PORT_EVENT_AN_RESTARTED_IND(26) */
-    stt[FM10000_PORT_STATE_REMOTE_FAULT]
-       [FM10000_PORT_EVENT_AN_RESTARTED_IND].used = TRUE;
-    stt[FM10000_PORT_STATE_REMOTE_FAULT]
-       [FM10000_PORT_EVENT_AN_RESTARTED_IND].nextState = FM_STATE_UNSPECIFIED;
-    stt[FM10000_PORT_STATE_REMOTE_FAULT]
-       [FM10000_PORT_EVENT_AN_RESTARTED_IND].conditionCallback = AnRestart;
-    stt[FM10000_PORT_STATE_REMOTE_FAULT]
-       [FM10000_PORT_EVENT_AN_RESTARTED_IND].transitionCallback = NULL;
-
-    /* transition for state=PORT_STATE_BIST(9), event=PORT_EVENT_CONFIG_REQ(0) */
-    stt[FM10000_PORT_STATE_BIST]
-       [FM10000_PORT_EVENT_CONFIG_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_BIST]
-       [FM10000_PORT_EVENT_CONFIG_REQ].nextState = FM10000_PORT_STATE_POWERING_UP;
-    stt[FM10000_PORT_STATE_BIST]
-       [FM10000_PORT_EVENT_CONFIG_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_BIST]
-       [FM10000_PORT_EVENT_CONFIG_REQ].transitionCallback = AnStateMachineS9E0Callback;
-
-    /* transition for state=PORT_STATE_BIST(9), event=PORT_EVENT_DISABLE_REQ(1) */
-    stt[FM10000_PORT_STATE_BIST]
-       [FM10000_PORT_EVENT_DISABLE_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_BIST]
-       [FM10000_PORT_EVENT_DISABLE_REQ].nextState = FM10000_PORT_STATE_NEED_CONFIG;
-    stt[FM10000_PORT_STATE_BIST]
-       [FM10000_PORT_EVENT_DISABLE_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_BIST]
-       [FM10000_PORT_EVENT_DISABLE_REQ].transitionCallback = AnStateMachineS9E1Callback;
-
-    /* transition for state=PORT_STATE_BIST(9), event=PORT_EVENT_LOOPBACK_ON_REQ(2) */
-    stt[FM10000_PORT_STATE_BIST]
-       [FM10000_PORT_EVENT_LOOPBACK_ON_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_BIST]
-       [FM10000_PORT_EVENT_LOOPBACK_ON_REQ].nextState = FM_STATE_UNSPECIFIED;
-    stt[FM10000_PORT_STATE_BIST]
-       [FM10000_PORT_EVENT_LOOPBACK_ON_REQ].conditionCallback = AnRestart;
-    stt[FM10000_PORT_STATE_BIST]
-       [FM10000_PORT_EVENT_LOOPBACK_ON_REQ].transitionCallback = NULL;
-
-    /* transition for state=PORT_STATE_BIST(9), event=PORT_EVENT_LOOPBACK_OFF_REQ(3) */
-    stt[FM10000_PORT_STATE_BIST]
-       [FM10000_PORT_EVENT_LOOPBACK_OFF_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_BIST]
-       [FM10000_PORT_EVENT_LOOPBACK_OFF_REQ].nextState = FM_STATE_UNSPECIFIED;
-    stt[FM10000_PORT_STATE_BIST]
-       [FM10000_PORT_EVENT_LOOPBACK_OFF_REQ].conditionCallback = AnRestart;
-    stt[FM10000_PORT_STATE_BIST]
-       [FM10000_PORT_EVENT_LOOPBACK_OFF_REQ].transitionCallback = NULL;
-
-    /* transition for state=PORT_STATE_BIST(9), event=PORT_EVENT_ADMIN_UP_REQ(4) */
-    stt[FM10000_PORT_STATE_BIST]
-       [FM10000_PORT_EVENT_ADMIN_UP_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_BIST]
-       [FM10000_PORT_EVENT_ADMIN_UP_REQ].nextState = FM_STATE_UNSPECIFIED;
-    stt[FM10000_PORT_STATE_BIST]
-       [FM10000_PORT_EVENT_ADMIN_UP_REQ].conditionCallback = AnRestart;
-    stt[FM10000_PORT_STATE_BIST]
-       [FM10000_PORT_EVENT_ADMIN_UP_REQ].transitionCallback = NULL;
-
-    /* transition for state=PORT_STATE_BIST(9), event=PORT_EVENT_ADMIN_DOWN_REQ(5) */
-    stt[FM10000_PORT_STATE_BIST]
-       [FM10000_PORT_EVENT_ADMIN_DOWN_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_BIST]
-       [FM10000_PORT_EVENT_ADMIN_DOWN_REQ].nextState = FM10000_PORT_STATE_ADMIN_FAULT;
-    stt[FM10000_PORT_STATE_BIST]
-       [FM10000_PORT_EVENT_ADMIN_DOWN_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_BIST]
-       [FM10000_PORT_EVENT_ADMIN_DOWN_REQ].transitionCallback = AnStateMachineS9E5Callback;
-
-    /* transition for state=PORT_STATE_BIST(9), event=PORT_EVENT_ADMIN_PWRDOWN_REQ(6) */
-    stt[FM10000_PORT_STATE_BIST]
-       [FM10000_PORT_EVENT_ADMIN_PWRDOWN_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_BIST]
-       [FM10000_PORT_EVENT_ADMIN_PWRDOWN_REQ].nextState = FM10000_PORT_STATE_CONFIGURED;
-    stt[FM10000_PORT_STATE_BIST]
-       [FM10000_PORT_EVENT_ADMIN_PWRDOWN_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_BIST]
-       [FM10000_PORT_EVENT_ADMIN_PWRDOWN_REQ].transitionCallback = AnStateMachineS9E6Callback;
-
-    /* transition for state=PORT_STATE_BIST(9), event=PORT_EVENT_REMOTE_FAULT_REQ(7) */
-    stt[FM10000_PORT_STATE_BIST]
-       [FM10000_PORT_EVENT_REMOTE_FAULT_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_BIST]
-       [FM10000_PORT_EVENT_REMOTE_FAULT_REQ].nextState = FM10000_PORT_STATE_ADMIN_FAULT;
-    stt[FM10000_PORT_STATE_BIST]
-       [FM10000_PORT_EVENT_REMOTE_FAULT_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_BIST]
-       [FM10000_PORT_EVENT_REMOTE_FAULT_REQ].transitionCallback = AnStateMachineS9E7Callback;
-
-    /* transition for state=PORT_STATE_BIST(9), event=PORT_EVENT_LOCAL_FAULT_REQ(8) */
-    stt[FM10000_PORT_STATE_BIST]
-       [FM10000_PORT_EVENT_LOCAL_FAULT_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_BIST]
-       [FM10000_PORT_EVENT_LOCAL_FAULT_REQ].nextState = FM10000_PORT_STATE_ADMIN_FAULT;
-    stt[FM10000_PORT_STATE_BIST]
-       [FM10000_PORT_EVENT_LOCAL_FAULT_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_BIST]
-       [FM10000_PORT_EVENT_LOCAL_FAULT_REQ].transitionCallback = AnStateMachineS9E8Callback;
-
-    /* transition for state=PORT_STATE_BIST(9), event=PORT_EVENT_BIST_REQ(9) */
-    stt[FM10000_PORT_STATE_BIST]
-       [FM10000_PORT_EVENT_BIST_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_BIST]
-       [FM10000_PORT_EVENT_BIST_REQ].nextState = FM10000_PORT_STATE_BIST;
-    stt[FM10000_PORT_STATE_BIST]
-       [FM10000_PORT_EVENT_BIST_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_BIST]
-       [FM10000_PORT_EVENT_BIST_REQ].transitionCallback = AnStateMachineS9E9Callback;
-
-    /* transition for state=PORT_STATE_BIST(9), event=PORT_EVENT_AN_CONFIG_REQ(23) */
-    stt[FM10000_PORT_STATE_BIST]
-       [FM10000_PORT_EVENT_AN_CONFIG_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_BIST]
-       [FM10000_PORT_EVENT_AN_CONFIG_REQ].nextState = FM_STATE_UNSPECIFIED;
-    stt[FM10000_PORT_STATE_BIST]
-       [FM10000_PORT_EVENT_AN_CONFIG_REQ].conditionCallback = AnRestart;
-    stt[FM10000_PORT_STATE_BIST]
-       [FM10000_PORT_EVENT_AN_CONFIG_REQ].transitionCallback = NULL;
-
-    /* transition for state=PORT_STATE_BIST(9), event=PORT_EVENT_AN_DISABLE_REQ(24) */
-    stt[FM10000_PORT_STATE_BIST]
-       [FM10000_PORT_EVENT_AN_DISABLE_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_BIST]
-       [FM10000_PORT_EVENT_AN_DISABLE_REQ].nextState = FM10000_PORT_STATE_BIST;
-    stt[FM10000_PORT_STATE_BIST]
-       [FM10000_PORT_EVENT_AN_DISABLE_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_BIST]
-       [FM10000_PORT_EVENT_AN_DISABLE_REQ].transitionCallback = AnStateMachineS9E24Callback;
-
-    /* transition for state=PORT_STATE_BIST(9), event=PORT_EVENT_AN_RESTARTED_IND(26) */
-    stt[FM10000_PORT_STATE_BIST]
-       [FM10000_PORT_EVENT_AN_RESTARTED_IND].used = TRUE;
-    stt[FM10000_PORT_STATE_BIST]
-       [FM10000_PORT_EVENT_AN_RESTARTED_IND].nextState = FM_STATE_UNSPECIFIED;
-    stt[FM10000_PORT_STATE_BIST]
-       [FM10000_PORT_EVENT_AN_RESTARTED_IND].conditionCallback = AnRestart;
-    stt[FM10000_PORT_STATE_BIST]
-       [FM10000_PORT_EVENT_AN_RESTARTED_IND].transitionCallback = NULL;
-
-    /* transition for state=PORT_STATE_UP(11), event=PORT_EVENT_CONFIG_REQ(0) */
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_CONFIG_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_CONFIG_REQ].nextState = FM10000_PORT_STATE_POWERING_UP;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_CONFIG_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_CONFIG_REQ].transitionCallback = AnStateMachineS11E0Callback;
-
-    /* transition for state=PORT_STATE_UP(11), event=PORT_EVENT_DISABLE_REQ(1) */
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_DISABLE_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_DISABLE_REQ].nextState = FM10000_PORT_STATE_NEED_CONFIG;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_DISABLE_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_DISABLE_REQ].transitionCallback = AnStateMachineS11E1Callback;
-
-    /* transition for state=PORT_STATE_UP(11), event=PORT_EVENT_LOOPBACK_ON_REQ(2) */
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_LOOPBACK_ON_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_LOOPBACK_ON_REQ].nextState = FM_STATE_UNSPECIFIED;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_LOOPBACK_ON_REQ].conditionCallback = AnRestart;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_LOOPBACK_ON_REQ].transitionCallback = NULL;
-
-    /* transition for state=PORT_STATE_UP(11), event=PORT_EVENT_LOOPBACK_OFF_REQ(3) */
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_LOOPBACK_OFF_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_LOOPBACK_OFF_REQ].nextState = FM_STATE_UNSPECIFIED;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_LOOPBACK_OFF_REQ].conditionCallback = AnRestart;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_LOOPBACK_OFF_REQ].transitionCallback = NULL;
-
-    /* transition for state=PORT_STATE_UP(11), event=PORT_EVENT_ADMIN_DOWN_REQ(5) */
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_ADMIN_DOWN_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_ADMIN_DOWN_REQ].nextState = FM10000_PORT_STATE_ADMIN_FAULT;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_ADMIN_DOWN_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_ADMIN_DOWN_REQ].transitionCallback = AnStateMachineS11E5Callback;
-
-    /* transition for state=PORT_STATE_UP(11), event=PORT_EVENT_ADMIN_PWRDOWN_REQ(6) */
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_ADMIN_PWRDOWN_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_ADMIN_PWRDOWN_REQ].nextState = FM10000_PORT_STATE_CONFIGURED;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_ADMIN_PWRDOWN_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_ADMIN_PWRDOWN_REQ].transitionCallback = AnStateMachineS11E6Callback;
-
-    /* transition for state=PORT_STATE_UP(11), event=PORT_EVENT_REMOTE_FAULT_REQ(7) */
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_REMOTE_FAULT_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_REMOTE_FAULT_REQ].nextState = FM10000_PORT_STATE_ADMIN_FAULT;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_REMOTE_FAULT_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_REMOTE_FAULT_REQ].transitionCallback = AnStateMachineS11E7Callback;
-
-    /* transition for state=PORT_STATE_UP(11), event=PORT_EVENT_LOCAL_FAULT_REQ(8) */
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_LOCAL_FAULT_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_LOCAL_FAULT_REQ].nextState = FM10000_PORT_STATE_ADMIN_FAULT;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_LOCAL_FAULT_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_LOCAL_FAULT_REQ].transitionCallback = AnStateMachineS11E8Callback;
-
-    /* transition for state=PORT_STATE_UP(11), event=PORT_EVENT_BIST_REQ(9) */
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_BIST_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_BIST_REQ].nextState = FM10000_PORT_STATE_BIST;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_BIST_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_BIST_REQ].transitionCallback = AnStateMachineS11E9Callback;
-
-    /* transition for state=PORT_STATE_UP(11), event=PORT_EVENT_AN_CONFIG_REQ(23) */
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_AN_CONFIG_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_AN_CONFIG_REQ].nextState = FM_STATE_UNSPECIFIED;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_AN_CONFIG_REQ].conditionCallback = AnRestart;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_AN_CONFIG_REQ].transitionCallback = NULL;
-
-    /* transition for state=PORT_STATE_UP(11), event=PORT_EVENT_AN_DISABLE_REQ(24) */
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_AN_DISABLE_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_AN_DISABLE_REQ].nextState = FM10000_PORT_STATE_UP;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_AN_DISABLE_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_AN_DISABLE_REQ].transitionCallback = AnStateMachineS11E24Callback;
-
-    /* transition for state=PORT_STATE_UP(11), event=PORT_EVENT_REMOTE_FAULT_IND(11) */
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_REMOTE_FAULT_IND].used = TRUE;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_REMOTE_FAULT_IND].nextState = FM10000_PORT_STATE_REMOTE_FAULT;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_REMOTE_FAULT_IND].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_REMOTE_FAULT_IND].transitionCallback = AnStateMachineS11E11Callback;
-
-    /* transition for state=PORT_STATE_UP(11), event=PORT_EVENT_LOCAL_FAULT_IND(12) */
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_LOCAL_FAULT_IND].used = TRUE;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_LOCAL_FAULT_IND].nextState = FM10000_PORT_STATE_LOCAL_FAULT;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_LOCAL_FAULT_IND].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_LOCAL_FAULT_IND].transitionCallback = AnStateMachineS11E12Callback;
-
-    /* transition for state=PORT_STATE_UP(11), event=PORT_EVENT_AN_RESTARTED_IND(26) */
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_AN_RESTARTED_IND].used = TRUE;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_AN_RESTARTED_IND].nextState = FM_STATE_UNSPECIFIED;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_AN_RESTARTED_IND].conditionCallback = AnRestart;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_AN_RESTARTED_IND].transitionCallback = NULL;
-
-    /* transition for state=PORT_STATE_UP(11), event=PORT_EVENT_EEE_SILENT_IND(29) */
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_EEE_SILENT_IND].used = TRUE;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_EEE_SILENT_IND].nextState = FM10000_PORT_STATE_UP;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_EEE_SILENT_IND].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_EEE_SILENT_IND].transitionCallback = AnStateMachineS11E29Callback;
-
-    /* transition for state=PORT_STATE_UP(11), event=PORT_EVENT_DEFTIMER_EXP_IND(21) */
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_DEFTIMER_EXP_IND].used = TRUE;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_DEFTIMER_EXP_IND].nextState = FM10000_PORT_STATE_UP;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_DEFTIMER_EXP_IND].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_DEFTIMER_EXP_IND].transitionCallback = AnStateMachineS11E21Callback;
-
-    /* transition for state=PORT_STATE_UP(11), event=PORT_EVENT_EEE_CONFIG_REQ(30) */
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_EEE_CONFIG_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_EEE_CONFIG_REQ].nextState = FM_STATE_UNSPECIFIED;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_EEE_CONFIG_REQ].conditionCallback = AnRestart;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_EEE_CONFIG_REQ].transitionCallback = NULL;
-
+    for (i = 0 ; 
+         i < (sizeof(fm10000AnSmTable) / sizeof(fm_smTable)); 
+         i++)
+    {
+        stt[fm10000AnSmTable[i].current]
+           [fm10000AnSmTable[i].event].used = TRUE;
+
+        stt[fm10000AnSmTable[i].current]
+           [fm10000AnSmTable[i].event].nextState = 
+               fm10000AnSmTable[i].next;
+
+        if (fm10000AnSmTable[i].next == FM_STATE_UNSPECIFIED)
+        {
+            stt[fm10000AnSmTable[i].current]
+               [fm10000AnSmTable[i].event].conditionCallback = 
+                   (fm_smConditionCallback) fm10000AnSmTable[i].callback;
+
+            stt[fm10000AnSmTable[i].current]
+               [fm10000AnSmTable[i].event].transitionCallback = NULL;
+        }
+        else
+        {
+            stt[fm10000AnSmTable[i].current]
+               [fm10000AnSmTable[i].event].conditionCallback = NULL;
+
+            stt[fm10000AnSmTable[i].current]
+               [fm10000AnSmTable[i].event].transitionCallback = 
+                   (fm_smTransitionCallback) fm10000AnSmTable[i].callback;
+        }
+    }
+    
     /* fill out the state transition table for this state machine type */
-    for (i = 0 ; i < FM10000_PORT_STATE_MAX  ; i++)
+    for (i = 0 ; i < FM10000_PORT_STATE_MAX ; i++)
     {
         dynstt[i] = &stt[i][0];
     }
@@ -13974,8 +7737,7 @@ fm_status fm10000RegisterAnPortStateMachine( void )
 
 
 /*****************************************************************************/
-/** fm10000RegisterBasicPortStateMachine
- * \ingroup intPortStateMachine
+/* fm10000RegisterBasicPortStateMachine
  *
  * \desc            This function registers with the Generic State Machine
  *                  Engine state machine type ''FM10000_BASIC_PORT_STATE_MACHINE''.
@@ -13993,9 +7755,9 @@ fm_status fm10000RegisterAnPortStateMachine( void )
  *****************************************************************************/
 fm_status fm10000RegisterBasicPortStateMachine( void )
 {
-    fm_int      i;
-    fm_status   status;
-    fm_smTransitionEntry  stt[FM10000_PORT_STATE_MAX][FM10000_PORT_EVENT_MAX];
+    fm_uint i;
+    fm_status status;
+    fm_smTransitionEntry stt[FM10000_PORT_STATE_MAX][FM10000_PORT_EVENT_MAX];
     fm_smTransitionEntry *dynstt[FM10000_PORT_STATE_MAX];
     fm_smTransitionLogCallback logCallback;
 
@@ -14007,1118 +7769,39 @@ fm_status fm10000RegisterBasicPortStateMachine( void )
     /* clear out the temporary state transition table */
     FM_MEMSET_S( stt, sizeof(stt), 0, sizeof(stt));
 
-    /* transition for state=PORT_STATE_DISABLED(0), event=PORT_EVENT_CONFIG_REQ(0) */
-    stt[FM10000_PORT_STATE_DISABLED]
-       [FM10000_PORT_EVENT_CONFIG_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_DISABLED]
-       [FM10000_PORT_EVENT_CONFIG_REQ].nextState = FM10000_PORT_STATE_CONFIGURED;
-    stt[FM10000_PORT_STATE_DISABLED]
-       [FM10000_PORT_EVENT_CONFIG_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_DISABLED]
-       [FM10000_PORT_EVENT_CONFIG_REQ].transitionCallback = BasicStateMachineS0E0Callback;
-
-    /* transition for state=PORT_STATE_DISABLED(0), event=PORT_EVENT_ADMIN_UP_REQ(4) */
-    stt[FM10000_PORT_STATE_DISABLED]
-       [FM10000_PORT_EVENT_ADMIN_UP_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_DISABLED]
-       [FM10000_PORT_EVENT_ADMIN_UP_REQ].nextState = FM10000_PORT_STATE_NEED_CONFIG;
-    stt[FM10000_PORT_STATE_DISABLED]
-       [FM10000_PORT_EVENT_ADMIN_UP_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_DISABLED]
-       [FM10000_PORT_EVENT_ADMIN_UP_REQ].transitionCallback = NULL;
-
-    /* transition for state=PORT_STATE_DISABLED(0), event=PORT_EVENT_ADMIN_DOWN_REQ(5) */
-    stt[FM10000_PORT_STATE_DISABLED]
-       [FM10000_PORT_EVENT_ADMIN_DOWN_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_DISABLED]
-       [FM10000_PORT_EVENT_ADMIN_DOWN_REQ].nextState = FM10000_PORT_STATE_NEED_CONFIG;
-    stt[FM10000_PORT_STATE_DISABLED]
-       [FM10000_PORT_EVENT_ADMIN_DOWN_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_DISABLED]
-       [FM10000_PORT_EVENT_ADMIN_DOWN_REQ].transitionCallback = NULL;
-
-    /* transition for state=PORT_STATE_DISABLED(0), event=PORT_EVENT_REMOTE_FAULT_REQ(7) */
-    stt[FM10000_PORT_STATE_DISABLED]
-       [FM10000_PORT_EVENT_REMOTE_FAULT_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_DISABLED]
-       [FM10000_PORT_EVENT_REMOTE_FAULT_REQ].nextState = FM10000_PORT_STATE_NEED_CONFIG;
-    stt[FM10000_PORT_STATE_DISABLED]
-       [FM10000_PORT_EVENT_REMOTE_FAULT_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_DISABLED]
-       [FM10000_PORT_EVENT_REMOTE_FAULT_REQ].transitionCallback = NULL;
-
-    /* transition for state=PORT_STATE_DISABLED(0), event=PORT_EVENT_LOCAL_FAULT_REQ(8) */
-    stt[FM10000_PORT_STATE_DISABLED]
-       [FM10000_PORT_EVENT_LOCAL_FAULT_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_DISABLED]
-       [FM10000_PORT_EVENT_LOCAL_FAULT_REQ].nextState = FM10000_PORT_STATE_NEED_CONFIG;
-    stt[FM10000_PORT_STATE_DISABLED]
-       [FM10000_PORT_EVENT_LOCAL_FAULT_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_DISABLED]
-       [FM10000_PORT_EVENT_LOCAL_FAULT_REQ].transitionCallback = NULL;
-
-    /* transition for state=PORT_STATE_DISABLED(0), event=PORT_EVENT_BIST_REQ(9) */
-    stt[FM10000_PORT_STATE_DISABLED]
-       [FM10000_PORT_EVENT_BIST_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_DISABLED]
-       [FM10000_PORT_EVENT_BIST_REQ].nextState = FM10000_PORT_STATE_NEED_CONFIG;
-    stt[FM10000_PORT_STATE_DISABLED]
-       [FM10000_PORT_EVENT_BIST_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_DISABLED]
-       [FM10000_PORT_EVENT_BIST_REQ].transitionCallback = NULL;
-
-    /* transition for state=PORT_STATE_NEED_CONFIG(1), event=PORT_EVENT_CONFIG_REQ(0) */
-    stt[FM10000_PORT_STATE_NEED_CONFIG]
-       [FM10000_PORT_EVENT_CONFIG_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_NEED_CONFIG]
-       [FM10000_PORT_EVENT_CONFIG_REQ].nextState = FM10000_PORT_STATE_POWERING_UP;
-    stt[FM10000_PORT_STATE_NEED_CONFIG]
-       [FM10000_PORT_EVENT_CONFIG_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_NEED_CONFIG]
-       [FM10000_PORT_EVENT_CONFIG_REQ].transitionCallback = BasicStateMachineS1E0Callback;
-
-    /* transition for state=PORT_STATE_NEED_CONFIG(1), event=PORT_EVENT_ADMIN_PWRDOWN_REQ(6) */
-    stt[FM10000_PORT_STATE_NEED_CONFIG]
-       [FM10000_PORT_EVENT_ADMIN_PWRDOWN_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_NEED_CONFIG]
-       [FM10000_PORT_EVENT_ADMIN_PWRDOWN_REQ].nextState = FM10000_PORT_STATE_DISABLED;
-    stt[FM10000_PORT_STATE_NEED_CONFIG]
-       [FM10000_PORT_EVENT_ADMIN_PWRDOWN_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_NEED_CONFIG]
-       [FM10000_PORT_EVENT_ADMIN_PWRDOWN_REQ].transitionCallback = NULL;
-
-    /* transition for state=PORT_STATE_CONFIGURED(2), event=PORT_EVENT_CONFIG_REQ(0) */
-    stt[FM10000_PORT_STATE_CONFIGURED]
-       [FM10000_PORT_EVENT_CONFIG_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_CONFIGURED]
-       [FM10000_PORT_EVENT_CONFIG_REQ].nextState = FM10000_PORT_STATE_CONFIGURED;
-    stt[FM10000_PORT_STATE_CONFIGURED]
-       [FM10000_PORT_EVENT_CONFIG_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_CONFIGURED]
-       [FM10000_PORT_EVENT_CONFIG_REQ].transitionCallback = BasicStateMachineS2E0Callback;
-
-    /* transition for state=PORT_STATE_CONFIGURED(2), event=PORT_EVENT_DISABLE_REQ(1) */
-    stt[FM10000_PORT_STATE_CONFIGURED]
-       [FM10000_PORT_EVENT_DISABLE_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_CONFIGURED]
-       [FM10000_PORT_EVENT_DISABLE_REQ].nextState = FM10000_PORT_STATE_DISABLED;
-    stt[FM10000_PORT_STATE_CONFIGURED]
-       [FM10000_PORT_EVENT_DISABLE_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_CONFIGURED]
-       [FM10000_PORT_EVENT_DISABLE_REQ].transitionCallback = BasicStateMachineS2E1Callback;
-
-    /* transition for state=PORT_STATE_CONFIGURED(2), event=PORT_EVENT_ADMIN_UP_REQ(4) */
-    stt[FM10000_PORT_STATE_CONFIGURED]
-       [FM10000_PORT_EVENT_ADMIN_UP_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_CONFIGURED]
-       [FM10000_PORT_EVENT_ADMIN_UP_REQ].nextState = FM10000_PORT_STATE_POWERING_UP;
-    stt[FM10000_PORT_STATE_CONFIGURED]
-       [FM10000_PORT_EVENT_ADMIN_UP_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_CONFIGURED]
-       [FM10000_PORT_EVENT_ADMIN_UP_REQ].transitionCallback = BasicStateMachineS2E4Callback;
-
-    /* transition for state=PORT_STATE_CONFIGURED(2), event=PORT_EVENT_ADMIN_DOWN_REQ(5) */
-    stt[FM10000_PORT_STATE_CONFIGURED]
-       [FM10000_PORT_EVENT_ADMIN_DOWN_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_CONFIGURED]
-       [FM10000_PORT_EVENT_ADMIN_DOWN_REQ].nextState = FM10000_PORT_STATE_POWERING_UP;
-    stt[FM10000_PORT_STATE_CONFIGURED]
-       [FM10000_PORT_EVENT_ADMIN_DOWN_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_CONFIGURED]
-       [FM10000_PORT_EVENT_ADMIN_DOWN_REQ].transitionCallback = BasicStateMachineS2E5Callback;
-
-    /* transition for state=PORT_STATE_CONFIGURED(2), event=PORT_EVENT_REMOTE_FAULT_REQ(7) */
-    stt[FM10000_PORT_STATE_CONFIGURED]
-       [FM10000_PORT_EVENT_REMOTE_FAULT_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_CONFIGURED]
-       [FM10000_PORT_EVENT_REMOTE_FAULT_REQ].nextState = FM10000_PORT_STATE_POWERING_UP;
-    stt[FM10000_PORT_STATE_CONFIGURED]
-       [FM10000_PORT_EVENT_REMOTE_FAULT_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_CONFIGURED]
-       [FM10000_PORT_EVENT_REMOTE_FAULT_REQ].transitionCallback = BasicStateMachineS2E7Callback;
-
-    /* transition for state=PORT_STATE_CONFIGURED(2), event=PORT_EVENT_LOCAL_FAULT_REQ(8) */
-    stt[FM10000_PORT_STATE_CONFIGURED]
-       [FM10000_PORT_EVENT_LOCAL_FAULT_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_CONFIGURED]
-       [FM10000_PORT_EVENT_LOCAL_FAULT_REQ].nextState = FM10000_PORT_STATE_POWERING_UP;
-    stt[FM10000_PORT_STATE_CONFIGURED]
-       [FM10000_PORT_EVENT_LOCAL_FAULT_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_CONFIGURED]
-       [FM10000_PORT_EVENT_LOCAL_FAULT_REQ].transitionCallback = BasicStateMachineS2E8Callback;
-
-    /* transition for state=PORT_STATE_CONFIGURED(2), event=PORT_EVENT_BIST_REQ(9) */
-    stt[FM10000_PORT_STATE_CONFIGURED]
-       [FM10000_PORT_EVENT_BIST_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_CONFIGURED]
-       [FM10000_PORT_EVENT_BIST_REQ].nextState = FM10000_PORT_STATE_POWERING_UP;
-    stt[FM10000_PORT_STATE_CONFIGURED]
-       [FM10000_PORT_EVENT_BIST_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_CONFIGURED]
-       [FM10000_PORT_EVENT_BIST_REQ].transitionCallback = BasicStateMachineS2E9Callback;
-
-    /* transition for state=PORT_STATE_POWERING_UP(3), event=PORT_EVENT_CONFIG_REQ(0) */
-    stt[FM10000_PORT_STATE_POWERING_UP]
-       [FM10000_PORT_EVENT_CONFIG_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_POWERING_UP]
-       [FM10000_PORT_EVENT_CONFIG_REQ].nextState = FM10000_PORT_STATE_POWERING_UP;
-    stt[FM10000_PORT_STATE_POWERING_UP]
-       [FM10000_PORT_EVENT_CONFIG_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_POWERING_UP]
-       [FM10000_PORT_EVENT_CONFIG_REQ].transitionCallback = BasicStateMachineS3E0Callback;
-
-    /* transition for state=PORT_STATE_POWERING_UP(3), event=PORT_EVENT_DISABLE_REQ(1) */
-    stt[FM10000_PORT_STATE_POWERING_UP]
-       [FM10000_PORT_EVENT_DISABLE_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_POWERING_UP]
-       [FM10000_PORT_EVENT_DISABLE_REQ].nextState = FM10000_PORT_STATE_NEED_CONFIG;
-    stt[FM10000_PORT_STATE_POWERING_UP]
-       [FM10000_PORT_EVENT_DISABLE_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_POWERING_UP]
-       [FM10000_PORT_EVENT_DISABLE_REQ].transitionCallback = BasicStateMachineS3E1Callback;
-
-    /* transition for state=PORT_STATE_POWERING_UP(3), event=PORT_EVENT_LOOPBACK_ON_REQ(2) */
-    stt[FM10000_PORT_STATE_POWERING_UP]
-       [FM10000_PORT_EVENT_LOOPBACK_ON_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_POWERING_UP]
-       [FM10000_PORT_EVENT_LOOPBACK_ON_REQ].nextState = FM10000_PORT_STATE_POWERING_UP;
-    stt[FM10000_PORT_STATE_POWERING_UP]
-       [FM10000_PORT_EVENT_LOOPBACK_ON_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_POWERING_UP]
-       [FM10000_PORT_EVENT_LOOPBACK_ON_REQ].transitionCallback = BasicStateMachineS3E2Callback;
-
-    /* transition for state=PORT_STATE_POWERING_UP(3), event=PORT_EVENT_LOOPBACK_OFF_REQ(3) */
-    stt[FM10000_PORT_STATE_POWERING_UP]
-       [FM10000_PORT_EVENT_LOOPBACK_OFF_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_POWERING_UP]
-       [FM10000_PORT_EVENT_LOOPBACK_OFF_REQ].nextState = FM10000_PORT_STATE_POWERING_UP;
-    stt[FM10000_PORT_STATE_POWERING_UP]
-       [FM10000_PORT_EVENT_LOOPBACK_OFF_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_POWERING_UP]
-       [FM10000_PORT_EVENT_LOOPBACK_OFF_REQ].transitionCallback = BasicStateMachineS3E3Callback;
-
-    /* transition for state=PORT_STATE_POWERING_UP(3), event=PORT_EVENT_ADMIN_UP_REQ(4) */
-    stt[FM10000_PORT_STATE_POWERING_UP]
-       [FM10000_PORT_EVENT_ADMIN_UP_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_POWERING_UP]
-       [FM10000_PORT_EVENT_ADMIN_UP_REQ].nextState = FM10000_PORT_STATE_POWERING_UP;
-    stt[FM10000_PORT_STATE_POWERING_UP]
-       [FM10000_PORT_EVENT_ADMIN_UP_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_POWERING_UP]
-       [FM10000_PORT_EVENT_ADMIN_UP_REQ].transitionCallback = BasicStateMachineS3E4Callback;
-
-    /* transition for state=PORT_STATE_POWERING_UP(3), event=PORT_EVENT_ADMIN_DOWN_REQ(5) */
-    stt[FM10000_PORT_STATE_POWERING_UP]
-       [FM10000_PORT_EVENT_ADMIN_DOWN_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_POWERING_UP]
-       [FM10000_PORT_EVENT_ADMIN_DOWN_REQ].nextState = FM10000_PORT_STATE_POWERING_UP;
-    stt[FM10000_PORT_STATE_POWERING_UP]
-       [FM10000_PORT_EVENT_ADMIN_DOWN_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_POWERING_UP]
-       [FM10000_PORT_EVENT_ADMIN_DOWN_REQ].transitionCallback = BasicStateMachineS3E5Callback;
-
-    /* transition for state=PORT_STATE_POWERING_UP(3), event=PORT_EVENT_ADMIN_PWRDOWN_REQ(6) */
-    stt[FM10000_PORT_STATE_POWERING_UP]
-       [FM10000_PORT_EVENT_ADMIN_PWRDOWN_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_POWERING_UP]
-       [FM10000_PORT_EVENT_ADMIN_PWRDOWN_REQ].nextState = FM10000_PORT_STATE_CONFIGURED;
-    stt[FM10000_PORT_STATE_POWERING_UP]
-       [FM10000_PORT_EVENT_ADMIN_PWRDOWN_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_POWERING_UP]
-       [FM10000_PORT_EVENT_ADMIN_PWRDOWN_REQ].transitionCallback = BasicStateMachineS3E6Callback;
-
-    /* transition for state=PORT_STATE_POWERING_UP(3), event=PORT_EVENT_REMOTE_FAULT_REQ(7) */
-    stt[FM10000_PORT_STATE_POWERING_UP]
-       [FM10000_PORT_EVENT_REMOTE_FAULT_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_POWERING_UP]
-       [FM10000_PORT_EVENT_REMOTE_FAULT_REQ].nextState = FM10000_PORT_STATE_POWERING_UP;
-    stt[FM10000_PORT_STATE_POWERING_UP]
-       [FM10000_PORT_EVENT_REMOTE_FAULT_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_POWERING_UP]
-       [FM10000_PORT_EVENT_REMOTE_FAULT_REQ].transitionCallback = BasicStateMachineS3E7Callback;
-
-    /* transition for state=PORT_STATE_POWERING_UP(3), event=PORT_EVENT_LOCAL_FAULT_REQ(8) */
-    stt[FM10000_PORT_STATE_POWERING_UP]
-       [FM10000_PORT_EVENT_LOCAL_FAULT_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_POWERING_UP]
-       [FM10000_PORT_EVENT_LOCAL_FAULT_REQ].nextState = FM10000_PORT_STATE_POWERING_UP;
-    stt[FM10000_PORT_STATE_POWERING_UP]
-       [FM10000_PORT_EVENT_LOCAL_FAULT_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_POWERING_UP]
-       [FM10000_PORT_EVENT_LOCAL_FAULT_REQ].transitionCallback = BasicStateMachineS3E8Callback;
-
-    /* transition for state=PORT_STATE_POWERING_UP(3), event=PORT_EVENT_BIST_REQ(9) */
-    stt[FM10000_PORT_STATE_POWERING_UP]
-       [FM10000_PORT_EVENT_BIST_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_POWERING_UP]
-       [FM10000_PORT_EVENT_BIST_REQ].nextState = FM10000_PORT_STATE_POWERING_UP;
-    stt[FM10000_PORT_STATE_POWERING_UP]
-       [FM10000_PORT_EVENT_BIST_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_POWERING_UP]
-       [FM10000_PORT_EVENT_BIST_REQ].transitionCallback = BasicStateMachineS3E9Callback;
-
-    /* transition for state=PORT_STATE_POWERING_UP(3), event=PORT_EVENT_CONFIGURE_DFE_REQ(10) */
-    stt[FM10000_PORT_STATE_POWERING_UP]
-       [FM10000_PORT_EVENT_CONFIGURE_DFE_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_POWERING_UP]
-       [FM10000_PORT_EVENT_CONFIGURE_DFE_REQ].nextState = FM10000_PORT_STATE_POWERING_UP;
-    stt[FM10000_PORT_STATE_POWERING_UP]
-       [FM10000_PORT_EVENT_CONFIGURE_DFE_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_POWERING_UP]
-       [FM10000_PORT_EVENT_CONFIGURE_DFE_REQ].transitionCallback = BasicStateMachineS3E10Callback;
-
-    /* transition for state=PORT_STATE_POWERING_UP(3), event=PORT_EVENT_LANE_READY_IND(17) */
-    stt[FM10000_PORT_STATE_POWERING_UP]
-       [FM10000_PORT_EVENT_LANE_READY_IND].used = TRUE;
-    stt[FM10000_PORT_STATE_POWERING_UP]
-       [FM10000_PORT_EVENT_LANE_READY_IND].nextState = FM_STATE_UNSPECIFIED;
-    stt[FM10000_PORT_STATE_POWERING_UP]
-       [FM10000_PORT_EVENT_LANE_READY_IND].conditionCallback = CheckLanesReady;
-    stt[FM10000_PORT_STATE_POWERING_UP]
-       [FM10000_PORT_EVENT_LANE_READY_IND].transitionCallback = NULL;
-
-    /* transition for state=PORT_STATE_POWERING_UP(3), event=PORT_EVENT_LANE_NOT_READY_IND(18) */
-    stt[FM10000_PORT_STATE_POWERING_UP]
-       [FM10000_PORT_EVENT_LANE_NOT_READY_IND].used = TRUE;
-    stt[FM10000_PORT_STATE_POWERING_UP]
-       [FM10000_PORT_EVENT_LANE_NOT_READY_IND].nextState = FM10000_PORT_STATE_POWERING_UP;
-    stt[FM10000_PORT_STATE_POWERING_UP]
-       [FM10000_PORT_EVENT_LANE_NOT_READY_IND].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_POWERING_UP]
-       [FM10000_PORT_EVENT_LANE_NOT_READY_IND].transitionCallback = BasicStateMachineS3E18Callback;
-
-    /* transition for state=PORT_STATE_DEFERRED_UP(4), event=PORT_EVENT_CONFIG_REQ(0) */
-    stt[FM10000_PORT_STATE_DEFERRED_UP]
-       [FM10000_PORT_EVENT_CONFIG_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_DEFERRED_UP]
-       [FM10000_PORT_EVENT_CONFIG_REQ].nextState = FM10000_PORT_STATE_POWERING_UP;
-    stt[FM10000_PORT_STATE_DEFERRED_UP]
-       [FM10000_PORT_EVENT_CONFIG_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_DEFERRED_UP]
-       [FM10000_PORT_EVENT_CONFIG_REQ].transitionCallback = BasicStateMachineS4E0Callback;
-
-    /* transition for state=PORT_STATE_DEFERRED_UP(4), event=PORT_EVENT_DISABLE_REQ(1) */
-    stt[FM10000_PORT_STATE_DEFERRED_UP]
-       [FM10000_PORT_EVENT_DISABLE_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_DEFERRED_UP]
-       [FM10000_PORT_EVENT_DISABLE_REQ].nextState = FM10000_PORT_STATE_NEED_CONFIG;
-    stt[FM10000_PORT_STATE_DEFERRED_UP]
-       [FM10000_PORT_EVENT_DISABLE_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_DEFERRED_UP]
-       [FM10000_PORT_EVENT_DISABLE_REQ].transitionCallback = BasicStateMachineS4E1Callback;
-
-    /* transition for state=PORT_STATE_DEFERRED_UP(4), event=PORT_EVENT_LOOPBACK_ON_REQ(2) */
-    stt[FM10000_PORT_STATE_DEFERRED_UP]
-       [FM10000_PORT_EVENT_LOOPBACK_ON_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_DEFERRED_UP]
-       [FM10000_PORT_EVENT_LOOPBACK_ON_REQ].nextState = FM10000_PORT_STATE_DEFERRED_UP;
-    stt[FM10000_PORT_STATE_DEFERRED_UP]
-       [FM10000_PORT_EVENT_LOOPBACK_ON_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_DEFERRED_UP]
-       [FM10000_PORT_EVENT_LOOPBACK_ON_REQ].transitionCallback = BasicStateMachineS4E2Callback;
-
-    /* transition for state=PORT_STATE_DEFERRED_UP(4), event=PORT_EVENT_LOOPBACK_OFF_REQ(3) */
-    stt[FM10000_PORT_STATE_DEFERRED_UP]
-       [FM10000_PORT_EVENT_LOOPBACK_OFF_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_DEFERRED_UP]
-       [FM10000_PORT_EVENT_LOOPBACK_OFF_REQ].nextState = FM10000_PORT_STATE_DEFERRED_UP;
-    stt[FM10000_PORT_STATE_DEFERRED_UP]
-       [FM10000_PORT_EVENT_LOOPBACK_OFF_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_DEFERRED_UP]
-       [FM10000_PORT_EVENT_LOOPBACK_OFF_REQ].transitionCallback = BasicStateMachineS4E3Callback;
-
-    /* transition for state=PORT_STATE_DEFERRED_UP(4), event=PORT_EVENT_ADMIN_UP_REQ(4) */
-    stt[FM10000_PORT_STATE_DEFERRED_UP]
-       [FM10000_PORT_EVENT_ADMIN_UP_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_DEFERRED_UP]
-       [FM10000_PORT_EVENT_ADMIN_UP_REQ].nextState = FM10000_PORT_STATE_DEFERRED_UP;
-    stt[FM10000_PORT_STATE_DEFERRED_UP]
-       [FM10000_PORT_EVENT_ADMIN_UP_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_DEFERRED_UP]
-       [FM10000_PORT_EVENT_ADMIN_UP_REQ].transitionCallback = BasicStateMachineS4E4Callback;
-
-    /* transition for state=PORT_STATE_DEFERRED_UP(4), event=PORT_EVENT_ADMIN_DOWN_REQ(5) */
-    stt[FM10000_PORT_STATE_DEFERRED_UP]
-       [FM10000_PORT_EVENT_ADMIN_DOWN_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_DEFERRED_UP]
-       [FM10000_PORT_EVENT_ADMIN_DOWN_REQ].nextState = FM10000_PORT_STATE_DEFERRED_UP;
-    stt[FM10000_PORT_STATE_DEFERRED_UP]
-       [FM10000_PORT_EVENT_ADMIN_DOWN_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_DEFERRED_UP]
-       [FM10000_PORT_EVENT_ADMIN_DOWN_REQ].transitionCallback = BasicStateMachineS4E5Callback;
-
-    /* transition for state=PORT_STATE_DEFERRED_UP(4), event=PORT_EVENT_ADMIN_PWRDOWN_REQ(6) */
-    stt[FM10000_PORT_STATE_DEFERRED_UP]
-       [FM10000_PORT_EVENT_ADMIN_PWRDOWN_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_DEFERRED_UP]
-       [FM10000_PORT_EVENT_ADMIN_PWRDOWN_REQ].nextState = FM10000_PORT_STATE_CONFIGURED;
-    stt[FM10000_PORT_STATE_DEFERRED_UP]
-       [FM10000_PORT_EVENT_ADMIN_PWRDOWN_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_DEFERRED_UP]
-       [FM10000_PORT_EVENT_ADMIN_PWRDOWN_REQ].transitionCallback = BasicStateMachineS4E6Callback;
-
-    /* transition for state=PORT_STATE_DEFERRED_UP(4), event=PORT_EVENT_REMOTE_FAULT_REQ(7) */
-    stt[FM10000_PORT_STATE_DEFERRED_UP]
-       [FM10000_PORT_EVENT_REMOTE_FAULT_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_DEFERRED_UP]
-       [FM10000_PORT_EVENT_REMOTE_FAULT_REQ].nextState = FM10000_PORT_STATE_DEFERRED_UP;
-    stt[FM10000_PORT_STATE_DEFERRED_UP]
-       [FM10000_PORT_EVENT_REMOTE_FAULT_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_DEFERRED_UP]
-       [FM10000_PORT_EVENT_REMOTE_FAULT_REQ].transitionCallback = BasicStateMachineS4E7Callback;
-
-    /* transition for state=PORT_STATE_DEFERRED_UP(4), event=PORT_EVENT_LOCAL_FAULT_REQ(8) */
-    stt[FM10000_PORT_STATE_DEFERRED_UP]
-       [FM10000_PORT_EVENT_LOCAL_FAULT_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_DEFERRED_UP]
-       [FM10000_PORT_EVENT_LOCAL_FAULT_REQ].nextState = FM10000_PORT_STATE_DEFERRED_UP;
-    stt[FM10000_PORT_STATE_DEFERRED_UP]
-       [FM10000_PORT_EVENT_LOCAL_FAULT_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_DEFERRED_UP]
-       [FM10000_PORT_EVENT_LOCAL_FAULT_REQ].transitionCallback = BasicStateMachineS4E8Callback;
-
-    /* transition for state=PORT_STATE_DEFERRED_UP(4), event=PORT_EVENT_BIST_REQ(9) */
-    stt[FM10000_PORT_STATE_DEFERRED_UP]
-       [FM10000_PORT_EVENT_BIST_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_DEFERRED_UP]
-       [FM10000_PORT_EVENT_BIST_REQ].nextState = FM10000_PORT_STATE_DEFERRED_UP;
-    stt[FM10000_PORT_STATE_DEFERRED_UP]
-       [FM10000_PORT_EVENT_BIST_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_DEFERRED_UP]
-       [FM10000_PORT_EVENT_BIST_REQ].transitionCallback = BasicStateMachineS4E9Callback;
-
-    /* transition for state=PORT_STATE_DEFERRED_UP(4), event=PORT_EVENT_CONFIGURE_DFE_REQ(10) */
-    stt[FM10000_PORT_STATE_DEFERRED_UP]
-       [FM10000_PORT_EVENT_CONFIGURE_DFE_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_DEFERRED_UP]
-       [FM10000_PORT_EVENT_CONFIGURE_DFE_REQ].nextState = FM10000_PORT_STATE_DEFERRED_UP;
-    stt[FM10000_PORT_STATE_DEFERRED_UP]
-       [FM10000_PORT_EVENT_CONFIGURE_DFE_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_DEFERRED_UP]
-       [FM10000_PORT_EVENT_CONFIGURE_DFE_REQ].transitionCallback = BasicStateMachineS4E10Callback;
-
-    /* transition for state=PORT_STATE_DEFERRED_UP(4), event=PORT_EVENT_LANE_NOT_READY_IND(18) */
-    stt[FM10000_PORT_STATE_DEFERRED_UP]
-       [FM10000_PORT_EVENT_LANE_NOT_READY_IND].used = TRUE;
-    stt[FM10000_PORT_STATE_DEFERRED_UP]
-       [FM10000_PORT_EVENT_LANE_NOT_READY_IND].nextState = FM10000_PORT_STATE_DEFERRED_UP;
-    stt[FM10000_PORT_STATE_DEFERRED_UP]
-       [FM10000_PORT_EVENT_LANE_NOT_READY_IND].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_DEFERRED_UP]
-       [FM10000_PORT_EVENT_LANE_NOT_READY_IND].transitionCallback = BasicStateMachineS4E18Callback;
-
-    /* transition for state=PORT_STATE_DEFERRED_UP(4), event=PORT_EVENT_DEFTIMER_EXP_IND(21) */
-    stt[FM10000_PORT_STATE_DEFERRED_UP]
-       [FM10000_PORT_EVENT_DEFTIMER_EXP_IND].used = TRUE;
-    stt[FM10000_PORT_STATE_DEFERRED_UP]
-       [FM10000_PORT_EVENT_DEFTIMER_EXP_IND].nextState = FM_STATE_UNSPECIFIED;
-    stt[FM10000_PORT_STATE_DEFERRED_UP]
-       [FM10000_PORT_EVENT_DEFTIMER_EXP_IND].conditionCallback = ProcessDeferralTimer;
-    stt[FM10000_PORT_STATE_DEFERRED_UP]
-       [FM10000_PORT_EVENT_DEFTIMER_EXP_IND].transitionCallback = NULL;
-
-    /* transition for state=PORT_STATE_DEFERRED_UP(4), event=PORT_EVENT_AN_RESTARTED_IND(26) */
-    stt[FM10000_PORT_STATE_DEFERRED_UP]
-       [FM10000_PORT_EVENT_AN_RESTARTED_IND].used = TRUE;
-    stt[FM10000_PORT_STATE_DEFERRED_UP]
-       [FM10000_PORT_EVENT_AN_RESTARTED_IND].nextState = FM_STATE_UNSPECIFIED;
-    stt[FM10000_PORT_STATE_DEFERRED_UP]
-       [FM10000_PORT_EVENT_AN_RESTARTED_IND].conditionCallback = AnRestart;
-    stt[FM10000_PORT_STATE_DEFERRED_UP]
-       [FM10000_PORT_EVENT_AN_RESTARTED_IND].transitionCallback = NULL;
-
-    /* transition for state=PORT_STATE_DEFERRED_UP(4), event=PORT_EVENT_LINK_DOWN_IND(19) */
-    stt[FM10000_PORT_STATE_DEFERRED_UP]
-       [FM10000_PORT_EVENT_LINK_DOWN_IND].used = TRUE;
-    stt[FM10000_PORT_STATE_DEFERRED_UP]
-       [FM10000_PORT_EVENT_LINK_DOWN_IND].nextState = FM10000_PORT_STATE_DEFERRED_UP;
-    stt[FM10000_PORT_STATE_DEFERRED_UP]
-       [FM10000_PORT_EVENT_LINK_DOWN_IND].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_DEFERRED_UP]
-       [FM10000_PORT_EVENT_LINK_DOWN_IND].transitionCallback = NULL;
-
-    /* transition for state=PORT_STATE_DEFERRED_UP(4), event=PORT_EVENT_LINK_UP_IND(20) */
-    stt[FM10000_PORT_STATE_DEFERRED_UP]
-       [FM10000_PORT_EVENT_LINK_UP_IND].used = TRUE;
-    stt[FM10000_PORT_STATE_DEFERRED_UP]
-       [FM10000_PORT_EVENT_LINK_UP_IND].nextState = FM10000_PORT_STATE_DEFERRED_UP;
-    stt[FM10000_PORT_STATE_DEFERRED_UP]
-       [FM10000_PORT_EVENT_LINK_UP_IND].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_DEFERRED_UP]
-       [FM10000_PORT_EVENT_LINK_UP_IND].transitionCallback = NULL;
-
-    /* transition for state=PORT_STATE_DEFERRED_UP(4), event=PORT_EVENT_REMOTE_FAULT_IND(11) */
-    stt[FM10000_PORT_STATE_DEFERRED_UP]
-       [FM10000_PORT_EVENT_REMOTE_FAULT_IND].used = TRUE;
-    stt[FM10000_PORT_STATE_DEFERRED_UP]
-       [FM10000_PORT_EVENT_REMOTE_FAULT_IND].nextState = FM10000_PORT_STATE_DEFERRED_UP;
-    stt[FM10000_PORT_STATE_DEFERRED_UP]
-       [FM10000_PORT_EVENT_REMOTE_FAULT_IND].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_DEFERRED_UP]
-       [FM10000_PORT_EVENT_REMOTE_FAULT_IND].transitionCallback = NULL;
-
-    /* transition for state=PORT_STATE_DEFERRED_UP(4), event=PORT_EVENT_LOCAL_FAULT_IND(12) */
-    stt[FM10000_PORT_STATE_DEFERRED_UP]
-       [FM10000_PORT_EVENT_LOCAL_FAULT_IND].used = TRUE;
-    stt[FM10000_PORT_STATE_DEFERRED_UP]
-       [FM10000_PORT_EVENT_LOCAL_FAULT_IND].nextState = FM10000_PORT_STATE_DEFERRED_UP;
-    stt[FM10000_PORT_STATE_DEFERRED_UP]
-       [FM10000_PORT_EVENT_LOCAL_FAULT_IND].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_DEFERRED_UP]
-       [FM10000_PORT_EVENT_LOCAL_FAULT_IND].transitionCallback = NULL;
-
-    /* transition for state=PORT_STATE_ADMIN_FAULT(6), event=PORT_EVENT_CONFIG_REQ(0) */
-    stt[FM10000_PORT_STATE_ADMIN_FAULT]
-       [FM10000_PORT_EVENT_CONFIG_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_ADMIN_FAULT]
-       [FM10000_PORT_EVENT_CONFIG_REQ].nextState = FM10000_PORT_STATE_POWERING_UP;
-    stt[FM10000_PORT_STATE_ADMIN_FAULT]
-       [FM10000_PORT_EVENT_CONFIG_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_ADMIN_FAULT]
-       [FM10000_PORT_EVENT_CONFIG_REQ].transitionCallback = BasicStateMachineS6E0Callback;
-
-    /* transition for state=PORT_STATE_ADMIN_FAULT(6), event=PORT_EVENT_DISABLE_REQ(1) */
-    stt[FM10000_PORT_STATE_ADMIN_FAULT]
-       [FM10000_PORT_EVENT_DISABLE_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_ADMIN_FAULT]
-       [FM10000_PORT_EVENT_DISABLE_REQ].nextState = FM10000_PORT_STATE_NEED_CONFIG;
-    stt[FM10000_PORT_STATE_ADMIN_FAULT]
-       [FM10000_PORT_EVENT_DISABLE_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_ADMIN_FAULT]
-       [FM10000_PORT_EVENT_DISABLE_REQ].transitionCallback = BasicStateMachineS6E1Callback;
-
-    /* transition for state=PORT_STATE_ADMIN_FAULT(6), event=PORT_EVENT_ADMIN_UP_REQ(4) */
-    stt[FM10000_PORT_STATE_ADMIN_FAULT]
-       [FM10000_PORT_EVENT_ADMIN_UP_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_ADMIN_FAULT]
-       [FM10000_PORT_EVENT_ADMIN_UP_REQ].nextState = FM_STATE_UNSPECIFIED;
-    stt[FM10000_PORT_STATE_ADMIN_FAULT]
-       [FM10000_PORT_EVENT_ADMIN_UP_REQ].conditionCallback = ExitAdminFaultMode;
-    stt[FM10000_PORT_STATE_ADMIN_FAULT]
-       [FM10000_PORT_EVENT_ADMIN_UP_REQ].transitionCallback = NULL;
-
-    /* transition for state=PORT_STATE_ADMIN_FAULT(6), event=PORT_EVENT_ADMIN_DOWN_REQ(5) */
-    stt[FM10000_PORT_STATE_ADMIN_FAULT]
-       [FM10000_PORT_EVENT_ADMIN_DOWN_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_ADMIN_FAULT]
-       [FM10000_PORT_EVENT_ADMIN_DOWN_REQ].nextState = FM10000_PORT_STATE_ADMIN_FAULT;
-    stt[FM10000_PORT_STATE_ADMIN_FAULT]
-       [FM10000_PORT_EVENT_ADMIN_DOWN_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_ADMIN_FAULT]
-       [FM10000_PORT_EVENT_ADMIN_DOWN_REQ].transitionCallback = BasicStateMachineS6E5Callback;
-
-    /* transition for state=PORT_STATE_ADMIN_FAULT(6), event=PORT_EVENT_ADMIN_PWRDOWN_REQ(6) */
-    stt[FM10000_PORT_STATE_ADMIN_FAULT]
-       [FM10000_PORT_EVENT_ADMIN_PWRDOWN_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_ADMIN_FAULT]
-       [FM10000_PORT_EVENT_ADMIN_PWRDOWN_REQ].nextState = FM10000_PORT_STATE_CONFIGURED;
-    stt[FM10000_PORT_STATE_ADMIN_FAULT]
-       [FM10000_PORT_EVENT_ADMIN_PWRDOWN_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_ADMIN_FAULT]
-       [FM10000_PORT_EVENT_ADMIN_PWRDOWN_REQ].transitionCallback = BasicStateMachineS6E6Callback;
-
-    /* transition for state=PORT_STATE_ADMIN_FAULT(6), event=PORT_EVENT_REMOTE_FAULT_REQ(7) */
-    stt[FM10000_PORT_STATE_ADMIN_FAULT]
-       [FM10000_PORT_EVENT_REMOTE_FAULT_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_ADMIN_FAULT]
-       [FM10000_PORT_EVENT_REMOTE_FAULT_REQ].nextState = FM10000_PORT_STATE_ADMIN_FAULT;
-    stt[FM10000_PORT_STATE_ADMIN_FAULT]
-       [FM10000_PORT_EVENT_REMOTE_FAULT_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_ADMIN_FAULT]
-       [FM10000_PORT_EVENT_REMOTE_FAULT_REQ].transitionCallback = BasicStateMachineS6E7Callback;
-
-    /* transition for state=PORT_STATE_ADMIN_FAULT(6), event=PORT_EVENT_LOCAL_FAULT_REQ(8) */
-    stt[FM10000_PORT_STATE_ADMIN_FAULT]
-       [FM10000_PORT_EVENT_LOCAL_FAULT_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_ADMIN_FAULT]
-       [FM10000_PORT_EVENT_LOCAL_FAULT_REQ].nextState = FM10000_PORT_STATE_ADMIN_FAULT;
-    stt[FM10000_PORT_STATE_ADMIN_FAULT]
-       [FM10000_PORT_EVENT_LOCAL_FAULT_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_ADMIN_FAULT]
-       [FM10000_PORT_EVENT_LOCAL_FAULT_REQ].transitionCallback = BasicStateMachineS6E8Callback;
-
-    /* transition for state=PORT_STATE_ADMIN_FAULT(6), event=PORT_EVENT_BIST_REQ(9) */
-    stt[FM10000_PORT_STATE_ADMIN_FAULT]
-       [FM10000_PORT_EVENT_BIST_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_ADMIN_FAULT]
-       [FM10000_PORT_EVENT_BIST_REQ].nextState = FM10000_PORT_STATE_BIST;
-    stt[FM10000_PORT_STATE_ADMIN_FAULT]
-       [FM10000_PORT_EVENT_BIST_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_ADMIN_FAULT]
-       [FM10000_PORT_EVENT_BIST_REQ].transitionCallback = BasicStateMachineS6E9Callback;
-
-    /* transition for state=PORT_STATE_ADMIN_FAULT(6), event=PORT_EVENT_CONFIGURE_DFE_REQ(10) */
-    stt[FM10000_PORT_STATE_ADMIN_FAULT]
-       [FM10000_PORT_EVENT_CONFIGURE_DFE_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_ADMIN_FAULT]
-       [FM10000_PORT_EVENT_CONFIGURE_DFE_REQ].nextState = FM10000_PORT_STATE_ADMIN_FAULT;
-    stt[FM10000_PORT_STATE_ADMIN_FAULT]
-       [FM10000_PORT_EVENT_CONFIGURE_DFE_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_ADMIN_FAULT]
-       [FM10000_PORT_EVENT_CONFIGURE_DFE_REQ].transitionCallback = BasicStateMachineS6E10Callback;
-
-    /* transition for state=PORT_STATE_LOCAL_FAULT(7), event=PORT_EVENT_CONFIG_REQ(0) */
-    stt[FM10000_PORT_STATE_LOCAL_FAULT]
-       [FM10000_PORT_EVENT_CONFIG_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_LOCAL_FAULT]
-       [FM10000_PORT_EVENT_CONFIG_REQ].nextState = FM10000_PORT_STATE_POWERING_UP;
-    stt[FM10000_PORT_STATE_LOCAL_FAULT]
-       [FM10000_PORT_EVENT_CONFIG_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_LOCAL_FAULT]
-       [FM10000_PORT_EVENT_CONFIG_REQ].transitionCallback = BasicStateMachineS7E0Callback;
-
-    /* transition for state=PORT_STATE_LOCAL_FAULT(7), event=PORT_EVENT_DISABLE_REQ(1) */
-    stt[FM10000_PORT_STATE_LOCAL_FAULT]
-       [FM10000_PORT_EVENT_DISABLE_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_LOCAL_FAULT]
-       [FM10000_PORT_EVENT_DISABLE_REQ].nextState = FM10000_PORT_STATE_NEED_CONFIG;
-    stt[FM10000_PORT_STATE_LOCAL_FAULT]
-       [FM10000_PORT_EVENT_DISABLE_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_LOCAL_FAULT]
-       [FM10000_PORT_EVENT_DISABLE_REQ].transitionCallback = BasicStateMachineS7E1Callback;
-
-    /* transition for state=PORT_STATE_LOCAL_FAULT(7), event=PORT_EVENT_LOOPBACK_ON_REQ(2) */
-    stt[FM10000_PORT_STATE_LOCAL_FAULT]
-       [FM10000_PORT_EVENT_LOOPBACK_ON_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_LOCAL_FAULT]
-       [FM10000_PORT_EVENT_LOOPBACK_ON_REQ].nextState = FM10000_PORT_STATE_LOCAL_FAULT;
-    stt[FM10000_PORT_STATE_LOCAL_FAULT]
-       [FM10000_PORT_EVENT_LOOPBACK_ON_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_LOCAL_FAULT]
-       [FM10000_PORT_EVENT_LOOPBACK_ON_REQ].transitionCallback = BasicStateMachineS7E2Callback;
-
-    /* transition for state=PORT_STATE_LOCAL_FAULT(7), event=PORT_EVENT_LOOPBACK_OFF_REQ(3) */
-    stt[FM10000_PORT_STATE_LOCAL_FAULT]
-       [FM10000_PORT_EVENT_LOOPBACK_OFF_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_LOCAL_FAULT]
-       [FM10000_PORT_EVENT_LOOPBACK_OFF_REQ].nextState = FM10000_PORT_STATE_LOCAL_FAULT;
-    stt[FM10000_PORT_STATE_LOCAL_FAULT]
-       [FM10000_PORT_EVENT_LOOPBACK_OFF_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_LOCAL_FAULT]
-       [FM10000_PORT_EVENT_LOOPBACK_OFF_REQ].transitionCallback = BasicStateMachineS7E3Callback;
-
-    /* transition for state=PORT_STATE_LOCAL_FAULT(7), event=PORT_EVENT_FABRIC_LOOPBACK_ON_REQ(27) */
-    stt[FM10000_PORT_STATE_LOCAL_FAULT]
-       [FM10000_PORT_EVENT_FABRIC_LOOPBACK_ON_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_LOCAL_FAULT]
-       [FM10000_PORT_EVENT_FABRIC_LOOPBACK_ON_REQ].nextState = FM10000_PORT_STATE_UP;
-    stt[FM10000_PORT_STATE_LOCAL_FAULT]
-       [FM10000_PORT_EVENT_FABRIC_LOOPBACK_ON_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_LOCAL_FAULT]
-       [FM10000_PORT_EVENT_FABRIC_LOOPBACK_ON_REQ].transitionCallback = BasicStateMachineS7E27Callback;
-
-    /* transition for state=PORT_STATE_LOCAL_FAULT(7), event=PORT_EVENT_ADMIN_DOWN_REQ(5) */
-    stt[FM10000_PORT_STATE_LOCAL_FAULT]
-       [FM10000_PORT_EVENT_ADMIN_DOWN_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_LOCAL_FAULT]
-       [FM10000_PORT_EVENT_ADMIN_DOWN_REQ].nextState = FM10000_PORT_STATE_ADMIN_FAULT;
-    stt[FM10000_PORT_STATE_LOCAL_FAULT]
-       [FM10000_PORT_EVENT_ADMIN_DOWN_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_LOCAL_FAULT]
-       [FM10000_PORT_EVENT_ADMIN_DOWN_REQ].transitionCallback = BasicStateMachineS7E5Callback;
-
-    /* transition for state=PORT_STATE_LOCAL_FAULT(7), event=PORT_EVENT_ADMIN_PWRDOWN_REQ(6) */
-    stt[FM10000_PORT_STATE_LOCAL_FAULT]
-       [FM10000_PORT_EVENT_ADMIN_PWRDOWN_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_LOCAL_FAULT]
-       [FM10000_PORT_EVENT_ADMIN_PWRDOWN_REQ].nextState = FM10000_PORT_STATE_CONFIGURED;
-    stt[FM10000_PORT_STATE_LOCAL_FAULT]
-       [FM10000_PORT_EVENT_ADMIN_PWRDOWN_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_LOCAL_FAULT]
-       [FM10000_PORT_EVENT_ADMIN_PWRDOWN_REQ].transitionCallback = BasicStateMachineS7E6Callback;
-
-    /* transition for state=PORT_STATE_LOCAL_FAULT(7), event=PORT_EVENT_REMOTE_FAULT_REQ(7) */
-    stt[FM10000_PORT_STATE_LOCAL_FAULT]
-       [FM10000_PORT_EVENT_REMOTE_FAULT_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_LOCAL_FAULT]
-       [FM10000_PORT_EVENT_REMOTE_FAULT_REQ].nextState = FM10000_PORT_STATE_ADMIN_FAULT;
-    stt[FM10000_PORT_STATE_LOCAL_FAULT]
-       [FM10000_PORT_EVENT_REMOTE_FAULT_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_LOCAL_FAULT]
-       [FM10000_PORT_EVENT_REMOTE_FAULT_REQ].transitionCallback = BasicStateMachineS7E7Callback;
-
-    /* transition for state=PORT_STATE_LOCAL_FAULT(7), event=PORT_EVENT_LOCAL_FAULT_REQ(8) */
-    stt[FM10000_PORT_STATE_LOCAL_FAULT]
-       [FM10000_PORT_EVENT_LOCAL_FAULT_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_LOCAL_FAULT]
-       [FM10000_PORT_EVENT_LOCAL_FAULT_REQ].nextState = FM10000_PORT_STATE_ADMIN_FAULT;
-    stt[FM10000_PORT_STATE_LOCAL_FAULT]
-       [FM10000_PORT_EVENT_LOCAL_FAULT_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_LOCAL_FAULT]
-       [FM10000_PORT_EVENT_LOCAL_FAULT_REQ].transitionCallback = BasicStateMachineS7E8Callback;
-
-    /* transition for state=PORT_STATE_LOCAL_FAULT(7), event=PORT_EVENT_BIST_REQ(9) */
-    stt[FM10000_PORT_STATE_LOCAL_FAULT]
-       [FM10000_PORT_EVENT_BIST_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_LOCAL_FAULT]
-       [FM10000_PORT_EVENT_BIST_REQ].nextState = FM10000_PORT_STATE_BIST;
-    stt[FM10000_PORT_STATE_LOCAL_FAULT]
-       [FM10000_PORT_EVENT_BIST_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_LOCAL_FAULT]
-       [FM10000_PORT_EVENT_BIST_REQ].transitionCallback = BasicStateMachineS7E9Callback;
-
-    /* transition for state=PORT_STATE_LOCAL_FAULT(7), event=PORT_EVENT_CONFIGURE_DFE_REQ(10) */
-    stt[FM10000_PORT_STATE_LOCAL_FAULT]
-       [FM10000_PORT_EVENT_CONFIGURE_DFE_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_LOCAL_FAULT]
-       [FM10000_PORT_EVENT_CONFIGURE_DFE_REQ].nextState = FM10000_PORT_STATE_LOCAL_FAULT;
-    stt[FM10000_PORT_STATE_LOCAL_FAULT]
-       [FM10000_PORT_EVENT_CONFIGURE_DFE_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_LOCAL_FAULT]
-       [FM10000_PORT_EVENT_CONFIGURE_DFE_REQ].transitionCallback = BasicStateMachineS7E10Callback;
-
-    /* transition for state=PORT_STATE_LOCAL_FAULT(7), event=PORT_EVENT_REMOTE_FAULT_IND(11) */
-    stt[FM10000_PORT_STATE_LOCAL_FAULT]
-       [FM10000_PORT_EVENT_REMOTE_FAULT_IND].used = TRUE;
-    stt[FM10000_PORT_STATE_LOCAL_FAULT]
-       [FM10000_PORT_EVENT_REMOTE_FAULT_IND].nextState = FM10000_PORT_STATE_REMOTE_FAULT;
-    stt[FM10000_PORT_STATE_LOCAL_FAULT]
-       [FM10000_PORT_EVENT_REMOTE_FAULT_IND].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_LOCAL_FAULT]
-       [FM10000_PORT_EVENT_REMOTE_FAULT_IND].transitionCallback = BasicStateMachineS7E11Callback;
-
-    /* transition for state=PORT_STATE_LOCAL_FAULT(7), event=PORT_EVENT_LINK_UP_IND(20) */
-    stt[FM10000_PORT_STATE_LOCAL_FAULT]
-       [FM10000_PORT_EVENT_LINK_UP_IND].used = TRUE;
-    stt[FM10000_PORT_STATE_LOCAL_FAULT]
-       [FM10000_PORT_EVENT_LINK_UP_IND].nextState = FM10000_PORT_STATE_UP;
-    stt[FM10000_PORT_STATE_LOCAL_FAULT]
-       [FM10000_PORT_EVENT_LINK_UP_IND].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_LOCAL_FAULT]
-       [FM10000_PORT_EVENT_LINK_UP_IND].transitionCallback = BasicStateMachineS7E20Callback;
-
-    /* transition for state=PORT_STATE_LOCAL_FAULT(7), event=PORT_EVENT_POLLING_TIMER_EXP_IND(22) */
-    stt[FM10000_PORT_STATE_LOCAL_FAULT]
-       [FM10000_PORT_EVENT_POLLING_TIMER_EXP_IND].used = TRUE;
-    stt[FM10000_PORT_STATE_LOCAL_FAULT]
-       [FM10000_PORT_EVENT_POLLING_TIMER_EXP_IND].nextState = FM_STATE_UNSPECIFIED;
-    stt[FM10000_PORT_STATE_LOCAL_FAULT]
-       [FM10000_PORT_EVENT_POLLING_TIMER_EXP_IND].conditionCallback = ProcessPortStatusPollingTimer;
-    stt[FM10000_PORT_STATE_LOCAL_FAULT]
-       [FM10000_PORT_EVENT_POLLING_TIMER_EXP_IND].transitionCallback = NULL;
-
-    /* transition for state=PORT_STATE_REMOTE_FAULT(8), event=PORT_EVENT_CONFIG_REQ(0) */
-    stt[FM10000_PORT_STATE_REMOTE_FAULT]
-       [FM10000_PORT_EVENT_CONFIG_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_REMOTE_FAULT]
-       [FM10000_PORT_EVENT_CONFIG_REQ].nextState = FM10000_PORT_STATE_POWERING_UP;
-    stt[FM10000_PORT_STATE_REMOTE_FAULT]
-       [FM10000_PORT_EVENT_CONFIG_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_REMOTE_FAULT]
-       [FM10000_PORT_EVENT_CONFIG_REQ].transitionCallback = BasicStateMachineS8E0Callback;
-
-    /* transition for state=PORT_STATE_REMOTE_FAULT(8), event=PORT_EVENT_DISABLE_REQ(1) */
-    stt[FM10000_PORT_STATE_REMOTE_FAULT]
-       [FM10000_PORT_EVENT_DISABLE_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_REMOTE_FAULT]
-       [FM10000_PORT_EVENT_DISABLE_REQ].nextState = FM10000_PORT_STATE_NEED_CONFIG;
-    stt[FM10000_PORT_STATE_REMOTE_FAULT]
-       [FM10000_PORT_EVENT_DISABLE_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_REMOTE_FAULT]
-       [FM10000_PORT_EVENT_DISABLE_REQ].transitionCallback = BasicStateMachineS8E1Callback;
-
-    /* transition for state=PORT_STATE_REMOTE_FAULT(8), event=PORT_EVENT_LOOPBACK_ON_REQ(2) */
-    stt[FM10000_PORT_STATE_REMOTE_FAULT]
-       [FM10000_PORT_EVENT_LOOPBACK_ON_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_REMOTE_FAULT]
-       [FM10000_PORT_EVENT_LOOPBACK_ON_REQ].nextState = FM10000_PORT_STATE_REMOTE_FAULT;
-    stt[FM10000_PORT_STATE_REMOTE_FAULT]
-       [FM10000_PORT_EVENT_LOOPBACK_ON_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_REMOTE_FAULT]
-       [FM10000_PORT_EVENT_LOOPBACK_ON_REQ].transitionCallback = BasicStateMachineS8E2Callback;
-
-    /* transition for state=PORT_STATE_REMOTE_FAULT(8), event=PORT_EVENT_LOOPBACK_OFF_REQ(3) */
-    stt[FM10000_PORT_STATE_REMOTE_FAULT]
-       [FM10000_PORT_EVENT_LOOPBACK_OFF_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_REMOTE_FAULT]
-       [FM10000_PORT_EVENT_LOOPBACK_OFF_REQ].nextState = FM10000_PORT_STATE_REMOTE_FAULT;
-    stt[FM10000_PORT_STATE_REMOTE_FAULT]
-       [FM10000_PORT_EVENT_LOOPBACK_OFF_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_REMOTE_FAULT]
-       [FM10000_PORT_EVENT_LOOPBACK_OFF_REQ].transitionCallback = BasicStateMachineS8E3Callback;
-
-    /* transition for state=PORT_STATE_REMOTE_FAULT(8), event=PORT_EVENT_FABRIC_LOOPBACK_ON_REQ(27) */
-    stt[FM10000_PORT_STATE_REMOTE_FAULT]
-       [FM10000_PORT_EVENT_FABRIC_LOOPBACK_ON_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_REMOTE_FAULT]
-       [FM10000_PORT_EVENT_FABRIC_LOOPBACK_ON_REQ].nextState = FM10000_PORT_STATE_UP;
-    stt[FM10000_PORT_STATE_REMOTE_FAULT]
-       [FM10000_PORT_EVENT_FABRIC_LOOPBACK_ON_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_REMOTE_FAULT]
-       [FM10000_PORT_EVENT_FABRIC_LOOPBACK_ON_REQ].transitionCallback = BasicStateMachineS8E27Callback;
-
-    /* transition for state=PORT_STATE_REMOTE_FAULT(8), event=PORT_EVENT_ADMIN_DOWN_REQ(5) */
-    stt[FM10000_PORT_STATE_REMOTE_FAULT]
-       [FM10000_PORT_EVENT_ADMIN_DOWN_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_REMOTE_FAULT]
-       [FM10000_PORT_EVENT_ADMIN_DOWN_REQ].nextState = FM10000_PORT_STATE_ADMIN_FAULT;
-    stt[FM10000_PORT_STATE_REMOTE_FAULT]
-       [FM10000_PORT_EVENT_ADMIN_DOWN_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_REMOTE_FAULT]
-       [FM10000_PORT_EVENT_ADMIN_DOWN_REQ].transitionCallback = BasicStateMachineS8E5Callback;
-
-    /* transition for state=PORT_STATE_REMOTE_FAULT(8), event=PORT_EVENT_ADMIN_PWRDOWN_REQ(6) */
-    stt[FM10000_PORT_STATE_REMOTE_FAULT]
-       [FM10000_PORT_EVENT_ADMIN_PWRDOWN_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_REMOTE_FAULT]
-       [FM10000_PORT_EVENT_ADMIN_PWRDOWN_REQ].nextState = FM10000_PORT_STATE_CONFIGURED;
-    stt[FM10000_PORT_STATE_REMOTE_FAULT]
-       [FM10000_PORT_EVENT_ADMIN_PWRDOWN_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_REMOTE_FAULT]
-       [FM10000_PORT_EVENT_ADMIN_PWRDOWN_REQ].transitionCallback = BasicStateMachineS8E6Callback;
-
-    /* transition for state=PORT_STATE_REMOTE_FAULT(8), event=PORT_EVENT_REMOTE_FAULT_REQ(7) */
-    stt[FM10000_PORT_STATE_REMOTE_FAULT]
-       [FM10000_PORT_EVENT_REMOTE_FAULT_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_REMOTE_FAULT]
-       [FM10000_PORT_EVENT_REMOTE_FAULT_REQ].nextState = FM10000_PORT_STATE_ADMIN_FAULT;
-    stt[FM10000_PORT_STATE_REMOTE_FAULT]
-       [FM10000_PORT_EVENT_REMOTE_FAULT_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_REMOTE_FAULT]
-       [FM10000_PORT_EVENT_REMOTE_FAULT_REQ].transitionCallback = BasicStateMachineS8E7Callback;
-
-    /* transition for state=PORT_STATE_REMOTE_FAULT(8), event=PORT_EVENT_LOCAL_FAULT_REQ(8) */
-    stt[FM10000_PORT_STATE_REMOTE_FAULT]
-       [FM10000_PORT_EVENT_LOCAL_FAULT_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_REMOTE_FAULT]
-       [FM10000_PORT_EVENT_LOCAL_FAULT_REQ].nextState = FM10000_PORT_STATE_ADMIN_FAULT;
-    stt[FM10000_PORT_STATE_REMOTE_FAULT]
-       [FM10000_PORT_EVENT_LOCAL_FAULT_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_REMOTE_FAULT]
-       [FM10000_PORT_EVENT_LOCAL_FAULT_REQ].transitionCallback = BasicStateMachineS8E8Callback;
-
-    /* transition for state=PORT_STATE_REMOTE_FAULT(8), event=PORT_EVENT_BIST_REQ(9) */
-    stt[FM10000_PORT_STATE_REMOTE_FAULT]
-       [FM10000_PORT_EVENT_BIST_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_REMOTE_FAULT]
-       [FM10000_PORT_EVENT_BIST_REQ].nextState = FM10000_PORT_STATE_BIST;
-    stt[FM10000_PORT_STATE_REMOTE_FAULT]
-       [FM10000_PORT_EVENT_BIST_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_REMOTE_FAULT]
-       [FM10000_PORT_EVENT_BIST_REQ].transitionCallback = BasicStateMachineS8E9Callback;
-
-    /* transition for state=PORT_STATE_REMOTE_FAULT(8), event=PORT_EVENT_CONFIGURE_DFE_REQ(10) */
-    stt[FM10000_PORT_STATE_REMOTE_FAULT]
-       [FM10000_PORT_EVENT_CONFIGURE_DFE_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_REMOTE_FAULT]
-       [FM10000_PORT_EVENT_CONFIGURE_DFE_REQ].nextState = FM10000_PORT_STATE_REMOTE_FAULT;
-    stt[FM10000_PORT_STATE_REMOTE_FAULT]
-       [FM10000_PORT_EVENT_CONFIGURE_DFE_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_REMOTE_FAULT]
-       [FM10000_PORT_EVENT_CONFIGURE_DFE_REQ].transitionCallback = BasicStateMachineS8E10Callback;
-
-    /* transition for state=PORT_STATE_REMOTE_FAULT(8), event=PORT_EVENT_LOCAL_FAULT_IND(12) */
-    stt[FM10000_PORT_STATE_REMOTE_FAULT]
-       [FM10000_PORT_EVENT_LOCAL_FAULT_IND].used = TRUE;
-    stt[FM10000_PORT_STATE_REMOTE_FAULT]
-       [FM10000_PORT_EVENT_LOCAL_FAULT_IND].nextState = FM10000_PORT_STATE_LOCAL_FAULT;
-    stt[FM10000_PORT_STATE_REMOTE_FAULT]
-       [FM10000_PORT_EVENT_LOCAL_FAULT_IND].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_REMOTE_FAULT]
-       [FM10000_PORT_EVENT_LOCAL_FAULT_IND].transitionCallback = BasicStateMachineS8E12Callback;
-
-    /* transition for state=PORT_STATE_REMOTE_FAULT(8), event=PORT_EVENT_LINK_UP_IND(20) */
-    stt[FM10000_PORT_STATE_REMOTE_FAULT]
-       [FM10000_PORT_EVENT_LINK_UP_IND].used = TRUE;
-    stt[FM10000_PORT_STATE_REMOTE_FAULT]
-       [FM10000_PORT_EVENT_LINK_UP_IND].nextState = FM10000_PORT_STATE_UP;
-    stt[FM10000_PORT_STATE_REMOTE_FAULT]
-       [FM10000_PORT_EVENT_LINK_UP_IND].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_REMOTE_FAULT]
-       [FM10000_PORT_EVENT_LINK_UP_IND].transitionCallback = BasicStateMachineS8E20Callback;
-
-    /* transition for state=PORT_STATE_REMOTE_FAULT(8), event=PORT_EVENT_POLLING_TIMER_EXP_IND(22) */
-    stt[FM10000_PORT_STATE_REMOTE_FAULT]
-       [FM10000_PORT_EVENT_POLLING_TIMER_EXP_IND].used = TRUE;
-    stt[FM10000_PORT_STATE_REMOTE_FAULT]
-       [FM10000_PORT_EVENT_POLLING_TIMER_EXP_IND].nextState = FM_STATE_UNSPECIFIED;
-    stt[FM10000_PORT_STATE_REMOTE_FAULT]
-       [FM10000_PORT_EVENT_POLLING_TIMER_EXP_IND].conditionCallback = ProcessPortStatusPollingTimer;
-    stt[FM10000_PORT_STATE_REMOTE_FAULT]
-       [FM10000_PORT_EVENT_POLLING_TIMER_EXP_IND].transitionCallback = NULL;
-
-    /* transition for state=PORT_STATE_BIST(9), event=PORT_EVENT_CONFIG_REQ(0) */
-    stt[FM10000_PORT_STATE_BIST]
-       [FM10000_PORT_EVENT_CONFIG_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_BIST]
-       [FM10000_PORT_EVENT_CONFIG_REQ].nextState = FM10000_PORT_STATE_POWERING_UP;
-    stt[FM10000_PORT_STATE_BIST]
-       [FM10000_PORT_EVENT_CONFIG_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_BIST]
-       [FM10000_PORT_EVENT_CONFIG_REQ].transitionCallback = BasicStateMachineS9E0Callback;
-
-    /* transition for state=PORT_STATE_BIST(9), event=PORT_EVENT_DISABLE_REQ(1) */
-    stt[FM10000_PORT_STATE_BIST]
-       [FM10000_PORT_EVENT_DISABLE_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_BIST]
-       [FM10000_PORT_EVENT_DISABLE_REQ].nextState = FM10000_PORT_STATE_NEED_CONFIG;
-    stt[FM10000_PORT_STATE_BIST]
-       [FM10000_PORT_EVENT_DISABLE_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_BIST]
-       [FM10000_PORT_EVENT_DISABLE_REQ].transitionCallback = BasicStateMachineS9E1Callback;
-
-    /* transition for state=PORT_STATE_BIST(9), event=PORT_EVENT_LOOPBACK_ON_REQ(2) */
-    stt[FM10000_PORT_STATE_BIST]
-       [FM10000_PORT_EVENT_LOOPBACK_ON_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_BIST]
-       [FM10000_PORT_EVENT_LOOPBACK_ON_REQ].nextState = FM10000_PORT_STATE_BIST;
-    stt[FM10000_PORT_STATE_BIST]
-       [FM10000_PORT_EVENT_LOOPBACK_ON_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_BIST]
-       [FM10000_PORT_EVENT_LOOPBACK_ON_REQ].transitionCallback = BasicStateMachineS9E2Callback;
-
-    /* transition for state=PORT_STATE_BIST(9), event=PORT_EVENT_LOOPBACK_OFF_REQ(3) */
-    stt[FM10000_PORT_STATE_BIST]
-       [FM10000_PORT_EVENT_LOOPBACK_OFF_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_BIST]
-       [FM10000_PORT_EVENT_LOOPBACK_OFF_REQ].nextState = FM10000_PORT_STATE_BIST;
-    stt[FM10000_PORT_STATE_BIST]
-       [FM10000_PORT_EVENT_LOOPBACK_OFF_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_BIST]
-       [FM10000_PORT_EVENT_LOOPBACK_OFF_REQ].transitionCallback = BasicStateMachineS9E3Callback;
-
-    /* transition for state=PORT_STATE_BIST(9), event=PORT_EVENT_ADMIN_UP_REQ(4) */
-    stt[FM10000_PORT_STATE_BIST]
-       [FM10000_PORT_EVENT_ADMIN_UP_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_BIST]
-       [FM10000_PORT_EVENT_ADMIN_UP_REQ].nextState = FM_STATE_UNSPECIFIED;
-    stt[FM10000_PORT_STATE_BIST]
-       [FM10000_PORT_EVENT_ADMIN_UP_REQ].conditionCallback = ExitBistMode;
-    stt[FM10000_PORT_STATE_BIST]
-       [FM10000_PORT_EVENT_ADMIN_UP_REQ].transitionCallback = NULL;
-
-    /* transition for state=PORT_STATE_BIST(9), event=PORT_EVENT_ADMIN_DOWN_REQ(5) */
-    stt[FM10000_PORT_STATE_BIST]
-       [FM10000_PORT_EVENT_ADMIN_DOWN_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_BIST]
-       [FM10000_PORT_EVENT_ADMIN_DOWN_REQ].nextState = FM10000_PORT_STATE_ADMIN_FAULT;
-    stt[FM10000_PORT_STATE_BIST]
-       [FM10000_PORT_EVENT_ADMIN_DOWN_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_BIST]
-       [FM10000_PORT_EVENT_ADMIN_DOWN_REQ].transitionCallback = BasicStateMachineS9E5Callback;
-
-    /* transition for state=PORT_STATE_BIST(9), event=PORT_EVENT_ADMIN_PWRDOWN_REQ(6) */
-    stt[FM10000_PORT_STATE_BIST]
-       [FM10000_PORT_EVENT_ADMIN_PWRDOWN_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_BIST]
-       [FM10000_PORT_EVENT_ADMIN_PWRDOWN_REQ].nextState = FM10000_PORT_STATE_CONFIGURED;
-    stt[FM10000_PORT_STATE_BIST]
-       [FM10000_PORT_EVENT_ADMIN_PWRDOWN_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_BIST]
-       [FM10000_PORT_EVENT_ADMIN_PWRDOWN_REQ].transitionCallback = BasicStateMachineS9E6Callback;
-
-    /* transition for state=PORT_STATE_BIST(9), event=PORT_EVENT_REMOTE_FAULT_REQ(7) */
-    stt[FM10000_PORT_STATE_BIST]
-       [FM10000_PORT_EVENT_REMOTE_FAULT_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_BIST]
-       [FM10000_PORT_EVENT_REMOTE_FAULT_REQ].nextState = FM10000_PORT_STATE_ADMIN_FAULT;
-    stt[FM10000_PORT_STATE_BIST]
-       [FM10000_PORT_EVENT_REMOTE_FAULT_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_BIST]
-       [FM10000_PORT_EVENT_REMOTE_FAULT_REQ].transitionCallback = BasicStateMachineS9E7Callback;
-
-    /* transition for state=PORT_STATE_BIST(9), event=PORT_EVENT_LOCAL_FAULT_REQ(8) */
-    stt[FM10000_PORT_STATE_BIST]
-       [FM10000_PORT_EVENT_LOCAL_FAULT_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_BIST]
-       [FM10000_PORT_EVENT_LOCAL_FAULT_REQ].nextState = FM10000_PORT_STATE_ADMIN_FAULT;
-    stt[FM10000_PORT_STATE_BIST]
-       [FM10000_PORT_EVENT_LOCAL_FAULT_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_BIST]
-       [FM10000_PORT_EVENT_LOCAL_FAULT_REQ].transitionCallback = BasicStateMachineS9E8Callback;
-
-    /* transition for state=PORT_STATE_BIST(9), event=PORT_EVENT_BIST_REQ(9) */
-    stt[FM10000_PORT_STATE_BIST]
-       [FM10000_PORT_EVENT_BIST_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_BIST]
-       [FM10000_PORT_EVENT_BIST_REQ].nextState = FM10000_PORT_STATE_BIST;
-    stt[FM10000_PORT_STATE_BIST]
-       [FM10000_PORT_EVENT_BIST_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_BIST]
-       [FM10000_PORT_EVENT_BIST_REQ].transitionCallback = BasicStateMachineS9E9Callback;
-
-    /* transition for state=PORT_STATE_BIST(9), event=PORT_EVENT_CONFIGURE_DFE_REQ(10) */
-    stt[FM10000_PORT_STATE_BIST]
-       [FM10000_PORT_EVENT_CONFIGURE_DFE_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_BIST]
-       [FM10000_PORT_EVENT_CONFIGURE_DFE_REQ].nextState = FM10000_PORT_STATE_BIST;
-    stt[FM10000_PORT_STATE_BIST]
-       [FM10000_PORT_EVENT_CONFIGURE_DFE_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_BIST]
-       [FM10000_PORT_EVENT_CONFIGURE_DFE_REQ].transitionCallback = BasicStateMachineS9E10Callback;
-
-    /* transition for state=PORT_STATE_UP(11), event=PORT_EVENT_CONFIG_REQ(0) */
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_CONFIG_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_CONFIG_REQ].nextState = FM10000_PORT_STATE_POWERING_UP;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_CONFIG_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_CONFIG_REQ].transitionCallback = BasicStateMachineS11E0Callback;
-
-    /* transition for state=PORT_STATE_UP(11), event=PORT_EVENT_DISABLE_REQ(1) */
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_DISABLE_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_DISABLE_REQ].nextState = FM10000_PORT_STATE_NEED_CONFIG;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_DISABLE_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_DISABLE_REQ].transitionCallback = BasicStateMachineS11E1Callback;
-
-    /* transition for state=PORT_STATE_UP(11), event=PORT_EVENT_LOOPBACK_ON_REQ(2) */
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_LOOPBACK_ON_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_LOOPBACK_ON_REQ].nextState = FM10000_PORT_STATE_UP;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_LOOPBACK_ON_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_LOOPBACK_ON_REQ].transitionCallback = BasicStateMachineS11E2Callback;
-
-    /* transition for state=PORT_STATE_UP(11), event=PORT_EVENT_LOOPBACK_OFF_REQ(3) */
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_LOOPBACK_OFF_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_LOOPBACK_OFF_REQ].nextState = FM10000_PORT_STATE_UP;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_LOOPBACK_OFF_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_LOOPBACK_OFF_REQ].transitionCallback = BasicStateMachineS11E3Callback;
-
-    /* transition for state=PORT_STATE_UP(11), event=PORT_EVENT_FABRIC_LOOPBACK_ON_REQ(27) */
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_FABRIC_LOOPBACK_ON_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_FABRIC_LOOPBACK_ON_REQ].nextState = FM10000_PORT_STATE_UP;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_FABRIC_LOOPBACK_ON_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_FABRIC_LOOPBACK_ON_REQ].transitionCallback = BasicStateMachineS11E27Callback;
-
-    /* transition for state=PORT_STATE_UP(11), event=PORT_EVENT_FABRIC_LOOPBACK_OFF_REQ(28) */
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_FABRIC_LOOPBACK_OFF_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_FABRIC_LOOPBACK_OFF_REQ].nextState = FM_STATE_UNSPECIFIED;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_FABRIC_LOOPBACK_OFF_REQ].conditionCallback = ProcessDisableFabricLoopback;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_FABRIC_LOOPBACK_OFF_REQ].transitionCallback = NULL;
-
-    /* transition for state=PORT_STATE_UP(11), event=PORT_EVENT_ADMIN_DOWN_REQ(5) */
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_ADMIN_DOWN_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_ADMIN_DOWN_REQ].nextState = FM10000_PORT_STATE_ADMIN_FAULT;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_ADMIN_DOWN_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_ADMIN_DOWN_REQ].transitionCallback = BasicStateMachineS11E5Callback;
-
-    /* transition for state=PORT_STATE_UP(11), event=PORT_EVENT_ADMIN_PWRDOWN_REQ(6) */
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_ADMIN_PWRDOWN_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_ADMIN_PWRDOWN_REQ].nextState = FM10000_PORT_STATE_CONFIGURED;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_ADMIN_PWRDOWN_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_ADMIN_PWRDOWN_REQ].transitionCallback = BasicStateMachineS11E6Callback;
-
-    /* transition for state=PORT_STATE_UP(11), event=PORT_EVENT_REMOTE_FAULT_REQ(7) */
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_REMOTE_FAULT_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_REMOTE_FAULT_REQ].nextState = FM10000_PORT_STATE_ADMIN_FAULT;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_REMOTE_FAULT_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_REMOTE_FAULT_REQ].transitionCallback = BasicStateMachineS11E7Callback;
-
-    /* transition for state=PORT_STATE_UP(11), event=PORT_EVENT_LOCAL_FAULT_REQ(8) */
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_LOCAL_FAULT_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_LOCAL_FAULT_REQ].nextState = FM10000_PORT_STATE_ADMIN_FAULT;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_LOCAL_FAULT_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_LOCAL_FAULT_REQ].transitionCallback = BasicStateMachineS11E8Callback;
-
-    /* transition for state=PORT_STATE_UP(11), event=PORT_EVENT_BIST_REQ(9) */
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_BIST_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_BIST_REQ].nextState = FM10000_PORT_STATE_BIST;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_BIST_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_BIST_REQ].transitionCallback = BasicStateMachineS11E9Callback;
-
-    /* transition for state=PORT_STATE_UP(11), event=PORT_EVENT_CONFIGURE_DFE_REQ(10) */
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_CONFIGURE_DFE_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_CONFIGURE_DFE_REQ].nextState = FM10000_PORT_STATE_UP;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_CONFIGURE_DFE_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_CONFIGURE_DFE_REQ].transitionCallback = BasicStateMachineS11E10Callback;
-
-    /* transition for state=PORT_STATE_UP(11), event=PORT_EVENT_REMOTE_FAULT_IND(11) */
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_REMOTE_FAULT_IND].used = TRUE;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_REMOTE_FAULT_IND].nextState = FM10000_PORT_STATE_REMOTE_FAULT;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_REMOTE_FAULT_IND].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_REMOTE_FAULT_IND].transitionCallback = BasicStateMachineS11E11Callback;
-
-    /* transition for state=PORT_STATE_UP(11), event=PORT_EVENT_LOCAL_FAULT_IND(12) */
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_LOCAL_FAULT_IND].used = TRUE;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_LOCAL_FAULT_IND].nextState = FM10000_PORT_STATE_LOCAL_FAULT;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_LOCAL_FAULT_IND].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_LOCAL_FAULT_IND].transitionCallback = BasicStateMachineS11E12Callback;
-
-    /* transition for state=PORT_STATE_UP(11), event=PORT_EVENT_EEE_SILENT_IND(29) */
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_EEE_SILENT_IND].used = TRUE;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_EEE_SILENT_IND].nextState = FM10000_PORT_STATE_UP;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_EEE_SILENT_IND].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_EEE_SILENT_IND].transitionCallback = BasicStateMachineS11E29Callback;
-
-    /* transition for state=PORT_STATE_UP(11), event=PORT_EVENT_DEFTIMER_EXP_IND(21) */
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_DEFTIMER_EXP_IND].used = TRUE;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_DEFTIMER_EXP_IND].nextState = FM10000_PORT_STATE_UP;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_DEFTIMER_EXP_IND].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_DEFTIMER_EXP_IND].transitionCallback = BasicStateMachineS11E21Callback;
-
-    /* transition for state=PORT_STATE_UP(11), event=PORT_EVENT_POLLING_TIMER_EXP_IND(22) */
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_POLLING_TIMER_EXP_IND].used = TRUE;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_POLLING_TIMER_EXP_IND].nextState = FM_STATE_UNSPECIFIED;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_POLLING_TIMER_EXP_IND].conditionCallback = ProcessPortStatusPollingTimer;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_POLLING_TIMER_EXP_IND].transitionCallback = NULL;
-
+    for (i = 0 ; 
+         i < (sizeof(fm10000BasicSmTable) / sizeof(fm_smTable)); 
+         i++)
+    {
+        stt[fm10000BasicSmTable[i].current]
+           [fm10000BasicSmTable[i].event].used = TRUE;
+
+        stt[fm10000BasicSmTable[i].current]
+           [fm10000BasicSmTable[i].event].nextState = 
+               fm10000BasicSmTable[i].next;
+
+        if (fm10000BasicSmTable[i].next == FM_STATE_UNSPECIFIED)
+        {
+            stt[fm10000BasicSmTable[i].current]
+               [fm10000BasicSmTable[i].event].conditionCallback = 
+                   (fm_smConditionCallback) fm10000BasicSmTable[i].callback;
+
+            stt[fm10000BasicSmTable[i].current]
+               [fm10000BasicSmTable[i].event].transitionCallback = NULL;
+        }
+        else
+        {
+            stt[fm10000BasicSmTable[i].current]
+               [fm10000BasicSmTable[i].event].conditionCallback = NULL;
+
+            stt[fm10000BasicSmTable[i].current]
+               [fm10000BasicSmTable[i].event].transitionCallback = 
+                   (fm_smTransitionCallback) fm10000BasicSmTable[i].callback;
+        }
+    }
+    
     /* fill out the state transition table for this state machine type */
-    for (i = 0 ; i < FM10000_PORT_STATE_MAX  ; i++)
+    for (i = 0 ; i < FM10000_PORT_STATE_MAX ; i++)
     {
         dynstt[i] = &stt[i][0];
     }
@@ -15136,8 +7819,7 @@ fm_status fm10000RegisterBasicPortStateMachine( void )
 
 
 /*****************************************************************************/
-/** fm10000RegisterPciePortStateMachine
- * \ingroup intPortStateMachine
+/* fm10000RegisterPciePortStateMachine
  *
  * \desc            This function registers with the Generic State Machine
  *                  Engine state machine type ''FM10000_PCIE_PORT_STATE_MACHINE''.
@@ -15155,9 +7837,9 @@ fm_status fm10000RegisterBasicPortStateMachine( void )
  *****************************************************************************/
 fm_status fm10000RegisterPciePortStateMachine( void )
 {
-    fm_int      i;
-    fm_status   status;
-    fm_smTransitionEntry  stt[FM10000_PORT_STATE_MAX][FM10000_PORT_EVENT_MAX];
+    fm_uint i;
+    fm_status status;
+    fm_smTransitionEntry stt[FM10000_PORT_STATE_MAX][FM10000_PORT_EVENT_MAX];
     fm_smTransitionEntry *dynstt[FM10000_PORT_STATE_MAX];
     fm_smTransitionLogCallback logCallback;
 
@@ -15169,668 +7851,39 @@ fm_status fm10000RegisterPciePortStateMachine( void )
     /* clear out the temporary state transition table */
     FM_MEMSET_S( stt, sizeof(stt), 0, sizeof(stt));
 
-    /* transition for state=PORT_STATE_DISABLED(0), event=PORT_EVENT_CONFIG_REQ(0) */
-    stt[FM10000_PORT_STATE_DISABLED]
-       [FM10000_PORT_EVENT_CONFIG_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_DISABLED]
-       [FM10000_PORT_EVENT_CONFIG_REQ].nextState = FM_STATE_UNSPECIFIED;
-    stt[FM10000_PORT_STATE_DISABLED]
-       [FM10000_PORT_EVENT_CONFIG_REQ].conditionCallback = ConfigureDeviceAndCheckState;
-    stt[FM10000_PORT_STATE_DISABLED]
-       [FM10000_PORT_EVENT_CONFIG_REQ].transitionCallback = NULL;
-
-    /* transition for state=PORT_STATE_DISABLED(0), event=PORT_EVENT_LINK_UP_IND(20) */
-    stt[FM10000_PORT_STATE_DISABLED]
-       [FM10000_PORT_EVENT_LINK_UP_IND].used = TRUE;
-    stt[FM10000_PORT_STATE_DISABLED]
-       [FM10000_PORT_EVENT_LINK_UP_IND].nextState = FM10000_PORT_STATE_DISABLED;
-    stt[FM10000_PORT_STATE_DISABLED]
-       [FM10000_PORT_EVENT_LINK_UP_IND].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_DISABLED]
-       [FM10000_PORT_EVENT_LINK_UP_IND].transitionCallback = PcieStateMachineS0E20Callback;
-
-    /* transition for state=PORT_STATE_DISABLED(0), event=PORT_EVENT_LINK_DOWN_IND(19) */
-    stt[FM10000_PORT_STATE_DISABLED]
-       [FM10000_PORT_EVENT_LINK_DOWN_IND].used = TRUE;
-    stt[FM10000_PORT_STATE_DISABLED]
-       [FM10000_PORT_EVENT_LINK_DOWN_IND].nextState = FM10000_PORT_STATE_DISABLED;
-    stt[FM10000_PORT_STATE_DISABLED]
-       [FM10000_PORT_EVENT_LINK_DOWN_IND].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_DISABLED]
-       [FM10000_PORT_EVENT_LINK_DOWN_IND].transitionCallback = PcieStateMachineS0E19Callback;
-
-    /* transition for state=PORT_STATE_DISABLED(0), event=PORT_EVENT_LOOPBACK_ON_REQ(2) */
-    stt[FM10000_PORT_STATE_DISABLED]
-       [FM10000_PORT_EVENT_LOOPBACK_ON_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_DISABLED]
-       [FM10000_PORT_EVENT_LOOPBACK_ON_REQ].nextState = FM10000_PORT_STATE_DISABLED;
-    stt[FM10000_PORT_STATE_DISABLED]
-       [FM10000_PORT_EVENT_LOOPBACK_ON_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_DISABLED]
-       [FM10000_PORT_EVENT_LOOPBACK_ON_REQ].transitionCallback = PcieStateMachineS0E2Callback;
-
-    /* transition for state=PORT_STATE_DISABLED(0), event=PORT_EVENT_LOOPBACK_OFF_REQ(3) */
-    stt[FM10000_PORT_STATE_DISABLED]
-       [FM10000_PORT_EVENT_LOOPBACK_OFF_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_DISABLED]
-       [FM10000_PORT_EVENT_LOOPBACK_OFF_REQ].nextState = FM10000_PORT_STATE_DISABLED;
-    stt[FM10000_PORT_STATE_DISABLED]
-       [FM10000_PORT_EVENT_LOOPBACK_OFF_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_DISABLED]
-       [FM10000_PORT_EVENT_LOOPBACK_OFF_REQ].transitionCallback = PcieStateMachineS0E3Callback;
-
-    /* transition for state=PORT_STATE_DISABLED(0), event=PORT_EVENT_ADMIN_UP_REQ(4) */
-    stt[FM10000_PORT_STATE_DISABLED]
-       [FM10000_PORT_EVENT_ADMIN_UP_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_DISABLED]
-       [FM10000_PORT_EVENT_ADMIN_UP_REQ].nextState = FM10000_PORT_STATE_DISABLED;
-    stt[FM10000_PORT_STATE_DISABLED]
-       [FM10000_PORT_EVENT_ADMIN_UP_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_DISABLED]
-       [FM10000_PORT_EVENT_ADMIN_UP_REQ].transitionCallback = NULL;
-
-    /* transition for state=PORT_STATE_DISABLED(0), event=PORT_EVENT_ADMIN_DOWN_REQ(5) */
-    stt[FM10000_PORT_STATE_DISABLED]
-       [FM10000_PORT_EVENT_ADMIN_DOWN_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_DISABLED]
-       [FM10000_PORT_EVENT_ADMIN_DOWN_REQ].nextState = FM10000_PORT_STATE_DISABLED;
-    stt[FM10000_PORT_STATE_DISABLED]
-       [FM10000_PORT_EVENT_ADMIN_DOWN_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_DISABLED]
-       [FM10000_PORT_EVENT_ADMIN_DOWN_REQ].transitionCallback = NULL;
-
-    /* transition for state=PORT_STATE_DISABLED(0), event=PORT_EVENT_ADMIN_PWRDOWN_REQ(6) */
-    stt[FM10000_PORT_STATE_DISABLED]
-       [FM10000_PORT_EVENT_ADMIN_PWRDOWN_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_DISABLED]
-       [FM10000_PORT_EVENT_ADMIN_PWRDOWN_REQ].nextState = FM10000_PORT_STATE_DISABLED;
-    stt[FM10000_PORT_STATE_DISABLED]
-       [FM10000_PORT_EVENT_ADMIN_PWRDOWN_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_DISABLED]
-       [FM10000_PORT_EVENT_ADMIN_PWRDOWN_REQ].transitionCallback = PcieStateMachineS0E6Callback;
-
-    /* transition for state=PORT_STATE_DISABLED(0), event=PORT_EVENT_REMOTE_FAULT_REQ(7) */
-    stt[FM10000_PORT_STATE_DISABLED]
-       [FM10000_PORT_EVENT_REMOTE_FAULT_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_DISABLED]
-       [FM10000_PORT_EVENT_REMOTE_FAULT_REQ].nextState = FM10000_PORT_STATE_DISABLED;
-    stt[FM10000_PORT_STATE_DISABLED]
-       [FM10000_PORT_EVENT_REMOTE_FAULT_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_DISABLED]
-       [FM10000_PORT_EVENT_REMOTE_FAULT_REQ].transitionCallback = PcieStateMachineS0E7Callback;
-
-    /* transition for state=PORT_STATE_DISABLED(0), event=PORT_EVENT_LOCAL_FAULT_REQ(8) */
-    stt[FM10000_PORT_STATE_DISABLED]
-       [FM10000_PORT_EVENT_LOCAL_FAULT_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_DISABLED]
-       [FM10000_PORT_EVENT_LOCAL_FAULT_REQ].nextState = FM10000_PORT_STATE_DISABLED;
-    stt[FM10000_PORT_STATE_DISABLED]
-       [FM10000_PORT_EVENT_LOCAL_FAULT_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_DISABLED]
-       [FM10000_PORT_EVENT_LOCAL_FAULT_REQ].transitionCallback = PcieStateMachineS0E8Callback;
-
-    /* transition for state=PORT_STATE_DISABLED(0), event=PORT_EVENT_BIST_REQ(9) */
-    stt[FM10000_PORT_STATE_DISABLED]
-       [FM10000_PORT_EVENT_BIST_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_DISABLED]
-       [FM10000_PORT_EVENT_BIST_REQ].nextState = FM10000_PORT_STATE_DISABLED;
-    stt[FM10000_PORT_STATE_DISABLED]
-       [FM10000_PORT_EVENT_BIST_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_DISABLED]
-       [FM10000_PORT_EVENT_BIST_REQ].transitionCallback = PcieStateMachineS0E9Callback;
-
-    /* transition for state=PORT_STATE_DISABLED(0), event=PORT_EVENT_REMOTE_FAULT_IND(11) */
-    stt[FM10000_PORT_STATE_DISABLED]
-       [FM10000_PORT_EVENT_REMOTE_FAULT_IND].used = TRUE;
-    stt[FM10000_PORT_STATE_DISABLED]
-       [FM10000_PORT_EVENT_REMOTE_FAULT_IND].nextState = FM10000_PORT_STATE_DISABLED;
-    stt[FM10000_PORT_STATE_DISABLED]
-       [FM10000_PORT_EVENT_REMOTE_FAULT_IND].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_DISABLED]
-       [FM10000_PORT_EVENT_REMOTE_FAULT_IND].transitionCallback = PcieStateMachineS0E11Callback;
-
-    /* transition for state=PORT_STATE_DISABLED(0), event=PORT_EVENT_LOCAL_FAULT_IND(12) */
-    stt[FM10000_PORT_STATE_DISABLED]
-       [FM10000_PORT_EVENT_LOCAL_FAULT_IND].used = TRUE;
-    stt[FM10000_PORT_STATE_DISABLED]
-       [FM10000_PORT_EVENT_LOCAL_FAULT_IND].nextState = FM10000_PORT_STATE_DISABLED;
-    stt[FM10000_PORT_STATE_DISABLED]
-       [FM10000_PORT_EVENT_LOCAL_FAULT_IND].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_DISABLED]
-       [FM10000_PORT_EVENT_LOCAL_FAULT_IND].transitionCallback = PcieStateMachineS0E12Callback;
-
-    /* transition for state=PORT_STATE_DISABLED(0), event=PORT_EVENT_LANE_DFE_COMPLETE_IND(13) */
-    stt[FM10000_PORT_STATE_DISABLED]
-       [FM10000_PORT_EVENT_LANE_DFE_COMPLETE_IND].used = TRUE;
-    stt[FM10000_PORT_STATE_DISABLED]
-       [FM10000_PORT_EVENT_LANE_DFE_COMPLETE_IND].nextState = FM10000_PORT_STATE_DISABLED;
-    stt[FM10000_PORT_STATE_DISABLED]
-       [FM10000_PORT_EVENT_LANE_DFE_COMPLETE_IND].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_DISABLED]
-       [FM10000_PORT_EVENT_LANE_DFE_COMPLETE_IND].transitionCallback = PcieStateMachineS0E13Callback;
-
-    /* transition for state=PORT_STATE_DISABLED(0), event=PORT_EVENT_LANE_DFE_FAILED_IND(14) */
-    stt[FM10000_PORT_STATE_DISABLED]
-       [FM10000_PORT_EVENT_LANE_DFE_FAILED_IND].used = TRUE;
-    stt[FM10000_PORT_STATE_DISABLED]
-       [FM10000_PORT_EVENT_LANE_DFE_FAILED_IND].nextState = FM10000_PORT_STATE_DISABLED;
-    stt[FM10000_PORT_STATE_DISABLED]
-       [FM10000_PORT_EVENT_LANE_DFE_FAILED_IND].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_DISABLED]
-       [FM10000_PORT_EVENT_LANE_DFE_FAILED_IND].transitionCallback = PcieStateMachineS0E14Callback;
-
-    /* transition for state=PORT_STATE_DISABLED(0), event=PORT_EVENT_LANE_KR_COMPLETE_IND(15) */
-    stt[FM10000_PORT_STATE_DISABLED]
-       [FM10000_PORT_EVENT_LANE_KR_COMPLETE_IND].used = TRUE;
-    stt[FM10000_PORT_STATE_DISABLED]
-       [FM10000_PORT_EVENT_LANE_KR_COMPLETE_IND].nextState = FM10000_PORT_STATE_DISABLED;
-    stt[FM10000_PORT_STATE_DISABLED]
-       [FM10000_PORT_EVENT_LANE_KR_COMPLETE_IND].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_DISABLED]
-       [FM10000_PORT_EVENT_LANE_KR_COMPLETE_IND].transitionCallback = PcieStateMachineS0E15Callback;
-
-    /* transition for state=PORT_STATE_DISABLED(0), event=PORT_EVENT_LANE_KR_FAILED_IND(16) */
-    stt[FM10000_PORT_STATE_DISABLED]
-       [FM10000_PORT_EVENT_LANE_KR_FAILED_IND].used = TRUE;
-    stt[FM10000_PORT_STATE_DISABLED]
-       [FM10000_PORT_EVENT_LANE_KR_FAILED_IND].nextState = FM10000_PORT_STATE_DISABLED;
-    stt[FM10000_PORT_STATE_DISABLED]
-       [FM10000_PORT_EVENT_LANE_KR_FAILED_IND].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_DISABLED]
-       [FM10000_PORT_EVENT_LANE_KR_FAILED_IND].transitionCallback = PcieStateMachineS0E16Callback;
-
-    /* transition for state=PORT_STATE_DISABLED(0), event=PORT_EVENT_LANE_READY_IND(17) */
-    stt[FM10000_PORT_STATE_DISABLED]
-       [FM10000_PORT_EVENT_LANE_READY_IND].used = TRUE;
-    stt[FM10000_PORT_STATE_DISABLED]
-       [FM10000_PORT_EVENT_LANE_READY_IND].nextState = FM10000_PORT_STATE_DISABLED;
-    stt[FM10000_PORT_STATE_DISABLED]
-       [FM10000_PORT_EVENT_LANE_READY_IND].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_DISABLED]
-       [FM10000_PORT_EVENT_LANE_READY_IND].transitionCallback = PcieStateMachineS0E17Callback;
-
-    /* transition for state=PORT_STATE_DISABLED(0), event=PORT_EVENT_LANE_NOT_READY_IND(18) */
-    stt[FM10000_PORT_STATE_DISABLED]
-       [FM10000_PORT_EVENT_LANE_NOT_READY_IND].used = TRUE;
-    stt[FM10000_PORT_STATE_DISABLED]
-       [FM10000_PORT_EVENT_LANE_NOT_READY_IND].nextState = FM10000_PORT_STATE_DISABLED;
-    stt[FM10000_PORT_STATE_DISABLED]
-       [FM10000_PORT_EVENT_LANE_NOT_READY_IND].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_DISABLED]
-       [FM10000_PORT_EVENT_LANE_NOT_READY_IND].transitionCallback = PcieStateMachineS0E18Callback;
-
-    /* transition for state=PORT_STATE_DISABLED(0), event=PORT_EVENT_DEFTIMER_EXP_IND(21) */
-    stt[FM10000_PORT_STATE_DISABLED]
-       [FM10000_PORT_EVENT_DEFTIMER_EXP_IND].used = TRUE;
-    stt[FM10000_PORT_STATE_DISABLED]
-       [FM10000_PORT_EVENT_DEFTIMER_EXP_IND].nextState = FM10000_PORT_STATE_DISABLED;
-    stt[FM10000_PORT_STATE_DISABLED]
-       [FM10000_PORT_EVENT_DEFTIMER_EXP_IND].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_DISABLED]
-       [FM10000_PORT_EVENT_DEFTIMER_EXP_IND].transitionCallback = PcieStateMachineS0E21Callback;
-
-    /* transition for state=PORT_STATE_DOWN(10), event=PORT_EVENT_CONFIG_REQ(0) */
-    stt[FM10000_PORT_STATE_DOWN]
-       [FM10000_PORT_EVENT_CONFIG_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_DOWN]
-       [FM10000_PORT_EVENT_CONFIG_REQ].nextState = FM10000_PORT_STATE_DOWN;
-    stt[FM10000_PORT_STATE_DOWN]
-       [FM10000_PORT_EVENT_CONFIG_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_DOWN]
-       [FM10000_PORT_EVENT_CONFIG_REQ].transitionCallback = PcieStateMachineS10E0Callback;
-
-    /* transition for state=PORT_STATE_DOWN(10), event=PORT_EVENT_DISABLE_REQ(1) */
-    stt[FM10000_PORT_STATE_DOWN]
-       [FM10000_PORT_EVENT_DISABLE_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_DOWN]
-       [FM10000_PORT_EVENT_DISABLE_REQ].nextState = FM10000_PORT_STATE_DISABLED;
-    stt[FM10000_PORT_STATE_DOWN]
-       [FM10000_PORT_EVENT_DISABLE_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_DOWN]
-       [FM10000_PORT_EVENT_DISABLE_REQ].transitionCallback = PcieStateMachineS10E1Callback;
-
-    /* transition for state=PORT_STATE_DOWN(10), event=PORT_EVENT_LINK_UP_IND(20) */
-    stt[FM10000_PORT_STATE_DOWN]
-       [FM10000_PORT_EVENT_LINK_UP_IND].used = TRUE;
-    stt[FM10000_PORT_STATE_DOWN]
-       [FM10000_PORT_EVENT_LINK_UP_IND].nextState = FM10000_PORT_STATE_UP;
-    stt[FM10000_PORT_STATE_DOWN]
-       [FM10000_PORT_EVENT_LINK_UP_IND].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_DOWN]
-       [FM10000_PORT_EVENT_LINK_UP_IND].transitionCallback = PcieStateMachineS10E20Callback;
-
-    /* transition for state=PORT_STATE_DOWN(10), event=PORT_EVENT_LINK_DOWN_IND(19) */
-    stt[FM10000_PORT_STATE_DOWN]
-       [FM10000_PORT_EVENT_LINK_DOWN_IND].used = TRUE;
-    stt[FM10000_PORT_STATE_DOWN]
-       [FM10000_PORT_EVENT_LINK_DOWN_IND].nextState = FM10000_PORT_STATE_DOWN;
-    stt[FM10000_PORT_STATE_DOWN]
-       [FM10000_PORT_EVENT_LINK_DOWN_IND].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_DOWN]
-       [FM10000_PORT_EVENT_LINK_DOWN_IND].transitionCallback = PcieStateMachineS10E19Callback;
-
-    /* transition for state=PORT_STATE_DOWN(10), event=PORT_EVENT_LOOPBACK_ON_REQ(2) */
-    stt[FM10000_PORT_STATE_DOWN]
-       [FM10000_PORT_EVENT_LOOPBACK_ON_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_DOWN]
-       [FM10000_PORT_EVENT_LOOPBACK_ON_REQ].nextState = FM10000_PORT_STATE_DOWN;
-    stt[FM10000_PORT_STATE_DOWN]
-       [FM10000_PORT_EVENT_LOOPBACK_ON_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_DOWN]
-       [FM10000_PORT_EVENT_LOOPBACK_ON_REQ].transitionCallback = PcieStateMachineS10E2Callback;
-
-    /* transition for state=PORT_STATE_DOWN(10), event=PORT_EVENT_LOOPBACK_OFF_REQ(3) */
-    stt[FM10000_PORT_STATE_DOWN]
-       [FM10000_PORT_EVENT_LOOPBACK_OFF_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_DOWN]
-       [FM10000_PORT_EVENT_LOOPBACK_OFF_REQ].nextState = FM10000_PORT_STATE_DOWN;
-    stt[FM10000_PORT_STATE_DOWN]
-       [FM10000_PORT_EVENT_LOOPBACK_OFF_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_DOWN]
-       [FM10000_PORT_EVENT_LOOPBACK_OFF_REQ].transitionCallback = PcieStateMachineS10E3Callback;
-
-    /* transition for state=PORT_STATE_DOWN(10), event=PORT_EVENT_ADMIN_UP_REQ(4) */
-    stt[FM10000_PORT_STATE_DOWN]
-       [FM10000_PORT_EVENT_ADMIN_UP_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_DOWN]
-       [FM10000_PORT_EVENT_ADMIN_UP_REQ].nextState = FM10000_PORT_STATE_DOWN;
-    stt[FM10000_PORT_STATE_DOWN]
-       [FM10000_PORT_EVENT_ADMIN_UP_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_DOWN]
-       [FM10000_PORT_EVENT_ADMIN_UP_REQ].transitionCallback = PcieStateMachineS10E4Callback;
-
-    /* transition for state=PORT_STATE_DOWN(10), event=PORT_EVENT_ADMIN_DOWN_REQ(5) */
-    stt[FM10000_PORT_STATE_DOWN]
-       [FM10000_PORT_EVENT_ADMIN_DOWN_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_DOWN]
-       [FM10000_PORT_EVENT_ADMIN_DOWN_REQ].nextState = FM10000_PORT_STATE_DOWN;
-    stt[FM10000_PORT_STATE_DOWN]
-       [FM10000_PORT_EVENT_ADMIN_DOWN_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_DOWN]
-       [FM10000_PORT_EVENT_ADMIN_DOWN_REQ].transitionCallback = PcieStateMachineS10E5Callback;
-
-    /* transition for state=PORT_STATE_DOWN(10), event=PORT_EVENT_ADMIN_PWRDOWN_REQ(6) */
-    stt[FM10000_PORT_STATE_DOWN]
-       [FM10000_PORT_EVENT_ADMIN_PWRDOWN_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_DOWN]
-       [FM10000_PORT_EVENT_ADMIN_PWRDOWN_REQ].nextState = FM10000_PORT_STATE_DOWN;
-    stt[FM10000_PORT_STATE_DOWN]
-       [FM10000_PORT_EVENT_ADMIN_PWRDOWN_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_DOWN]
-       [FM10000_PORT_EVENT_ADMIN_PWRDOWN_REQ].transitionCallback = PcieStateMachineS10E6Callback;
-
-    /* transition for state=PORT_STATE_DOWN(10), event=PORT_EVENT_REMOTE_FAULT_REQ(7) */
-    stt[FM10000_PORT_STATE_DOWN]
-       [FM10000_PORT_EVENT_REMOTE_FAULT_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_DOWN]
-       [FM10000_PORT_EVENT_REMOTE_FAULT_REQ].nextState = FM10000_PORT_STATE_DOWN;
-    stt[FM10000_PORT_STATE_DOWN]
-       [FM10000_PORT_EVENT_REMOTE_FAULT_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_DOWN]
-       [FM10000_PORT_EVENT_REMOTE_FAULT_REQ].transitionCallback = PcieStateMachineS10E7Callback;
-
-    /* transition for state=PORT_STATE_DOWN(10), event=PORT_EVENT_LOCAL_FAULT_REQ(8) */
-    stt[FM10000_PORT_STATE_DOWN]
-       [FM10000_PORT_EVENT_LOCAL_FAULT_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_DOWN]
-       [FM10000_PORT_EVENT_LOCAL_FAULT_REQ].nextState = FM10000_PORT_STATE_DOWN;
-    stt[FM10000_PORT_STATE_DOWN]
-       [FM10000_PORT_EVENT_LOCAL_FAULT_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_DOWN]
-       [FM10000_PORT_EVENT_LOCAL_FAULT_REQ].transitionCallback = PcieStateMachineS10E8Callback;
-
-    /* transition for state=PORT_STATE_DOWN(10), event=PORT_EVENT_BIST_REQ(9) */
-    stt[FM10000_PORT_STATE_DOWN]
-       [FM10000_PORT_EVENT_BIST_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_DOWN]
-       [FM10000_PORT_EVENT_BIST_REQ].nextState = FM10000_PORT_STATE_DOWN;
-    stt[FM10000_PORT_STATE_DOWN]
-       [FM10000_PORT_EVENT_BIST_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_DOWN]
-       [FM10000_PORT_EVENT_BIST_REQ].transitionCallback = PcieStateMachineS10E9Callback;
-
-    /* transition for state=PORT_STATE_DOWN(10), event=PORT_EVENT_REMOTE_FAULT_IND(11) */
-    stt[FM10000_PORT_STATE_DOWN]
-       [FM10000_PORT_EVENT_REMOTE_FAULT_IND].used = TRUE;
-    stt[FM10000_PORT_STATE_DOWN]
-       [FM10000_PORT_EVENT_REMOTE_FAULT_IND].nextState = FM10000_PORT_STATE_DOWN;
-    stt[FM10000_PORT_STATE_DOWN]
-       [FM10000_PORT_EVENT_REMOTE_FAULT_IND].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_DOWN]
-       [FM10000_PORT_EVENT_REMOTE_FAULT_IND].transitionCallback = PcieStateMachineS10E11Callback;
-
-    /* transition for state=PORT_STATE_DOWN(10), event=PORT_EVENT_LOCAL_FAULT_IND(12) */
-    stt[FM10000_PORT_STATE_DOWN]
-       [FM10000_PORT_EVENT_LOCAL_FAULT_IND].used = TRUE;
-    stt[FM10000_PORT_STATE_DOWN]
-       [FM10000_PORT_EVENT_LOCAL_FAULT_IND].nextState = FM10000_PORT_STATE_DOWN;
-    stt[FM10000_PORT_STATE_DOWN]
-       [FM10000_PORT_EVENT_LOCAL_FAULT_IND].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_DOWN]
-       [FM10000_PORT_EVENT_LOCAL_FAULT_IND].transitionCallback = PcieStateMachineS10E12Callback;
-
-    /* transition for state=PORT_STATE_DOWN(10), event=PORT_EVENT_LANE_DFE_COMPLETE_IND(13) */
-    stt[FM10000_PORT_STATE_DOWN]
-       [FM10000_PORT_EVENT_LANE_DFE_COMPLETE_IND].used = TRUE;
-    stt[FM10000_PORT_STATE_DOWN]
-       [FM10000_PORT_EVENT_LANE_DFE_COMPLETE_IND].nextState = FM10000_PORT_STATE_DOWN;
-    stt[FM10000_PORT_STATE_DOWN]
-       [FM10000_PORT_EVENT_LANE_DFE_COMPLETE_IND].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_DOWN]
-       [FM10000_PORT_EVENT_LANE_DFE_COMPLETE_IND].transitionCallback = PcieStateMachineS10E13Callback;
-
-    /* transition for state=PORT_STATE_DOWN(10), event=PORT_EVENT_LANE_DFE_FAILED_IND(14) */
-    stt[FM10000_PORT_STATE_DOWN]
-       [FM10000_PORT_EVENT_LANE_DFE_FAILED_IND].used = TRUE;
-    stt[FM10000_PORT_STATE_DOWN]
-       [FM10000_PORT_EVENT_LANE_DFE_FAILED_IND].nextState = FM10000_PORT_STATE_DOWN;
-    stt[FM10000_PORT_STATE_DOWN]
-       [FM10000_PORT_EVENT_LANE_DFE_FAILED_IND].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_DOWN]
-       [FM10000_PORT_EVENT_LANE_DFE_FAILED_IND].transitionCallback = PcieStateMachineS10E14Callback;
-
-    /* transition for state=PORT_STATE_DOWN(10), event=PORT_EVENT_LANE_KR_COMPLETE_IND(15) */
-    stt[FM10000_PORT_STATE_DOWN]
-       [FM10000_PORT_EVENT_LANE_KR_COMPLETE_IND].used = TRUE;
-    stt[FM10000_PORT_STATE_DOWN]
-       [FM10000_PORT_EVENT_LANE_KR_COMPLETE_IND].nextState = FM10000_PORT_STATE_DOWN;
-    stt[FM10000_PORT_STATE_DOWN]
-       [FM10000_PORT_EVENT_LANE_KR_COMPLETE_IND].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_DOWN]
-       [FM10000_PORT_EVENT_LANE_KR_COMPLETE_IND].transitionCallback = PcieStateMachineS10E15Callback;
-
-    /* transition for state=PORT_STATE_DOWN(10), event=PORT_EVENT_LANE_KR_FAILED_IND(16) */
-    stt[FM10000_PORT_STATE_DOWN]
-       [FM10000_PORT_EVENT_LANE_KR_FAILED_IND].used = TRUE;
-    stt[FM10000_PORT_STATE_DOWN]
-       [FM10000_PORT_EVENT_LANE_KR_FAILED_IND].nextState = FM10000_PORT_STATE_DOWN;
-    stt[FM10000_PORT_STATE_DOWN]
-       [FM10000_PORT_EVENT_LANE_KR_FAILED_IND].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_DOWN]
-       [FM10000_PORT_EVENT_LANE_KR_FAILED_IND].transitionCallback = PcieStateMachineS10E16Callback;
-
-    /* transition for state=PORT_STATE_DOWN(10), event=PORT_EVENT_LANE_READY_IND(17) */
-    stt[FM10000_PORT_STATE_DOWN]
-       [FM10000_PORT_EVENT_LANE_READY_IND].used = TRUE;
-    stt[FM10000_PORT_STATE_DOWN]
-       [FM10000_PORT_EVENT_LANE_READY_IND].nextState = FM10000_PORT_STATE_DOWN;
-    stt[FM10000_PORT_STATE_DOWN]
-       [FM10000_PORT_EVENT_LANE_READY_IND].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_DOWN]
-       [FM10000_PORT_EVENT_LANE_READY_IND].transitionCallback = PcieStateMachineS10E17Callback;
-
-    /* transition for state=PORT_STATE_DOWN(10), event=PORT_EVENT_LANE_NOT_READY_IND(18) */
-    stt[FM10000_PORT_STATE_DOWN]
-       [FM10000_PORT_EVENT_LANE_NOT_READY_IND].used = TRUE;
-    stt[FM10000_PORT_STATE_DOWN]
-       [FM10000_PORT_EVENT_LANE_NOT_READY_IND].nextState = FM10000_PORT_STATE_DOWN;
-    stt[FM10000_PORT_STATE_DOWN]
-       [FM10000_PORT_EVENT_LANE_NOT_READY_IND].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_DOWN]
-       [FM10000_PORT_EVENT_LANE_NOT_READY_IND].transitionCallback = PcieStateMachineS10E18Callback;
-
-    /* transition for state=PORT_STATE_DOWN(10), event=PORT_EVENT_DEFTIMER_EXP_IND(21) */
-    stt[FM10000_PORT_STATE_DOWN]
-       [FM10000_PORT_EVENT_DEFTIMER_EXP_IND].used = TRUE;
-    stt[FM10000_PORT_STATE_DOWN]
-       [FM10000_PORT_EVENT_DEFTIMER_EXP_IND].nextState = FM10000_PORT_STATE_DOWN;
-    stt[FM10000_PORT_STATE_DOWN]
-       [FM10000_PORT_EVENT_DEFTIMER_EXP_IND].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_DOWN]
-       [FM10000_PORT_EVENT_DEFTIMER_EXP_IND].transitionCallback = PcieStateMachineS10E21Callback;
-
-    /* transition for state=PORT_STATE_DOWN(10), event=PORT_EVENT_FABRIC_LOOPBACK_ON_REQ(27) */
-    stt[FM10000_PORT_STATE_DOWN]
-       [FM10000_PORT_EVENT_FABRIC_LOOPBACK_ON_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_DOWN]
-       [FM10000_PORT_EVENT_FABRIC_LOOPBACK_ON_REQ].nextState = FM10000_PORT_STATE_DOWN;
-    stt[FM10000_PORT_STATE_DOWN]
-       [FM10000_PORT_EVENT_FABRIC_LOOPBACK_ON_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_DOWN]
-       [FM10000_PORT_EVENT_FABRIC_LOOPBACK_ON_REQ].transitionCallback = PcieStateMachineS10E27Callback;
-
-    /* transition for state=PORT_STATE_DOWN(10), event=PORT_EVENT_FABRIC_LOOPBACK_OFF_REQ(28) */
-    stt[FM10000_PORT_STATE_DOWN]
-       [FM10000_PORT_EVENT_FABRIC_LOOPBACK_OFF_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_DOWN]
-       [FM10000_PORT_EVENT_FABRIC_LOOPBACK_OFF_REQ].nextState = FM10000_PORT_STATE_DOWN;
-    stt[FM10000_PORT_STATE_DOWN]
-       [FM10000_PORT_EVENT_FABRIC_LOOPBACK_OFF_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_DOWN]
-       [FM10000_PORT_EVENT_FABRIC_LOOPBACK_OFF_REQ].transitionCallback = PcieStateMachineS10E28Callback;
-
-    /* transition for state=PORT_STATE_UP(11), event=PORT_EVENT_CONFIG_REQ(0) */
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_CONFIG_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_CONFIG_REQ].nextState = FM10000_PORT_STATE_UP;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_CONFIG_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_CONFIG_REQ].transitionCallback = PcieStateMachineS11E0Callback;
-
-    /* transition for state=PORT_STATE_UP(11), event=PORT_EVENT_DISABLE_REQ(1) */
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_DISABLE_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_DISABLE_REQ].nextState = FM10000_PORT_STATE_DISABLED;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_DISABLE_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_DISABLE_REQ].transitionCallback = PcieStateMachineS11E1Callback;
-
-    /* transition for state=PORT_STATE_UP(11), event=PORT_EVENT_LINK_UP_IND(20) */
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_LINK_UP_IND].used = TRUE;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_LINK_UP_IND].nextState = FM10000_PORT_STATE_UP;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_LINK_UP_IND].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_LINK_UP_IND].transitionCallback = PcieStateMachineS11E20Callback;
-
-    /* transition for state=PORT_STATE_UP(11), event=PORT_EVENT_LINK_DOWN_IND(19) */
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_LINK_DOWN_IND].used = TRUE;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_LINK_DOWN_IND].nextState = FM10000_PORT_STATE_DOWN;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_LINK_DOWN_IND].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_LINK_DOWN_IND].transitionCallback = PcieStateMachineS11E19Callback;
-
-    /* transition for state=PORT_STATE_UP(11), event=PORT_EVENT_LOOPBACK_ON_REQ(2) */
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_LOOPBACK_ON_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_LOOPBACK_ON_REQ].nextState = FM10000_PORT_STATE_UP;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_LOOPBACK_ON_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_LOOPBACK_ON_REQ].transitionCallback = PcieStateMachineS11E2Callback;
-
-    /* transition for state=PORT_STATE_UP(11), event=PORT_EVENT_LOOPBACK_OFF_REQ(3) */
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_LOOPBACK_OFF_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_LOOPBACK_OFF_REQ].nextState = FM10000_PORT_STATE_UP;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_LOOPBACK_OFF_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_LOOPBACK_OFF_REQ].transitionCallback = PcieStateMachineS11E3Callback;
-
-    /* transition for state=PORT_STATE_UP(11), event=PORT_EVENT_ADMIN_UP_REQ(4) */
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_ADMIN_UP_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_ADMIN_UP_REQ].nextState = FM10000_PORT_STATE_UP;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_ADMIN_UP_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_ADMIN_UP_REQ].transitionCallback = PcieStateMachineS11E4Callback;
-
-    /* transition for state=PORT_STATE_UP(11), event=PORT_EVENT_ADMIN_DOWN_REQ(5) */
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_ADMIN_DOWN_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_ADMIN_DOWN_REQ].nextState = FM10000_PORT_STATE_UP;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_ADMIN_DOWN_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_ADMIN_DOWN_REQ].transitionCallback = PcieStateMachineS11E5Callback;
-
-    /* transition for state=PORT_STATE_UP(11), event=PORT_EVENT_ADMIN_PWRDOWN_REQ(6) */
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_ADMIN_PWRDOWN_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_ADMIN_PWRDOWN_REQ].nextState = FM10000_PORT_STATE_UP;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_ADMIN_PWRDOWN_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_ADMIN_PWRDOWN_REQ].transitionCallback = PcieStateMachineS11E6Callback;
-
-    /* transition for state=PORT_STATE_UP(11), event=PORT_EVENT_REMOTE_FAULT_REQ(7) */
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_REMOTE_FAULT_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_REMOTE_FAULT_REQ].nextState = FM10000_PORT_STATE_UP;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_REMOTE_FAULT_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_REMOTE_FAULT_REQ].transitionCallback = PcieStateMachineS11E7Callback;
-
-    /* transition for state=PORT_STATE_UP(11), event=PORT_EVENT_LOCAL_FAULT_REQ(8) */
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_LOCAL_FAULT_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_LOCAL_FAULT_REQ].nextState = FM10000_PORT_STATE_UP;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_LOCAL_FAULT_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_LOCAL_FAULT_REQ].transitionCallback = PcieStateMachineS11E8Callback;
-
-    /* transition for state=PORT_STATE_UP(11), event=PORT_EVENT_BIST_REQ(9) */
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_BIST_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_BIST_REQ].nextState = FM10000_PORT_STATE_UP;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_BIST_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_BIST_REQ].transitionCallback = PcieStateMachineS11E9Callback;
-
-    /* transition for state=PORT_STATE_UP(11), event=PORT_EVENT_REMOTE_FAULT_IND(11) */
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_REMOTE_FAULT_IND].used = TRUE;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_REMOTE_FAULT_IND].nextState = FM10000_PORT_STATE_UP;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_REMOTE_FAULT_IND].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_REMOTE_FAULT_IND].transitionCallback = PcieStateMachineS11E11Callback;
-
-    /* transition for state=PORT_STATE_UP(11), event=PORT_EVENT_LOCAL_FAULT_IND(12) */
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_LOCAL_FAULT_IND].used = TRUE;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_LOCAL_FAULT_IND].nextState = FM10000_PORT_STATE_UP;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_LOCAL_FAULT_IND].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_LOCAL_FAULT_IND].transitionCallback = PcieStateMachineS11E12Callback;
-
-    /* transition for state=PORT_STATE_UP(11), event=PORT_EVENT_LANE_DFE_COMPLETE_IND(13) */
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_LANE_DFE_COMPLETE_IND].used = TRUE;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_LANE_DFE_COMPLETE_IND].nextState = FM10000_PORT_STATE_UP;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_LANE_DFE_COMPLETE_IND].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_LANE_DFE_COMPLETE_IND].transitionCallback = PcieStateMachineS11E13Callback;
-
-    /* transition for state=PORT_STATE_UP(11), event=PORT_EVENT_LANE_DFE_FAILED_IND(14) */
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_LANE_DFE_FAILED_IND].used = TRUE;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_LANE_DFE_FAILED_IND].nextState = FM10000_PORT_STATE_UP;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_LANE_DFE_FAILED_IND].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_LANE_DFE_FAILED_IND].transitionCallback = PcieStateMachineS11E14Callback;
-
-    /* transition for state=PORT_STATE_UP(11), event=PORT_EVENT_LANE_KR_COMPLETE_IND(15) */
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_LANE_KR_COMPLETE_IND].used = TRUE;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_LANE_KR_COMPLETE_IND].nextState = FM10000_PORT_STATE_UP;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_LANE_KR_COMPLETE_IND].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_LANE_KR_COMPLETE_IND].transitionCallback = PcieStateMachineS11E15Callback;
-
-    /* transition for state=PORT_STATE_UP(11), event=PORT_EVENT_LANE_KR_FAILED_IND(16) */
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_LANE_KR_FAILED_IND].used = TRUE;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_LANE_KR_FAILED_IND].nextState = FM10000_PORT_STATE_UP;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_LANE_KR_FAILED_IND].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_LANE_KR_FAILED_IND].transitionCallback = PcieStateMachineS11E16Callback;
-
-    /* transition for state=PORT_STATE_UP(11), event=PORT_EVENT_LANE_READY_IND(17) */
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_LANE_READY_IND].used = TRUE;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_LANE_READY_IND].nextState = FM10000_PORT_STATE_UP;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_LANE_READY_IND].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_LANE_READY_IND].transitionCallback = PcieStateMachineS11E17Callback;
-
-    /* transition for state=PORT_STATE_UP(11), event=PORT_EVENT_LANE_NOT_READY_IND(18) */
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_LANE_NOT_READY_IND].used = TRUE;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_LANE_NOT_READY_IND].nextState = FM10000_PORT_STATE_UP;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_LANE_NOT_READY_IND].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_LANE_NOT_READY_IND].transitionCallback = PcieStateMachineS11E18Callback;
-
-    /* transition for state=PORT_STATE_UP(11), event=PORT_EVENT_DEFTIMER_EXP_IND(21) */
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_DEFTIMER_EXP_IND].used = TRUE;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_DEFTIMER_EXP_IND].nextState = FM10000_PORT_STATE_UP;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_DEFTIMER_EXP_IND].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_DEFTIMER_EXP_IND].transitionCallback = PcieStateMachineS11E21Callback;
-
-    /* transition for state=PORT_STATE_UP(11), event=PORT_EVENT_FABRIC_LOOPBACK_ON_REQ(27) */
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_FABRIC_LOOPBACK_ON_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_FABRIC_LOOPBACK_ON_REQ].nextState = FM10000_PORT_STATE_UP;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_FABRIC_LOOPBACK_ON_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_FABRIC_LOOPBACK_ON_REQ].transitionCallback = PcieStateMachineS11E27Callback;
-
-    /* transition for state=PORT_STATE_UP(11), event=PORT_EVENT_FABRIC_LOOPBACK_OFF_REQ(28) */
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_FABRIC_LOOPBACK_OFF_REQ].used = TRUE;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_FABRIC_LOOPBACK_OFF_REQ].nextState = FM10000_PORT_STATE_UP;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_FABRIC_LOOPBACK_OFF_REQ].conditionCallback = NULL;
-    stt[FM10000_PORT_STATE_UP]
-       [FM10000_PORT_EVENT_FABRIC_LOOPBACK_OFF_REQ].transitionCallback = PcieStateMachineS11E28Callback;
-
+    for (i = 0 ; 
+         i < (sizeof(fm10000PcieSmTable) / sizeof(fm_smTable)); 
+         i++)
+    {
+        stt[fm10000PcieSmTable[i].current]
+           [fm10000PcieSmTable[i].event].used = TRUE;
+
+        stt[fm10000PcieSmTable[i].current]
+           [fm10000PcieSmTable[i].event].nextState = 
+               fm10000PcieSmTable[i].next;
+
+        if (fm10000PcieSmTable[i].next == FM_STATE_UNSPECIFIED)
+        {
+            stt[fm10000PcieSmTable[i].current]
+               [fm10000PcieSmTable[i].event].conditionCallback = 
+                   (fm_smConditionCallback) fm10000PcieSmTable[i].callback;
+
+            stt[fm10000PcieSmTable[i].current]
+               [fm10000PcieSmTable[i].event].transitionCallback = NULL;
+        }
+        else
+        {
+            stt[fm10000PcieSmTable[i].current]
+               [fm10000PcieSmTable[i].event].conditionCallback = NULL;
+
+            stt[fm10000PcieSmTable[i].current]
+               [fm10000PcieSmTable[i].event].transitionCallback = 
+                   (fm_smTransitionCallback) fm10000PcieSmTable[i].callback;
+        }
+    }
+    
     /* fill out the state transition table for this state machine type */
-    for (i = 0 ; i < FM10000_PORT_STATE_MAX  ; i++)
+    for (i = 0 ; i < FM10000_PORT_STATE_MAX ; i++)
     {
         dynstt[i] = &stt[i][0];
     }

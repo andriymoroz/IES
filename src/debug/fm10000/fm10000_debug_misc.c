@@ -320,12 +320,12 @@ ABORT:
 fm_status fm10000DbgDumpPortMap(fm_int sw, fm_int port, fm_int portType)
 {
     fm_int     logPort;
+    fm_int     physPort;
+    fm_int     cpi;
     fm_int     filterPhysPort = -1;
     fm_int     filterEpl      = -1;
     fm_status  err            = FM_OK;
     fm_switch *switchPtr      = GET_SWITCH_PTR(sw);
-    fm_int     start          = port;
-    fm_int     end            = port;
 
     FM_LOG_PRINT("LogPort PhysPort FabricPort EPL/PEP Lane SERDES SBUS        Type      polarity\n");
 
@@ -333,27 +333,30 @@ fm_status fm10000DbgDumpPortMap(fm_int sw, fm_int port, fm_int portType)
     {
         case FM_PORT_DUMP_TYPE_PHYSICAL:
             filterPhysPort = port;
-            start          = -1;
             break;
 
         case FM_PORT_DUMP_TYPE_EPL:
             filterEpl = port;
-            start     = -1;
             break;
 
         default:
             break;
     }   /* end switch (portType) */
 
-    if (start < 0 || start > switchPtr->maxPhysicalPort)
-    {
-        start = 0;
-        end   = switchPtr->maxPhysicalPort;
-    }
 
-    for (logPort = start ; logPort <= end ; logPort++)
+    for (cpi = 0 ; cpi < switchPtr->numCardinalPorts ; cpi++)
     {
-        err = fm10000DbgDumpLogicalPortMapping(sw, logPort, filterPhysPort, filterEpl);
+        fmMapCardinalPort(sw, cpi, &logPort, &physPort);
+        if ((port != -1) && (logPort != port) &&
+            (filterPhysPort == -1) && (filterEpl == -1))
+        {
+            continue;
+        }
+
+        err = fm10000DbgDumpLogicalPortMapping(sw,
+                                               logPort,
+                                               filterPhysPort,
+                                               filterEpl);
     }
 
     return err;
